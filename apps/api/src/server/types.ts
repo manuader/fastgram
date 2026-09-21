@@ -12,7 +12,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { FastifyBaseLogger, FastifyInstance, RawServerDefault } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
-import type { Clock, Storage } from "@fastgram/ports";
+import type { Clock, Queue, Storage } from "@fastgram/ports";
 import type { Database, Transaction } from "@fastgram/db";
 
 /**
@@ -61,6 +61,16 @@ export interface ApiDeps {
   readonly appRole: string | undefined;
   readonly sessions?: SessionResolver;
   readonly angleGenerator?: AngleGenerator;
+  /**
+   * Cola de trabajos (`ADR-005`).
+   *
+   * Opcional por la misma razón que `angleGenerator`: se monta donde hay Postgres y
+   * los tests de ruta no lo necesitan. Pero la consecuencia es distinta y conviene
+   * decirla — una ruta que crea contenido en `BUILDING` **sin** encolar el build deja
+   * la fila colgada para siempre, y eso es peor que fallar. Sin esta dependencia esas
+   * rutas responden `503 service_unavailable`; no crean la fila.
+   */
+  readonly queue?: Queue;
 }
 
 declare module "fastify" {
