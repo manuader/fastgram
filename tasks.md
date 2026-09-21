@@ -143,7 +143,12 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 ## P1-QUEUE — Colas y jobs
 
 - [x] **P1-QUEUE-001** Puerto `Queue` + adaptador pg-boss · `ADR-005`
-- [~] **P1-QUEUE-002** **Encolar dentro de la transacción de negocio** + test que lo prueba · IMPL §2.3 · ⚠️ es la razón de ADR-005 · **parcial:** el adaptador existe y tiene tests; **falta el test que prueba que un rollback de la transacción deshace el encolado**, que es la razón entera de ADR-005
+- [x] **P1-QUEUE-002** **Encolar dentro de la transacción de negocio** + test que lo prueba · IMPL §2.3 · es la razón de ADR-005
+  > 9 tests de integración en `packages/adapters/src/queue/pg-boss-transaction.int.test.ts`, por la vía real (Drizzle sobre postgres.js) y no por el ejecutor interno de pg-boss.
+  > **Por esa vía no funcionaba.** Tres causas, todas medidas: (1) pg-boss deja parámetros `undefined` que postgres.js rechaza —arreglado adentro—; (2) `drizzle()` le pone la identidad a los serializadores de `jsonb` del cliente **compartido**, y el handle de la transacción no expone `.options`, así que no se puede autodetectar; (3) el bridge por defecto no reconocía el handle de Drizzle, que es el que `core` propaga.
+  > (2) y (3) se resuelven con un puente **con nombre** que el cableado elige a mano: `drizzleTransactionToExecutor`.
+- [ ] **P1-QUEUE-007** **Verificar que `fastgram_app` puede encolar** dentro de `withCompany` · ⚠️ misma familia que la trampa 13
+  > El test de `P1-QUEUE-002` conecta como `fastgram` (el dueño). **Nadie comprobó que el rol de la aplicación tenga privilegios sobre el esquema de pg-boss.** Si le faltan, encolar dentro de `withCompany(..., { role: APP_ROLE })` falla con *permission denied* — y como el rol de desarrollo suele ser superusuario, en desarrollo andaría. Es lo primero que hay que probar al cablear el worker.
 - [x] **P1-QUEUE-003** Estado de job consultable + contrato de polling de ~10 s · `NFR-002`, `ADR-014`
 - [x] **P1-QUEUE-004** Reintentos con backoff y dead-letter queue
 - [~] **P1-QUEUE-005** Idempotencia: `Idempotency-Key`, replay de respuesta, `409` con body distinto, liberación al fallar · `NFR-004` · **parcial:** la política de idempotencia está en `apps/api/src/http/idempotency.ts` con 8 tests; falta cablearla a las rutas
@@ -178,6 +183,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [ ] **P1-JUDGE-006** **Evaluación de modelos y precios**, con resultado fechado en `HANDOFF.md` · `ADR-009` · ⚠️ nada de precios de memoria
 - [x] **P1-JUDGE-007** Sanitización obligatoria del estado antes del puerto · PRD §9.15.3
 - [x] **P1-JUDGE-008** Suite de contrato única que corre contra **todos** los adaptadores · IMPL §4
+  > Las 37 aserciones de `asr`, `media-renderer`, `payments`, `social-publisher` y `social-reader` **nunca se habían ejecutado** porque no existía ningún adaptador de esos puertos. Ahora corren contra implementaciones en memoria: 37 de 37 verdes, y la corrida encontró **cuatro aserciones que no medían lo que prometían** (ver el commit `308e30d`). Cinco de las 37 no pueden fallar contra un adaptador en memoria y están anotadas como tales.
 
 ## P1-VISION — Servicio de visión
 
