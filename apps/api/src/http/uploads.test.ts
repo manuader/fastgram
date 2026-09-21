@@ -88,7 +88,7 @@ describe("canFinalize — los códigos del PRD §9.8", () => {
   const reserva = (over: Partial<Reservation> = {}): Reservation => ({
     uploadId: "up_1",
     companyId: "co_1",
-    status: "pending",
+    status: "reserved",
     expiresAtMs: now + 60_000,
     ...over,
   });
@@ -126,7 +126,38 @@ describe("canFinalize — los códigos del PRD §9.8", () => {
       canFinalize(reserva({ status: "failed" }), { companyId: "co_1" }, now).kind,
     ).toBe("conflict");
     expect(
-      canFinalize(reserva({ status: "completed" }), { companyId: "co_1" }, now).kind,
+      canFinalize(reserva({ status: "committed" }), { companyId: "co_1" }, now).kind,
     ).toBe("conflict");
+  });
+});
+
+describe("canFinalize falla cerrado", () => {
+  // La versión anterior usaba `pending`/`completed` mientras la base guarda
+  // `reserved`/`committed` (`UPLOAD_RESERVATION_STATE`). El tipo no lo atrapaba
+  // —las filas llegan del repositorio como `string`— y un `committed` caía en
+  // `proceed`: segundo POST, segunda pieza, segundo cobro.
+  //
+  // Alinear los nombres no alcanza. Este test fija lo otro: un estado que nadie
+  // previó **no** puede significar "seguí".
+  const now = 1_000_000;
+  const reserva = (over: Partial<Reservation> = {}): Reservation => ({
+    uploadId: "up_1",
+    companyId: "co_1",
+    status: "reserved",
+    expiresAtMs: now + 60_000,
+    ...over,
+  });
+
+  it("un estado desconocido es conflict, no proceed", () => {
+    const desconocido = "quarantined" as Reservation["status"];
+    expect(
+      canFinalize(reserva({ status: desconocido }), { companyId: "co_1" }, now).kind,
+    ).toBe("conflict");
+  });
+
+  it("y `reserved` sigue siendo el único que deja seguir", () => {
+    expect(
+      canFinalize(reserva({ status: "reserved" }), { companyId: "co_1" }, now).kind,
+    ).toBe("proceed");
   });
 });

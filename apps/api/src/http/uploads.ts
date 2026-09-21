@@ -87,9 +87,19 @@ export function validateUploadReservation(args: {
   return null;
 }
 
-/** Estado de una reserva. Gobierna qué error devuelve la finalización. */
+/**
+ * Estado de una reserva. Gobierna qué error devuelve la finalización.
+ *
+ * **Son los literales de `UPLOAD_RESERVATION_STATE` (`DATA-028`), no otros.**
+ * Este tipo decía `pending`/`completed` mientras la base guarda
+ * `reserved`/`committed`, y el efecto no era un error de tipos —las filas
+ * llegan desde el repositorio como `string`— sino peor: un `committed` no
+ * matcheaba ninguna rama y caía en `proceed`. O sea que **un segundo POST con
+ * el mismo `uploadId` creaba otra pieza y cobraba de nuevo**. Lo encontró el
+ * agente que escribió `POST /content/custom/video`.
+ */
 export type ReservationStatus =
-  "pending" | "finalizing" | "completed" | "failed" | "expired";
+  "reserved" | "finalizing" | "committed" | "failed" | "expired";
 
 export interface Reservation {
   uploadId: string;
@@ -125,11 +135,23 @@ export function canFinalize(
   if (reservation.status === "failed") {
     return { kind: "conflict", reason: "a previous reservation for this object failed" };
   }
-  if (reservation.status === "completed") {
+  if (reservation.status === "committed") {
     return { kind: "conflict", reason: "this upload was already finalized" };
   }
   if (reservation.status === "expired" || nowMs > reservation.expiresAtMs) {
     return { kind: "gone" };
+  }
+
+  // Falla **cerrado**, y ésta es la parte estructural del arreglo.
+  //
+  // Alinear los literales con la base no alcanza: mientras el caso por defecto
+  // fuera `proceed`, cualquier estado que no esté acá —uno nuevo en el enum, un
+  // dato viejo, una migración a medias— pasaría de largo y volvería a permitir
+  // la doble finalización. Con la lista explícita, el único estado que sigue es
+  // el que dice que se puede seguir, y cualquier otro es un `conflict` ruidoso
+  // en vez de un cobro silencioso.
+  if (reservation.status !== "reserved") {
+    return { kind: "conflict", reason: `unexpected reservation state` };
   }
 
   return { kind: "proceed" };
