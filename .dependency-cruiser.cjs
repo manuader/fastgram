@@ -96,6 +96,12 @@ module.exports = {
     {
       name: "no-orphans",
       severity: "warn",
+      comment:
+        "Un archivo que nadie importa. Suele ser código muerto tras un " +
+        "refactor. Los puntos de entrada NO cuentan: los arranca Node o el " +
+        "framework, no un import. Se excluyen abajo a propósito, porque una " +
+        "lista de warnings que siempre trae los mismos siete archivos " +
+        "legítimos enseña a ignorar la lista entera.",
       from: {
         orphan: true,
         pathNot: [
@@ -103,6 +109,12 @@ module.exports = {
           "\\.d\\.ts$",
           "(^|/)tsconfig\\.json$",
           "(^|/)(package|vitest\\.config|drizzle\\.config)\\.(json|js|ts)$",
+          // Puntos de entrada de proceso: los arranca Node.
+          "^(apps|services)/[^/]+/src/main\\.ts$",
+          // Configuración de framework: la lee el framework.
+          "^apps/[^/]+/(next\\.config|postcss\\.config|tailwind\\.config)\\.(ts|mjs|js)$",
+          // Rutas y layouts del App Router: los descubre Next por convención.
+          "^apps/web/src/app/.*\\.(tsx|ts)$",
         ],
       },
       to: {},
