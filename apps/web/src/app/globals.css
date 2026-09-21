@@ -1,3 +1,823 @@
+/**
+ * Estilos de la shell de `apps/web`.
+ *
+ * **Convención.** `packages/ui` usa CSS plano con clases semánticas (`fg-btn`,
+ * `fg-card`) y tokens `--fg-*`. Esta hoja sigue lo mismo con el prefijo `fgw-`
+ * ("fastgram web"), para que un `fg-` siempre sea del design system y un `fgw-`
+ * siempre sea de la app. Nunca se redefine una clase `fg-*` desde aquí: si un
+ * componente del sistema no hace lo que hace falta, se arregla en el sistema.
+ *
+ * **Todo color, espacio, radio y sombra sale de un token.** Ningún hex suelto:
+ * un hex es un valor que no cambia con el tema, y en una app con tema oscuro eso
+ * es un bug esperando.
+ */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ---------------------------------------------------------------- base */
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--fg-color-bg);
+  color: var(--fg-color-text);
+  font-family: var(--fg-font-sans);
+  font-size: var(--fg-text-sm);
+  line-height: var(--fg-leading-normal);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* El salto al contenido. Vive fuera de la pantalla hasta que recibe foco: es el
+   primer tabulador de cada página y lo único que evita recorrer 17 enlaces de
+   menú antes de llegar al contenido. */
+.fgw-skip-link {
+  position: absolute;
+  top: var(--fg-space-2);
+  left: var(--fg-space-2);
+  z-index: var(--fg-z-toast);
+  padding: var(--fg-space-2) var(--fg-space-3);
+  border-radius: var(--fg-radius-md);
+  background: var(--fg-color-surface-raised);
+  color: var(--fg-color-text);
+  box-shadow: var(--fg-shadow-md);
+  transform: translateY(-200%);
+}
+
+.fgw-skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+/* ---------------------------------------------------------- estructura */
+
+.fgw-shell {
+  display: flex;
+  min-height: 100dvh;
+}
+
+.fgw-shell__main {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.fgw-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--fg-space-6);
+}
+
+.fgw-public {
+  display: flex;
+  min-height: 100dvh;
+  align-items: center;
+  justify-content: center;
+  padding: var(--fg-space-6);
+}
+
+.fgw-centered {
+  display: flex;
+  min-height: 100dvh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--fg-space-4);
+  padding: var(--fg-space-6);
+}
+
+.fgw-centered__title {
+  margin: 0;
+  font-size: var(--fg-text-2xl);
+  font-weight: var(--fg-weight-semibold);
+}
+
+.fgw-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-6);
+  max-width: 1200px;
+}
+
+/* ------------------------------------------------------------- sidebar */
+
+.fgw-sidebar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex: none;
+  width: 248px;
+  height: 100dvh;
+  flex-direction: column;
+  gap: var(--fg-space-2);
+  border-right: 1px solid var(--fg-color-border);
+  background: var(--fg-color-surface);
+  padding: var(--fg-space-3);
+  transition: width var(--fg-duration-normal) var(--fg-ease-standard);
+}
+
+/* Hasta que el primer efecto mide la ventana no se anima nada: si no, al cargar
+   en tablet se ve el sidebar encogerse solo. */
+.fgw-shell[data-ready="false"] .fgw-sidebar {
+  transition: none;
+}
+
+.fgw-shell[data-collapsed="true"] .fgw-sidebar {
+  width: 68px;
+}
+
+.fgw-sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fg-space-2);
+  min-height: var(--fg-control-height-lg);
+  padding: 0 var(--fg-space-1);
+}
+
+.fgw-shell[data-collapsed="true"] .fgw-sidebar__header {
+  flex-direction: column;
+  gap: var(--fg-space-1);
+}
+
+.fgw-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  min-width: 0;
+  border-radius: var(--fg-radius-md);
+  color: inherit;
+  text-decoration: none;
+}
+
+.fgw-brand__mark {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  place-items: center;
+  border-radius: var(--fg-radius-md);
+  background: var(--fg-color-accent);
+  color: var(--fg-color-on-accent);
+  font-size: var(--fg-text-xs);
+  font-weight: var(--fg-weight-bold);
+  letter-spacing: var(--fg-tracking-wide);
+}
+
+.fgw-brand__name {
+  overflow: hidden;
+  font-size: var(--fg-text-base);
+  font-weight: var(--fg-weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fgw-sidebar__collapse {
+  display: grid;
+  width: var(--fg-control-height-sm);
+  height: var(--fg-control-height-sm);
+  flex: none;
+  place-items: center;
+  border: 0;
+  border-radius: var(--fg-radius-md);
+  background: transparent;
+  color: var(--fg-color-text-muted);
+  cursor: pointer;
+}
+
+.fgw-sidebar__collapse:hover {
+  background: var(--fg-color-surface-hover);
+  color: var(--fg-color-text);
+}
+
+.fgw-sidebar__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--fg-space-2);
+  overflow-y: auto;
+}
+
+.fgw-sidebar__separator {
+  margin: var(--fg-space-2) 0;
+  border: 0;
+  border-top: 1px solid var(--fg-color-border);
+}
+
+/* Empuja el bloque secundario abajo, que es donde lo pone el PRD (§3.2). */
+.fgw-sidebar__body > .fgw-nav:last-of-type {
+  margin-top: auto;
+}
+
+.fgw-sidebar__footer {
+  padding-top: var(--fg-space-2);
+  border-top: 1px solid var(--fg-color-border);
+}
+
+/* ---------------------------------------------------------- navegación */
+
+.fgw-nav__list,
+.fgw-nav__item {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fgw-nav__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fgw-nav__link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  min-height: var(--fg-control-height-md);
+  padding: var(--fg-space-2) var(--fg-space-3);
+  border-radius: var(--fg-radius-md);
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-sm);
+  font-weight: var(--fg-weight-medium);
+  text-decoration: none;
+  transition: background var(--fg-duration-fast) var(--fg-ease-standard);
+}
+
+.fgw-nav__link:hover {
+  background: var(--fg-color-surface-hover);
+  color: var(--fg-color-text);
+}
+
+.fgw-nav__link[data-active="true"] {
+  background: var(--fg-color-accent-subtle);
+  color: var(--fg-color-accent-text);
+}
+
+.fgw-nav__icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+}
+
+.fgw-nav__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fgw-nav__trailing {
+  display: inline-grid;
+  margin-left: auto;
+  place-items: center;
+  color: var(--fg-color-text-subtle);
+}
+
+/* PRD:338 — punto rojo en `Settings` cuando hay acción pendiente. */
+.fgw-nav__dot {
+  position: absolute;
+  top: 6px;
+  left: 26px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--fg-color-surface);
+  border-radius: var(--fg-radius-full);
+  background: var(--fg-color-danger);
+}
+
+.fgw-shell[data-collapsed="true"] .fgw-nav__link {
+  justify-content: center;
+  padding-inline: var(--fg-space-2);
+}
+
+/* El tooltip envuelve el enlace: sin esto el `<span>` del wrapper no ocupa la
+   fila entera y el área de click se queda en el icono. */
+.fgw-nav__item .fg-tooltip {
+  display: block;
+}
+
+/* -------------------------------------------------------------- topbar */
+
+.fgw-topbar {
+  display: none;
+  align-items: center;
+  gap: var(--fg-space-3);
+  border-bottom: 1px solid var(--fg-color-border);
+  background: var(--fg-color-surface);
+  padding: var(--fg-space-2) var(--fg-space-4);
+}
+
+.fgw-topbar__menu {
+  display: grid;
+  width: var(--fg-control-height-lg);
+  height: var(--fg-control-height-lg);
+  place-items: center;
+  border: 0;
+  border-radius: var(--fg-radius-md);
+  background: transparent;
+  color: var(--fg-color-text);
+  cursor: pointer;
+}
+
+.fgw-topbar__brand {
+  font-size: var(--fg-text-base);
+  font-weight: var(--fg-weight-semibold);
+}
+
+.fgw-topbar__actions {
+  margin-left: auto;
+}
+
+/* --------------------------------------------------------- tema toggle */
+
+.fgw-theme-toggle {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-lg);
+  background: var(--fg-color-surface-sunken);
+}
+
+.fgw-shell[data-collapsed="true"] .fgw-sidebar__footer .fgw-theme-toggle {
+  flex-direction: column;
+}
+
+.fgw-theme-toggle__button {
+  display: grid;
+  flex: 1 1 0;
+  min-width: var(--fg-control-height-sm);
+  min-height: var(--fg-control-height-sm);
+  place-items: center;
+  border: 0;
+  border-radius: var(--fg-radius-md);
+  background: transparent;
+  color: var(--fg-color-text-muted);
+  cursor: pointer;
+}
+
+.fgw-theme-toggle__button:hover {
+  color: var(--fg-color-text);
+}
+
+.fgw-theme-toggle__button[data-selected="true"] {
+  background: var(--fg-color-surface-raised);
+  color: var(--fg-color-text);
+  box-shadow: var(--fg-shadow-xs);
+}
+
+/* ------------------------------------------------------------ soporte */
+
+/* PRD:340 — burbuja naranja fija, esquina inferior derecha, todas las páginas. */
+.fgw-support {
+  position: fixed;
+  right: var(--fg-space-5);
+  bottom: var(--fg-space-5);
+  z-index: var(--fg-z-sticky);
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--fg-radius-full);
+  background: var(--fg-color-accent);
+  color: var(--fg-color-on-accent);
+  box-shadow: var(--fg-shadow-lg);
+  cursor: pointer;
+}
+
+.fgw-support:hover {
+  background: var(--fg-color-accent-hover);
+}
+
+/* ------------------------------------------------ encabezado de página */
+
+.fgw-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--fg-space-4);
+  flex-wrap: wrap;
+}
+
+.fgw-page-header__title {
+  margin: 0;
+  font-size: var(--fg-text-2xl);
+  font-weight: var(--fg-weight-semibold);
+  letter-spacing: var(--fg-tracking-tight);
+}
+
+.fgw-page-header__description {
+  margin: var(--fg-space-1) 0 0;
+  color: var(--fg-color-text-muted);
+}
+
+/* ------------------------------------------------------------- subnav */
+
+.fgw-subnav__list {
+  display: flex;
+  gap: var(--fg-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-bottom: 1px solid var(--fg-color-border);
+}
+
+.fgw-subnav__link {
+  display: inline-block;
+  padding: var(--fg-space-2) var(--fg-space-3);
+  border-bottom: 2px solid transparent;
+  color: var(--fg-color-text-muted);
+  font-weight: var(--fg-weight-medium);
+  text-decoration: none;
+}
+
+.fgw-subnav__link[data-active="true"] {
+  border-bottom-color: var(--fg-color-accent);
+  color: var(--fg-color-text);
+}
+
+/* ------------------------------------------------------- placeholders */
+
+.fgw-placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-3);
+  max-width: 640px;
+  border: 1px dashed var(--fg-color-border-strong);
+  border-radius: var(--fg-radius-xl);
+  background: var(--fg-color-surface);
+  padding: var(--fg-space-6);
+}
+
+.fgw-placeholder__title {
+  margin: 0;
+  font-size: var(--fg-text-lg);
+  font-weight: var(--fg-weight-semibold);
+}
+
+.fgw-placeholder__description,
+.fgw-placeholder__note {
+  margin: 0;
+  color: var(--fg-color-text-muted);
+}
+
+.fgw-placeholder__meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-1);
+  margin: 0;
+  font-size: var(--fg-text-xs);
+}
+
+.fgw-placeholder__row {
+  display: flex;
+  gap: var(--fg-space-2);
+}
+
+.fgw-placeholder__row dt {
+  color: var(--fg-color-text-subtle);
+  font-weight: var(--fg-weight-medium);
+}
+
+.fgw-placeholder__row dd {
+  margin: 0;
+  color: var(--fg-color-text-muted);
+}
+
+.fgw-inline-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fg-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---------------------------------------------------------------- home */
+
+.fgw-kpis {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-2);
+}
+
+.fgw-kpis__list {
+  display: grid;
+  gap: var(--fg-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.fgw-kpis__note {
+  margin: 0;
+  color: var(--fg-color-text-subtle);
+  font-size: var(--fg-text-xs);
+}
+
+.fgw-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-1);
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-xl);
+  background: var(--fg-color-surface);
+  padding: var(--fg-space-4);
+}
+
+.fgw-kpi__icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: var(--fg-radius-lg);
+  background: var(--fg-color-accent-subtle);
+  color: var(--fg-color-accent-text);
+}
+
+.fgw-kpi[data-metric="totalViews"] .fgw-kpi__icon {
+  background: var(--fg-color-info-subtle);
+  color: var(--fg-color-info-text);
+}
+
+.fgw-kpi[data-metric="totalLikes"] .fgw-kpi__icon {
+  background: var(--fg-color-danger-subtle);
+  color: var(--fg-color-danger-text);
+}
+
+.fgw-kpi[data-metric="totalComments"] .fgw-kpi__icon {
+  background: var(--fg-color-success-subtle);
+  color: var(--fg-color-success-text);
+}
+
+.fgw-kpi__label {
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+}
+
+.fgw-kpi__value {
+  font-size: var(--fg-text-2xl);
+  font-weight: var(--fg-weight-semibold);
+  letter-spacing: var(--fg-tracking-tight);
+}
+
+.fgw-kpi__unavailable {
+  color: var(--fg-color-text-subtle);
+  font-size: var(--fg-text-sm);
+  font-weight: var(--fg-weight-regular);
+}
+
+.fgw-grid-2 {
+  display: grid;
+  gap: var(--fg-space-4);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.fgw-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-3);
+  align-items: flex-start;
+}
+
+.fgw-card__head {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fg-space-3);
+}
+
+.fgw-card__meta {
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+}
+
+.fgw-card__notice {
+  margin: 0;
+  border-left: 3px solid var(--fg-color-warning);
+  background: var(--fg-color-warning-subtle);
+  border-radius: var(--fg-radius-sm);
+  padding: var(--fg-space-2) var(--fg-space-3);
+  color: var(--fg-color-warning-text);
+  font-size: var(--fg-text-xs);
+}
+
+.fgw-tasks {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fgw-tasks__row {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-lg);
+  padding: var(--fg-space-3);
+}
+
+.fgw-tasks__title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.fgw-tasks__progress {
+  color: var(--fg-color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.fgw-tasks__chevron {
+  display: grid;
+  place-items: center;
+  color: var(--fg-color-text-subtle);
+}
+
+.fgw-chart-placeholder {
+  display: grid;
+  width: 100%;
+  height: 160px;
+  place-items: center;
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-lg);
+  background: var(--fg-color-surface-sunken);
+  color: var(--fg-color-text-subtle);
+}
+
+/* ------------------------------------------------------------------ faq */
+
+.fgw-faq {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-5);
+}
+
+.fgw-faq__title {
+  margin: 0;
+  font-size: var(--fg-text-xl);
+  font-weight: var(--fg-weight-semibold);
+}
+
+.fgw-faq__category-title {
+  margin: 0 0 var(--fg-space-2);
+  color: var(--fg-color-text-subtle);
+  font-size: var(--fg-text-xs);
+  font-weight: var(--fg-weight-semibold);
+  letter-spacing: var(--fg-tracking-wide);
+}
+
+.fgw-faq__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-lg);
+  background: var(--fg-color-surface);
+  overflow: hidden;
+}
+
+.fgw-faq__item + .fgw-faq__item {
+  border-top: 1px solid var(--fg-color-border);
+}
+
+.fgw-faq__summary {
+  padding: var(--fg-space-3) var(--fg-space-4);
+  cursor: pointer;
+  font-weight: var(--fg-weight-medium);
+  list-style: none;
+}
+
+.fgw-faq__summary::-webkit-details-marker {
+  display: none;
+}
+
+.fgw-faq__summary::before {
+  content: "+";
+  display: inline-block;
+  width: 1.25em;
+  color: var(--fg-color-text-subtle);
+}
+
+.fgw-faq__details[open] .fgw-faq__summary::before {
+  content: "−";
+}
+
+.fgw-faq__answer {
+  margin: 0;
+  padding: 0 var(--fg-space-4) var(--fg-space-4) calc(var(--fg-space-4) + 1.25em);
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+}
+
+/* --------------------------------------------------- catálogo de formatos */
+
+.fgw-format-grid {
+  display: grid;
+  gap: var(--fg-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.fgw-format-card {
+  display: block;
+  border-radius: var(--fg-radius-xl);
+  color: inherit;
+  text-decoration: none;
+}
+
+.fgw-format-card__surface {
+  display: grid;
+  height: 100%;
+  gap: var(--fg-space-1);
+  grid-template-columns: 1fr auto;
+}
+
+.fgw-format-card__label {
+  font-weight: var(--fg-weight-semibold);
+}
+
+.fgw-format-card__description {
+  grid-column: 1;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+}
+
+.fgw-format-card__chevron {
+  grid-row: 1;
+  grid-column: 2;
+  display: grid;
+  place-items: center;
+  color: var(--fg-color-text-subtle);
+}
+
+/* ------------------------------------------------------------ responsive */
+/* NFR-019 · P1-UI-008. Tres cortes, los mismos que `useSidebarState`. */
+
+/* Tablet: el riel ya arranca colapsado desde JS; aquí sólo se aprieta el aire. */
+@media (max-width: 1279px) {
+  .fgw-content {
+    padding: var(--fg-space-5);
+  }
+
+  .fgw-kpis__list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1023px) {
+  .fgw-grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Móvil: no hay riel. La navegación es el drawer del topbar. */
+@media (max-width: 767px) {
+  .fgw-sidebar {
+    display: none;
+  }
+
+  .fgw-topbar {
+    display: flex;
+    position: sticky;
+    top: 0;
+    z-index: var(--fg-z-sticky);
+  }
+
+  .fgw-content {
+    padding: var(--fg-space-4);
+  }
+
+  .fgw-kpis__list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fgw-support {
+    right: var(--fg-space-4);
+    bottom: var(--fg-space-4);
+    width: 46px;
+    height: 46px;
+  }
+
+  .fgw-page-header__title {
+    font-size: var(--fg-text-xl);
+  }
+}
+
+@media (max-width: 420px) {
+  .fgw-kpis__list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
