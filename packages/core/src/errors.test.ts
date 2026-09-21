@@ -7,7 +7,10 @@ describe("DomainError", () => {
       received: 25,
       companyId: "co_secreto",
     });
-    expect(e.toPublic()).toEqual({ code: "out_of_range", message: "slides must be 1–20" });
+    expect(e.toPublic()).toEqual({
+      code: "out_of_range",
+      message: "slides must be 1–20",
+    });
     expect(JSON.stringify(e.toPublic())).not.toContain("co_secreto");
   });
 
