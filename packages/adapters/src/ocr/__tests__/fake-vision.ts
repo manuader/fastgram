@@ -20,6 +20,7 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { IncomingMessage, ServerResponse } from "node:http";
 
 export interface FakeVisionOptions {
   /** Fuerza un estado HTTP en vez de responder. */
@@ -80,11 +81,7 @@ export class FakeVision {
     });
   }
 
-  async #handle(
-    path: string,
-    req: import("node:http").IncomingMessage,
-    res: import("node:http").ServerResponse,
-  ): Promise<void> {
+  async #handle(path: string, req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (path !== "/ocr" || req.method !== "POST") {
       res.writeHead(404).end();
       return;

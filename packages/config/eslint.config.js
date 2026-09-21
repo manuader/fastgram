@@ -11,6 +11,10 @@ export default tseslint.config(
       "**/.turbo/**",
       "**/node_modules/**",
       "**/coverage/**",
+      // Next 15 lo regenera en cada `build`/`dev` con un triple-slash reference.
+      // No es código nuestro y no se puede arreglar: `typedRoutes: false`
+      // tampoco lo suprime (verificado).
+      "**/next-env.d.ts",
     ],
   },
   js.configs.recommended,
@@ -22,6 +26,21 @@ export default tseslint.config(
     // falsos positivos con los globals de Node.
     files: ["**/*.ts", "**/*.tsx"],
     rules: { "no-undef": "off" },
+  },
+  {
+    // Scripts de Node sueltos (`scripts/*.mjs`). No pasan por TypeScript, así
+    // que `no-undef` sí sirve acá — pero necesita conocer los globals.
+    files: ["**/*.mjs"],
+    languageOptions: {
+      globals: {
+        console: "readonly",
+        process: "readonly",
+        URL: "readonly",
+        Buffer: "readonly",
+        __dirname: "readonly",
+        fetch: "readonly",
+      },
+    },
   },
   {
     files: ["**/*.cjs"],

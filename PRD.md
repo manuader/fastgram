@@ -1051,6 +1051,10 @@ Owner y member pueden añadir y re-analizar fuentes. Sólo el owner puede elimin
 - `OPTIMISING YOUR GROWTH STRATEGY`: `How quickly should I expect results?` · `How many videos should I be posting per day?` · `Do I need an existing audience for this to work?` · `Should I post the same video across all platforms?` · `How should I be mentioning my product?` · `How do I hit 1,000 views consistently?` · `Should I use hashtags? Which ones should I use?` · `Should you only post one content format per account for maximum algorithm benefit?` · `What if I run out of ideas?` · `Does posting at a certain time of day impact performance?`
 - `ACCOUNTS AND WORKSPACES`: `How many TikTok, Instagram, or YouTube accounts can I connect?` · `How can I add multiple social media accounts?` · `How can I connect another one of my businesses to Fastlane?` · `What's the difference between a personal account and a business account on TikTok?` · `What's the difference between a creator account and a business account on Instagram?` · `What's the difference between a personal account and a brand account on YouTube?` · `What are the TikTok posting limits?` · `What are the Instagram posting limits?` · `What are the YouTube posting limits?` · `What happens if I hit a posting limit?`
 
+> **Corregido el 2026-09-21.** Esta enumeración tiene **39** preguntas (4 + 5 + 10 + 10 + 10), no 37 como decía la tabla de §23. Se corrigió §23: la enumeración está marcada CONFIRMED desde el bundle (`[APP Home.js]`), que es evidencia más fuerte que el conteo de una tabla resumen.
+>
+> **El PRD registra las preguntas pero NINGUNA respuesta.** No se inventan: una respuesta inventada sobre "los límites de publicación de TikTok" es peor que una ausencia visible. Quien implemente la FAQ tiene que obtenerlas del producto original o escribirlas y marcarlas como propias.
+
 **Acceptance criteria.** (1) Los 5 KPI coinciden con la suma de posts publicados del workspace. (2) `Enable website analytics` activa el tracking y la tarjeta cambia de estado. (3) La FAQ contiene exactamente las preguntas listadas, agrupadas por esas 5 categorías.
 
 ---
@@ -3485,7 +3489,7 @@ RAMA PARALELA — Programabilidad
 | Home | Tasks / suggested actions | ✅ | ✅ F-033 | CONFIRMED |
 | Home | Views History + website analytics CTA | ✅ | ✅ FR-030 | CONFIRMED |
 | Home | Trending feed | ✅ | ✅ F-034 | CONFIRMED |
-| Home | FAQ (5 categorías, 37 preguntas) | ✅ | ✅ FR-030 | CONFIRMED |
+| Home | FAQ (5 categorías, **39** preguntas) | ✅ | ✅ FR-030 | CONFIRMED |
 | Inspiration | Búsqueda + filtro por nicho | ✅ | ✅ FR-040 | CONFIRMED |
 | Inspiration | Remix this | ✅ | ✅ F-042 | CONFIRMED |
 | Inspiration | Ingesta del catálogo de 25 000 videos | ❌ método desconocido | ⚠️ F-041 (estrategia propia requerida) | UNKNOWN |

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DomainError } from "../errors.js";
+import { type DomainError } from "../errors.js";
 import {
   ANGLE_ERROR_CODES,
   ANGLE_FIELD_LIMITS,

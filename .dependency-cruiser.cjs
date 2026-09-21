@@ -124,6 +124,11 @@ module.exports = {
     doNotFollow: { path: "node_modules" },
     exclude: { path: "(\\.test\\.ts$|\\.spec\\.ts$|/__tests__/|/dist/|\\.next/)" },
     tsPreCompilationDeps: true,
+    // `tsconfig.base.json` existe SÓLO para esto: es de donde depcruise saca
+    // los alias de módulo. Incluye `@/*` → `apps/web/src/*` porque esa app lo
+    // usa y depcruise lee un único tsconfig; sin eso resuelve `@/lib/...` como
+    // "unknown" y **queda ciego al grafo interno de la app** — `no-circular` no
+    // vería un ciclo que pase por un `@/`. Lo detectó quien construyó apps/web.
     tsConfig: { fileName: "tsconfig.base.json" },
     enhancedResolveOptions: {
       exportsFields: ["exports"],
