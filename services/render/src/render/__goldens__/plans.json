@@ -1,0 +1,243 @@
+{
+  "wall-of-text": {
+    "args": [
+      "-nostdin",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-i",
+      "/in/video.mp4",
+      "-i",
+      "/in/audio.m4a",
+      "-filter_complex",
+      "color=c=black:s=1080x1920:r=30[bg];[0:v]crop=608:1080:656:0,scale=1080:1920:flags=lanczos,setsar=1[src];[bg][src]overlay=0:0:shortest=1[v]",
+      "-map",
+      "[v]",
+      "-map",
+      "1:a",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "128k",
+      "-shortest",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-crf",
+      "20",
+      "-pix_fmt",
+      "yuv420p",
+      "-r",
+      "30",
+      "-movflags",
+      "+faststart",
+      "/out/base.mp4"
+    ],
+    "filterGraph": "color=c=black:s=1080x1920:r=30[bg];[0:v]crop=608:1080:656:0,scale=1080:1920:flags=lanczos,setsar=1[src];[bg][src]overlay=0:0:shortest=1[v]",
+    "placements": {
+      "video": {
+        "crop": {
+          "x": 656,
+          "y": 0,
+          "width": 608,
+          "height": 1080
+        },
+        "draw": {
+          "x": 0,
+          "y": 0,
+          "width": 1080,
+          "height": 1920
+        },
+        "mode": "cover"
+      }
+    },
+    "hasAudio": true
+  },
+  "green-screen": {
+    "args": [
+      "-nostdin",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-loop",
+      "1",
+      "-framerate",
+      "30",
+      "-i",
+      "/in/bg.jpg",
+      "-i",
+      "/in/chroma.mp4",
+      "-filter_complex",
+      "color=c=black:s=1080x1920:r=30[canvas];[0:v]crop=844:1500:328:0,scale=1080:1920:flags=lanczos,setsar=1[bg];[canvas][bg]overlay=0:0[base];[1:v]chromakey=0x00FF00:0.18:0.1,crop=608:1080:656:0,scale=1080:1920:flags=lanczos,setsar=1[fg];[base][fg]overlay=0:0:shortest=1[v]",
+      "-map",
+      "[v]",
+      "-map",
+      "1:a",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "128k",
+      "-shortest",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-crf",
+      "20",
+      "-pix_fmt",
+      "yuv420p",
+      "-r",
+      "30",
+      "-movflags",
+      "+faststart",
+      "/out/base.mp4"
+    ],
+    "filterGraph": "color=c=black:s=1080x1920:r=30[canvas];[0:v]crop=844:1500:328:0,scale=1080:1920:flags=lanczos,setsar=1[bg];[canvas][bg]overlay=0:0[base];[1:v]chromakey=0x00FF00:0.18:0.1,crop=608:1080:656:0,scale=1080:1920:flags=lanczos,setsar=1[fg];[base][fg]overlay=0:0:shortest=1[v]",
+    "placements": {
+      "background": {
+        "crop": {
+          "x": 328,
+          "y": 0,
+          "width": 844,
+          "height": 1500
+        },
+        "draw": {
+          "x": 0,
+          "y": 0,
+          "width": 1080,
+          "height": 1920
+        },
+        "mode": "cover"
+      },
+      "video": {
+        "crop": {
+          "x": 656,
+          "y": 0,
+          "width": 608,
+          "height": 1080
+        },
+        "draw": {
+          "x": 0,
+          "y": 0,
+          "width": 1080,
+          "height": 1920
+        },
+        "mode": "cover"
+      }
+    },
+    "hasAudio": true
+  },
+  "video-hook": {
+    "args": [
+      "-nostdin",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-i",
+      "/in/hook.mp4",
+      "-i",
+      "/in/demo.mp4",
+      "-i",
+      "/in/audio.m4a",
+      "-filter_complex",
+      "color=c=black:s=1080x1920:r=30[canvas];[0:v]crop=1215:1080:353:0,scale=1080:960:flags=lanczos,setsar=1[hook];[1:v]crop=1080:960:0:480,scale=1080:960:flags=lanczos,setsar=1[demo];[canvas][hook]overlay=0:0[withHook];[withHook][demo]overlay=0:960:shortest=1[v]",
+      "-map",
+      "[v]",
+      "-map",
+      "2:a",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "128k",
+      "-shortest",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-crf",
+      "20",
+      "-pix_fmt",
+      "yuv420p",
+      "-r",
+      "30",
+      "-movflags",
+      "+faststart",
+      "/out/base.mp4"
+    ],
+    "filterGraph": "color=c=black:s=1080x1920:r=30[canvas];[0:v]crop=1215:1080:353:0,scale=1080:960:flags=lanczos,setsar=1[hook];[1:v]crop=1080:960:0:480,scale=1080:960:flags=lanczos,setsar=1[demo];[canvas][hook]overlay=0:0[withHook];[withHook][demo]overlay=0:960:shortest=1[v]",
+    "placements": {
+      "hook": {
+        "crop": {
+          "x": 353,
+          "y": 0,
+          "width": 1215,
+          "height": 1080
+        },
+        "draw": {
+          "x": 0,
+          "y": 0,
+          "width": 1080,
+          "height": 960
+        },
+        "mode": "cover"
+      },
+      "demo": {
+        "crop": {
+          "x": 0,
+          "y": 480,
+          "width": 1080,
+          "height": 960
+        },
+        "draw": {
+          "x": 0,
+          "y": 960,
+          "width": 1080,
+          "height": 960
+        },
+        "mode": "cover"
+      }
+    },
+    "hasAudio": true
+  },
+  "overlay-pass": {
+    "args": [
+      "-nostdin",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-i",
+      "/out/base.mp4",
+      "-i",
+      "/out/overlay.png",
+      "-filter_complex",
+      "[0:v][1:v]overlay=0:0:format=auto[v]",
+      "-map",
+      "[v]",
+      "-map",
+      "0:a",
+      "-c:a",
+      "copy",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-crf",
+      "20",
+      "-pix_fmt",
+      "yuv420p",
+      "-r",
+      "30",
+      "-movflags",
+      "+faststart",
+      "/out/final.mp4"
+    ],
+    "filterGraph": "[0:v][1:v]overlay=0:0:format=auto[v]",
+    "placements": {},
+    "hasAudio": true
+  }
+}

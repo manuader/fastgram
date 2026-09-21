@@ -15,6 +15,13 @@
  *
  * Idénticas. Es decir: pedir "Montserrat" y que ande no significa nada.
  *
+ * Verificado de nuevo, por separado, el 2026-09-21, con un matiz que lo
+ * empeora: `Comic Sans MS` SÍ resuelve distinto (555x44). O sea que la
+ * resolución por nombre no está rota del todo, está rota **a medias**. Eso es
+ * peor que si fallara siempre: alguien que spot-chequea con la fuente
+ * equivocada ve que "anda" y cierra la investigación. `Helvetica`, que existe
+ * en cualquier Mac, cae en el fallback igual que una familia inventada.
+ *
  * Lo que SÍ funciona es pasar el archivo con `fontfile` (verificado con
  * Georgia.ttf: 545x40 contra 517x39 del fallback, y "Georgia Bold" 633x40).
  *
@@ -73,7 +80,10 @@ export function fontLoaderOptionsFromEnv(
 }
 
 /** Ancho×alto de la sonda con una descripción Pango dada. */
-async function probeMetrics(description: string, fontFile: string | null): Promise<string> {
+async function probeMetrics(
+  description: string,
+  fontFile: string | null,
+): Promise<string> {
   const text: {
     text: string;
     font: string;
@@ -112,10 +122,14 @@ async function loadManifest(fontDir: string | null): Promise<FontManifest | null
       // Archivo de configuración del operador: se parsea, no se ejecuta.
       manifest = JSON.parse(await readFile(manifestPath, "utf8")) as FontManifest;
     } catch (cause) {
-      throw new RenderError("font_unavailable", "fonts.json del directorio de fuentes es inválido", {
-        details: { manifestPath },
-        cause,
-      });
+      throw new RenderError(
+        "font_unavailable",
+        "fonts.json del directorio de fuentes es inválido",
+        {
+          details: { manifestPath },
+          cause,
+        },
+      );
     }
   }
   manifestCache.set(fontDir, manifest);
@@ -156,7 +170,9 @@ export async function resolveFont(
   }
 
   const fontFile =
-    options.fontDir === null ? null : path.join(options.fontDir, fontFileName(family, weight));
+    options.fontDir === null
+      ? null
+      : path.join(options.fontDir, fontFileName(family, weight));
   const available = fontFile !== null && existsSync(fontFile);
   const description = `${pangoFamily} ${weight} ${sizePx}px`;
 
@@ -171,7 +187,13 @@ export async function resolveFont(
         },
       });
     }
-    return { family, weight, pangoDescription: description, fontFile: null, verified: false };
+    return {
+      family,
+      weight,
+      pangoDescription: description,
+      fontFile: null,
+      verified: false,
+    };
   }
 
   const verified = await verifyFontLoads(pangoFamily, fontFile);

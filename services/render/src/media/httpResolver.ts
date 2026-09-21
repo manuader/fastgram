@@ -32,9 +32,13 @@ function limitStream(maxBytes: number, url: string): Transform {
       seen += chunk.byteLength;
       if (seen > maxBytes) {
         callback(
-          new RenderError("unsupported_media_format", "el medio excede el tamaño permitido", {
-            details: { maxBytes, host: safeHost(url) },
-          }),
+          new RenderError(
+            "unsupported_media_format",
+            "el medio excede el tamaño permitido",
+            {
+              details: { maxBytes, host: safeHost(url) },
+            },
+          ),
         );
         return;
       }
@@ -61,7 +65,10 @@ export function createHttpMediaResolver(options: HttpResolverOptions): MediaReso
     const target = path.join(options.downloadDir, `${name}.${role}`);
 
     try {
-      const response = await doFetch(url, { signal: controller.signal, redirect: "follow" });
+      const response = await doFetch(url, {
+        signal: controller.signal,
+        redirect: "follow",
+      });
       if (!response.ok || response.body === null) {
         throw new RenderError("media_probe_failed", "no se pudo descargar el medio", {
           details: { status: response.status, host: safeHost(url) },
@@ -70,9 +77,13 @@ export function createHttpMediaResolver(options: HttpResolverOptions): MediaReso
       const max = options.maxBytes(role);
       const declared = Number(response.headers.get("content-length") ?? "0");
       if (Number.isFinite(declared) && declared > max) {
-        throw new RenderError("unsupported_media_format", "el medio excede el tamaño permitido", {
-          details: { maxBytes: max, host: safeHost(url) },
-        });
+        throw new RenderError(
+          "unsupported_media_format",
+          "el medio excede el tamaño permitido",
+          {
+            details: { maxBytes: max, host: safeHost(url) },
+          },
+        );
       }
       await pipeline(
         Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]),

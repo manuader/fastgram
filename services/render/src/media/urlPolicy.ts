@@ -49,7 +49,10 @@ export function parsePrefix(raw: string): AllowedPrefix {
     });
   }
   if (url.username !== "" || url.password !== "") {
-    throw new RenderError("bad_request", "un prefijo de media no puede llevar credenciales");
+    throw new RenderError(
+      "bad_request",
+      "un prefijo de media no puede llevar credenciales",
+    );
   }
   return {
     origin: url.origin,
@@ -159,17 +162,20 @@ export interface VerifiedGrant {
   readonly urls: ReadonlySet<string> | null;
 }
 
-export function verifyGrant(
-  grant: MediaGrant,
-  config: MediaPolicyConfig,
-): VerifiedGrant {
+export function verifyGrant(grant: MediaGrant, config: MediaPolicyConfig): VerifiedGrant {
   if (config.grantSecret === null) {
-    throw new RenderError("media_grant_invalid", "este despliegue no acepta grants firmados");
+    throw new RenderError(
+      "media_grant_invalid",
+      "este despliegue no acepta grants firmados",
+    );
   }
   const expected = signGrantBody(grant.body, config.grantSecret);
   if (!constantTimeEquals(expected, grant.signature)) {
     // Nunca se dice cuál era la firma esperada.
-    throw new RenderError("media_grant_invalid", "la firma del grant de media no verifica");
+    throw new RenderError(
+      "media_grant_invalid",
+      "la firma del grant de media no verifica",
+    );
   }
   const now = config.now();
   if (grant.body.expiresAt <= now) {
@@ -208,7 +214,8 @@ export function assertMediaReferenceAllowed(
     reject(reference, "url_invalida");
   }
 
-  if (url.username !== "" || url.password !== "") reject(reference, "credenciales_en_url");
+  if (url.username !== "" || url.password !== "")
+    reject(reference, "credenciales_en_url");
 
   // Denegación por defecto: sin ninguna fuente de autoridad no entra nada.
   const configuredMedia = config.mediaPrefixes;
@@ -220,7 +227,9 @@ export function assertMediaReferenceAllowed(
 
   // El audio sólo puede venir de la librería compartida (`FR-070`, explícito).
   const configuredAllowed =
-    reference.role === "audio" ? configuredShared : [...configuredMedia, ...configuredShared];
+    reference.role === "audio"
+      ? configuredShared
+      : [...configuredMedia, ...configuredShared];
   const grantAllowed =
     grant === null
       ? null
@@ -229,7 +238,10 @@ export function assertMediaReferenceAllowed(
         : [...grant.mediaPrefixes, ...grant.sharedPrefixes];
 
   if (hasConfig && !configuredAllowed.some((prefix) => matchesPrefix(url, prefix))) {
-    reject(reference, reference.role === "audio" ? "audio_fuera_de_libreria" : "fuera_de_config");
+    reject(
+      reference,
+      reference.role === "audio" ? "audio_fuera_de_libreria" : "fuera_de_config",
+    );
   }
 
   if (grantAllowed !== null) {

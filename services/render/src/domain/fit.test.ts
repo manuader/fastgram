@@ -29,7 +29,10 @@ describe("computePlacement", () => {
   });
 
   it("el punto focal decide qué sobrevive al recorte", () => {
-    const top = computePlacement({ width: 1080, height: 1920 }, target, "cover", { x: 50, y: 0 });
+    const top = computePlacement({ width: 1080, height: 1920 }, target, "cover", {
+      x: 50,
+      y: 0,
+    });
     expect(top.crop.y).toBe(0);
     const bottom = computePlacement({ width: 1080, height: 1920 }, target, "cover", {
       x: 50,

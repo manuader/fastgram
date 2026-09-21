@@ -51,7 +51,12 @@ describe("denegación por defecto", () => {
   it("sin configuración y sin grant no entra ninguna URL", () => {
     const empty = config({ mediaPrefixes: [], sharedPrefixes: [], grantSecret: null });
     expectRejected(
-      () => assertMediaReferenceAllowed(ref("https://cdn.example.com/media/ws-1/a.jpg"), empty, null),
+      () =>
+        assertMediaReferenceAllowed(
+          ref("https://cdn.example.com/media/ws-1/a.jpg"),
+          empty,
+          null,
+        ),
       "sin_politica_configurada",
     );
   });
@@ -82,7 +87,12 @@ describe("prefijos", () => {
 
   it("rechaza una URL arbitraria", () => {
     expectRejected(
-      () => assertMediaReferenceAllowed(ref("https://evil.example.net/a.jpg"), config(), null),
+      () =>
+        assertMediaReferenceAllowed(
+          ref("https://evil.example.net/a.jpg"),
+          config(),
+          null,
+        ),
       "fuera_de_config",
     );
   });
@@ -101,8 +111,12 @@ describe("prefijos", () => {
 
   it("no confunde ws-1 con ws-10 (el match respeta el límite de segmento)", () => {
     const prefix = parsePrefix("https://cdn.example.com/media/ws-1");
-    expect(matchesPrefix(new URL("https://cdn.example.com/media/ws-1/a.jpg"), prefix)).toBe(true);
-    expect(matchesPrefix(new URL("https://cdn.example.com/media/ws-10/a.jpg"), prefix)).toBe(false);
+    expect(
+      matchesPrefix(new URL("https://cdn.example.com/media/ws-1/a.jpg"), prefix),
+    ).toBe(true);
+    expect(
+      matchesPrefix(new URL("https://cdn.example.com/media/ws-10/a.jpg"), prefix),
+    ).toBe(false);
   });
 
   it("el protocolo forma parte del prefijo: http no pasa por https", () => {
@@ -179,9 +193,9 @@ describe("grant firmado", () => {
   });
 
   it("rechaza una firma inválida", () => {
-    expect(() =>
-      verifyGrant({ body, signature: "0".repeat(64) }, config()),
-    ).toThrowError(RenderError);
+    expect(() => verifyGrant({ body, signature: "0".repeat(64) }, config())).toThrowError(
+      RenderError,
+    );
   });
 
   it("rechaza un grant vencido", () => {
@@ -195,8 +209,14 @@ describe("grant firmado", () => {
   });
 
   it("la firma no depende del orden de los arrays", () => {
-    const a = { ...body, mediaPrefixes: ["https://a.example.com/", "https://b.example.com/"] };
-    const b = { ...body, mediaPrefixes: ["https://b.example.com/", "https://a.example.com/"] };
+    const a = {
+      ...body,
+      mediaPrefixes: ["https://a.example.com/", "https://b.example.com/"],
+    };
+    const b = {
+      ...body,
+      mediaPrefixes: ["https://b.example.com/", "https://a.example.com/"],
+    };
     expect(signGrantBody(a, SECRET)).toBe(signGrantBody(b, SECRET));
   });
 
@@ -235,7 +255,11 @@ describe("grant firmado", () => {
       config(),
     );
     expect(() =>
-      assertMediaReferenceAllowed(ref("https://cdn.example.com/media/ws-1/a.jpg"), config(), grant),
+      assertMediaReferenceAllowed(
+        ref("https://cdn.example.com/media/ws-1/a.jpg"),
+        config(),
+        grant,
+      ),
     ).not.toThrow();
     expectRejected(
       () =>

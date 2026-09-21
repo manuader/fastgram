@@ -54,15 +54,7 @@ export async function probeMedia(path: string): Promise<MediaInfo> {
   try {
     const { stdout } = await execFileAsync(
       FFPROBE_BIN,
-      [
-        "-v",
-        "error",
-        "-print_format",
-        "json",
-        "-show_format",
-        "-show_streams",
-        path,
-      ],
+      ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", path],
       { maxBuffer: 8_000_000 },
     );
     // El JSON de ffprobe es datos externos: se valida por forma, no se confía.
@@ -82,7 +74,9 @@ export async function probeMedia(path: string): Promise<MediaInfo> {
 
   return {
     path,
-    formatNames: (parsed.format?.format_name ?? "").split(",").filter((s) => s.length > 0),
+    formatNames: (parsed.format?.format_name ?? "")
+      .split(",")
+      .filter((s) => s.length > 0),
     durationSeconds: toNumber(parsed.format?.duration) ?? toNumber(video?.duration),
     width: video?.width ?? null,
     height: video?.height ?? null,

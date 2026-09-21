@@ -55,7 +55,8 @@ export function planNormalization(
   caps: FfmpegCapabilities,
 ): NormalizationPlan {
   const needsRemux =
-    !isMp4Compatible(info) || info.formatNames.some((name) => CONTAINERS_TO_CONVERT.has(name));
+    !isMp4Compatible(info) ||
+    info.formatNames.some((name) => CONTAINERS_TO_CONVERT.has(name));
 
   const filters: string[] = [];
   let toneMapping: ToneMappingResult = "not-needed";
@@ -88,7 +89,15 @@ export function planNormalization(
     info.videoCodec !== "h264" ||
     (info.pixelFormat !== null && info.pixelFormat !== "yuv420p");
 
-  const args: string[] = ["-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i", info.path];
+  const args: string[] = [
+    "-nostdin",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-y",
+    "-i",
+    info.path,
+  ];
   if (needsTranscode) {
     args.push(
       "-vf",
@@ -105,7 +114,10 @@ export function planNormalization(
   } else {
     args.push("-c:v", "copy");
   }
-  args.push(info.hasAudio ? "-c:a" : "-an", ...(info.hasAudio ? ["aac", "-b:a", "128k"] : []));
+  args.push(
+    info.hasAudio ? "-c:a" : "-an",
+    ...(info.hasAudio ? ["aac", "-b:a", "128k"] : []),
+  );
   // `faststart` es literal en `NFR-014`: mueve el moov al principio.
   args.push("-movflags", "+faststart");
 
@@ -126,9 +138,13 @@ export async function normalizeMedia(
   requireFfmpeg(caps);
   const info = await probeMedia(inputPath);
   if (!info.hasVideo) {
-    throw new RenderError("unsupported_media_format", "el medio no tiene pista de video", {
-      details: { path: inputPath },
-    });
+    throw new RenderError(
+      "unsupported_media_format",
+      "el medio no tiene pista de video",
+      {
+        details: { path: inputPath },
+      },
+    );
   }
   const plan = planNormalization(info, caps);
 

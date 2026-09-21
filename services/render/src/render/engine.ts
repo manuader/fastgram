@@ -110,7 +110,8 @@ export function validateRequest(
       },
     });
   }
-  const grant = parsed.data.grant === undefined ? null : verifyGrant(parsed.data.grant, policy);
+  const grant =
+    parsed.data.grant === undefined ? null : verifyGrant(parsed.data.grant, policy);
   const payload = parsed.data.payload;
   assertAllMediaAllowed(collectMediaReferences(payload), policy, grant);
   return { payload, grant, keys: computeCacheKeys(payload) };
@@ -164,7 +165,12 @@ async function renderSlideshowBuild(
     const finalKey = `${keys.buildKey}-${index}`;
     const cachedFinal = await config.cache.get(finalKey, "jpg");
     if (cachedFinal !== null) {
-      artifacts.push({ kind: "image", path: cachedFinal.path, bytes: cachedFinal.bytes, index });
+      artifacts.push({
+        kind: "image",
+        path: cachedFinal.path,
+        bytes: cachedFinal.bytes,
+        index,
+      });
       continue;
     }
     buildState = "miss";
@@ -211,7 +217,9 @@ async function renderVideoBuild(
     return {
       type: payload.type,
       keys,
-      artifacts: [{ kind: "video", path: cachedFinal.path, bytes: cachedFinal.bytes, index: 0 }],
+      artifacts: [
+        { kind: "video", path: cachedFinal.path, bytes: cachedFinal.bytes, index: 0 },
+      ],
       cache: { base: "hit", build: "hit" },
       warnings,
     };
@@ -242,7 +250,13 @@ async function renderVideoBuild(
   await writeFile(overlayPath, overlay.png);
 
   const finalPath = path.join(workDir, "final.mp4");
-  const overlayPlan = planTextOverlayPass(basePath, overlayPath, finalPath, hasAudio, caps);
+  const overlayPlan = planTextOverlayPass(
+    basePath,
+    overlayPath,
+    finalPath,
+    hasAudio,
+    caps,
+  );
   await runFfmpeg(overlayPlan.args, { expectOutput: finalPath });
   const adoptedFinal = await config.cache.adopt(keys.buildKey, "mp4", finalPath);
 
@@ -289,7 +303,14 @@ async function buildBase(
   const outputPath = path.join(workDir, "base.mp4");
 
   if (payload.type === "wall-of-text") {
-    const videoPath = await prepareVideo(payload.video.url, config, caps, workDir, "video", warnings);
+    const videoPath = await prepareVideo(
+      payload.video.url,
+      config,
+      caps,
+      workDir,
+      "video",
+      warnings,
+    );
     const audioPath = await config.resolveMedia(payload.audio.url, "audio");
     const plan = planWallOfTextBase(
       payload,
@@ -302,10 +323,20 @@ async function buildBase(
 
   if (payload.type === "green-screen") {
     const backgroundPath = await config.resolveMedia(payload.image.url, "image");
-    const videoPath = await prepareVideo(payload.video.url, config, caps, workDir, "video", warnings);
+    const videoPath = await prepareVideo(
+      payload.video.url,
+      config,
+      caps,
+      workDir,
+      "video",
+      warnings,
+    );
     const backgroundInfo = await probeMedia(backgroundPath);
     if (backgroundInfo.width === null || backgroundInfo.height === null) {
-      throw new RenderError("unsupported_media_format", "la imagen de fondo no declara dimensiones");
+      throw new RenderError(
+        "unsupported_media_format",
+        "la imagen de fondo no declara dimensiones",
+      );
     }
     const plan = planGreenScreenBase(
       payload,
@@ -322,8 +353,22 @@ async function buildBase(
     return { outputPath, plan };
   }
 
-  const hookPath = await prepareVideo(payload.hookVideo.url, config, caps, workDir, "hook", warnings);
-  const demoPath = await prepareVideo(payload.demoVideo.url, config, caps, workDir, "demo", warnings);
+  const hookPath = await prepareVideo(
+    payload.hookVideo.url,
+    config,
+    caps,
+    workDir,
+    "hook",
+    warnings,
+  );
+  const demoPath = await prepareVideo(
+    payload.demoVideo.url,
+    config,
+    caps,
+    workDir,
+    "demo",
+    warnings,
+  );
   const audioPath = await config.resolveMedia(payload.audio.url, "audio");
   const plan = planVideoHookBase(
     payload,

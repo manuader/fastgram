@@ -31,7 +31,14 @@ describe("registro tipográfico", () => {
   });
 
   it("las seis primeras aceptan 300–700 en pasos de 100", () => {
-    for (const family of ["tiktok", "snapchat", "montserrat", "poppins", "inter", "oswald"] as const) {
+    for (const family of [
+      "tiktok",
+      "snapchat",
+      "montserrat",
+      "poppins",
+      "inter",
+      "oswald",
+    ] as const) {
       expect(allowedWeights(family)).toEqual([300, 400, 500, 600, 700]);
     }
   });
@@ -59,16 +66,22 @@ describe("registro tipográfico", () => {
       widthPercent: 50,
     };
     expect(
-      textObjectSchema.safeParse({ ...base, font: { family: "anton", weight: 400, size: 20 } })
-        .success,
+      textObjectSchema.safeParse({
+        ...base,
+        font: { family: "anton", weight: 400, size: 20 },
+      }).success,
     ).toBe(true);
     expect(
-      textObjectSchema.safeParse({ ...base, font: { family: "anton", weight: 700, size: 20 } })
-        .success,
+      textObjectSchema.safeParse({
+        ...base,
+        font: { family: "anton", weight: 700, size: 20 },
+      }).success,
     ).toBe(false);
     expect(
-      textObjectSchema.safeParse({ ...base, font: { family: "caveat", weight: 300, size: 20 } })
-        .success,
+      textObjectSchema.safeParse({
+        ...base,
+        font: { family: "caveat", weight: 300, size: 20 },
+      }).success,
     ).toBe(false);
   });
 
@@ -80,8 +93,10 @@ describe("registro tipográfico", () => {
       widthPercent: 50,
     };
     expect(
-      textObjectSchema.safeParse({ ...base, font: { family: "helvetica", weight: 400, size: 20 } })
-        .success,
+      textObjectSchema.safeParse({
+        ...base,
+        font: { family: "helvetica", weight: 400, size: 20 },
+      }).success,
     ).toBe(false);
   });
 

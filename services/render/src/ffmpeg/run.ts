@@ -34,13 +34,28 @@ const STDERR_CAP = 64_000;
  * Patrones de stderr → código estable. El orden importa: gana el primero.
  * La lista se mantiene corta a propósito; lo que no matchea es `render_failed`.
  */
-const STDERR_PATTERNS: readonly { readonly pattern: RegExp; readonly code: RenderErrorCode }[] = [
-  { pattern: /No such filter|Filter not found|Unknown filter/i, code: "render_capability_missing" },
+const STDERR_PATTERNS: readonly {
+  readonly pattern: RegExp;
+  readonly code: RenderErrorCode;
+}[] = [
+  {
+    pattern: /No such filter|Filter not found|Unknown filter/i,
+    code: "render_capability_missing",
+  },
   { pattern: /Unknown encoder|Encoder .* not found/i, code: "render_capability_missing" },
-  { pattern: /Invalid data found when processing input/i, code: "unsupported_media_format" },
-  { pattern: /Decoder .* not found|Unsupported codec/i, code: "unsupported_media_format" },
+  {
+    pattern: /Invalid data found when processing input/i,
+    code: "unsupported_media_format",
+  },
+  {
+    pattern: /Decoder .* not found|Unsupported codec/i,
+    code: "unsupported_media_format",
+  },
   { pattern: /moov atom not found/i, code: "unsupported_media_format" },
-  { pattern: /No such file or directory|Protocol not found/i, code: "media_probe_failed" },
+  {
+    pattern: /No such file or directory|Protocol not found/i,
+    code: "media_probe_failed",
+  },
   { pattern: /Server returned 40\d|HTTP error 40\d/i, code: "media_probe_failed" },
 ];
 
@@ -104,7 +119,9 @@ export async function runFfmpeg(
   }).catch((cause: unknown) => {
     const message = cause instanceof Error ? cause.message : String(cause);
     if (/ENOENT/.test(message)) {
-      throw new RenderError("ffmpeg_unavailable", "no se pudo ejecutar ffmpeg", { cause });
+      throw new RenderError("ffmpeg_unavailable", "no se pudo ejecutar ffmpeg", {
+        cause,
+      });
     }
     throw new RenderError("render_failed", "no se pudo ejecutar ffmpeg", { cause });
   });
@@ -136,7 +153,10 @@ export async function runFfmpeg(
  * Falla con `render_empty_output` si el archivo no existe o pesa 0 bytes.
  * Exportada porque el pipeline de sharp necesita la misma garantía.
  */
-export async function assertNonEmptyOutput(path: string, diagnostic = ""): Promise<number> {
+export async function assertNonEmptyOutput(
+  path: string,
+  diagnostic = "",
+): Promise<number> {
   let size: number;
   try {
     const stats = await stat(path);

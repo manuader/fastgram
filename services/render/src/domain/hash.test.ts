@@ -32,7 +32,9 @@ describe("claves de cache", () => {
 
   it("cambiar SÓLO el texto deja intacto mediaKey y cambia overlayKey y buildKey", () => {
     const before = computeCacheKeys(wallOfText());
-    const after = computeCacheKeys(wallOfText({ texts: [{ ...text, text: "otra copy" }] }));
+    const after = computeCacheKeys(
+      wallOfText({ texts: [{ ...text, text: "otra copy" }] }),
+    );
     expect(after.mediaKey).toBe(before.mediaKey);
     expect(after.overlayKey).not.toBe(before.overlayKey);
     expect(after.buildKey).not.toBe(before.buildKey);
@@ -63,7 +65,9 @@ describe("claves de cache", () => {
   it("cambiar el recorte o el focal cambia mediaKey", () => {
     const before = computeCacheKeys(wallOfText());
     const stretched = computeCacheKeys(
-      wallOfText({ video: { url: "https://cdn.example.com/media/ws-1/v.mp4", fit: "stretch" } }),
+      wallOfText({
+        video: { url: "https://cdn.example.com/media/ws-1/v.mp4", fit: "stretch" },
+      }),
     );
     expect(stretched.mediaKey).not.toBe(before.mediaKey);
   });

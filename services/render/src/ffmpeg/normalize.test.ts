@@ -59,7 +59,10 @@ describe("plan de normalización", () => {
   });
 
   it("un codec distinto de h264 obliga a transcodificar", () => {
-    const plan = planNormalization(info({ formatNames: ["mp4"], videoCodec: "hevc" }), caps());
+    const plan = planNormalization(
+      info({ formatNames: ["mp4"], videoCodec: "hevc" }),
+      caps(),
+    );
     expect(plan.needsTranscode).toBe(true);
     expect(plan.args).toContain("libx264");
   });
@@ -94,7 +97,11 @@ describe("plan de normalización", () => {
   });
 
   it("la salida siempre termina en yuv420p", () => {
-    for (const variant of [info(), info({ isHdr: true }), info({ isWideGamutSdr: true })]) {
+    for (const variant of [
+      info(),
+      info({ isHdr: true }),
+      info({ isWideGamutSdr: true }),
+    ]) {
       const plan = planNormalization(variant, caps({ hasZscale: true }));
       expect(plan.videoFilters.at(-1)).toBe("format=yuv420p");
     }

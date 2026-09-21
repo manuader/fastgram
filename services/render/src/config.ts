@@ -38,15 +38,29 @@ export const renderEnvSchema = baseEnvSchema.extend({
   RENDER_NORMALIZE_INPUTS: booleanish(true),
   RENDER_ALLOW_UNTONEMAPPED_HDR: booleanish(false),
   /** `NFR-013`: imágenes 10 MB, videos 50 MB. */
-  RENDER_MAX_IMAGE_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
-  RENDER_MAX_VIDEO_BYTES: z.coerce.number().int().positive().default(50 * 1024 * 1024),
-  RENDER_MAX_AUDIO_BYTES: z.coerce.number().int().positive().default(50 * 1024 * 1024),
+  RENDER_MAX_IMAGE_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(10 * 1024 * 1024),
+  RENDER_MAX_VIDEO_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(50 * 1024 * 1024),
+  RENDER_MAX_AUDIO_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(50 * 1024 * 1024),
   RENDER_DOWNLOAD_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
 });
 
 export type RenderEnv = z.infer<typeof renderEnvSchema>;
 
-export function loadRenderEnv(source: Record<string, string | undefined> = process.env): RenderEnv {
+export function loadRenderEnv(
+  source: Record<string, string | undefined> = process.env,
+): RenderEnv {
   return defineEnv("render-service", renderEnvSchema, source);
 }
 
@@ -65,7 +79,9 @@ export function mediaPolicyFromEnv(
 
 export function fontOptionsFromEnv(env: RenderEnv): FontLoaderOptions {
   return fontLoaderOptionsFromEnv({
-    ...(env.RENDER_FONT_DIR === undefined ? {} : { RENDER_FONT_DIR: env.RENDER_FONT_DIR }),
+    ...(env.RENDER_FONT_DIR === undefined
+      ? {}
+      : { RENDER_FONT_DIR: env.RENDER_FONT_DIR }),
     RENDER_FONT_STRICT: env.RENDER_FONT_STRICT,
   });
 }

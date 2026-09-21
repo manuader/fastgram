@@ -50,7 +50,8 @@ function toCanonical(value: unknown): Json {
     return out;
   }
   if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw new TypeError("no se puede hashear un número no finito");
+    if (!Number.isFinite(value))
+      throw new TypeError("no se puede hashear un número no finito");
     // -0 y 0 deben hashear igual.
     return value === 0 ? 0 : value;
   }
@@ -114,12 +115,16 @@ export function overlayFingerprint(payload: BuildPayload): unknown {
       ? payload.slides.map((slide) => slide.canvas)
       : [payload.canvas];
   const texts =
-    payload.type === "slideshow" ? payload.slides.map((slide) => slide.texts) : [payload.texts];
+    payload.type === "slideshow"
+      ? payload.slides.map((slide) => slide.texts)
+      : [payload.texts];
   return { type: payload.type, canvases, texts, fonts: FONT_REGISTRY_VERSION };
 }
 
 export function computeCacheKeys(payload: BuildPayload): CacheKeys {
-  const mediaKey = sha256Hex(`${ENGINE_VERSION}|media|${canonicalJson(mediaFingerprint(payload))}`);
+  const mediaKey = sha256Hex(
+    `${ENGINE_VERSION}|media|${canonicalJson(mediaFingerprint(payload))}`,
+  );
   const overlayKey = sha256Hex(
     `${ENGINE_VERSION}|overlay|${canonicalJson(overlayFingerprint(payload))}`,
   );

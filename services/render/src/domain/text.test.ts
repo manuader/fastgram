@@ -51,9 +51,15 @@ describe("text object — rangos de FR-051", () => {
 
   it("font.size ∈ [8, 72]", () => {
     expect(parse({ font: { family: "inter", weight: 400, size: 8 } }).success).toBe(true);
-    expect(parse({ font: { family: "inter", weight: 400, size: 72 } }).success).toBe(true);
-    expect(parse({ font: { family: "inter", weight: 400, size: 7 } }).success).toBe(false);
-    expect(parse({ font: { family: "inter", weight: 400, size: 73 } }).success).toBe(false);
+    expect(parse({ font: { family: "inter", weight: 400, size: 72 } }).success).toBe(
+      true,
+    );
+    expect(parse({ font: { family: "inter", weight: 400, size: 7 } }).success).toBe(
+      false,
+    );
+    expect(parse({ font: { family: "inter", weight: 400, size: 73 } }).success).toBe(
+      false,
+    );
   });
 
   it("stroke.width ∈ [0, 8]", () => {
@@ -76,7 +82,8 @@ describe("text object — rangos de FR-051", () => {
       parse({ background: { color: "#FFFFFF", opacity: 0, style: "pill" } }).success,
     ).toBe(true);
     expect(
-      parse({ background: { color: "#FFFFFF", opacity: 1, style: "full-width" } }).success,
+      parse({ background: { color: "#FFFFFF", opacity: 1, style: "full-width" } })
+        .success,
     ).toBe(true);
     expect(
       parse({ background: { color: "#FFFFFF", opacity: 1.1, style: "pill" } }).success,
@@ -113,12 +120,14 @@ describe("lista de cajas — FR-051", () => {
     const result = textObjectListSchema.safeParse([base, { ...base, text: "otro" }]);
     expect(result.success).toBe(false);
     if (result.success) return;
-    expect(result.error.issues.some((issue) => issue.message.includes("id duplicado"))).toBe(true);
+    expect(
+      result.error.issues.some((issue) => issue.message.includes("id duplicado")),
+    ).toBe(true);
   });
 
   it("acepta IDs distintos", () => {
-    expect(
-      textObjectListSchema.safeParse([base, { ...base, id: "t2" }]).success,
-    ).toBe(true);
+    expect(textObjectListSchema.safeParse([base, { ...base, id: "t2" }]).success).toBe(
+      true,
+    );
   });
 });

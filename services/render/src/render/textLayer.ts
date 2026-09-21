@@ -182,10 +182,17 @@ export async function renderTextBox(
   }
 
   const contentLeft = backgroundLeftShift > 0 ? backgroundLeftShift : 0;
-  const contentTop = box.background === null ? 0 : Math.round((layerHeight - fill.height - pad * 2) / 2);
+  const contentTop =
+    box.background === null ? 0 : Math.round((layerHeight - fill.height - pad * 2) / 2);
 
   if (strokeWidthPx > 0) {
-    const strokeGlyphs = await renderGlyphs(markup, font, box.stroke.color, wrapWidth, box.align);
+    const strokeGlyphs = await renderGlyphs(
+      markup,
+      font,
+      box.stroke.color,
+      wrapWidth,
+      box.align,
+    );
     for (const [dx, dy] of strokeOffsets(strokeWidthPx)) {
       composites.push({
         input: strokeGlyphs.buffer,

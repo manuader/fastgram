@@ -25,7 +25,6 @@ import { z } from "zod";
 import { FONT_FAMILIES, isWeightAllowed, type FontFamily } from "./fonts.js";
 
 export const MAX_TEXT_LENGTH = 5000;
-export const MAX_REGENERATION_PROMPT_LENGTH = 500;
 export const POSITION_MIN = 0;
 export const POSITION_MAX = 100;
 export const WIDTH_PERCENT_MIN = 25;
@@ -38,9 +37,7 @@ export const STROKE_WIDTH_MAX = 8;
 /** `FR-051`: los colores se expresan `#RRGGBB`. */
 export const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
-export const hexColorSchema = z
-  .string()
-  .regex(HEX_COLOR, "debe ser un color #RRGGBB");
+export const hexColorSchema = z.string().regex(HEX_COLOR, "debe ser un color #RRGGBB");
 
 export const textAlignSchema = z.enum(["left", "center", "right"]);
 export type TextAlign = z.infer<typeof textAlignSchema>;

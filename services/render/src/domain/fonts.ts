@@ -63,7 +63,12 @@ export const FONT_REGISTRY: Readonly<Record<FontFamily, FontFamilySpec>> = {
   // Fuentes de marca: el PRD las nombra pero no hay archivo libre equivalente.
   // La licencia queda ABIERTA (ver reporte); sin manifiesto no se pueden usar.
   tiktok: { key: "tiktok", weights: W_300_700, pangoFamily: null, licence: "unresolved" },
-  snapchat: { key: "snapchat", weights: W_300_700, pangoFamily: null, licence: "unresolved" },
+  snapchat: {
+    key: "snapchat",
+    weights: W_300_700,
+    pangoFamily: null,
+    licence: "unresolved",
+  },
 
   montserrat: {
     key: "montserrat",

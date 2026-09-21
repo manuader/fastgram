@@ -59,7 +59,9 @@ describe("slideshow — FR-070", () => {
     const invalid = {
       type: "slideshow",
       numImages: 1,
-      slides: [{ ...slide(0), canvas: { width: 1080, height: 1080, aspectRatio: "16:9" } }],
+      slides: [
+        { ...slide(0), canvas: { width: 1080, height: 1080, aspectRatio: "16:9" } },
+      ],
     };
     expect(slideshowPayloadSchema.safeParse(invalid).success).toBe(false);
   });

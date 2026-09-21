@@ -57,7 +57,10 @@ export const audioRefSchema = z.object({ url: z.string().url() }).strict();
  */
 export const chromaKeySchema = z
   .object({
-    color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#00FF00"),
+    color: z
+      .string()
+      .regex(/^#[0-9a-fA-F]{6}$/)
+      .default("#00FF00"),
     similarity: z.number().min(0.01).max(1).default(0.18),
     blend: z.number().min(0).max(1).default(0.1),
   })
@@ -89,7 +92,11 @@ export const slideshowPayloadBaseSchema = z
 
 type SlideshowShape = z.infer<typeof slideshowPayloadBaseSchema>;
 
-function checkSlideshow(value: SlideshowShape, ctx: z.RefinementCtx, base: readonly (string | number)[] = []): void {
+function checkSlideshow(
+  value: SlideshowShape,
+  ctx: z.RefinementCtx,
+  base: readonly (string | number)[] = [],
+): void {
   // `FR-070`: "num_images debe coincidir con la longitud de images".
   if (value.numImages !== value.slides.length) {
     ctx.addIssue({
@@ -112,9 +119,11 @@ function checkSlideshow(value: SlideshowShape, ctx: z.RefinementCtx, base: reado
   }
 }
 
-export const slideshowPayloadSchema = slideshowPayloadBaseSchema.superRefine((value, ctx) => {
-  checkSlideshow(value, ctx);
-});
+export const slideshowPayloadSchema = slideshowPayloadBaseSchema.superRefine(
+  (value, ctx) => {
+    checkSlideshow(value, ctx);
+  },
+);
 
 export const wallOfTextPayloadSchema = z
   .object({

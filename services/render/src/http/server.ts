@@ -22,7 +22,8 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   app.setErrorHandler((error, _request, reply) => {
     if (isRenderError(error)) {
-      if (error.status >= 500) app.log.error({ err: error, cause: error.cause }, error.code);
+      if (error.status >= 500)
+        app.log.error({ err: error, cause: error.cause }, error.code);
       else app.log.warn({ code: error.code, details: error.details }, error.message);
       void reply.status(error.status).send({ error: error.toWire() });
       return;

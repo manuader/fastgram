@@ -16,13 +16,14 @@ export const DEFAULT_SLIDESHOW_ASPECT: AspectRatio = "4:5";
 /** `FR-070` usa 1080×1920 como ejemplo de canvas; 1080 de ancho es la base. */
 export const DEFAULT_CANVAS_WIDTH = 1080;
 
-export const ASPECT_RATIO_FRACTIONS: Readonly<Record<AspectRatio, readonly [number, number]>> =
-  {
-    "1:1": [1, 1],
-    "4:5": [4, 5],
-    "3:4": [3, 4],
-    "9:16": [9, 16],
-  };
+export const ASPECT_RATIO_FRACTIONS: Readonly<
+  Record<AspectRatio, readonly [number, number]>
+> = {
+  "1:1": [1, 1],
+  "4:5": [4, 5],
+  "3:4": [3, 4],
+  "9:16": [9, 16],
+};
 
 export const aspectRatioSchema = z.enum(ASPECT_RATIOS);
 

@@ -22,7 +22,12 @@
  */
 import type { Canvas } from "../domain/canvas.js";
 import { toEvenDimension } from "../domain/canvas.js";
-import { CENTER_FOCAL, computePlacement, type Placement, type Size } from "../domain/fit.js";
+import {
+  CENTER_FOCAL,
+  computePlacement,
+  type Placement,
+  type Size,
+} from "../domain/fit.js";
 import type {
   GreenScreenPayload,
   MediaRef,
@@ -67,7 +72,12 @@ function targetRect(
 }
 
 export function placeMedia(canvas: Canvas, ref: MediaRef, source: Size): Placement {
-  return computePlacement(source, targetRect(canvas, ref), ref.fit, ref.focal ?? CENTER_FOCAL);
+  return computePlacement(
+    source,
+    targetRect(canvas, ref),
+    ref.fit,
+    ref.focal ?? CENTER_FOCAL,
+  );
 }
 
 /** `crop=…,scale=…,setsar=1` que materializa un `Placement`. */
@@ -250,7 +260,12 @@ export function planVideoHookBase(
   );
   const demoPlacement = computePlacement(
     inputs.demo,
-    payload.demoVideo.draw ?? { x: 0, y: hookHeight, width: canvas.width, height: demoHeight },
+    payload.demoVideo.draw ?? {
+      x: 0,
+      y: hookHeight,
+      width: canvas.width,
+      height: demoHeight,
+    },
     payload.demoVideo.fit,
     payload.demoVideo.focal ?? CENTER_FOCAL,
   );

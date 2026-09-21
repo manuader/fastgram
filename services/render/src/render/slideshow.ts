@@ -47,9 +47,13 @@ export async function renderSlideBase(
   const width = metadata.width;
   const height = metadata.height;
   if (width === undefined || height === undefined || width <= 0 || height <= 0) {
-    throw new RenderError("unsupported_media_format", "no se pudieron leer las dimensiones", {
-      details: { index },
-    });
+    throw new RenderError(
+      "unsupported_media_format",
+      "no se pudieron leer las dimensiones",
+      {
+        details: { index },
+      },
+    );
   }
 
   const placement = placeMedia(canvas, slide.image, { width, height });
