@@ -28,7 +28,7 @@
  *    que el conteo venga de la misma transacción que escribe.
  */
 import { DomainError } from "../errors.js";
-import { HARD_CAPS } from "../quota/plans.js";
+import { HARD_CAPS, type HardCaps } from "../quota/plans.js";
 
 /**
  * Códigos literales que el PRD nombra para estos caps.
@@ -37,6 +37,16 @@ import { HARD_CAPS } from "../quota/plans.js";
  * los que el PRD nombra en otras secciones. Los que el PRD **no** nombra no se
  * inventan: viajan sólo con `out_of_range` y el mensaje.
  */
+/**
+ * Los caps que aplican. Default `HARD_CAPS` — `EXT-005`.
+ *
+ * Es un parámetro **opcional y último** a propósito: así `capsForPlan(planId)`
+ * se puede enchufar donde el plan se conoce, sin obligar a los ~30 sitios que
+ * hoy llaman sin plan a cambiar de una. Un refactor que rompe todas las
+ * llamadas a la vez es un refactor que se hace a medias.
+ */
+export type CapsFor = Readonly<Pick<HardCaps, "activeInfluencers" | "brandSources" | "inFlightGenerations" | "idsPerBatch">>;
+
 export const WORKSPACE_CAP_CODES = {
   /** `ERR-B10` · §19.5.1. */
   maxBrandSources: "ERR-B10",
@@ -49,12 +59,15 @@ export const WORKSPACE_CAP_CODES = {
  * activar. El cap es sobre activos y no sobre creados: es un límite de
  * capacidad de generación, no de almacenamiento.
  */
-export function assertCanActivateInfluencer(activeCount: number): void {
-  if (activeCount >= HARD_CAPS.activeInfluencers) {
+export function assertCanActivateInfluencer(
+  activeCount: number,
+  caps: CapsFor = HARD_CAPS,
+): void {
+  if (activeCount >= caps.activeInfluencers) {
     throw new DomainError(
       "out_of_range",
-      `You can have up to ${HARD_CAPS.activeInfluencers} active influencers. Deactivate one to make room.`,
-      { cap: HARD_CAPS.activeInfluencers, activeCount },
+      `You can have up to ${caps.activeInfluencers} active influencers. Deactivate one to make room.`,
+      { cap: caps.activeInfluencers, activeCount },
     );
   }
 }
@@ -66,12 +79,15 @@ export function assertCanActivateInfluencer(activeCount: number): void {
  * sources per workspace.» Se conserva palabra por palabra porque §19.5.1 lo
  * lista como copy, no como descripción.
  */
-export function assertCanAddBrandSource(currentCount: number): void {
-  if (currentCount >= HARD_CAPS.brandSources) {
+export function assertCanAddBrandSource(
+  currentCount: number,
+  caps: CapsFor = HARD_CAPS,
+): void {
+  if (currentCount >= caps.brandSources) {
     throw new DomainError(
       "out_of_range",
-      `You can analyse up to ${HARD_CAPS.brandSources} sources per workspace.`,
-      { code: WORKSPACE_CAP_CODES.maxBrandSources, cap: HARD_CAPS.brandSources },
+      `You can analyse up to ${caps.brandSources} sources per workspace.`,
+      { code: WORKSPACE_CAP_CODES.maxBrandSources, cap: caps.brandSources },
     );
   }
 }
@@ -87,12 +103,15 @@ export function assertCanAddBrandSource(currentCount: number): void {
  * aplica antes de encolar». Aplicarlo en el worker sería tarde: los 200 jobs
  * ya están en la cola y alguien tiene que decidir qué hacer con ellos.
  */
-export function assertCanStartGeneration(inFlightCount: number): void {
-  if (inFlightCount >= HARD_CAPS.inFlightGenerations) {
+export function assertCanStartGeneration(
+  inFlightCount: number,
+  caps: CapsFor = HARD_CAPS,
+): void {
+  if (inFlightCount >= caps.inFlightGenerations) {
     throw new DomainError(
       "out_of_range",
-      `You already have ${HARD_CAPS.inFlightGenerations} generations running. Wait for one to finish.`,
-      { cap: HARD_CAPS.inFlightGenerations, inFlightCount },
+      `You already have ${caps.inFlightGenerations} generations running. Wait for one to finish.`,
+      { cap: caps.inFlightGenerations, inFlightCount },
     );
   }
 }
@@ -104,15 +123,18 @@ export function assertCanStartGeneration(inFlightCount: number): void {
  * agujero: un `POST /posts/delete` con 40 000 ids es un `DELETE ... IN (...)`
  * que bloquea la tabla. Va acá porque es un conteo, no una cuota.
  */
-export function assertBatchSize(ids: readonly string[]): void {
+export function assertBatchSize(
+  ids: readonly string[],
+  caps: CapsFor = HARD_CAPS,
+): void {
   if (ids.length === 0) {
     throw new DomainError("out_of_range", "Send at least one id.", { count: 0 });
   }
-  if (ids.length > HARD_CAPS.idsPerBatch) {
+  if (ids.length > caps.idsPerBatch) {
     throw new DomainError(
       "out_of_range",
-      `You can send up to ${HARD_CAPS.idsPerBatch} ids at a time.`,
-      { cap: HARD_CAPS.idsPerBatch, count: ids.length },
+      `You can send up to ${caps.idsPerBatch} ids at a time.`,
+      { cap: caps.idsPerBatch, count: ids.length },
     );
   }
 }

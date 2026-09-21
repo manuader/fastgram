@@ -125,6 +125,52 @@ export const HARD_CAPS = {
   itemsPerBrandAnalysis: 24,
 } as const;
 
+export type HardCaps = typeof HARD_CAPS;
+export type CapName = keyof HardCaps;
+
+/**
+ * Caps efectivos por plan — `EXT-005`.
+ *
+ * ## Qué resuelve y qué deliberadamente no
+ *
+ * `EXT-005` pide *"caps configurables por plan en vez de hardcodeados"*, porque
+ * *"en el original son opacos"*. Eso es una extensión sobre Fastlane, no una
+ * descripción de él, así que lo que corresponde construir es **el mecanismo**.
+ *
+ * Los **valores** son otra cosa: `OQ-14` dice que los números exactos por plan
+ * se desconocen, y su línea de hipótesis —*"varían por plan"*— es justamente
+ * eso, una hipótesis. Por eso este mapa está **vacío**, y hay un test que
+ * comprueba que siga vacío. Llenarlo con números plausibles convertiría una
+ * pregunta abierta en una respuesta que nadie verificó, y la diferencia entre
+ * "no lo sabemos" y "lo inventamos" se borra en cuanto el número existe.
+ *
+ * Cuando aparezca la evidencia: se agrega acá, se actualiza `OQ-14` en el PRD
+ * y se ajusta el test. Los tres pasos, no el primero solo.
+ */
+export const PLAN_CAP_OVERRIDES: Readonly<
+  Partial<Record<PlanId, Readonly<Partial<HardCaps>>>>
+> = {};
+
+/**
+ * Los caps que aplican a un plan.
+ *
+ * Devuelve `HARD_CAPS` con los overrides del plan encima. Hoy, sin overrides,
+ * devuelve exactamente `HARD_CAPS` para todos los planes — que es lo correcto
+ * mientras `OQ-14` siga abierta.
+ *
+ * `overrides` es un parámetro y no una lectura del módulo para que un test
+ * pueda ejercitar el mecanismo sin tener que inventar un plan de mentira en la
+ * constante compartida.
+ */
+export function capsForPlan(
+  planId: PlanId,
+  overrides: Readonly<
+    Partial<Record<PlanId, Readonly<Partial<HardCaps>>>>
+  > = PLAN_CAP_OVERRIDES,
+): HardCaps {
+  return { ...HARD_CAPS, ...(overrides[planId] ?? {}) };
+}
+
 /**
  * Valores que el PRD marca explícitamente como UNKNOWN.
  *

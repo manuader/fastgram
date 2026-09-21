@@ -13,7 +13,7 @@
  * explicarlo.
  */
 import { DomainError } from "../errors.js";
-import { HARD_CAPS } from "../quota/plans.js";
+import { HARD_CAPS, type HardCaps } from "../quota/plans.js";
 
 /**
  * Códigos de error literales del PRD.
@@ -141,13 +141,19 @@ export function assertValidAngleWeights(
 // Caps e invariantes
 // ───────────────────────────────────────────────────────────────────────────
 
-export function assertCanCreateAngle(currentAngleCount: number): void {
+/** Los caps de ángulos que aplican. Default `HARD_CAPS` — `EXT-005`. */
+export type AngleCaps = Readonly<Pick<HardCaps, "contentAngles" | "anglesPerInfluencer">>;
+
+export function assertCanCreateAngle(
+  currentAngleCount: number,
+  caps: AngleCaps = HARD_CAPS,
+): void {
   // "borrar libera slot" — y borrar es soft-delete, así que quien llame acá
   // tiene que contar sólo los no borrados. Es el error fácil de este cap.
-  if (currentAngleCount >= HARD_CAPS.contentAngles) {
+  if (currentAngleCount >= caps.contentAngles) {
     throw new DomainError(
       "out_of_range",
-      `You can have up to ${HARD_CAPS.contentAngles} content angles.`,
+      `You can have up to ${caps.contentAngles} content angles.`,
       { code: ANGLE_ERROR_CODES.maxAngles },
     );
   }
@@ -156,11 +162,12 @@ export function assertCanCreateAngle(currentAngleCount: number): void {
 export function assertCanLinkInfluencer(
   influencerId: string,
   anglesAlreadyLinked: number,
+  caps: AngleCaps = HARD_CAPS,
 ): void {
-  if (anglesAlreadyLinked >= HARD_CAPS.anglesPerInfluencer) {
+  if (anglesAlreadyLinked >= caps.anglesPerInfluencer) {
     throw new DomainError(
       "out_of_range",
-      `An influencer can have up to ${HARD_CAPS.anglesPerInfluencer} content angles.`,
+      `An influencer can have up to ${caps.anglesPerInfluencer} content angles.`,
       { code: ANGLE_ERROR_CODES.maxPerInfluencer, influencerId },
     );
   }

@@ -102,12 +102,12 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P1-DATA-011** Índices `(companyId, createdAt)` y helper de paginación por cursor · PRD §9.10
 - [x] **P1-DATA-012** Soft-delete transversal, excluido por defecto de todo listado · PRD §9.4
 - [x] **P1-DATA-013** Habilitar `pgvector` (lo usa `FR-150` en P3) · `ADR-003`
-- [ ] **P1-DATA-014** **Métodos de escritura con scope en los repositorios** · ⚠️ desbloquea 16 endpoints de la API
-  > Los 28 repositorios dan `findById` / `list` / `count` / `softDelete`, todo lectura. Como `drizzle-orm` **no es alcanzable desde `apps/api`** (vive sólo en `packages/db/node_modules`) y las rutas **no deben escribir queries crudas** —ahí el aislamiento por tenant depende de que nadie se olvide un `WHERE`—, hoy no hay forma de implementar ninguna escritura.
-  > Bloquea: `POST /blitz`, `PATCH /blitz/preferences`, `POST|PATCH|DELETE /blitz/angles`, `POST /content`, `PATCH /content/:id`, `POST /content/:id/regenerate`, los dos `custom/video`, `POST /media/upload-url`, `POST /media`, `PATCH /media/:id`, `POST /influencers` (+ upload-url), `POST /content/:id/schedule`, `POST /posts/cancel`, `POST /posts/delete`.
-  > Tres huecos más, de otra naturaleza: `GET /audio` necesita un **repositorio de catálogo sin scope** (`audio_tracks` es global), `GET /blitz/angles/page` necesita **paginación por offset** (los repos son sólo cursor), y `GET /content/:id/editable` necesita **listar text boxes por `contentId`**.
-- [ ] **P1-DATA-015** Unificar el formato de cursor entre `packages/db` y `apps/api`
-  > Hoy hay **dos incompatibles**: `apps/api/src/http/pagination.ts` codifica `{createdAtMs, id}` en base64url y `packages/db` codifica `"<ISO>|<id>"`. Los repositorios sólo decodifican el suyo. Publicar los dos pondría dos formatos distintos en el mismo contrato. Gana el de `db` (es el que usan los repos); `apps/api/src/http/pagination.ts` se borra o se reduce a reexportar.
+- [x] **P1-DATA-014** **Métodos de escritura con scope en los repositorios** · desbloqueó los 16 endpoints
+  > `create` / `createMany` / `update` / `upsert` / `hardDelete` en `repositories/base.ts`, más `filters.ts` (filtro declarativo, **data y no SQL**, porque `drizzle-orm` no es alcanzable desde `apps/api`), `catalog.ts` (`audio_tracks`, el único repositorio sin scope del sistema) y `listByPage` para el `Page X of Y` de §9.10.
+  > La propiedad que lo sostiene: **`companyId` no está en el tipo de los valores**. `create` lo inyecta desde el scope, `update` lo rechaza. No es que no debas escribir en otro workspace: no tenés dónde poner el campo.
+  > 19 tests de integración corriendo **como `fastgram_app`**, cada aserción de acceso cruzado con su pareja que relee la fila víctima — el bug que importa no es "devolvió lo que no era", es "devolvió `null` **y** escribió". Verificados rompiendo el `setWhere`, el `deletedAt is null` del update y el `in: []`.
+- [x] **P1-DATA-015** Unificar el formato de cursor entre `packages/db` y `apps/api`
+  > Borrado `apps/api/src/http/pagination.ts` (+ sus 7 tests). No estaba en uso, pero era un cursor plausible a un import de distancia, con otro payload interno (`{createdAtMs, id}` contra `"<ISO>|<id>"`). Gana el de `db`, que es el que los repositorios saben decodificar.
 
 ## P1-AUTH — Identidad
 
@@ -136,7 +136,9 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P1-QUOTA-006** Orden de evaluación: el gate de saves **antes** que el cap de swipes · PRD §16.2
 - [x] **P1-QUOTA-007** Rate limiting token-bucket por workspace, con `Retry-After` y `details.retryAfterMs` · `NFR-009`
 - [x] **P1-QUOTA-008** `503 service_unavailable` cuando el límite no se puede comprobar (≠ 429) · `NFR-009`
-- [~] **P1-QUOTA-009** Caps **configurables por plan**, no hardcodeados · `EXT-005`, `OQ-14` · **parcial:** los caps existen y tienen test, pero son constantes: falta hacerlos configurables por plan
+- [x] **P1-QUOTA-009** Caps **configurables por plan**, no hardcodeados · `EXT-005`, `OQ-14`
+  > `capsForPlan(planId)` + `PLAN_CAP_OVERRIDES`, y las aserciones de `workspace/caps.ts` y `angles/angles.ts` aceptan los caps como parámetro **opcional y último**, para no romper las ~30 llamadas que hoy no conocen el plan.
+  > **`PLAN_CAP_OVERRIDES` está vacío y hay un test que exige que siga vacío.** `EXT-005` pide el mecanismo; `OQ-14` dice que los números por plan se desconocen y que "varían por plan" es una *hipótesis*. Llenarlo con valores plausibles borraría la diferencia entre "no lo sabemos" y "lo inventamos". Cuando haya evidencia: override + `OQ-14` actualizada en el PRD + test ajustado, los tres pasos.
 
 ## P1-QUEUE — Colas y jobs
 
