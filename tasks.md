@@ -64,6 +64,9 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P0-REPO-010** `CLAUDE.md` con las reglas del repo y el protocolo de handoff
 - [x] **P0-REPO-011** Plantilla de PR que exige el ID de tarea y la checklist de DoD
 - [x] **P0-REPO-012** `docker-compose` de desarrollo: Postgres + MinIO (S3 local) + el servicio de visión
+- [ ] **P0-REPO-013** **Los paquetes internos exportan `.ts` crudo: `node dist/main.js` no puede funcionar** · ⚠️ bloquea cualquier deploy
+  > Descubierto el 2026-09-21 al construir `services/render`. Todos los `packages/*` apuntan `main` y `exports` a `src/*.ts`. Bajo `tsx` anda; compilado no: `tsc` emite sólo los archivos de la app, y Node **no puede importar `.ts` desde `node_modules`** (el stripping nativo está explícitamente prohibido ahí). Hoy `pnpm build` "pasa" y el binario resultante no arranca.
+  > Salida sin dependencias nuevas: cada paquete emite `dist` y usa `exports` condicional (`development` → `src`, `default` → `dist`), con `--conditions development` en test y dev. Toca ~7 `package.json` y los `vitest.config.ts`, así que va en un cambio propio, **verificado corriendo `node dist/main.js` de verdad** — no con que `tsc` no se queje.
 
 ---
 
@@ -278,19 +281,19 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P2-RENDER — Motor de render
 
-- [ ] **P2-RENDER-001** Scaffold `services/render` (FFmpeg + sharp, sin estado) · `ADR-007`
+- [x] **P2-RENDER-001** Scaffold `services/render` (FFmpeg + sharp, sin estado) · `ADR-007`
 - [ ] **P2-RENDER-002** Puerto `MediaRenderer` + adaptador
-- [ ] **P2-RENDER-003** Esquema de text-object compartido por los 4 formatos · `FR-070`
-- [ ] **P2-RENDER-004** Render `slideshow` (hasta 20 slides, 4 aspect ratios) · `FR-070`
-- [ ] **P2-RENDER-005** Render `wall-of-text` · `FR-070`
-- [ ] **P2-RENDER-006** Render `green-screen` (chromakey sobre fondo) · `FR-070`
-- [ ] **P2-RENDER-007** Render `video-hook` (hook + demo apilados + audio) · `FR-070`
-- [ ] **P2-RENDER-008** 12 familias tipográficas con sus pesos permitidos · `FR-051`
-- [ ] **P2-RENDER-009** **Validación de que toda URL de media pertenece al workspace o a la librería compartida** · `FR-070` · ⚠️ se rechaza antes de iniciar el build
-- [ ] **P2-RENDER-010** **Cache por hash del payload**: no re-encodear si sólo cambió el texto · IMPL §5
-- [ ] **P2-RENDER-011** Golden-file tests por formato · IMPL §4
-- [ ] **P2-RENDER-012** Recorte inteligente en vez de `stretch-to-canvas` · `EXT-006`
-- [ ] **P2-RENDER-013** Normalización de media: MOV→MP4, HDR→SDR, faststart · `NFR-014`
+- [x] **P2-RENDER-003** Esquema de text-object compartido por los 4 formatos · `FR-070`
+- [x] **P2-RENDER-004** Render `slideshow` (hasta 20 slides, 4 aspect ratios) · `FR-070`
+- [x] **P2-RENDER-005** Render `wall-of-text` · `FR-070`
+- [x] **P2-RENDER-006** Render `green-screen` (chromakey sobre fondo) · `FR-070`
+- [x] **P2-RENDER-007** Render `video-hook` (hook + demo apilados + audio) · `FR-070`
+- [~] **P2-RENDER-008** 12 familias tipográficas con sus pesos permitidos · `FR-051` · **parcial:** el registro de las 12 familias con sus pesos está y tiene test; faltan los **42 archivos de fuente** (ninguno en la máquina) y **`tiktok`/`snapchat` no tienen archivo distribuible** — decisión de licencia, de una persona
+- [x] **P2-RENDER-009** **Validación de que toda URL de media pertenece al workspace o a la librería compartida** · `FR-070` · ⚠️ se rechaza antes de iniciar el build
+- [x] **P2-RENDER-010** **Cache por hash del payload**: no re-encodear si sólo cambió el texto · IMPL §5
+- [x] **P2-RENDER-011** Golden-file tests por formato · IMPL §4
+- [x] **P2-RENDER-012** Recorte inteligente en vez de `stretch-to-canvas` · `EXT-006`
+- [~] **P2-RENDER-013** Normalización de media: MOV→MP4, HDR→SDR, faststart · `NFR-014` · **parcial:** MOV→MP4 y faststart escritos pero **nunca corridos sobre un archivo real**; HDR→SDR **falla cerrado** porque este build de ffmpeg no trae `zscale` ni `libplacebo`
 
 ## P2-CONTENT — Entidad Content
 
