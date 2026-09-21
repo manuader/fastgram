@@ -20,7 +20,7 @@ import {
   MemoryStorage,
 } from "@fastgram/adapters";
 import { ALL_JOB_QUEUES } from "@fastgram/core";
-import { createDb } from "@fastgram/db";
+import { createDb, grantQueueSchemaAccess } from "@fastgram/db";
 
 import { loadApiEnv, parseCorsOrigins } from "./env.js";
 import { buildServer } from "./server/app.js";
@@ -77,6 +77,26 @@ const { queue } = createPgBossQueue({
 // `POST /content` contra el binario compilado; los tipos no lo ven, porque las dos
 // llamadas existen.
 await queue.start();
+
+/**
+ * Los privilegios del rol de la aplicación sobre el esquema de la cola.
+ *
+ * Va acá y no en una migración porque el nombre del esquema es configurable y
+ * una migración SQL no se parametriza: la migración `0004` cubre el default
+ * (`pgboss`) y esto cubre cualquier otro. Va **después** de `queue.start()`
+ * porque hasta ahí las tablas de pg-boss no existen.
+ *
+ * Y va atado a `QUEUE_MIGRATE` porque es el mismo permiso: un proceso que no
+ * está autorizado a hacer DDL sobre la cola tampoco debería repartir
+ * privilegios. En producción esto es parte del deploy, no del arranque.
+ *
+ * Sin esto, con un `QUEUE_SCHEMA` que no sea el default, el proceso arranca
+ * sano, `/health` responde 200, y **sólo la primera petición que encola se
+ * cae** con *permission denied*. Lo encontró `pnpm smoke:binary`.
+ */
+if (env.QUEUE_MIGRATE) {
+  await grantQueueSchemaAccess(handle.db, { schema: env.QUEUE_SCHEMA });
+}
 
 const app = await buildServer({
   deps: {

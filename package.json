@@ -19,12 +19,14 @@
     "db:generate": "pnpm --filter @fastgram/db db:generate",
     "db:migrate": "pnpm --filter @fastgram/db db:migrate",
     "verify": "pnpm lint && pnpm typecheck && pnpm boundaries && pnpm consistency && pnpm test",
-    "consistency": "node scripts/check-consistency.mjs"
+    "consistency": "node scripts/check-consistency.mjs",
+    "smoke:binary": "node scripts/smoke-binary.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "dependency-cruiser": "^16.9.0",
     "eslint": "^9.17.0",
+    "postgres": "catalog:",
     "prettier": "^3.4.2",
     "turbo": "^2.3.3",
     "typescript": "catalog:",

@@ -44,3 +44,5 @@ export * from "./repositories/index.js";
 export * from "./limits.js";
 
 export { applyMigrations, migrateWithUrl, MIGRATIONS_FOLDER } from "./migrate.js";
+
+export { grantQueueSchemaAccess, type QueueGrantOptions } from "./queue-grants.js";

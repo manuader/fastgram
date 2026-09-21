@@ -104,6 +104,50 @@ jobs:
         # se saltean solas indicando el motivo. Saltearse en CI es cobertura
         # que nadie corre: acá corren.
         run: pnpm --filter @fastgram/adapters test
+      - name: encolar dentro de la transacción de Drizzle (ADR-005)
+        # `packages/adapters` tiene su propio `test:int` y NO entra en el de la
+        # raíz. Es el que prueba la garantía que justifica usar Postgres en vez
+        # de Redis; saltearlo deja esa decisión sin medir.
+        run: pnpm --filter @fastgram/adapters test:int
+
+  binario:
+    name: el artefacto que se despliega arranca
+    runs-on: ubuntu-latest
+    # Job aparte y no un paso más del de integración: lo que mide es distinto
+    # —el artefacto compilado, no el código— y cuando falla, el nombre del job
+    # tiene que decir qué se rompió sin abrir el log.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: fastgram
+          POSTGRES_PASSWORD: fastgram
+          POSTGRES_DB: fastgram_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U fastgram"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://fastgram:fastgram@localhost:5432/fastgram_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: construir de verdad
+        run: pnpm build
+      - name: migrar
+        run: pnpm --filter @fastgram/db db:migrate
+      - name: arrancar el binario, autenticar, escribir y encolar
+        # `pnpm verify` no puede ver esto: ahí todo corre con tsx o vitest, que
+        # resuelven TypeScript. Dos veces ya pasó que el build quedara verde y
+        # el artefacto no arrancara — la primera por `exports` a `.ts`, la
+        # segunda por arrancar `boss` en vez del adaptador, con `/health` en 200
+        # y el primer encolado muerto.
+        run: pnpm smoke:binary
 
   vision:
     name: servicio de visión (Python)
