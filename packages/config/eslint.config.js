@@ -39,6 +39,10 @@ export default tseslint.config(
         Buffer: "readonly",
         __dirname: "readonly",
         fetch: "readonly",
+        // Van con `fetch`: un `fetch` sin timeout en un script de CI cuelga el
+        // job hasta que GitHub lo mata a los 360 minutos.
+        AbortSignal: "readonly",
+        AbortController: "readonly",
       },
     },
   },
