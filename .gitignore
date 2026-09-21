@@ -1,0 +1,34 @@
+# Dependencias
+node_modules/
+.pnpm-store/
+
+# Build
+dist/
+build/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# Entorno — nunca versionar secretos
+.env
+.env.*
+!.env.example
+
+# Handoffs efímeros: son notas entre agentes, no historia.
+# Versionarlos los convierte en una pila donde nadie sabe cuál es el vigente.
+handoffs/
+
+# Sistema
+.DS_Store
+coverage/
+*.log
+
+# Media de trabajo (los demos de referencia SÍ se versionan)
+tmp/
+scratch/
+
+# Videos de referencia (164 MB). NO se versionan a propósito.
+# Ya fueron analizados frame a frame y transcriptos: el resultado vive en PRD §0.2
+# con timestamps. Meter 164 MB en la historia penaliza cada clone para siempre,
+# y el valor ya está extraído. Si hacen falta, están en docs/features/demo/ local.
+docs/features/demo/
