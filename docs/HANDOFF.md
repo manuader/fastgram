@@ -179,7 +179,7 @@ pnpm verify           # lint · typecheck · boundaries · consistency · test
 | `pnpm typecheck` | `tsc --noEmit` por paquete, 12 tareas | **12 successful** |
 | `pnpm boundaries` | las reglas de la arquitectura | **0 errores**, ~3 warnings de huérfanos · 366 módulos |
 | `pnpm consistency` | los números del PRD escritos en más de un paquete | **9 invariantes** |
-| `pnpm test` | unitarios | **1.226** |
+| `pnpm test` | unitarios | **1.229** |
 
 Desglose de `pnpm test`, por si uno solo se cae:
 
@@ -187,7 +187,7 @@ Desglose de `pnpm test`, por si uno solo se cae:
 |---|---|---|---|---|
 | `core` | 391 | | `ui` | 170 |
 | `contracts` | 253 | | `adapters` | 153 |
-| `render-service` | 119 | | `api` | 62 |
+| `render-service` | 119 | | `api` | 65 |
 | `db` | 29 | | `web` | 22 |
 | `worker` | 18 | | `config` | 9 |
 
@@ -195,7 +195,7 @@ Desglose de `pnpm test`, por si uno solo se cae:
 
 ```bash
 docker compose up -d                       # Postgres con pgvector + MinIO con el bucket creado
-pnpm test:int                              # db 44 · api 22  → 66
+pnpm test:int                              # db 53 · api 22  → 75
 ```
 
 Las suites de contrato de `Storage` y `Queue` de `packages/adapters` corren dentro de
@@ -217,10 +217,10 @@ motor ausente, todo análisis devuelve `partial`: es lo que manda `AI-016`.
 ### Estado del backlog
 
 ```bash
-grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 78
+grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 81
 grep -c '^- \[~\]' tasks.md     # en curso o parciales — hoy: 7
 grep -c '^- \[!\]' tasks.md     # bloqueadas — hoy: 1
-grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 285
+grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 284
 ```
 
 ### Lo que `pnpm verify` NO mide
@@ -311,7 +311,21 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 285
     misma pregunta cambia de respuesta según con qué otras viaje. Sin ordenar por id, la promesa
     de independencia es falsa.
 
-13. **`*/` dentro de un comentario de bloque lo cierra.** Escribir `` `*/upload-url` `` en un
+13. **El bootstrap de la API key es el único acceso sin `companyId`, y por eso rompe en
+    producción y no en desarrollo.** Resolver una key no puede llevar scope: el `companyId` es
+    lo que está averiguando. Eso choca con el `FORCE ROW LEVEL SECURITY` de `api_keys`. En
+    desarrollo la conexión suele ser superusuario y saltea RLS, así que anda; con `fastgram_app`
+    devuelve cero filas y **toda la API responde 401**. No un endpoint: todos.
+    Resuelto con `app.resolve_api_key` (migración `0003`), `SECURITY DEFINER` y `search_path`
+    fijo. **Si aparece otra consulta sin `companyId` en el código, sospechá de esto mismo.**
+
+14. **Un limitador de tasa con `read` y `write` separados no limita nada bajo concurrencia.**
+    Entre las dos llamadas hay un `await`: N peticiones simultáneas leen el mismo estado y pasan
+    todas. Medido: **120 de 120** contra un límite de 60. Los tests secuenciales no lo ven —éste
+    vivió en el código hasta que alguien lo leyó pensando en concurrencia. El contrato de
+    `BucketStore` exige `compareAndSwap` por eso.
+
+15. **`*/` dentro de un comentario de bloque lo cierra.** Escribir `` `*/upload-url` `` en un
     docstring produce un error de esbuild —*"Expected ';' but found 'POST'"*— apuntando a una
     línea de prosa.
 
@@ -343,6 +357,8 @@ archivo distribuible que se pueda nombrar sin inventarlo** — es una decisión 
 | Qué | Por qué urge | Tarea |
 |---|---|---|
 | Los paquetes exportan `.ts` crudo: **`pnpm build` pasa y el binario no arranca** | verde en CI y roto en producción es la peor forma de tenerlo | `P0-REPO-013` |
+| **Los repositorios no tienen métodos de escritura** | bloquea **16 endpoints** de la API v1; es el desbloqueo más grande que queda | `P1-DATA-014` |
+| Dos formatos de cursor incompatibles conviviendo | publicar los dos pone dos contratos distintos en el mismo cable | `P1-DATA-015` |
 | `text-subtle` en modo oscuro no llega a AA para texto normal (3,65:1 y 3,16:1) | accesibilidad, y hoy está sin restricción de uso | `P1-UI-011` |
 
 ### Lo que nadie miró todavía

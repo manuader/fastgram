@@ -102,6 +102,12 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P1-DATA-011** Índices `(companyId, createdAt)` y helper de paginación por cursor · PRD §9.10
 - [x] **P1-DATA-012** Soft-delete transversal, excluido por defecto de todo listado · PRD §9.4
 - [x] **P1-DATA-013** Habilitar `pgvector` (lo usa `FR-150` en P3) · `ADR-003`
+- [ ] **P1-DATA-014** **Métodos de escritura con scope en los repositorios** · ⚠️ desbloquea 16 endpoints de la API
+  > Los 28 repositorios dan `findById` / `list` / `count` / `softDelete`, todo lectura. Como `drizzle-orm` **no es alcanzable desde `apps/api`** (vive sólo en `packages/db/node_modules`) y las rutas **no deben escribir queries crudas** —ahí el aislamiento por tenant depende de que nadie se olvide un `WHERE`—, hoy no hay forma de implementar ninguna escritura.
+  > Bloquea: `POST /blitz`, `PATCH /blitz/preferences`, `POST|PATCH|DELETE /blitz/angles`, `POST /content`, `PATCH /content/:id`, `POST /content/:id/regenerate`, los dos `custom/video`, `POST /media/upload-url`, `POST /media`, `PATCH /media/:id`, `POST /influencers` (+ upload-url), `POST /content/:id/schedule`, `POST /posts/cancel`, `POST /posts/delete`.
+  > Tres huecos más, de otra naturaleza: `GET /audio` necesita un **repositorio de catálogo sin scope** (`audio_tracks` es global), `GET /blitz/angles/page` necesita **paginación por offset** (los repos son sólo cursor), y `GET /content/:id/editable` necesita **listar text boxes por `contentId`**.
+- [ ] **P1-DATA-015** Unificar el formato de cursor entre `packages/db` y `apps/api`
+  > Hoy hay **dos incompatibles**: `apps/api/src/http/pagination.ts` codifica `{createdAtMs, id}` en base64url y `packages/db` codifica `"<ISO>|<id>"`. Los repositorios sólo decodifican el suyo. Publicar los dos pondría dos formatos distintos en el mismo contrato. Gana el de `db` (es el que usan los repos); `apps/api/src/http/pagination.ts` se borra o se reduce a reexportar.
 
 ## P1-AUTH — Identidad
 
@@ -156,9 +162,9 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P1-API-002** `packages/contracts` con Zod → tipos + OpenAPI · `ADR-015`
 - [x] **P1-API-003** Envelopes `{data}` / `{error:{code,message,details}}` / `pagination{cursor,hasMore}` · PRD §9.3
 - [x] **P1-API-004** Versionado en la ruta `/api/v1`
-- [ ] **P1-API-005** API keys `fsln_live_*`: hash en reposo, mostradas una sola vez, revocación inmediata · `FR-180`
+- [x] **P1-API-005** API keys `fsln_live_*`: hash en reposo, mostradas una sola vez, revocación inmediata · `FR-180`
 - [x] **P1-API-006** `WWW-Authenticate: Bearer realm="api"` en todos los 401 · `FR-180`
-- [ ] **P1-API-007** Middleware de scope: toda ruta resuelve `companyId` desde la key o la sesión
+- [x] **P1-API-007** Middleware de scope: toda ruta resuelve `companyId` desde la key o la sesión
 
 ## P1-JUDGE — Puerto Judgment · `EXT-008`, `D-05`
 
@@ -247,7 +253,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P1-OBS — Observabilidad
 
-- [ ] **P1-OBS-001** Logs estructurados con `companyId` y `requestId` en todo
+- [x] **P1-OBS-001** Logs estructurados con `companyId` y `requestId` en todo
 - [ ] **P1-OBS-002** OpenTelemetry: trazas y métricas
 - [ ] **P1-OBS-003** Sentry (errores) + PostHog (producto) · `INT-010`
 - [ ] **P1-OBS-004** Health checks y status page · `F-255`
