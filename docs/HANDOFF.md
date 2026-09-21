@@ -1,9 +1,10 @@
 # HANDOFF — FastGram, estado actual
 
-> **No hay código todavía.** El repo tiene la especificación completa (`PRD.md`, 3.996 líneas),
-> la evaluación de la capa de juicio (`EVAL-JEV.md`), el plan de implementación y `tasks.md`
-> con 361 tareas. **La primera tarea es `git init`** (`P0-REPO-001`): el repo ni siquiera está
-> bajo control de versiones.
+> **Ya hay código.** El monorepo está en pie con las fronteras enforzadas en CI, y hay trabajo
+> real en los trece paquetes. El estado exacto, con números, está en §6.
+>
+> Sigue vigente: el PRD es la fuente de verdad funcional, `tasks.md` es el backlog, y el plan de
+> implementación dice cómo.
 >
 > **Lo que hay que saber antes de tocar nada:** el PRD es la fuente de verdad funcional y está
 > construido sobre evidencia etiquetada (CONFIRMED / SUPPORTED / INFERRED / UNKNOWN / EXTENSION).
@@ -96,6 +97,37 @@ especificación. En orden:
 
 Detalle y razones: [`SESSION-2026-09-21-plan-implementacion.md`](SESSION-2026-09-21-plan-implementacion.md).
 
+### Sesión 2026-09-21 (2) — Del plan al código
+
+Se ejecutó el P0 completo y una parte grande de la Fase 1, con **ocho agentes en paralelo** sobre
+directorios disjuntos.
+
+**Lo que hizo funcionar el paralelismo** no fue la cantidad de agentes: fue identificar qué es
+estado compartido mutable. `pnpm-lock.yaml` y todo `package.json`, `git`, y
+`tasks.md`/`PRD.md`/`docs/**`. **Ningún agente los toca**; si le falta una dependencia, la reporta
+en vez de instalarla. Resultado: ninguno pisó a otro en toda la sesión.
+
+**El costo de esa regla**, y es una tensión real con el `CLAUDE.md` de este repo: ningún agente
+pudo marcar su tarea en `tasks.md` ni escribir su handoff. Los ocho lo señalaron por separado. La
+coordinación quedó centralizada en quien orquesta. **Antes de la próxima tanda hay que decidir**:
+o los agentes marcan y se acepta el riesgo de colisión en un archivo, o el protocolo dice
+explícitamente que en paralelo marca el coordinador.
+
+**Descubrimientos que cambiaron decisiones ya tomadas** — los tres salieron de medir, no de pensar:
+
+1. **El modelo de costos invirtió el orden del plan §5.** Egress y CPU de render eran el #1 y el
+   #2; son el #4 y el #6. El driver dominante es la **generación de video en GPU**, por dos
+   órdenes de magnitud. Consecuencias en `ADR-006` (premisa refutada), `ADR-013` (Hetzner subió
+   +113–173 % y su vCPU es un *thread*), `ADR-009` (el self-host está mucho más lejos) y `OQ-21`
+   nueva en el PRD.
+2. **La resolución de fuentes por nombre en `sharp` está rota a medias** — trampa 6 de §7. Habría
+   salido a producción con la tipografía equivocada en cada pieza.
+3. **Los paquetes exportan `.ts` crudo**, así que `pnpm build` pasa y el binario no arranca
+   (`P0-REPO-013`).
+
+Detalle, decisiones y lo que se descartó:
+[`SESSION-2026-09-21-implementacion.md`](SESSION-2026-09-21-implementacion.md).
+
 ## 5. Decisiones que no se vuelven a discutir
 
 Las de producto (`D-01`…`D-05`) están en PRD §2.7 con su razón. Las de arquitectura, en
@@ -115,6 +147,19 @@ Las de producto (`D-01`…`D-05`) están en PRD §2.7 con su razón. Las de arqu
    que descuenta la cuota. Si el job se encolara fuera, un fallo entre commit y push deja cuota
    consumida sin trabajo — y el PRD exige que un build fallido reembolse el save, lo que obliga a
    saber con certeza que el job existe.
+
+Y tres que se decidieron al empezar a escribir código:
+
+5. **`packages/core` no puede importar NADA de npm**, sólo `@fastgram/ports`. Es más estricto que
+   "no importa adapters", y a propósito: el día que `core` importe una utilidad de fechas, la mitad
+   de las reglas de negocio dejan de ser testeables sin fijar esa librería. Para fechas y azar hay
+   puertos. Lo enforcea `dependency-cruiser`.
+6. **Los 9 videos de referencia quedan fuera de git.** 164 MB, ya exprimidos en el PRD §0.2 con
+   timestamps. El repo entero pesa hoy 765 KiB; con los videos serían 165 MB en la historia, para
+   siempre, en cada clone. Es un desvío del literal de `P0-REPO-001` y está asumido.
+7. **El reset de cuota se calcula en lectura, no con un cron.** Hay un job programado, pero es
+   **red, no mecanismo**: si el reset dependiera del cron, la cuota de un cliente dependería de que
+   el cron haya corrido. Así depende del reloj, que es lo que el usuario ve.
 
 ## 6. Cómo verificar
 
@@ -165,12 +210,44 @@ grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 0
    dicen 20 req/min. Está registrada como `OQ-05`. No la "resuelvas" eligiendo una al azar:
    implementá **60/min configurable** y dejá el número expuesto.
 
+6. **La resolución de fuentes por nombre en `sharp` está rota — pero a medias.** `sharp` 0.33
+   trae su propio libvips con fontconfig sin configuración por defecto. Medido con la sonda
+   `"MWiljq1080 Hamburgefonstiv"` a 40px: `__NoSuchFamily__`, `Helvetica`, `Courier` y
+   `Montserrat` dan **todas 517x39**. Idénticas. Pero `Comic Sans MS` da 555x44 — o sea que
+   **algunas familias sí resuelven**, y eso es lo peligroso: quien spot-chequea con la fuente
+   equivocada ve que "anda" y cierra la investigación, y el producto sale con la tipografía
+   incorrecta en cada pieza.
+   La defensa está implementada en `services/render/src/render/fontLoader.ts`: cargar por archivo
+   absoluto y **verificar contra una sonda centinela**. `FONTCONFIG_FILE` con un `fonts.conf`
+   propio **no** funciona; ya se probó.
+
+7. **Borrar `node_modules/.modules.yaml` a mano corrompe el lockfile de pnpm.** Deja symlinks
+   colgados: `ls -d node_modules/eslint` responde bien y `ls node_modules/eslint/` falla. El
+   síntoma es `command not found` de un binario que está "instalado". **No alcanza con
+   `pnpm install --force`**: hay que borrar `node_modules` **y** `pnpm-lock.yaml`.
+
+8. **pnpm 12 cambió la clave de los build scripts y edita tu `pnpm-workspace.yaml`.** No es
+   `onlyBuiltDependencies` ni va en `package.json`: es **`allowBuilds`, con booleanos, en
+   `pnpm-workspace.yaml`**. Y pnpm escribe él mismo un bloque `allowBuilds` con placeholders
+   (`set this to true or false`) la primera vez, así que si agregaste el tuyo terminás con una
+   clave duplicada — y el error, *"duplicate mapping key"*, no dice que pnpm editó tu archivo.
+
+9. **`minio/minio:latest` ya no existe en Docker Hub.** Falla con *"pull access denied … or may
+   require 'docker login'"*, que **parece un problema de credenciales y no lo es**. MinIO publica
+   en **quay.io**: `quay.io/minio/minio` y `quay.io/minio/mc`.
+
+10. **`*/` dentro de un comentario de bloque lo cierra.** Escribir `` `*/upload-url` `` en un
+    docstring produce un error de esbuild —*"Expected ';' but found 'POST'"*— apuntando a una
+    línea de prosa.
+
 ## 8. Qué falta
 
-Todo el código. El backlog real es `tasks.md`, 361 tareas en 6 fases.
+El backlog real es `tasks.md`. El estado de hoy está en §6.
 
-**Bloqueado por una persona, no por código** — estas cuatro no avanzan escribiendo software y
-conviene arrancarlas ya, porque tienen plazo largo:
+### Bloqueado por una persona, no por código
+
+Ninguna de estas avanza escribiendo software, y todas tienen plazo largo. **Conviene arrancarlas
+ya**, en paralelo con el código.
 
 | Qué | Bloquea | Tarea |
 |---|---|---|
@@ -178,11 +255,32 @@ conviene arrancarlas ya, porque tienen plazo largo:
 | Derechos del catálogo de tendencias (`OQ-13`) | **toda la épica P2-TREND** | `P2-TREND-001` |
 | Decisión de licencia del build de FFmpeg | el render | `P0-REPO-004` |
 | Estrategia de librerías UGC (`OQ-13`) | P5-LIBR | `P5-LIBR-001/002` |
+| **Las 42 fuentes: conseguir los archivos, y decidir qué hacer con `tiktok` y `snapchat`** | el overlay de texto de los 4 formatos | `P2-RENDER-008` |
+| **Confirmación escrita de Cloudflare**: si R2 + Workers está permitido hoy para servir video fuera de Enterprise | `ADR-006`, y con él la elección de storage | `P1-INFRA-004` |
+| **`OQ-21`**: si el tarifario de créditos se hereda o se recalibra | el margen del producto entero | — |
 
-**Lo primero a hacer, en orden:** `P0-REPO-001` (git init) → `P0-REPO-003` (monorepo) →
-`P0-REPO-006` (boundaries en CI) → `P1-INFRA-001` (modelo de costos) y `P1-BRAND-002` (spike de
-cobertura por plataforma). Las dos últimas son descubrimiento y pueden cambiar decisiones ya
-tomadas: cuanto antes, más barato.
+Sobre las fuentes: **ninguna de las 12 familias está en la máquina** y hacen falta 42 archivos.
+Diez son Google Fonts (OFL, distribuibles). `tiktok` y `snapchat` los nombra el PRD pero **no hay
+archivo distribuible que se pueda nombrar sin inventarlo** — es una decisión de licencia.
+
+### Bloqueantes técnicos que sí resuelve código
+
+| Qué | Por qué urge | Tarea |
+|---|---|---|
+| Los paquetes exportan `.ts` crudo: **`pnpm build` pasa y el binario no arranca** | verde en CI y roto en producción es la peor forma de tenerlo | `P0-REPO-013` |
+| `text-subtle` en modo oscuro no llega a AA para texto normal (3,65:1 y 3,16:1) | accesibilidad, y hoy está sin restricción de uso | `P1-UI-011` |
+
+### Lo que nadie miró todavía
+
+- **Nadie abrió un navegador.** Ni una pantalla se vio renderizada, ni con estilos aplicados.
+- **Ningún frame renderizado se miró.** Los hashes son estables, la geometría está testeada;
+  "determinista" no es "se ve bien".
+- **MOV→MP4, faststart y HDR→SDR** nunca corrieron sobre un archivo real. HDR→SDR además **falla
+  cerrado** porque este build de ffmpeg no trae `zscale` ni `libplacebo`.
+- **Las 82 aserciones de contrato de puerto** existen desde que se escribieron los puertos; sólo
+  corrieron las de `Storage` (contra `MemoryStorage`) — y **encontraron dos bugs reales en su
+  primera ejecución**. Esperá más de lo mismo con cada adaptador nuevo: un fallo de contrato es
+  información, no un problema.
 
 ## 9. Mapa de documentos
 
@@ -193,5 +291,7 @@ tomadas: cuanto antes, más barato.
 | [`../EVAL-JEV.md`](../EVAL-JEV.md) | por qué existe el puerto `Judgment` y qué se evaluó de TypeSafe/Jev |
 | [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md) | **cómo**: arquitectura, stack, 15 ADRs con su razón |
 | [`../tasks.md`](../tasks.md) | **en qué orden**, y dónde tachar |
+| [`COST-MODEL.md`](COST-MODEL.md) | **cuánto cuesta** cada driver, con fuente y fecha. **Caduca rápido**: los precios de IA se mueven en semanas |
 | [`SESSION-2026-09-21-plan-implementacion.md`](SESSION-2026-09-21-plan-implementacion.md) | cómo se llegó del PRD al plan, y qué se descartó |
+| [`SESSION-2026-09-21-implementacion.md`](SESSION-2026-09-21-implementacion.md) | cómo se organizó el trabajo en paralelo, y las trampas que costaron tiempo |
 | [`../CLAUDE.md`](../CLAUDE.md) | instrucciones de arranque para agentes |
