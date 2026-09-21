@@ -241,6 +241,9 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [ ] **P1-UI-008** Responsive: móvil y tablet · `NFR-019`
 - [ ] **P1-UI-009** Home con KPIs, Tasks y Views History · `FR-030`
 - [ ] **P1-UI-010** FAQ del Home: 5 categorías, 37 preguntas, copy literal · `FR-030`
+- [ ] **P1-UI-011** **`text-subtle` en modo oscuro no cumple AA para texto normal** · `NFR-019`
+  > Medido el 2026-09-21: 3,65:1 sobre `surface` y 3,16:1 sobre `raised`, contra el 4,5:1 que exige AA. Cumple el 3:1 de texto grande y nada más. Hoy eso significa que **en oscuro `text-subtle` no se puede usar en tamaño normal**.
+  > No se arregla subiéndolo a `neutral-400`, que es donde vive `muted`: se perdería la distinción entre los dos niveles. Es una decisión de paleta. `packages/ui/src/tokens.contrast.test.ts` fija los valores medidos, así que la limitación no puede empeorar en silencio.
 
 ## P1-OBS — Observabilidad
 
