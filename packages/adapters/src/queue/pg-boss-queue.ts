@@ -828,6 +828,31 @@ function translate(cause: unknown, what: string): PortError {
  * la misma función `sql` acotada a una conexión, y `sql.unsafe(text, params)`
  * es la forma de correr SQL con parámetros posicionales — que es exactamente
  * lo que pg-boss necesita.
+ *
+ * **Ojo con el handle que llega de verdad.** `packages/db` no entrega esa
+ * función: `Transaction` es el objeto de Drizzle que recibe el callback de
+ * `db.transaction()`, y `core` propaga *ese* objeto hasta `enqueue`. No cae en
+ * ninguna de las tres ramas de acá —su `.query` es el query builder
+ * relacional, no una función—, así que quien cablea tiene que pasar
+ * {@link PgBossQueueConfig.toExecutor}. Medido en
+ * `pg-boss-transaction.int.test.ts`.
+ *
+ * **Y ojo con el cliente, aunque el handle sea el correcto.** `drizzle()`
+ * modifica el cliente de postgres.js que recibe:
+ * `client.options.serializers["114"] = client.options.serializers["3802"] =
+ * (val) => val`. Como `createDb` devuelve ese mismo `sql`, en esta aplicación
+ * **todo cliente de postgres.js que pueda llegar acá tiene el serializador de
+ * `jsonb` en identidad**, y entonces el `data` del job —un objeto plano— muere
+ * en el protocolo con `ERR_INVALID_ARG_TYPE: The "string" argument must be of
+ * type string… Received an instance of Object`. Sobre un cliente virgen el
+ * mismo INSERT pasa, porque ahí el serializador es `JSON.stringify`.
+ *
+ * Esta rama no puede decidirlo sola: el handle de la transacción de postgres.js
+ * **no expone `options`**, así que no hay a quién preguntarle. Quien cablea
+ * tiene que pasar un `toExecutor` que convierta los objetos planos a texto
+ * JSON; hay uno funcionando en `pg-boss-transaction.int.test.ts`
+ * (`drizzleTxToExecutor`). Convertir siempre acá tampoco sirve: sobre un
+ * cliente virgen guardaría un *string* JSON en vez de un objeto.
  */
 function defaultToExecutor(transaction: QueueTransaction): QueueSqlExecutor {
   if (typeof transaction === "object" && transaction !== null) {
@@ -856,11 +881,106 @@ function defaultToExecutor(transaction: QueueTransaction): QueueSqlExecutor {
       const unsafe = sql.unsafe.bind(sql);
       return {
         executeSql: async (text, values) => {
-          const rows = await unsafe(text, values);
+          const rows = await unsafe(text, values.map(nullifyUndefined));
           return { rows: Array.isArray(rows) ? [...(rows as unknown[])] : [] };
         },
       };
     }
   }
   throw new Error("unsupported transaction handle");
+}
+
+/**
+ * Puente explícito para la transacción de Drizzle sobre postgres.js.
+ *
+ * ## Por qué no lo hace `defaultToExecutor` solo
+ *
+ * Porque no puede saberlo. `drizzle-orm/postgres-js` **le cambia los
+ * serializadores al cliente que recibe**: pone `(v) => v` en los tipos `114`
+ * (json) y `3802` (jsonb), porque Drizzle serializa el JSON por su cuenta.
+ * Pero el cliente es compartido — `createDb` devuelve ese mismo `sql` — así
+ * que cualquier otro que inserte un objeto plano en una columna jsonb por esa
+ * conexión lo manda crudo al Bind del protocolo y postgres.js muere con
+ * `ERR_INVALID_ARG_TYPE`. Es el caso del `data` de un job de pg-boss.
+ *
+ * Y no hay forma de detectarlo: **medido**, el handle que
+ * `db.transaction()` pasa al callback es una función sin `.options`, así que
+ * no se le puede preguntar al cliente si fue parcheado. Sólo lo sabe quien lo
+ * construyó. Por eso esto es una función con nombre que el cableado elige a
+ * mano, y no una rama más del bridge automático: elegir mal en silencio
+ * guardaría un *string* JSON donde va un objeto, o al revés.
+ *
+ * ## Qué toca de Drizzle
+ *
+ * La conexión reservada vive en `session.client`, que **es interno de
+ * `drizzle-orm/postgres-js`**, no API pública. Está acá y a la vista, con el
+ * error explícito si desaparece, porque el día que el driver lo mueva el
+ * síntoma tiene que ser este mensaje y no un `provider_unavailable`.
+ *
+ * Lo encontró `pg-boss-transaction.int.test.ts`, que es el primer test que
+ * encoló por la transacción que `packages/db` usa de verdad. Los anteriores
+ * pasaban por el ejecutor interno de pg-boss, que corre sobre `pg`.
+ */
+export function drizzleTransactionToExecutor(
+  transaction: QueueTransaction,
+): QueueSqlExecutor {
+  const client = (transaction as { session?: { client?: unknown } }).session?.client;
+  if (typeof client !== "function") {
+    throw new Error(
+      "La transacción de Drizzle no expone `session.client`: cambió el interno de " +
+        "`drizzle-orm/postgres-js`. Este puente hay que actualizarlo.",
+    );
+  }
+  const unsafe = (client as { unsafe?: unknown }).unsafe;
+  if (typeof unsafe !== "function") {
+    throw new Error("`session.client` no es la función `sql` de postgres.js.");
+  }
+  const run = unsafe.bind(client) as (
+    text: string,
+    values: unknown[],
+  ) => Promise<unknown>;
+
+  return {
+    executeSql: async (text, values) => {
+      const rows = await run(text, values.map(jsonAsTextForPatchedClient));
+      return { rows: Array.isArray(rows) ? [...(rows as unknown[])] : [] };
+    },
+  };
+}
+
+/**
+ * Lo que el serializador de jsonb de postgres.js haría si Drizzle no lo
+ * hubiera reemplazado.
+ *
+ * Arrays, fechas y buffers quedan como están: tienen serializador propio y
+ * Drizzle no los toca. El único que necesita texto es el objeto plano — que en
+ * los parámetros de pg-boss es el `data` del job. Un `string` tampoco se toca,
+ * y eso importa para `enqueueMany`: ahí pg-boss ya manda el lote serializado.
+ */
+function jsonAsTextForPatchedClient(value: unknown): unknown {
+  if (value === undefined) return null;
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value) || value instanceof Date || ArrayBuffer.isView(value)) {
+    return value;
+  }
+  return JSON.stringify(value);
+}
+
+/**
+ * `undefined` → `null` en los parámetros que van a postgres.js.
+ *
+ * pg-boss arma el arreglo de `insertJob` con huecos: cuando no se pasa
+ * `retryDelay`, `retryBackoff` ni los `*Default` de la config, esas posiciones
+ * quedan literalmente `undefined`, y el SQL las resuelve con `COALESCE`.
+ * `pg` manda `NULL` por un `undefined`; **postgres.js tira
+ * `UNDEFINED_VALUE: Undefined values are not allowed`** y aborta la consulta.
+ *
+ * Sin esta normalización, todo `enqueue` dentro de una transacción de
+ * postgres.js —o sea, toda la ruta de IMPL §2.3, que es la razón de ADR-005—
+ * fallaba con `provider_unavailable`. No lo veía nadie porque los tests de
+ * transacción anteriores usaban el ejecutor interno de pg-boss, que corre
+ * sobre `pg`. Lo encontró `pg-boss-transaction.int.test.ts`.
+ */
+function nullifyUndefined(value: unknown): unknown {
+  return value === undefined ? null : value;
 }

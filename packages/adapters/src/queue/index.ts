@@ -12,7 +12,7 @@
 import PgBoss from "pg-boss";
 import { PgBossQueue, type PgBossLike, type PgBossQueueConfig } from "./pg-boss-queue.js";
 
-export { PgBossQueue } from "./pg-boss-queue.js";
+export { drizzleTransactionToExecutor, PgBossQueue } from "./pg-boss-queue.js";
 export type {
   PgBossJobRow,
   PgBossLike,
