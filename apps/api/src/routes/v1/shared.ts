@@ -134,30 +134,3 @@ export function idempotencyKeyOf(headers: Record<string, unknown>): string {
   const raw = headers["idempotency-key"];
   return typeof raw === "string" ? raw : "";
 }
-
-/**
- * Rechazo explícito de un filtro que el servidor todavía no puede aplicar.
- *
- * `ListOptions.where` de los repositorios pide un `SQL` de Drizzle, y `drizzle-orm` no
- * es alcanzable desde `apps/api` (ver el reporte). Hasta que `packages/db` exponga
- * filtros tipados, `GET /content?type=`, `GET /media?type=` y `GET /posts?status=` no
- * pueden honrarse.
- *
- * **Se rechaza en vez de ignorarse**, y la diferencia importa: un filtro ignorado
- * devuelve `200` con filas que el cliente no pidió, y el cliente las muestra como si
- * hubieran pasado el filtro. Un `400` es visible, se arregla y no corrompe nada.
- * `bad_request` es un código del PRD; el `details` dice exactamente qué falta.
- */
-export function unsupportedFilter(
-  reply: FastifyReply,
-  route: string,
-  params: readonly string[],
-): FastifyReply {
-  return reply.status(400).send({
-    error: {
-      code: "bad_request",
-      message: `Filtering is not supported yet on ${route}.`,
-      details: { unsupportedParams: [...params] },
-    },
-  });
-}

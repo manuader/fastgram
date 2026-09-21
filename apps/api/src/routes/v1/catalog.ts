@@ -1,30 +1,33 @@
 /**
  * Recursos de sólo lectura — `GET /connections`, `GET /warmed-accounts`,
- * `GET /tiktok/sounds`.
+ * `GET /tiktok/sounds`, `GET /audio`.
  *
- * Fuente: PRD §9.3, DATA-016, FR-130, F-159, §9.10.
+ * Fuente: PRD §9.3, DATA-016, DATA-012, FR-053, FR-130, F-159, §9.10.
  *
- * ## Qué falta acá y por qué
+ * ## `GET /audio` es la única ruta de la v1 que lee sin `companyId`
  *
- * `GET /audio` **no está implementado**, y el motivo no es la escritura: `audio_tracks`
- * es un catálogo **global** (DATA-012, literal del PRD: *"Global, no por workspace"*),
- * así que no tiene `companyId` y por lo tanto **no tiene repositorio** — los 28 son
- * company-scoped por construcción. Hace falta un repositorio de catálogo, sin scope y
- * declarado como tal.
+ * No es un descuido: `audio_tracks` es un catálogo **global** (DATA-012, literal del
+ * PRD: *"Global, no por workspace"*), no tiene la columna, no tiene política RLS por
+ * compañía y su repositorio —`audioTrackRepository`, el único sin scope del sistema—
+ * tampoco lleva `TenantScope` en la firma. Si alguna vez aparece otra llamada a datos
+ * sin `companyId`, lo probable es que sea un bug y no una segunda excepción: la
+ * cabecera de `repositories/catalog.ts` dice qué dos pruebas tiene que pasar.
  */
 import {
   WARMED_ACCOUNTS_MAX_VISIBLE,
+  listAudioQuerySchema,
   listTiktokSoundsQuerySchema,
 } from "@fastgram/contracts";
 import {
+  audioTrackRepository,
   connectionRepository,
   replacementDecisionRepository,
   warmedAccountRepository,
   warmedSlotBalanceRepository,
 } from "@fastgram/db";
 
-import { toConnection } from "../../support/serializers.js";
-import { crossTenant, data } from "./shared.js";
+import { toAudioTrack, toConnection } from "../../support/serializers.js";
+import { crossTenant, data, page } from "./shared.js";
 import type { ZodApp } from "../../server/types.js";
 
 export function registerCatalogRoutes(app: ZodApp): void {
@@ -136,4 +139,27 @@ export function registerCatalogRoutes(app: ZodApp): void {
       });
     },
   );
+
+  // ── GET /audio ──
+  // `for` es **obligatorio** y lo impone el contrato (`listAudioQuerySchema`), no esta
+  // ruta. FR-053 observó dos catálogos con nombres de otra naturaleza —archivos
+  // (`western.mp3`) en Wall of Text, descripciones (`beat drop`) en Video Hook— y el
+  // PRD lo cierra con *"curado por tipo de contenido"*. Sin `for`, la respuesta sería
+  // una mezcla que ninguna pantalla del producto muestra: el modal `Select Audio` se
+  // abre siempre desde un formato concreto.
+  app.get("/audio", { schema: { querystring: listAudioQuerySchema } }, async (request) => {
+    const q = request.query;
+
+    // Sin `TenantScope`: ver la cabecera. `request.tx` se usa igual porque es el único
+    // camino soportado para hablar con la base desde una ruta, y porque deja la lectura
+    // del catálogo en la misma transacción que cualquier otra del request.
+    const result = await request.tx((tx) =>
+      audioTrackRepository.list(tx, {
+        library: q.for,
+        limit: q.limit,
+        ...(q.cursor === undefined ? {} : { cursor: q.cursor }),
+      }),
+    );
+    return page(result, toAudioTrack);
+  });
 }
