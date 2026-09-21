@@ -143,6 +143,46 @@ mismoNumero("strokeWidth máximo (PRD FR-051)", [
   ["services/render/src/domain/text.ts", "STROKE_WIDTH_MAX"],
 ]);
 
+// El `limit` de la paginación estaba escrito **tres** veces: `contracts` (que
+// valida el query param), `db` (que lo aplica) y un tercer módulo en `apps/api`
+// que se borró en `P1-DATA-015`. Los tres coincidían por suerte. Lo que hace
+// falsa la sensación de seguridad es que el que valida y el que aplica son
+// distintos: si `contracts` acepta 200 y `db` clampa a 100, la API responde 100
+// filas a una petición de 200 sin decir que recortó nada.
+mismoNumero("límite mínimo de paginación (PRD §9.10)", [
+  ["packages/contracts/src/primitives/pagination.ts", "PAGINATION_LIMIT_MIN"],
+  ["packages/db/src/limits.ts", "limitMin"],
+]);
+
+mismoNumero("límite máximo de paginación (PRD §9.10)", [
+  ["packages/contracts/src/primitives/pagination.ts", "PAGINATION_LIMIT_MAX"],
+  ["packages/db/src/limits.ts", "limitMax"],
+]);
+
+mismoNumero("límite por defecto de paginación (PRD §9.10)", [
+  ["packages/contracts/src/primitives/pagination.ts", "PAGINATION_LIMIT_DEFAULT"],
+  ["packages/db/src/limits.ts", "limitDefault"],
+]);
+
+// Las cajas de texto tienen sus rangos como CHECK en la base, como validación
+// en el contrato y como aritmética en el motor de render. La base es la que
+// falla más tarde y peor: un `widthPercent` que el contrato acepta y el CHECK
+// rechaza sale como error de base en medio de un build, no como 400.
+mismoNumero("texto de caja, máximo de caracteres (PRD FR-051)", [
+  ["packages/contracts/src/resources/content.ts", "TEXT_BOX_MAX_LENGTH"],
+  ["packages/db/src/limits.ts", "textMaxChars"],
+]);
+
+mismoNumero("widthPercent mínimo, contrato contra base (PRD FR-051)", [
+  ["packages/contracts/src/resources/content.ts", "TEXT_WIDTH_PERCENT_MIN"],
+  ["packages/db/src/limits.ts", "widthPercentMin"],
+]);
+
+mismoNumero("fontSize máximo, contrato contra base (PRD FR-051)", [
+  ["packages/contracts/src/resources/content.ts", "FONT_SIZE_MAX"],
+  ["packages/db/src/limits.ts", "fontSizeMax"],
+]);
+
 mismoNumero("generaciones en vuelo (PRD FR-090)", [
   ["packages/core/src/quota/plans.ts", "inFlightGenerations"],
   ["apps/worker/src/jobs/catalog.ts", "concurrency"],
