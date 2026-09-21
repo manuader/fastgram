@@ -66,7 +66,11 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P0-REPO-012** `docker-compose` de desarrollo: Postgres + MinIO (S3 local) + el servicio de visión
 - [ ] **P0-REPO-013** **Los paquetes internos exportan `.ts` crudo: `node dist/main.js` no puede funcionar** · ⚠️ bloquea cualquier deploy
   > Descubierto el 2026-09-21 al construir `services/render`. Todos los `packages/*` apuntan `main` y `exports` a `src/*.ts`. Bajo `tsx` anda; compilado no: `tsc` emite sólo los archivos de la app, y Node **no puede importar `.ts` desde `node_modules`** (el stripping nativo está explícitamente prohibido ahí). Hoy `pnpm build` "pasa" y el binario resultante no arranca.
-  > Salida sin dependencias nuevas: cada paquete emite `dist` y usa `exports` condicional (`development` → `src`, `default` → `dist`), con `--conditions development` en test y dev. Toca ~7 `package.json` y los `vitest.config.ts`, así que va en un cambio propio, **verificado corriendo `node dist/main.js` de verdad** — no con que `tsc` no se queje.
+  > Salida: cada paquete emite `dist` con un `build`, y `exports` apunta ahí. `turbo.json` ya declara `test` y `typecheck` con `dependsOn: ["^build"]`, así que la secuencia ya está resuelta — el costo es un bucle de desarrollo más lento, mitigable con `tsc -b --watch`.
+  >
+  > **Complicación conocida, no la redescubras:** `packages/db` quitó las extensiones `.js` de todos sus imports relativos porque drizzle-kit carga el schema por CJS y `./x.js` no resuelve a `./x.ts`. Sin esas extensiones, el `dist` emitido como ESM **no resuelve en Node en runtime**. Las tres salidas: (a) restituir `.js` y buscarle otra vía a drizzle-kit, (b) empaquetar el `dist` de `db` en un solo archivo con esbuild —que ya está instalado transitivamente, pero habría que declararlo—, o (c) emitir CJS sólo para `db`. Ninguna es gratis; elegir a propósito.
+  >
+  > Se cierra **corriendo `node dist/main.js` de verdad**, no con que `tsc` no se queje.
 
 ---
 
