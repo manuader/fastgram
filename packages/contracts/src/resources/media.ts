@@ -16,9 +16,9 @@ import {
   mediaStatusSchema,
   mediaTypeSchema,
   videoMediaCategorySchema,
-} from "../primitives/enums";
-import { mediaIdSchema, msEpochSchema, uploadIdSchema } from "../primitives/ids";
-import { cursorQuerySchema } from "../primitives/pagination";
+} from "../primitives/enums.js";
+import { mediaIdSchema, msEpochSchema, uploadIdSchema } from "../primitives/ids.js";
+import { cursorQuerySchema } from "../primitives/pagination.js";
 
 /** FR-100 (PRD:1621) — "`0 selected (need 5 more)`" fija el mínimo de un set. */
 export const MEDIA_SET_MIN_ASSETS = 5;

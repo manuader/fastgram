@@ -15,27 +15,27 @@
  */
 
 // Primitivas compartidas
-export * from "./primitives/ids";
-export * from "./primitives/errors";
-export * from "./primitives/envelope";
-export * from "./primitives/pagination";
-export * from "./primitives/idempotency";
-export * from "./primitives/enums";
-export * from "./primitives/uploads";
+export * from "./primitives/ids.js";
+export * from "./primitives/errors.js";
+export * from "./primitives/envelope.js";
+export * from "./primitives/pagination.js";
+export * from "./primitives/idempotency.js";
+export * from "./primitives/enums.js";
+export * from "./primitives/uploads.js";
 
 // Un módulo por recurso
-export * from "./resources/blitz";
-export * from "./resources/angles";
-export * from "./resources/influencers";
-export * from "./resources/media";
-export * from "./resources/content";
-export * from "./resources/posts";
-export * from "./resources/analytics";
-export * from "./resources/connections";
-export * from "./resources/warmed-accounts";
-export * from "./resources/audio";
-export * from "./resources/tiktok-sounds";
-export * from "./resources/brand";
+export * from "./resources/blitz.js";
+export * from "./resources/angles.js";
+export * from "./resources/influencers.js";
+export * from "./resources/media.js";
+export * from "./resources/content.js";
+export * from "./resources/posts.js";
+export * from "./resources/analytics.js";
+export * from "./resources/connections.js";
+export * from "./resources/warmed-accounts.js";
+export * from "./resources/audio.js";
+export * from "./resources/tiktok-sounds.js";
+export * from "./resources/brand.js";
 
 // OpenAPI
-export * from "./openapi";
+export * from "./openapi.js";

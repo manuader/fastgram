@@ -15,10 +15,10 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-import { softDelete, timestamps } from "./_shared";
-import { companyRef } from "./identity";
-import { contentStatusEnum, contentTypeEnum } from "./enums";
-import { CONTENT_TEXT_BOX, CONTENT_LIMITS } from "../limits";
+import { softDelete, timestamps } from "./_shared.js";
+import { companyRef } from "./identity.js";
+import { contentStatusEnum, contentTypeEnum } from "./enums.js";
+import { CONTENT_TEXT_BOX, CONTENT_LIMITS } from "../limits.js";
 
 /**
  * DATA-008 — `Content`.

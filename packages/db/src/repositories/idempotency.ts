@@ -15,9 +15,9 @@
 
 import { and, eq, sql } from "drizzle-orm";
 
-import type { Executor } from "../client";
-import { idempotencyRecords } from "../schema/platform";
-import type { TenantScope } from "./base";
+import type { Executor } from "../client.js";
+import { idempotencyRecords } from "../schema/platform.js";
+import type { TenantScope } from "./base.js";
 
 export type IdempotencyRow = typeof idempotencyRecords.$inferSelect;
 

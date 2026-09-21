@@ -12,7 +12,7 @@ import { dirname, resolve } from "node:path";
 
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 
-import { createDb, type Database } from "./client";
+import { createDb, type Database } from "./client.js";
 
 /** `packages/db/drizzle`, resuelto relativo a este archivo y no al cwd. */
 export const MIGRATIONS_FOLDER = resolve(

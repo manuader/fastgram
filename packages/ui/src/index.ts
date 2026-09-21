@@ -1,3 +1,19 @@
+/**
+ * `@fastgram/ui` es **el único paquete que exporta `.ts` crudo**, y es a propósito.
+ *
+ * `P0-REPO-013` hizo que todos los demás emitan `dist`, porque Node no puede
+ * importar `.ts` desde `node_modules` y sin eso el binario compilado no arranca.
+ * Acá no aplica: el único consumidor es `apps/web`, que es Next.js y **empaqueta**
+ * — nunca hay un `import` de este paquete resolviéndose en Node en runtime.
+ *
+ * Emitirlo igual costaría un paso de build por cambio de componente y no compraría
+ * nada: con `jsx: "preserve"` la salida son `.jsx` que igual necesitan un bundler,
+ * y cambiar a `react-jsx` sólo para el `dist` haría que lo que se testea y lo que
+ * se sirve pasen por transformaciones distintas.
+ *
+ * Si algún día un proceso de Node importa esto, deja de ser la excepción.
+ */
+
 export { cn } from "./cn.js";
 
 /* ------------------------------------------------------------------ copy */

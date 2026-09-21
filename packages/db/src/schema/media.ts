@@ -5,16 +5,16 @@
 import { sql } from "drizzle-orm";
 import { index, integer, pgTable, real, text, uuid } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, softDelete, tsColumn, timestamps } from "./_shared";
-import { companyRef } from "./identity";
-import { influencers } from "./influencers";
+import { createdAtOnly, softDelete, tsColumn, timestamps } from "./_shared.js";
+import { companyRef } from "./identity.js";
+import { influencers } from "./influencers.js";
 import {
   audioLibraryEnum,
   mediaOriginEnum,
   mediaSetKindEnum,
   mediaStatusEnum,
   mediaTypeEnum,
-} from "./enums";
+} from "./enums.js";
 
 /**
  * DATA-010 — `Media`.

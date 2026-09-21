@@ -21,14 +21,14 @@ import {
   textAlignSchema,
   textBackgroundStyleSchema,
   FONT_WEIGHTS,
-} from "../primitives/enums";
+} from "../primitives/enums.js";
 import {
   contentIdSchema,
   msEpochSchema,
   textBoxIdSchema,
   uploadIdSchema,
-} from "../primitives/ids";
-import { cursorQuerySchema } from "../primitives/pagination";
+} from "../primitives/ids.js";
+import { cursorQuerySchema } from "../primitives/pagination.js";
 
 // --- Números del PRD ---------------------------------------------------------
 

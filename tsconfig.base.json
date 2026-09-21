@@ -3,6 +3,30 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
+      "@fastgram/core": [
+        "packages/core/src/index.ts"
+      ],
+      "@fastgram/ports": [
+        "packages/ports/src/index.ts"
+      ],
+      "@fastgram/adapters": [
+        "packages/adapters/src/index.ts"
+      ],
+      "@fastgram/db": [
+        "packages/db/src/index.ts"
+      ],
+      "@fastgram/db/schema": [
+        "packages/db/src/schema/index.ts"
+      ],
+      "@fastgram/contracts": [
+        "packages/contracts/src/index.ts"
+      ],
+      "@fastgram/ui": [
+        "packages/ui/src/index.ts"
+      ],
+      "@fastgram/config/env": [
+        "packages/config/src/env.ts"
+      ],
       "@fastgram/core/*": [
         "packages/core/src/*"
       ],

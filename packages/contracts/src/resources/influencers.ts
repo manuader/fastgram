@@ -9,8 +9,8 @@
  * reserve créditos dos veces.
  */
 import { z } from "zod";
-import { influencerStatusSchema } from "../primitives/enums";
-import { influencerIdSchema, msEpochSchema, uploadIdSchema } from "../primitives/ids";
+import { influencerStatusSchema } from "../primitives/enums.js";
+import { influencerIdSchema, msEpochSchema, uploadIdSchema } from "../primitives/ids.js";
 
 // --- Números del PRD ---------------------------------------------------------
 

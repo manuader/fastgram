@@ -10,7 +10,7 @@ import {
   settingsApplicationSchema,
   textStyleWeightsSchema,
   updateBlitzPreferencesRequestSchema,
-} from "./blitz";
+} from "./blitz.js";
 
 const mix = {
   slideshowWeight: 45,

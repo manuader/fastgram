@@ -8,7 +8,7 @@ import {
   errorEnvelopeSchema,
   insufficientCreditsDetailsSchema,
   rateLimitedDetailsSchema,
-} from "./errors";
+} from "./errors.js";
 
 describe("sobre de error · PRD:2257 §9.3", () => {
   it("acepta la forma literal de FR-180 (PRD:1863), sin `details`", () => {

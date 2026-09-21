@@ -12,7 +12,7 @@ import {
   INFLUENCER_PROGRESS_MAX,
   INFLUENCER_PROGRESS_MIN,
   MAX_ACTIVE_INFLUENCERS_PER_WORKSPACE,
-} from "./influencers";
+} from "./influencers.js";
 
 const valid = { name: "Ella", gender: "woman", ethnicity: "White" };
 

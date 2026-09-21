@@ -64,13 +64,11 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P0-REPO-010** `CLAUDE.md` con las reglas del repo y el protocolo de handoff
 - [x] **P0-REPO-011** Plantilla de PR que exige el ID de tarea y la checklist de DoD
 - [x] **P0-REPO-012** `docker-compose` de desarrollo: Postgres + MinIO (S3 local) + el servicio de visión
-- [ ] **P0-REPO-013** **Los paquetes internos exportan `.ts` crudo: `node dist/main.js` no puede funcionar** · ⚠️ bloquea cualquier deploy
-  > Descubierto el 2026-09-21 al construir `services/render`. Todos los `packages/*` apuntan `main` y `exports` a `src/*.ts`. Bajo `tsx` anda; compilado no: `tsc` emite sólo los archivos de la app, y Node **no puede importar `.ts` desde `node_modules`** (el stripping nativo está explícitamente prohibido ahí). Hoy `pnpm build` "pasa" y el binario resultante no arranca.
-  > Salida: cada paquete emite `dist` con un `build`, y `exports` apunta ahí. `turbo.json` ya declara `test` y `typecheck` con `dependsOn: ["^build"]`, así que la secuencia ya está resuelta — el costo es un bucle de desarrollo más lento, mitigable con `tsc -b --watch`.
-  >
-  > **Complicación conocida, no la redescubras:** `packages/db` quitó las extensiones `.js` de todos sus imports relativos porque drizzle-kit carga el schema por CJS y `./x.js` no resuelve a `./x.ts`. Sin esas extensiones, el `dist` emitido como ESM **no resuelve en Node en runtime**. Las tres salidas: (a) restituir `.js` y buscarle otra vía a drizzle-kit, (b) empaquetar el `dist` de `db` en un solo archivo con esbuild —que ya está instalado transitivamente, pero habría que declararlo—, o (c) emitir CJS sólo para `db`. Ninguna es gratis; elegir a propósito.
-  >
-  > Se cierra **corriendo `node dist/main.js` de verdad**, no con que `tsc` no se queje.
+- [x] **P0-REPO-013** Los paquetes internos emiten `dist`; `node dist/main.js` arranca
+  > Cerrada como pedía la tarea: **corriendo el binario**, no con que `tsc` no se queje. `GET /health` → 200, `GET /api/v1/content` sin credencial → 401, con credencial → 200, y un `POST /content` que crea la fila **y deja el job en `pgboss.job`**.
+  > **La complicación de `packages/db` tenía una cuarta salida que la tarea no listaba** y es mejor que las tres: apuntar drizzle-kit al **schema compilado** (`dist/schema/index.js`). Verificado — drizzle-kit lo carga sin problema, porque ahí ya es JavaScript. Así `db` y `contracts` pueden llevar `.js` en sus imports como el resto y no hace falta ni bundling ni CJS.
+  > `@fastgram/ui` es la única excepción y sigue exportando fuente: su único consumidor es Next, que empaqueta. La razón está escrita en su `index.ts`.
+  > **Trampa que dejó, y es la parte que casi pasa inadvertida:** con `exports` apuntando a `dist` —que está excluido del cruise— dependency-cruiser dejó de ver el grafo entre paquetes. Las dependencias cruzadas cayeron de 1019 a 949 y **`pnpm boundaries` siguió en verde**, con todas las reglas sin comprobar nada. Se arregla con los alias **pelados** en `tsconfig.base.json` y lo cubre un invariante nuevo de consistencia.
 
 ---
 

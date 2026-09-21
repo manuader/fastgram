@@ -6,11 +6,11 @@
  * más que CRUD (idempotencia, cuotas) agregan métodos, nunca quitan el scope.
  */
 
-export * from "./base";
-export * from "./catalog";
-export * from "./company";
-export * from "./filters";
-export * from "./idempotency";
+export * from "./base.js";
+export * from "./catalog.js";
+export * from "./company.js";
+export * from "./filters.js";
+export * from "./idempotency.js";
 
 import {
   apiKeys,
@@ -40,8 +40,8 @@ import {
   warmedAccounts,
   warmedSlotBalances,
   workspaceMemberships,
-} from "../schema/index";
-import { createCompanyScopedRepository } from "./base";
+} from "../schema/index.js";
+import { createCompanyScopedRepository } from "./base.js";
 
 export const workspaceMembershipRepository = createCompanyScopedRepository({
   table: workspaceMemberships,
@@ -257,4 +257,4 @@ export const judgmentRecordRepository = createCompanyScopedRepository({
   companyId: judgmentRecords.companyId,
   createdAt: judgmentRecords.createdAt,
 });
-export { resolveApiKeyByHash, type ApiKeyBootstrapRow } from "./api-key-bootstrap";
+export { resolveApiKeyByHash, type ApiKeyBootstrapRow } from "./api-key-bootstrap.js";

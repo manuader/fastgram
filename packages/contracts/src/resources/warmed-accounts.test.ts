@@ -6,13 +6,13 @@ import {
   postingAvailabilitySchema,
   warmedAccountCountrySchema,
   warmedAccountSchema,
-} from "./warmed-accounts";
-import { audioTrackSchema, listAudioQuerySchema } from "./audio";
+} from "./warmed-accounts.js";
+import { audioTrackSchema, listAudioQuerySchema } from "./audio.js";
 import {
   listTiktokSoundsQuerySchema,
   SIGNED_PREVIEW_URL_TTL_HOURS,
-} from "./tiktok-sounds";
-import { connectionSchema } from "./connections";
+} from "./tiktok-sounds.js";
+import { connectionSchema } from "./connections.js";
 
 const account = {
   warmedAccountId: "wa_1",

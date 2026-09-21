@@ -17,7 +17,7 @@ import {
   resolveBrandSourceResponseSchema,
   updateBrandSourceRequestSchema,
   updateCompanyProfileRequestSchema,
-} from "./brand";
+} from "./brand.js";
 
 describe("límites de Brand Sources · §9.14 · PRD:2377-2384 (EXTENSION)", () => {
   it("5 fuentes por workspace · PRD:2377", () => {

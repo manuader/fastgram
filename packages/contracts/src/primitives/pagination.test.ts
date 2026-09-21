@@ -4,8 +4,8 @@ import {
   PAGINATION_LIMIT_DEFAULT,
   PAGINATION_LIMIT_MAX,
   PAGINATION_LIMIT_MIN,
-} from "./pagination";
-import { paginatedEnvelope, paginationSchema } from "./envelope";
+} from "./pagination.js";
+import { paginatedEnvelope, paginationSchema } from "./envelope.js";
 import { z } from "zod";
 
 describe("paginación por cursor · PRD:2345 §9.10 y PRD:2730 §12", () => {

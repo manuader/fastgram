@@ -14,9 +14,9 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, softDelete, tsColumn, timestamps } from "./_shared";
-import { companyRef } from "./identity";
-import { banRiskLevelEnum, socialPlatformEnum } from "./enums";
+import { createdAtOnly, softDelete, tsColumn, timestamps } from "./_shared.js";
+import { companyRef } from "./identity.js";
+import { banRiskLevelEnum, socialPlatformEnum } from "./enums.js";
 
 /**
  * DATA-023 — `TrendingItem`.

@@ -7,7 +7,7 @@
  * schema las trata como campo efímero y nada en el contrato invita a guardarlas.
  */
 import { z } from "zod";
-import { tiktokSoundIdSchema, warmedAccountIdSchema } from "../primitives/ids";
+import { tiktokSoundIdSchema, warmedAccountIdSchema } from "../primitives/ids.js";
 
 /** NFR-008 (PRD:2958) — vida de una URL firmada de preview. */
 export const SIGNED_PREVIEW_URL_TTL_HOURS = 1;

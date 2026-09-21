@@ -18,7 +18,7 @@
  *
  * Correr: `node scripts/check-consistency.mjs`
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = new URL("..", import.meta.url).pathname;
@@ -226,6 +226,62 @@ mismoNumero("generaciones en vuelo (PRD FR-090)", [
           `nombres de cola (PRD §9.5) = ${declarados.length} declarados, ${usados.length} consumidos por el catálogo`,
         );
       }
+    }
+  }
+}
+
+/**
+ * Los alias de `tsconfig.base.json` cubren el especificador **pelado**.
+ *
+ * Es el chequeo menos obvio del archivo y el que más silenciosamente se rompe.
+ * `tsconfig.base.json` existe sólo para que dependency-cruiser resuelva los
+ * imports entre paquetes. Desde `P0-REPO-013`, `@fastgram/core` resuelve por
+ * `exports` a `dist/index.js` — y `dist` está en el `exclude` del cruise, así
+ * que depcruise **deja de ver el grafo del otro paquete**: `core-no-npm`,
+ * `ports-no-adapters` y `web-no-db` quedan verdes sin comprobar nada.
+ *
+ * No se puede detectar con una regla de depcruise, porque la arista excluida no
+ * llega a existir. Lo único observable desde adentro es que las dependencias
+ * cruzadas caen —pasó: de 1019 a 949— y el chequeo sigue diciendo que todo está
+ * bien. Por eso se comprueba la causa: que cada paquete con `exports` a `dist`
+ * tenga su alias pelado.
+ */
+{
+  const base = leer("tsconfig.base.json");
+  if (base !== null) {
+    let paths = {};
+    try {
+      paths = JSON.parse(base).compilerOptions?.paths ?? {};
+    } catch {
+      problemas.push("`tsconfig.base.json` no es JSON válido");
+    }
+    const faltantes = [];
+    for (const dir of readdirSync(join(ROOT, "packages"))) {
+      const pkgPath = join(ROOT, "packages", dir, "package.json");
+      let pkg;
+      try {
+        pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+      } catch {
+        continue;
+      }
+      for (const [sub, target] of Object.entries(pkg.exports ?? {})) {
+        const dest = typeof target === "string" ? target : (target?.default ?? "");
+        if (!dest.includes("/dist/")) continue;
+        const spec = sub === "." ? pkg.name : `${pkg.name}/${sub.replace(/^\.\//, "")}`;
+        if (paths[spec] === undefined) faltantes.push(spec);
+      }
+    }
+    if (faltantes.length > 0) {
+      problemas.push(
+        `\`tsconfig.base.json\` no tiene alias para: ${faltantes.join(", ")}. ` +
+          "Sin eso depcruise resuelve a `dist`, que está excluido del cruise, y las " +
+          "reglas de frontera quedan verdes sin mirar nada.",
+      );
+    } else {
+      verificados.push(
+        `alias de resolución para depcruise = ${Object.keys(paths).length} entradas, ` +
+          "todos los `exports` a `dist` cubiertos",
+      );
     }
   }
 }

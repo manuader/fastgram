@@ -6,10 +6,10 @@
  *  2. El acceso cruzado devuelve `null`; el `404` lo traduce la capa de arriba.
  */
 
-export * as schema from "./schema/index";
-export * from "./schema/index";
+export * as schema from "./schema/index.js";
+export * from "./schema/index.js";
 
-export { createDb } from "./client";
+export { createDb } from "./client.js";
 export type {
   CreateDbOptions,
   Database,
@@ -17,15 +17,15 @@ export type {
   Executor,
   Schema,
   Transaction,
-} from "./client";
+} from "./client.js";
 
 export {
   APP_ROLE,
   CURRENT_COMPANY_SETTING,
   withCompany,
   withoutCompany,
-} from "./tenancy";
-export type { WithCompanyOptions } from "./tenancy";
+} from "./tenancy.js";
+export type { WithCompanyOptions } from "./tenancy.js";
 
 export {
   buildPage,
@@ -36,11 +36,11 @@ export {
   fetchLimit,
   InvalidCursorError,
   normalizeLimit,
-} from "./pagination";
-export type { CursorKey, Page, PageRequest, SortDirection } from "./pagination";
+} from "./pagination.js";
+export type { CursorKey, Page, PageRequest, SortDirection } from "./pagination.js";
 
-export * from "./repositories/index";
+export * from "./repositories/index.js";
 
-export * from "./limits";
+export * from "./limits.js";
 
-export { applyMigrations, migrateWithUrl, MIGRATIONS_FOLDER } from "./migrate";
+export { applyMigrations, migrateWithUrl, MIGRATIONS_FOLDER } from "./migrate.js";

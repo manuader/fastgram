@@ -7,8 +7,8 @@
  * (DATA-016, PRD:2111): no aparecen en este schema, que es el contrato público.
  */
 import { z } from "zod";
-import { connectionStatusSchema, platformSchema } from "../primitives/enums";
-import { connectionIdSchema, msEpochSchema } from "../primitives/ids";
+import { connectionStatusSchema, platformSchema } from "../primitives/enums.js";
+import { connectionIdSchema, msEpochSchema } from "../primitives/ids.js";
 
 export const connectionSchema = z
   .object({

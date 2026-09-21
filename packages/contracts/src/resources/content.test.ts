@@ -26,7 +26,7 @@ import {
   updateContentRequestSchema,
   videoHookBuildPayloadSchema,
   wallOfTextBuildPayloadSchema,
-} from "./content";
+} from "./content.js";
 
 const textBox = {
   id: "slide-0-text-0",

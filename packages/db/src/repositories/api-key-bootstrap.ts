@@ -17,7 +17,7 @@
  */
 import { sql } from "drizzle-orm";
 
-import type { Database, Transaction } from "../client";
+import type { Database, Transaction } from "../client.js";
 
 export interface ApiKeyBootstrapRow {
   readonly apiKeyId: string;

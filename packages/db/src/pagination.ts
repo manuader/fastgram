@@ -24,7 +24,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 
-import { PAGINATION } from "./limits";
+import { PAGINATION } from "./limits.js";
 
 export interface CursorKey {
   readonly createdAt: Date;

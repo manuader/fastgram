@@ -25,7 +25,7 @@
 
 import { and, asc, eq, sql, type SQL } from "drizzle-orm";
 
-import type { Executor } from "../client";
+import type { Executor } from "../client.js";
 import {
   buildPage,
   cursorCondition,
@@ -33,9 +33,9 @@ import {
   normalizeLimit,
   type Page,
   type PageRequest,
-} from "../pagination";
-import { audioTracks } from "../schema/index";
-import type { AUDIO_LIBRARY } from "../schema/enums";
+} from "../pagination.js";
+import { audioTracks } from "../schema/index.js";
+import type { AUDIO_LIBRARY } from "../schema/enums.js";
 
 export type AudioLibrary = (typeof AUDIO_LIBRARY)[number];
 export type AudioTrackRow = typeof audioTracks.$inferSelect;

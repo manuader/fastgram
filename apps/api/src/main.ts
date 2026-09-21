@@ -59,7 +59,7 @@ const appRole = env.DATABASE_APP_ROLE === "" ? undefined : env.DATABASE_APP_ROLE
  *    disparar el cron es trabajo del worker. Con esto encendido, cada réplica
  *    de la API haría el mantenimiento en paralelo con todas las demás.
  */
-const { queue, boss } = createPgBossQueue({
+const { queue } = createPgBossQueue({
   connectionString: env.DATABASE_URL,
   schema: env.QUEUE_SCHEMA,
   queues: [...ALL_JOB_QUEUES],
@@ -68,7 +68,15 @@ const { queue, boss } = createPgBossQueue({
   supervise: false,
   schedule: false,
 });
-await boss.start();
+
+// **`queue.start()`, no `boss.start()`.** El adaptador hace las dos cosas: arranca
+// pg-boss y **crea las colas** de `queues`. Arrancando el `boss` pelado, el proceso
+// levanta bien y la primera petición que encola muere con *"Queue must be registered
+// before enqueuing inside a transaction"* — que es correcto, porque dentro de una
+// transacción no hay forma de crear la cola al vuelo. Lo encontré haciendo un
+// `POST /content` contra el binario compilado; los tipos no lo ven, porque las dos
+// llamadas existen.
+await queue.start();
 
 const app = await buildServer({
   deps: {
@@ -100,7 +108,7 @@ try {
   await app.listen({ port: env.API_PORT, host: env.API_HOST });
 } catch (err: unknown) {
   app.log.error(err, "no se pudo abrir el puerto");
-  await boss.stop({ graceful: false });
+  await queue.stop();
   await handle.close();
   process.exit(1);
 }
@@ -126,7 +134,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
         await app.close();
         // La cola después del servidor y antes de la base, por el mismo motivo
         // que el resto del orden: una request en vuelo puede estar encolando.
-        await boss.stop({ graceful: true });
+        await queue.stop();
         await handle.close();
         process.exit(0);
       } catch (err: unknown) {

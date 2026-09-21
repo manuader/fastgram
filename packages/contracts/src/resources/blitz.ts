@@ -12,7 +12,7 @@ import {
   aspectRatioSchema,
   blitzContentTypeSchema,
   genderFilterSchema,
-} from "../primitives/enums";
+} from "../primitives/enums.js";
 
 /**
  * Body de `POST /blitz`. Ambos campos son opcionales: sin `contentType` la cola

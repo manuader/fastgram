@@ -10,7 +10,7 @@ import {
   generateContentAngleRequestSchema,
   generatedContentAngleSchema,
   updateContentAngleRequestSchema,
-} from "./angles";
+} from "./angles.js";
 
 const valid = {
   title: "One Idea, Everywhere",

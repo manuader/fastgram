@@ -15,17 +15,17 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, tsColumn, timestamps } from "./_shared";
-import { companyRef } from "./identity";
-import { contents } from "./content";
+import { createdAtOnly, tsColumn, timestamps } from "./_shared.js";
+import { companyRef } from "./identity.js";
+import { contents } from "./content.js";
 import {
   automationSlotFailureReasonEnum,
   automationSlotStatusEnum,
   automationStatusEnum,
   contentTypeEnum,
   postingModeEnum,
-} from "./enums";
-import { AUTOMATION_LIMITS } from "../limits";
+} from "./enums.js";
+import { AUTOMATION_LIMITS } from "../limits.js";
 
 /** DATA-021 — `Automation`. */
 export const automations = pgTable(

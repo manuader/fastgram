@@ -4,11 +4,15 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./env": "./src/env.ts",
+    "./env": {
+      "types": "./dist/env.d.ts",
+      "default": "./dist/env.js"
+    },
     "./eslint": "./eslint.config.js",
     "./tsconfig/*": "./tsconfig/*"
   },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --passWithNoTests"
   },
@@ -22,5 +26,10 @@
   "devDependencies": {
     "typescript": "catalog:",
     "vitest": "catalog:"
-  }
+  },
+  "files": [
+    "dist",
+    "eslint.config.js",
+    "tsconfig"
+  ]
 }

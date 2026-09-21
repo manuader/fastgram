@@ -16,28 +16,28 @@
  */
 import { z } from "zod";
 
-import { errorEnvelopeSchema } from "./primitives/errors";
-import { paginationSchema } from "./primitives/envelope";
-import { cursorQuerySchema } from "./primitives/pagination";
-import { IDEMPOTENCY_KEY_HEADER } from "./primitives/idempotency";
-import { uploadReservationSchema } from "./primitives/uploads";
-import * as blitz from "./resources/blitz";
-import * as angles from "./resources/angles";
-import * as influencers from "./resources/influencers";
-import * as media from "./resources/media";
-import * as content from "./resources/content";
-import * as posts from "./resources/posts";
-import * as analytics from "./resources/analytics";
-import * as connections from "./resources/connections";
-import * as warmed from "./resources/warmed-accounts";
-import * as audio from "./resources/audio";
-import * as sounds from "./resources/tiktok-sounds";
-import * as brand from "./resources/brand";
+import { errorEnvelopeSchema } from "./primitives/errors.js";
+import { paginationSchema } from "./primitives/envelope.js";
+import { cursorQuerySchema } from "./primitives/pagination.js";
+import { IDEMPOTENCY_KEY_HEADER } from "./primitives/idempotency.js";
+import { uploadReservationSchema } from "./primitives/uploads.js";
+import * as blitz from "./resources/blitz.js";
+import * as angles from "./resources/angles.js";
+import * as influencers from "./resources/influencers.js";
+import * as media from "./resources/media.js";
+import * as content from "./resources/content.js";
+import * as posts from "./resources/posts.js";
+import * as analytics from "./resources/analytics.js";
+import * as connections from "./resources/connections.js";
+import * as warmed from "./resources/warmed-accounts.js";
+import * as audio from "./resources/audio.js";
+import * as sounds from "./resources/tiktok-sounds.js";
+import * as brand from "./resources/brand.js";
 import {
   imageUploadReservationRequestSchema,
   mediaUploadReservationRequestSchema,
   videoUploadReservationRequestSchema,
-} from "./primitives/uploads";
+} from "./primitives/uploads.js";
 
 // ---------------------------------------------------------------------------
 // JSON Schema

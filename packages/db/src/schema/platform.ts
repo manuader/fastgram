@@ -16,13 +16,13 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, tsColumn, timestamps } from "./_shared";
-import { companies, companyRef, users } from "./identity";
+import { createdAtOnly, tsColumn, timestamps } from "./_shared.js";
+import { companies, companyRef, users } from "./identity.js";
 import {
   apiKeyKindEnum,
   idempotencyStateEnum,
   uploadReservationStateEnum,
-} from "./enums";
+} from "./enums.js";
 
 /**
  * DATA-026 — `ApiKey`.

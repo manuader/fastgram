@@ -17,7 +17,7 @@
  * AI-016 (PRD:2559).
  */
 import { z } from "zod";
-import { brandSourceIdSchema, msEpochSchema } from "../primitives/ids";
+import { brandSourceIdSchema, msEpochSchema } from "../primitives/ids.js";
 
 // --- Números del PRD ---------------------------------------------------------
 

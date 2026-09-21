@@ -10,7 +10,11 @@ import { defineConfig } from "drizzle-kit";
 
 export default defineConfig({
   dialect: "postgresql",
-  schema: "./src/schema/index.ts",
+  // El schema **compilado**, no el fuente. drizzle-kit carga por `require` de CJS y
+  // no resuelve `./enums.js` contra `./enums.ts`; los imports relativos llevan `.js`
+  // porque sin eso el `dist` no resuelve en Node (`P0-REPO-013`). El `dist` no tiene
+  // ese conflicto: es JavaScript de verdad. Por eso `db:generate` construye primero.
+  schema: "./dist/schema/index.js",
   out: "./drizzle",
   casing: "snake_case",
   dbCredentials: {

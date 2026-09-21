@@ -14,8 +14,8 @@ import {
   imageContentTypeSchema,
   uploadContentTypeSchema,
   videoContentTypeSchema,
-} from "./enums";
-import { msEpochSchema, uploadIdSchema } from "./ids";
+} from "./enums.js";
+import { msEpochSchema, uploadIdSchema } from "./ids.js";
 
 /** NFR-013 (PRD:2963) — imágenes 10 MB. */
 export const UPLOAD_IMAGE_MAX_MB = 10;

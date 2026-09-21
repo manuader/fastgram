@@ -5,8 +5,8 @@
  * NFR-016 (PRD:2966).
  */
 import { z } from "zod";
-import { msEpochSchema, postIdSchema } from "../primitives/ids";
-import { batchPostIdsSchema } from "./posts";
+import { msEpochSchema, postIdSchema } from "../primitives/ids.js";
+import { batchPostIdsSchema } from "./posts.js";
 
 /** Mismo lote que cancel/delete: dedup y luego cap de 100 (NFR-012, PRD:2962). */
 export const postAnalyticsRequestSchema = z

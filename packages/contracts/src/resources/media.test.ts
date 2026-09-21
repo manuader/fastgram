@@ -7,7 +7,7 @@ import {
   updateImageMediaRequestSchema,
   updateMediaRequestSchema,
   updateVideoMediaRequestSchema,
-} from "./media";
+} from "./media.js";
 
 const image = {
   mediaId: "med_1",

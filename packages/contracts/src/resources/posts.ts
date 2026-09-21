@@ -14,7 +14,7 @@ import {
   postingModeSchema,
   privacyLevelSchema,
   tiktokSoundModeSchema,
-} from "../primitives/enums";
+} from "../primitives/enums.js";
 import {
   connectionIdSchema,
   contentIdSchema,
@@ -22,8 +22,8 @@ import {
   postIdSchema,
   tiktokSoundIdSchema,
   warmedAccountIdSchema,
-} from "../primitives/ids";
-import { cursorQuerySchema } from "../primitives/pagination";
+} from "../primitives/ids.js";
+import { cursorQuerySchema } from "../primitives/pagination.js";
 
 // --- Números del PRD ---------------------------------------------------------
 

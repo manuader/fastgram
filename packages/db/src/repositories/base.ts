@@ -31,7 +31,7 @@ import {
 } from "drizzle-orm";
 import type { PgColumn, PgTable, PgUpdateSetSource } from "drizzle-orm/pg-core";
 
-import type { Executor } from "../client";
+import type { Executor } from "../client.js";
 import {
   buildOffsetPage,
   buildPage,
@@ -45,8 +45,8 @@ import {
   type OffsetPageRequest,
   type Page,
   type PageRequest,
-} from "../pagination";
-import { compileFilter, type RowFilter } from "./filters";
+} from "../pagination.js";
+import { compileFilter, type RowFilter } from "./filters.js";
 
 /** Lo único que abre la puerta a los datos de un workspace. */
 export interface TenantScope {

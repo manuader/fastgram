@@ -5,7 +5,7 @@
  * Fuente: FR-056 (PRD:1298-1324) y DATA-005 (PRD:2062).
  */
 import { z } from "zod";
-import { angleIdSchema, influencerIdSchema, msEpochSchema } from "../primitives/ids";
+import { angleIdSchema, influencerIdSchema, msEpochSchema } from "../primitives/ids.js";
 
 // --- Números del PRD, cada uno con su test -----------------------------------
 

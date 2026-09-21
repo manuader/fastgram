@@ -16,10 +16,10 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, tsColumn, timestamps } from "./_shared";
-import { companyRef, users } from "./identity";
-import { contents } from "./content";
-import { automationSlots } from "./automations";
+import { createdAtOnly, tsColumn, timestamps } from "./_shared.js";
+import { companyRef, users } from "./identity.js";
+import { contents } from "./content.js";
+import { automationSlots } from "./automations.js";
 import {
   captionAdjustmentReasonEnum,
   connectionStatusEnum,
@@ -35,7 +35,7 @@ import {
   tiktokSoundModeEnum,
   warmedCountryEnum,
   warmedPlatformEnum,
-} from "./enums";
+} from "./enums.js";
 
 /**
  * DATA-016 — `Connection` (OAuth).

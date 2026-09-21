@@ -7,9 +7,9 @@
  * tipo de contenido. El Media Bank no acepta subidas de audio (PRD:1232).
  */
 import { z } from "zod";
-import { audioLibrarySchema } from "../primitives/enums";
-import { audioIdSchema } from "../primitives/ids";
-import { cursorQuerySchema } from "../primitives/pagination";
+import { audioLibrarySchema } from "../primitives/enums.js";
+import { audioIdSchema } from "../primitives/ids.js";
+import { cursorQuerySchema } from "../primitives/pagination.js";
 
 /** `for` es obligatorio: los dos catálogos son distintos (FR-053, PRD:1232). */
 export const listAudioQuerySchema = cursorQuerySchema

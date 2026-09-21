@@ -7,8 +7,8 @@
  * listado es el único de la v1 que **no** pagina por cursor.
  */
 import { z } from "zod";
-import { warmedPlatformSchema } from "../primitives/enums";
-import { msEpochSchema, warmedAccountIdSchema } from "../primitives/ids";
+import { warmedPlatformSchema } from "../primitives/enums.js";
+import { msEpochSchema, warmedAccountIdSchema } from "../primitives/ids.js";
 
 /** FR-130 (PRD:1695) — tope de cuentas devueltas. */
 export const WARMED_ACCOUNTS_MAX_VISIBLE = 100;

@@ -15,16 +15,16 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, tsColumn, timestamps } from "./_shared";
-import { companyRef } from "./identity";
-import { connections } from "./publishing";
+import { createdAtOnly, tsColumn, timestamps } from "./_shared.js";
+import { companyRef } from "./identity.js";
+import { connections } from "./publishing.js";
 import {
   acquisitionTierEnum,
   brandSourceFailureReasonEnum,
   brandSourceStatusEnum,
   brandSourceTypeEnum,
   companyProfileStatusEnum,
-} from "./enums";
+} from "./enums.js";
 
 /**
  * DATA-004 — `CompanyProfile` (Brand). 1:1 con company.

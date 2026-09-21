@@ -19,14 +19,14 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, timestamps } from "./_shared";
+import { createdAtOnly, timestamps } from "./_shared.js";
 import {
   companyStatusEnum,
   membershipRoleEnum,
   membershipStatusEnum,
   subscriptionStatusEnum,
   userDeletionStatusEnum,
-} from "./enums";
+} from "./enums.js";
 
 /**
  * DATA-001 — `User`. **Global, no workspace-scoped**: un usuario pertenece a N

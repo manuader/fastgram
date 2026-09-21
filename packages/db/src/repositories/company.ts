@@ -37,9 +37,9 @@
 
 import { eq } from "drizzle-orm";
 
-import type { Executor } from "../client";
-import { companies } from "../schema/index";
-import type { TenantScope } from "./base";
+import type { Executor } from "../client.js";
+import { companies } from "../schema/index.js";
+import type { TenantScope } from "./base.js";
 
 export type CompanyRow = typeof companies.$inferSelect;
 

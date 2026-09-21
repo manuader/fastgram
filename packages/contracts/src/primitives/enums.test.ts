@@ -33,7 +33,7 @@ import {
   videoContentTypeSchema,
   videoMediaCategorySchema,
   warmedPlatformSchema,
-} from "./enums";
+} from "./enums.js";
 
 describe("enums literales del PRD", () => {
   it("contentType · FR-050 Validation · PRD:1129", () => {

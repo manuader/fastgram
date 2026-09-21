@@ -15,10 +15,10 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, timestamps } from "./_shared";
-import { companyRef } from "./identity";
-import { influencerAssetKindEnum, influencerStatusEnum } from "./enums";
-import { INFLUENCER_LIMITS } from "../limits";
+import { createdAtOnly, timestamps } from "./_shared.js";
+import { companyRef } from "./identity.js";
+import { influencerAssetKindEnum, influencerStatusEnum } from "./enums.js";
+import { INFLUENCER_LIMITS } from "../limits.js";
 
 /** DATA-013 — `Influencer`. Cap: 50 activos por workspace (se aplica en el repo). */
 export const influencers = pgTable(

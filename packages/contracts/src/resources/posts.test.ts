@@ -13,7 +13,7 @@ import {
   postStatusFilterSchema,
   scheduleContentRequestSchema,
   tiktokScheduleTargetSchema,
-} from "./posts";
+} from "./posts.js";
 
 describe("límites de copy por plataforma · F-153 · PRD:621", () => {
   it("Instagram caption ≤ 2200 · PRD:1351", () => {

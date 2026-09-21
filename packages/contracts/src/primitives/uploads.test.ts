@@ -9,7 +9,7 @@ import {
   UPLOAD_INFLUENCER_BASE_IMAGE_MAX_MB,
   UPLOAD_VIDEO_MAX_MB,
   videoUploadReservationRequestSchema,
-} from "./uploads";
+} from "./uploads.js";
 
 describe("límites de subida · NFR-013 · PRD:2963", () => {
   it("imágenes 10 MB, videos 50 MB, base image de influencer 10 MB", () => {

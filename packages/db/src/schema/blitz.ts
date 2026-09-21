@@ -15,16 +15,16 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, timestamps } from "./_shared";
-import { companyRef } from "./identity";
-import { influencers } from "./influencers";
-import { trendingItems } from "./discovery";
+import { createdAtOnly, timestamps } from "./_shared.js";
+import { companyRef } from "./identity.js";
+import { influencers } from "./influencers.js";
+import { trendingItems } from "./discovery.js";
 import {
   genderFilterEnum,
   suggestionContentTypeEnum,
   suggestionStatusEnum,
-} from "./enums";
-import { BLITZ_PREFERENCES_LIMITS, CONTENT_ANGLE_LIMITS } from "../limits";
+} from "./enums.js";
+import { BLITZ_PREFERENCES_LIMITS, CONTENT_ANGLE_LIMITS } from "../limits.js";
 
 /**
  * DATA-005 — `ContentAngle`.
