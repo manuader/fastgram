@@ -1,3 +1,5 @@
+import { JOB_QUEUES, type JobQueueName } from "@fastgram/core";
+
 /**
  * Catálogo de jobs — PRD §9.5.
  *
@@ -12,6 +14,12 @@
  *
  * Estas políticas son la especificación, no la implementación: el adaptador
  * de `Queue` las traduce a lo que su motor entienda.
+ *
+ * **Los nombres no viven acá.** Vienen de `JOB_QUEUES` en `@fastgram/core`,
+ * porque el nombre es contrato con el productor —que es la API, otro proceso—
+ * y un literal escrito de los dos lados ya había divergido una vez
+ * (`build-content` contra `content-build`). Lo que sí vive acá es la política,
+ * que es asunto del consumidor.
  */
 
 /** Cómo espaciar los reintentos. */
@@ -23,7 +31,7 @@ export type BackoffKind =
 
 export interface JobPolicy {
   /** Nombre en la cola. Es contrato entre productor y consumidor. */
-  readonly name: string;
+  readonly name: JobQueueName;
   /** Qué hace, en una línea. */
   readonly what: string;
   /** Dónde lo especifica el PRD. */
@@ -68,7 +76,7 @@ export interface JobPolicy {
  */
 export const JOB_CATALOG = {
   websiteAnalysis: {
-    name: "website-analysis",
+    name: JOB_QUEUES.websiteAnalysis,
     what: "Scraping + LLM → Company Profile, en el alta.",
     prd: "§9.5.1, FR-010",
     maxAttempts: 3,
@@ -79,7 +87,7 @@ export const JOB_CATALOG = {
     idempotent: true,
   },
   discoveryRefill: {
-    name: "discovery-refill",
+    name: JOB_QUEUES.discoveryRefill,
     what: "Mantiene ~5 sugerencias en la cola de Blitz.",
     prd: "§9.5.2, AI-002",
     maxAttempts: 3,
@@ -93,7 +101,7 @@ export const JOB_CATALOG = {
     idempotent: true,
   },
   contentBuild: {
-    name: "content-build",
+    name: JOB_QUEUES.contentBuild,
     what: "Compone imágenes, renderiza video, dibuja overlays y sube a storage.",
     prd: "§9.5.3, FR-050",
     maxAttempts: 3,
@@ -107,7 +115,7 @@ export const JOB_CATALOG = {
     idempotent: true,
   },
   contentRebuild: {
-    name: "content-rebuild",
+    name: JOB_QUEUES.contentRebuild,
     what: "Reconstruye tras una edición o una regeneración.",
     prd: "§9.5.4, FR-051",
     maxAttempts: 3,
@@ -118,7 +126,7 @@ export const JOB_CATALOG = {
     idempotent: true,
   },
   influencerPipeline: {
-    name: "influencer-pipeline",
+    name: JOB_QUEUES.influencerPipeline,
     what: "Genera variaciones y entrena el LoRA del personaje. Reporta progress.",
     prd: "§9.5.5, FR-080",
     // Sólo 2 intentos: cuesta 250 créditos y 15–20 minutos de GPU, que es el
@@ -133,7 +141,7 @@ export const JOB_CATALOG = {
     idempotent: true,
   },
   aiStudioGeneration: {
-    name: "ai-studio-generation",
+    name: JOB_QUEUES.aiStudioGeneration,
     what: "Genera imágenes o video de AI Studio.",
     prd: "§9.5.6, FR-090",
     maxAttempts: 2,
@@ -147,7 +155,7 @@ export const JOB_CATALOG = {
     idempotent: true,
   },
   mediaNormalization: {
-    name: "media-normalization",
+    name: JOB_QUEUES.mediaNormalization,
     what: "MOV→MP4, HDR→SDR, faststart.",
     prd: "§9.5.7, NFR-014",
     maxAttempts: 3,
@@ -158,7 +166,7 @@ export const JOB_CATALOG = {
     idempotent: true,
   },
   publishing: {
-    name: "publishing",
+    name: JOB_QUEUES.publishing,
     what: "Ejecuta el post a la hora programada.",
     prd: "§9.5.8, FR-060",
     // UNO SOLO. Publicar no es idempotente del lado de la plataforma: un
@@ -173,7 +181,7 @@ export const JOB_CATALOG = {
     idempotent: false,
   },
   tiktokSlowLaneWatcher: {
-    name: "tiktok-slow-lane-watcher",
+    name: JOB_QUEUES.tiktokSlowLaneWatcher,
     what: "Vigila un post en el carril lento de TikTok hasta que aparece.",
     prd: "§9.5.9, INT-001",
     // El PRD: hasta 72 HORAS. TikTok puede tardar 24–48 h en publicar del
@@ -187,7 +195,7 @@ export const JOB_CATALOG = {
     idempotent: true,
   },
   metricsSync: {
-    name: "metrics-sync",
+    name: JOB_QUEUES.metricsSync,
     what: "Refresca views, likes y comments por post.",
     prd: "§9.5.10, FR-120",
     maxAttempts: 3,
@@ -198,7 +206,7 @@ export const JOB_CATALOG = {
     idempotent: true,
   },
   automationGeneration: {
-    name: "automation-generation",
+    name: JOB_QUEUES.automationGeneration,
     what: "Genera los slots de una automation.",
     prd: "§9.5.11, FR-150",
     maxAttempts: 3,
@@ -209,7 +217,7 @@ export const JOB_CATALOG = {
     idempotent: true,
   },
   automationBuildSchedule: {
-    name: "automation-build-schedule",
+    name: JOB_QUEUES.automationBuildSchedule,
     what: "Construye y programa los slots tras el launch.",
     prd: "§9.5.12, FR-150",
     maxAttempts: 3,
@@ -220,7 +228,7 @@ export const JOB_CATALOG = {
     idempotent: true,
   },
   redditLeadDiscovery: {
-    name: "reddit-lead-discovery",
+    name: JOB_QUEUES.redditLeadDiscovery,
     what: "Descubre leads en los subreddits configurados.",
     prd: "§9.5.13, FR-140",
     maxAttempts: 5,
@@ -232,7 +240,7 @@ export const JOB_CATALOG = {
     idempotent: true,
   },
   redditThreadMonitoring: {
-    name: "reddit-thread-monitoring",
+    name: JOB_QUEUES.redditThreadMonitoring,
     what: "Verifica el estado de los hilos en los que se respondió.",
     prd: "§9.5.14, FR-140",
     maxAttempts: 3,
@@ -243,7 +251,7 @@ export const JOB_CATALOG = {
     idempotent: true,
   },
   banRiskComputation: {
-    name: "ban-risk-computation",
+    name: JOB_QUEUES.banRiskComputation,
     what: "Recalcula el nivel de riesgo de baneo.",
     prd: "§9.5.15, FR-140",
     maxAttempts: 2,
@@ -254,7 +262,7 @@ export const JOB_CATALOG = {
     idempotent: true,
   },
   warmedAccountProvisioning: {
-    name: "warmed-account-provisioning",
+    name: JOB_QUEUES.warmedAccountProvisioning,
     what: "Orquesta la provisión con el proveedor o el equipo humano.",
     prd: "§9.5.16, FR-130",
     maxAttempts: 3,
@@ -265,7 +273,7 @@ export const JOB_CATALOG = {
     idempotent: true,
   },
   quotaReset: {
-    name: "quota-reset",
+    name: JOB_QUEUES.quotaReset,
     what: "Barrido de contadores vencidos.",
     prd: "§9.5.17, §16.2",
     maxAttempts: 3,
@@ -284,7 +292,7 @@ export const JOB_CATALOG = {
     },
   },
   brandSourceAnalysis: {
-    name: "brand-source-analysis",
+    name: JOB_QUEUES.brandSourceAnalysis,
     what: "Resuelve el tier, recoge señales, corre OCR y sintetiza con LLM.",
     prd: "§9.5.18, §9.14, AI-016",
     maxAttempts: 3,
@@ -295,7 +303,7 @@ export const JOB_CATALOG = {
     idempotent: true,
   },
   brandSourceStalenessSweep: {
-    name: "brand-source-staleness-sweep",
+    name: JOB_QUEUES.brandSourceStalenessSweep,
     what: "Marca `stale` los snapshots de más de 90 días.",
     prd: "§9.5.19, §9.14",
     maxAttempts: 3,
@@ -314,7 +322,7 @@ export const JOB_CATALOG = {
     },
   },
   snapshotPurge: {
-    name: "snapshot-purge",
+    name: JOB_QUEUES.snapshotPurge,
     what: "Borra el material crudo al vencer `rawRetentionExpiresAt`.",
     prd: "§9.5.20, §9.14",
     maxAttempts: 5,
@@ -331,7 +339,7 @@ export const JOB_CATALOG = {
     },
   },
   ownPostImport: {
-    name: "own-post-import",
+    name: JOB_QUEUES.ownPostImport,
     what: "Importa los posts propios del usuario al Media Bank (opt-in).",
     prd: "§9.5.21, FR-011.5.1",
     maxAttempts: 3,

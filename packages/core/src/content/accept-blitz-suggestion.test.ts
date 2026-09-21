@@ -235,8 +235,11 @@ describe("el encolado ocurre en la MISMA transacción (IMPL §2.3, ADR-005)", ()
     const out = await run(h);
     const spec = h.enqueued[0] as JobSpec<ContentBuildJob>;
     expect(spec.queue).toBe(CONTENT_BUILD_QUEUE);
-    expect(spec.queue).toBe("build-content");
-    expect(spec.options?.singletonKey).toBe(`build-content:${out.content.id}`);
+    // El nombre sale de `JOB_QUEUES`, que es lo que el worker lee. El literal
+    // se escribe acá a mano a propósito: si alguien renombra la cola de un lado,
+    // este test tiene que romperse en vez de seguir a la constante.
+    expect(spec.queue).toBe("content-build");
+    expect(spec.options?.singletonKey).toBe(`content-build:${out.content.id}`);
     expect(spec.payload.contentId).toBe(out.content.id);
     expect(spec.payload.companyId).toBe("co_1");
   });

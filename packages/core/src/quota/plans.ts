@@ -129,6 +129,26 @@ export type HardCaps = typeof HARD_CAPS;
 export type CapName = keyof HardCaps;
 
 /**
+ * Overrides de caps. Los valores son `number`, no los literales de `HARD_CAPS`.
+ *
+ * `Partial<HardCaps>` **no sirve** acá y tardé un typecheck en verlo: como
+ * `HARD_CAPS` es `as const`, el tipo de `activeInfluencers` es el literal `50`,
+ * así que un override de `500` no compila. Un mapa de overrides cuyo único
+ * valor válido es el valor que ya está no configura nada.
+ */
+export type CapOverrides = { readonly [K in CapName]?: number };
+
+/**
+ * Los caps ya resueltos para un plan.
+ *
+ * Es `number` y no los literales de `HARD_CAPS` por la misma razón que
+ * `CapOverrides`: un tipo cuyo único valor posible es el default no describe
+ * nada configurable. `HARD_CAPS` sigue siendo `as const` para que los tests
+ * puedan afirmar sus valores exactos.
+ */
+export type Caps = { readonly [K in CapName]: number };
+
+/**
  * Caps efectivos por plan — `EXT-005`.
  *
  * ## Qué resuelve y qué deliberadamente no
@@ -147,9 +167,7 @@ export type CapName = keyof HardCaps;
  * Cuando aparezca la evidencia: se agrega acá, se actualiza `OQ-14` en el PRD
  * y se ajusta el test. Los tres pasos, no el primero solo.
  */
-export const PLAN_CAP_OVERRIDES: Readonly<
-  Partial<Record<PlanId, Readonly<Partial<HardCaps>>>>
-> = {};
+export const PLAN_CAP_OVERRIDES: Readonly<Partial<Record<PlanId, CapOverrides>>> = {};
 
 /**
  * Los caps que aplican a un plan.
@@ -164,10 +182,8 @@ export const PLAN_CAP_OVERRIDES: Readonly<
  */
 export function capsForPlan(
   planId: PlanId,
-  overrides: Readonly<
-    Partial<Record<PlanId, Readonly<Partial<HardCaps>>>>
-  > = PLAN_CAP_OVERRIDES,
-): HardCaps {
+  overrides: Readonly<Partial<Record<PlanId, CapOverrides>>> = PLAN_CAP_OVERRIDES,
+): Caps {
   return { ...HARD_CAPS, ...(overrides[planId] ?? {}) };
 }
 

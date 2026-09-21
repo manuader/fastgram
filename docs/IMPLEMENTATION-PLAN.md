@@ -70,7 +70,7 @@ web ──POST──▶ api ──▶ core.AcceptBlitzSuggestion
                         ├─ valida cuota (content saves + swipes)   [transacción]
                         ├─ reserva idempotencia                     [transacción]
                         ├─ crea Content(status=BUILDING)            [transacción]
-                        └─ encola job build-content                 [misma transacción]
+                        └─ encola job content-build                 [misma transacción]
                                     │
 worker ◀────────────────────────────┘
    ├─ resuelve assets desde Storage

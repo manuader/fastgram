@@ -31,6 +31,7 @@
  * habría que deshacer a mano.
  */
 import type { Clock, EnqueuedJob, Queue, QueueTransaction } from "@fastgram/ports";
+import { JOB_QUEUES } from "../jobs/queues.js";
 import { DomainError, crossTenantAsNotFound } from "../errors.js";
 import type { IdGenerator } from "../ids.js";
 import {
@@ -53,14 +54,18 @@ import {
 import { assertValidTextBoxes, type ContentTextBox } from "./text-boxes.js";
 
 /**
- * Nombre de la cola. Sale de IMPL §2.3 (`build-content`) y de §9.5 #3.
+ * Nombre de la cola — §9.5 #3. Sale de {@link JOB_QUEUES}, que es la lista que
+ * el catálogo del worker consume.
  *
- * Es una constante exportada y no un literal suelto porque el worker que
- * consume tiene que usar exactamente el mismo string: un typo acá encola en
- * una cola que nadie lee, la pieza queda en `BUILDING` para siempre y —esto es
- * lo malo— **nunca falla**, así que el save tampoco se reembolsa.
+ * Acá decía `"build-content"`, tomado del diagrama de IMPL §2.3, mientras el
+ * catálogo escuchaba `"content-build"`. El worker que consume tiene que usar
+ * exactamente el mismo string: con dos, el job entra en una cola que nadie lee,
+ * la pieza queda en `BUILDING` para siempre y —esto es lo malo— **nunca
+ * falla**, así que el save tampoco se reembolsa. Ganó el catálogo porque es la
+ * enumeración completa de los 21 y es lo que el consumidor escucha; el diagrama
+ * de IMPL quedó corregido.
  */
-export const CONTENT_BUILD_QUEUE = "build-content";
+export const CONTENT_BUILD_QUEUE = JOB_QUEUES.contentBuild;
 
 /** El endpoint que reserva la key. `DATA-027.endpoint`. */
 export const BLITZ_ACCEPT_ENDPOINT = "POST /blitz";

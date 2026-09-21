@@ -188,6 +188,48 @@ mismoNumero("generaciones en vuelo (PRD FR-090)", [
   ["apps/worker/src/jobs/catalog.ts", "concurrency"],
 ]);
 
+/**
+ * Los nombres de cola: `core` los declara, el catálogo del worker los consume.
+ *
+ * Es el invariante que este script existe para tener. `core` encolaba en
+ * `build-content` y el catálogo escuchaba `content-build`: dos literales
+ * plausibles, y el efecto es que el job entra en una cola que nadie lee. El
+ * POST devuelve 201, la pieza queda en `BUILDING` y se queda ahí para siempre,
+ * sin aparecer en ningún log de errores.
+ *
+ * Ahora el catálogo referencia `JOB_QUEUES`, así que no pueden divergir por
+ * typo — pero sí por alguien que agregue un job al catálogo con un literal
+ * suelto. Esto lo detecta.
+ */
+{
+  const registro = leer("packages/core/src/jobs/queues.ts");
+  const catalogo = leer("apps/worker/src/jobs/catalog.ts");
+  if (registro !== null && catalogo !== null) {
+    const declarados = [...registro.matchAll(/^\s{2}(\w+): "([^"]+)",/gm)].map((m) => m[1]);
+    const usados = [...catalogo.matchAll(/name: JOB_QUEUES\.(\w+),/g)].map((m) => m[1]);
+    const literales = [...catalogo.matchAll(/^\s+name: "([^"]+)",/gm)].map((m) => m[1]);
+
+    if (declarados.length === 0) {
+      problemas.push("no encontré ningún nombre de cola en `JOB_QUEUES` — ¿cambió la forma?");
+    } else if (literales.length > 0) {
+      problemas.push(
+        `el catálogo del worker escribe ${literales.length} nombre(s) de cola a mano ` +
+          `(${literales.join(", ")}): tienen que salir de \`JOB_QUEUES\`, o el productor ` +
+          "y el consumidor pueden divergir sin que falle nada",
+      );
+    } else {
+      const huerfanos = usados.filter((k) => !declarados.includes(k));
+      if (huerfanos.length > 0) {
+        problemas.push(`el catálogo usa claves que \`JOB_QUEUES\` no declara: ${huerfanos.join(", ")}`);
+      } else {
+        verificados.push(
+          `nombres de cola (PRD §9.5) = ${declarados.length} declarados, ${usados.length} consumidos por el catálogo`,
+        );
+      }
+    }
+  }
+}
+
 // ── Informe ────────────────────────────────────────────────────────────────
 for (const v of verificados) console.log(`  ok  ${v}`);
 

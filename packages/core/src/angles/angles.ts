@@ -13,7 +13,7 @@
  * explicarlo.
  */
 import { DomainError } from "../errors.js";
-import { HARD_CAPS, type HardCaps } from "../quota/plans.js";
+import { HARD_CAPS, type Caps } from "../quota/plans.js";
 
 /**
  * Códigos de error literales del PRD.
@@ -142,7 +142,7 @@ export function assertValidAngleWeights(
 // ───────────────────────────────────────────────────────────────────────────
 
 /** Los caps de ángulos que aplican. Default `HARD_CAPS` — `EXT-005`. */
-export type AngleCaps = Readonly<Pick<HardCaps, "contentAngles" | "anglesPerInfluencer">>;
+export type AngleCaps = Readonly<Pick<Caps, "contentAngles" | "anglesPerInfluencer">>;
 
 export function assertCanCreateAngle(
   currentAngleCount: number,

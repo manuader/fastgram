@@ -28,7 +28,7 @@
  *    que el conteo venga de la misma transacción que escribe.
  */
 import { DomainError } from "../errors.js";
-import { HARD_CAPS, type HardCaps } from "../quota/plans.js";
+import { HARD_CAPS, type Caps } from "../quota/plans.js";
 
 /**
  * Códigos literales que el PRD nombra para estos caps.
@@ -45,7 +45,9 @@ import { HARD_CAPS, type HardCaps } from "../quota/plans.js";
  * hoy llaman sin plan a cambiar de una. Un refactor que rompe todas las
  * llamadas a la vez es un refactor que se hace a medias.
  */
-export type CapsFor = Readonly<Pick<HardCaps, "activeInfluencers" | "brandSources" | "inFlightGenerations" | "idsPerBatch">>;
+export type CapsFor = Readonly<
+  Pick<Caps, "activeInfluencers" | "brandSources" | "inFlightGenerations" | "idsPerBatch">
+>;
 
 export const WORKSPACE_CAP_CODES = {
   /** `ERR-B10` · §19.5.1. */
