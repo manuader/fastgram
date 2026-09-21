@@ -50,6 +50,28 @@ export const apiEnvSchema = baseEnvSchema.merge(postgresEnvSchema).extend({
    * opcional — ahí sí faltarlo es un arranque roto.
    */
   S3_PUBLIC_URL: z.string().url().optional(),
+
+  /**
+   * Esquema de pg-boss. Su default es `pgboss`; se deja configurable para poder
+   * correr dos entornos contra la misma base sin que compartan cola.
+   */
+  QUEUE_SCHEMA: z.string().min(1).default("pgboss"),
+
+  /**
+   * Correr las migraciones de pg-boss al arrancar la API.
+   *
+   * Default **`false`**, que es lo contrario del default del adaptador, y a
+   * propósito: IMPL §4 exige migraciones *"siempre hacia adelante y compatibles
+   * con la versión anterior"*, y una migración que ocurre cuando arranca el
+   * primer proceso no se puede ordenar respecto del resto del deploy. Con
+   * varias réplicas, además, arrancan a la vez y compiten por los mismos DDL.
+   *
+   * En desarrollo se pone en `true` una vez y ya está.
+   */
+  QUEUE_MIGRATE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
 });
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;

@@ -13,7 +13,13 @@
  *  3. Montar el servidor.
  *  4. Escuchar, y recién entonces registrar el apagado limpio.
  */
-import { systemClock, MemoryStorage } from "@fastgram/adapters";
+import {
+  createPgBossQueue,
+  drizzleTransactionToExecutor,
+  systemClock,
+  MemoryStorage,
+} from "@fastgram/adapters";
+import { ALL_JOB_QUEUES } from "@fastgram/core";
 import { createDb } from "@fastgram/db";
 
 import { loadApiEnv, parseCorsOrigins } from "./env.js";
@@ -32,6 +38,37 @@ const handle = createDb({
 
 const clock = systemClock;
 const appRole = env.DATABASE_APP_ROLE === "" ? undefined : env.DATABASE_APP_ROLE;
+
+/**
+ * La cola — `ADR-005`.
+ *
+ * Tres cosas que no son obvias y que costaron encontrarlas:
+ *
+ * 1. **`toExecutor` es obligatorio.** El puente por defecto no reconoce el
+ *    handle de una transacción de Drizzle, y ése es justamente el handle que
+ *    viaja desde las rutas. Sin él, encolar dentro de la transacción de negocio
+ *    —o sea, lo único que `ADR-005` compra sobre Redis— falla con
+ *    `bad_request`.
+ *
+ * 2. **Las colas se registran al arrancar.** pg-boss exige que la cola exista
+ *    antes de encolar en ella, y dentro de una transacción no hay forma de
+ *    crearla al vuelo. Se pasan las 21 de `JOB_QUEUES`, que es la misma lista
+ *    que consume el catálogo del worker.
+ *
+ * 3. **`supervise` y `schedule` en `false`.** La API sólo encola; mantener y
+ *    disparar el cron es trabajo del worker. Con esto encendido, cada réplica
+ *    de la API haría el mantenimiento en paralelo con todas las demás.
+ */
+const { queue, boss } = createPgBossQueue({
+  connectionString: env.DATABASE_URL,
+  schema: env.QUEUE_SCHEMA,
+  queues: [...ALL_JOB_QUEUES],
+  toExecutor: drizzleTransactionToExecutor,
+  migrate: env.QUEUE_MIGRATE,
+  supervise: false,
+  schedule: false,
+});
+await boss.start();
 
 const app = await buildServer({
   deps: {
@@ -53,6 +90,7 @@ const app = await buildServer({
       clock,
     ),
     appRole,
+    queue,
   },
   corsOrigins: parseCorsOrigins(env.API_CORS_ORIGINS),
   logLevel: env.LOG_LEVEL,
@@ -62,6 +100,7 @@ try {
   await app.listen({ port: env.API_PORT, host: env.API_HOST });
 } catch (err: unknown) {
   app.log.error(err, "no se pudo abrir el puerto");
+  await boss.stop({ graceful: false });
   await handle.close();
   process.exit(1);
 }
@@ -85,6 +124,9 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
     void (async () => {
       try {
         await app.close();
+        // La cola después del servidor y antes de la base, por el mismo motivo
+        // que el resto del orden: una request en vuelo puede estar encolando.
+        await boss.stop({ graceful: true });
         await handle.close();
         process.exit(0);
       } catch (err: unknown) {
