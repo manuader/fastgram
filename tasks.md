@@ -127,6 +127,11 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 ## P1-QUOTA — Cuotas y rate limiting
 
 - [x] **P1-QUOTA-001** Motor de content saves: incluidos → comprados → overage · PRD §16.2
+- [x] **P1-QUOTA-010** **Cablear el cobro a `POST /content`** — el motor existía y ninguna ruta cobraba
+  > Faltaban tres piezas, no el motor: de dónde sale el plan (`companyRepository`), qué clave identifica el período, y dónde se guarda el bucket.
+  > **`quota_ledgers.period` = `YYYY-MM-DD`, la fecha UTC de inicio del ciclo.** El schema lo dejaba pendiente y lo decide `billingPeriodKey`. No es `YYYY-MM`: §16.2 resetea en el **día ancla**, así que con ancla 15 el ciclo cruza dos meses calendario y la clave tiene que decir *qué ciclo*, no *qué mes*. 14 tests, incluido un barrido de 400 días × 6 anclas que comprueba que todo instante cae en exactamente un período.
+  > **`contents.save_bucket` y `save_period`** (migración `0005`), con CHECK de que estén los dos o ninguno: `refundSave` devuelve **al bucket del que salió** y al ledger que lo cobró, y los tres buckets tienen precio distinto.
+  > El cobro va **antes** de crear y de encolar, y dentro de la misma transacción. `quotaLedgerStore.lockPeriod` usa `SELECT … FOR UPDATE`; sus dos tests de concurrencia se ponen rojos si se le quita.
 - [x] **P1-QUOTA-002** Swipes diarios con reset 00:00 UTC · `F-066`
 - [x] **P1-QUOTA-003** Créditos de AI Studio
 - [x] **P1-QUOTA-004** Trial allowance **de por vida**, compartida entre workspaces personales, sin reset · PRD §16.2

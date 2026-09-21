@@ -93,6 +93,7 @@ import type { FastifyReply } from "fastify";
 import { rateLimit } from "../../plugins/rate-limit.js";
 import { canFinalize } from "../../http/uploads.js";
 import { toContent, type ContentResource } from "../../support/serializers.js";
+import { consumeContentSave } from "../../support/quota.js";
 import { crossTenant, data, idempotencyKeyOf, page, withIdempotency } from "./shared.js";
 import type { ZodApp } from "../../server/types.js";
 
@@ -516,6 +517,13 @@ export function registerContentRoutes(app: ZodApp): void {
         },
         () =>
           request.tx(async (tx) => {
+            // **Antes de crear y antes de encolar** — el PRD lo pide literal
+            // (§9.4): *"reserva la allowance antes de la generación del modelo,
+            // y la libera si falla"*. Cobrar después dejaría trabajo hecho y no
+            // pagado si algo se cae en el medio. Si no alcanza, lanza
+            // `content_quota_exceeded`, que sale como `402` (§19.8).
+            const save = await consumeContentSave(tx, { companyId }, clock);
+
             const row = await contentRepository.create(
               tx,
               { companyId },
@@ -525,6 +533,12 @@ export function registerContentRoutes(app: ZodApp): void {
                 // DATA-008 lo marca como nunca devuelto por la API; se guarda
                 // porque es lo único que el worker necesita para construir.
                 buildPayload: body,
+                // De qué bucket salió y a qué período: `refundSave` devuelve
+                // **al bucket del que salió** y al ledger que lo cobró. Los tres
+                // buckets tienen precio distinto (`FR-050`), y el período se
+                // guarda porque derivarlo depende del ancla, que puede cambiar.
+                saveBucket: save.bucket,
+                savePeriod: save.period,
               },
             );
 

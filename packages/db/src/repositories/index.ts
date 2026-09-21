@@ -9,6 +9,7 @@
 export * from "./base.js";
 export * from "./catalog.js";
 export * from "./company.js";
+export * from "./quota-ledger.js";
 export * from "./filters.js";
 export * from "./idempotency.js";
 

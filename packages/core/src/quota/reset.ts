@@ -50,6 +50,59 @@ export function nextBillingResetUtc(now: Date, anchorDay: number): Date {
   return clampToMonth(year, month + 1, anchorDay);
 }
 
+/**
+ * Comienzo del período de facturación en curso: el ancla **anterior o igual**
+ * a `now`.
+ *
+ * Es el espejo de {@link nextBillingResetUtc} y comparte su recorte al último
+ * día del mes, porque tienen que ser el mismo borde visto desde los dos lados:
+ * si uno recortara y el otro no, habría instantes que no pertenecen a ningún
+ * período o que pertenecen a dos.
+ */
+export function currentBillingPeriodStartUtc(now: Date, anchorDay: number): Date {
+  if (!Number.isInteger(anchorDay) || anchorDay < 1 || anchorDay > 31) {
+    throw new Error(`anchorDay fuera de rango: ${anchorDay}`);
+  }
+
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth();
+
+  const thisMonth = clampToMonth(year, month, anchorDay);
+  if (thisMonth.getTime() <= now.getTime()) return thisMonth;
+
+  return clampToMonth(year, month - 1, anchorDay);
+}
+
+/**
+ * La clave de `quota_ledgers.period` — `DATA-029`.
+ *
+ * ## Qué decide esto y con qué evidencia
+ *
+ * El schema dejaba el formato explícitamente pendiente: *"el PRD no fija su
+ * formato … tiene que decidirlo la tarea de cuotas"*. Así que se decide acá, y
+ * la decisión no es libre: §16.2 dice que los saves incluidos se reinician en
+ * el **día ancla de facturación**, no el 1 de cada mes. Un período es entonces
+ * el intervalo entre dos anclas, y lo que lo identifica sin ambigüedad es su
+ * fecha de inicio.
+ *
+ * `YYYY-MM-DD` en UTC, que es el inicio del período:
+ *
+ *  - **`YYYY-MM` no sirve.** Con ancla el 15, el período que empieza el
+ *    2026-09-15 termina el 2026-10-15 y cruza dos meses calendario. La clave
+ *    tiene que decir *qué ciclo*, no *qué mes*.
+ *  - **Ordena cronológicamente como texto**, así que el índice
+ *    `(companyId, period)` sirve para "el período anterior" sin parsear.
+ *  - **Se lee en un ticket de soporte.** Un id opaco obligaría a un join para
+ *    contestar "¿de qué mes es este cargo?".
+ *
+ * El recorte del ancla 31 no genera colisiones: enero da `2026-01-31`, febrero
+ * `2026-02-28` y marzo `2026-03-31`. Son meses distintos, así que las claves
+ * son distintas aunque el día varíe.
+ */
+export function billingPeriodKey(now: Date, anchorDay: number): string {
+  return currentBillingPeriodStartUtc(now, anchorDay).toISOString().slice(0, 10);
+}
+
 /** El ancla del mes, recortada al último día si el mes es más corto. */
 function clampToMonth(year: number, month: number, anchorDay: number): Date {
   // Día 0 del mes siguiente = último día de este mes.

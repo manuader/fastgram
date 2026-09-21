@@ -15,9 +15,9 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-import { softDelete, timestamps } from "./_shared.js";
+import { softDelete, timestamps, tsColumn } from "./_shared.js";
 import { companyRef } from "./identity.js";
-import { contentStatusEnum, contentTypeEnum } from "./enums.js";
+import { contentStatusEnum, contentTypeEnum, saveBucketEnum } from "./enums.js";
 import { CONTENT_TEXT_BOX, CONTENT_LIMITS } from "../limits.js";
 
 /**
@@ -52,6 +52,24 @@ export const contents = pgTable(
     studioState: jsonb(),
     /** Resultado de la última edición. */
     lastEdit: jsonb(),
+    /**
+     * De qué bucket salió el content save (`FR-050`). `null` = no se cobró.
+     *
+     * Se persiste porque `refundSave` devuelve **al bucket del que salió**, y
+     * los tres tienen precio distinto: devolver un crédito incluido por algo
+     * que se cobró como overage es un error de facturación silencioso.
+     */
+    saveBucket: saveBucketEnum(),
+    /**
+     * A qué período de facturación se cobró.
+     *
+     * Se guarda en vez de derivarlo de `createdAt` porque derivarlo depende de
+     * `billingAnchorDay`, que puede cambiar entre el cobro y el reembolso —y
+     * entonces el save volvería al ledger equivocado, en silencio.
+     */
+    savePeriod: text(),
+    /** Guarda contra el doble reembolso: un build que falla dos veces. */
+    saveRefundedAt: tsColumn(),
     ...softDelete(),
     ...timestamps(),
   },
@@ -62,6 +80,16 @@ export const contents = pgTable(
       .on(t.companyId, t.createdAt)
       .where(sql`${t.deletedAt} is null`),
     check("contents_revision_positive", sql`${t.revision} >= 1`),
+    /** Un cobro tiene bucket y período, o no tiene ninguno de los dos. */
+    check(
+      "contents_save_bucket_with_period",
+      sql`(${t.saveBucket} is null) = (${t.savePeriod} is null)`,
+    ),
+    /** No se puede reembolsar lo que no se cobró. */
+    check(
+      "contents_refund_requires_bucket",
+      sql`${t.saveRefundedAt} is null or ${t.saveBucket} is not null`,
+    ),
     /**
      * FR-070: *"Máximo 20 slides por slideshow"*. `files` tiene una entrada por slide.
      * El cap se fija acá además de en el dominio porque es barato y no depende de que

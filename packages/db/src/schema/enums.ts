@@ -350,6 +350,15 @@ export const brandSourceFailureReasonEnum = pgEnum(
   BRAND_SOURCE_FAILURE_REASON,
 );
 
+// ───────────────────────── FR-050 · Content save bucket ─────────────────────────
+
+/**
+ * De qué bucket salió el content save. Los tres tienen precios distintos
+ * (§16.2), así que reembolsar sin saber cuál fue no es reembolsar.
+ */
+export const SAVE_BUCKET = ["included", "purchased", "overage"] as const;
+export const saveBucketEnum = pgEnum("save_bucket", SAVE_BUCKET);
+
 // ───────────────────────── DATA-033 · JudgmentRecord ─────────────────────────
 
 export const DECISION_POINT = [

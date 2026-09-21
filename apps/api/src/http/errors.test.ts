@@ -122,3 +122,31 @@ describe("ApiRejection — los códigos del contrato que el dominio no tiene", (
     expect(t.logContext["details"]).toMatchObject({ crossTenant: true });
   });
 });
+
+describe("los `details` de dominio que SÍ son contrato", () => {
+  it("`content_quota_exceeded` publica su `resetAt` (§16.2)", () => {
+    // Sin esto la UI sólo puede decir "no se puede", nunca "vuelve el 15". El
+    // PRD especifica el detalle junto al copy del error, así que es contrato y
+    // no diagnóstico. Lo encontró el test extremo a extremo del cobro: el 402
+    // llegaba con `details: undefined`.
+    const t = translateError(
+      new DomainError("content_quota_exceeded", "No quota left.", {
+        resetAt: "2026-10-15T00:00:00.000Z",
+        plan: "growth",
+      }),
+    );
+    expect(t.status).toBe(402);
+    expect(t.body.error.details).toMatchObject({ plan: "growth" });
+  });
+
+  it("y el resto de los códigos sigue SIN publicarlos", () => {
+    // La lista es explícita y corta a propósito: el default es no publicar, y
+    // agregar un código tiene que ser un acto deliberado. Este test es lo que
+    // hace que invertir el default se note.
+    for (const code of ["not_found", "conflict", "invalid_state", "out_of_range"] as const) {
+      const t = translateError(new DomainError(code, "nope", { secreto: "co_intruso" }));
+      expect(t.body.error.details).toBeUndefined();
+      expect(t.logContext["details"]).toMatchObject({ secreto: "co_intruso" });
+    }
+  });
+});

@@ -96,6 +96,28 @@ export function isApiRejection(e: unknown): e is ApiRejection {
   return e instanceof ApiRejection;
 }
 
+/**
+ * Los códigos de dominio cuyos `details` **son parte del contrato público**.
+ *
+ * La regla general es la contraria y no se toca: `DomainError.details` no sale
+ * nunca, porque ahí viajan `attemptedBy` y `crossTenant`, que son exactamente
+ * lo que §9.2 no quiere publicar. Pero hay dos errores donde el PRD nombra el
+ * detalle como parte de la respuesta, no como diagnóstico:
+ *
+ * `content_quota_exceeded` y `blitz_quota_blocked` llevan `resetAt`, y sin él
+ * la UI sólo puede decir "no se puede" en vez de "vuelve el 15". El PRD lo
+ * especifica junto al copy del error, así que es contrato.
+ *
+ * La lista es **explícita y corta** a propósito. Un "publicá los details salvo
+ * en `not_found`" invertiría el default, y el día que alguien agregue un código
+ * nuevo con información sensible adentro, se publicaría sin que nadie lo
+ * decidiera. Acá agregar uno es un acto deliberado.
+ */
+const DOMAIN_CODES_WITH_PUBLIC_DETAILS: ReadonlySet<DomainErrorCode> = new Set([
+  "content_quota_exceeded",
+  "blitz_quota_blocked",
+]);
+
 export function translateError(e: unknown): TranslatedError {
   if (isApiRejection(e)) {
     return {
@@ -113,10 +135,14 @@ export function translateError(e: unknown): TranslatedError {
   }
 
   if (isDomainError(e)) {
+    const publica = DOMAIN_CODES_WITH_PUBLIC_DETAILS.has(e.code) && e.details !== undefined;
     return {
       status: DOMAIN_STATUS[e.code],
-      body: { error: e.toPublic() },
+      body: {
+        error: { ...e.toPublic(), ...(publica ? { details: e.details } : {}) },
+      },
       headers: {},
+      // Al log van SIEMPRE, se publiquen o no.
       logContext: { kind: "domain", code: e.code, details: e.details },
     };
   }
