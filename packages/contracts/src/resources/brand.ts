@@ -1,5 +1,5 @@
 /**
- * Brand Sources y Company Profile — **EXTENSION · EXT-001** (§9.14, PRD:2356-2374).
+ * Brand Sources y Company Profile — **EXTENSION · EXT-001** (§9.14, PRD:2358-2374).
  *
  * No existe en Fastlane: es una extensión del clon. Los endpoints están
  * enumerados en el PRD como "propuestos" con la misma convención de envelope,
@@ -13,23 +13,23 @@
  *   DELETE /brand/sources/:id
  *   GET|PATCH /brand/profile
  *
- * Fuente: DATA-031 (PRD:2183), DATA-032 (PRD:2200), DATA-004 (PRD:2036),
- * AI-016 (PRD:2560).
+ * Fuente: DATA-031 (PRD:2183), DATA-032 (PRD:2200), DATA-004 (PRD:2046),
+ * AI-016 (PRD:2559).
  */
 import { z } from "zod";
 import { brandSourceIdSchema, msEpochSchema } from "../primitives/ids";
 
 // --- Números del PRD ---------------------------------------------------------
 
-/** §9.14 (PRD:2377) / AI-016 (PRD:2572) — máx. 5 fuentes por workspace. */
+/** §9.14 (PRD:2377) / AI-016 (PRD:2574) — máx. 5 fuentes por workspace. */
 export const MAX_BRAND_SOURCES_PER_WORKSPACE = 5;
 /** §9.14 (PRD:2378) — re-análisis por fuente y día; configurable por plan, default 3. */
 export const BRAND_SOURCE_REANALYSES_PER_DAY_DEFAULT = 3;
-/** §9.14 (PRD:2380) / AI-016 (PRD:2572) — ítems analizados por fuente. */
+/** §9.14 (PRD:2380) / AI-016 (PRD:2574) — ítems analizados por fuente. */
 export const BRAND_SOURCE_ITEMS_PER_ANALYSIS_DEFAULT = 24;
 /** DATA-031 (PRD:2193) — una fuente pasa a `stale` a los 90 días. */
 export const BRAND_SOURCE_STALE_AFTER_DAYS = 90;
-/** §9.14 (PRD:2385) — seguimiento de link-in-bio: 1 nivel, 5 destinos. */
+/** §9.14 (PRD:2384) — seguimiento de link-in-bio: 1 nivel, 5 destinos. */
 export const BRAND_SOURCE_LINK_FOLLOW_DEPTH = 1;
 export const BRAND_SOURCE_LINK_FOLLOW_MAX_TARGETS = 5;
 /** AI-001 (PRD:2545) — descripción libre de la marca ≤ 4 000 caracteres por respuesta. */
@@ -104,9 +104,11 @@ export type BrandSource = z.infer<typeof brandSourceSchema>;
 /**
  * `POST /brand/sources/resolve` — "Dado un texto libre, devuelve
  * `{sourceType, handle, canonicalUrl, displayName, avatarUrl, available}` sin
- * crear nada" (PRD:2366). Forma literal.
+ * crear nada" (PRD:2368). Forma literal.
  */
-export const resolveBrandSourceRequestSchema = z.object({ input: z.string().min(1) }).strict();
+export const resolveBrandSourceRequestSchema = z
+  .object({ input: z.string().min(1) })
+  .strict();
 export type ResolveBrandSourceRequest = z.infer<typeof resolveBrandSourceRequestSchema>;
 
 export const resolveBrandSourceResponseSchema = z
@@ -135,13 +137,15 @@ export const createBrandSourceRequestSchema = z
   });
 export type CreateBrandSourceRequest = z.infer<typeof createBrandSourceRequestSchema>;
 
-/** `PATCH /brand/sources/:id` — "Sólo `isPrimary`" (PRD:2370). */
-export const updateBrandSourceRequestSchema = z.object({ isPrimary: z.boolean() }).strict();
+/** `PATCH /brand/sources/:id` — "Sólo `isPrimary`" (PRD:2372). */
+export const updateBrandSourceRequestSchema = z
+  .object({ isPrimary: z.boolean() })
+  .strict();
 export type UpdateBrandSourceRequest = z.infer<typeof updateBrandSourceRequestSchema>;
 
 // --- Company Profile · DATA-004 ---------------------------------------------
 
-/** DATA-004 (PRD:2048) — `fieldMeta` por campo del perfil. */
+/** DATA-004 (PRD:2059) — `fieldMeta` por campo del perfil. */
 export const fieldConfidenceSchema = z.enum(["high", "medium", "low"]);
 export type FieldConfidence = z.infer<typeof fieldConfidenceSchema>;
 
@@ -156,13 +160,18 @@ export const fieldMetaSchema = z
   .strict();
 export type FieldMeta = z.infer<typeof fieldMetaSchema>;
 
-/** DATA-004 (PRD:2047) — `partial` es EXTENSION. */
-export const companyProfileStatusSchema = z.enum(["pending", "ready", "failed", "partial"]);
+/** DATA-004 (PRD:2058) — `partial` es EXTENSION. */
+export const companyProfileStatusSchema = z.enum([
+  "pending",
+  "ready",
+  "failed",
+  "partial",
+]);
 export type CompanyProfileStatus = z.infer<typeof companyProfileStatusSchema>;
 
 /**
- * Los cinco campos estructurados que produce AI-001 (PRD:2547), más los del
- * cuestionario de onboarding (DATA-004, PRD:2045). El PRD no fija longitudes
+ * Los cinco campos estructurados que produce AI-001 (PRD:2548), más los del
+ * cuestionario de onboarding (DATA-004, PRD:2056). El PRD no fija longitudes
  * máximas para los campos del perfil: no se inventan.
  */
 export const companyProfileSchema = z
@@ -189,7 +198,7 @@ export type CompanyProfile = z.infer<typeof companyProfileSchema>;
 
 /**
  * `PATCH /brand/profile` — "una edición manual marca `editedByUser: true`"
- * (PRD:2373). El cliente envía sólo los campos de texto; `fieldMeta`,
+ * (PRD:2374). El cliente envía sólo los campos de texto; `fieldMeta`,
  * `brandRevision` y `status` los escribe el servidor.
  */
 export const updateCompanyProfileRequestSchema = companyProfileSchema
@@ -197,4 +206,6 @@ export const updateCompanyProfileRequestSchema = companyProfileSchema
   .partial()
   .strict()
   .refine((b) => Object.keys(b).length > 0, { message: "empty body is not allowed" });
-export type UpdateCompanyProfileRequest = z.infer<typeof updateCompanyProfileRequestSchema>;
+export type UpdateCompanyProfileRequest = z.infer<
+  typeof updateCompanyProfileRequestSchema
+>;

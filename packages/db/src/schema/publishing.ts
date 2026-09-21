@@ -16,10 +16,10 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, tsColumn, timestamps } from "./_shared.js";
-import { companyRef, users } from "./identity.js";
-import { contents } from "./content.js";
-import { automationSlots } from "./automations.js";
+import { createdAtOnly, tsColumn, timestamps } from "./_shared";
+import { companyRef, users } from "./identity";
+import { contents } from "./content";
+import { automationSlots } from "./automations";
 import {
   captionAdjustmentReasonEnum,
   connectionStatusEnum,
@@ -35,7 +35,7 @@ import {
   tiktokSoundModeEnum,
   warmedCountryEnum,
   warmedPlatformEnum,
-} from "./enums.js";
+} from "./enums";
 
 /**
  * DATA-016 — `Connection` (OAuth).
@@ -52,7 +52,10 @@ export const connections = pgTable(
     platform: socialPlatformEnum().notNull(),
     platformUserId: text().notNull(),
     platformUsername: text().notNull(),
-    scopes: text().array().notNull().default(sql`'{}'::text[]`),
+    scopes: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     publishable: boolean().notNull().default(false),
     tokenExpiry: tsColumn(),
     /** Ciphertext. NUNCA se devuelve por API. */
@@ -92,7 +95,10 @@ export const warmedAccounts = pgTable(
     minLeadTimeMs: bigint({ mode: "number" }).notNull(),
     country: warmedCountryEnum().notNull(),
     niche: text(),
-    keywords: text().array().notNull().default(sql`'{}'::text[]`),
+    keywords: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     approvedAt: tsColumn(),
     ...timestamps(),
   },
@@ -125,12 +131,16 @@ export const replacementDecisions = pgTable(
     warmedAccountId: uuid()
       .notNull()
       .references(() => warmedAccounts.warmedAccountId, { onDelete: "cascade" }),
-    options: jsonb().notNull().default(sql`'[]'::jsonb`),
+    options: jsonb()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     status: replacementDecisionStatusEnum().notNull().default("pending"),
     decidedByUserId: uuid().references(() => users.id, { onDelete: "set null" }),
     ...createdAtOnly(),
   },
-  (t) => [index("replacement_decisions_company_created_idx").on(t.companyId, t.createdAt)],
+  (t) => [
+    index("replacement_decisions_company_created_idx").on(t.companyId, t.createdAt),
+  ],
 );
 
 /**

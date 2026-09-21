@@ -1,10 +1,10 @@
 /**
- * Connections · `GET /connections` (PRD:2270).
+ * Connections · `GET /connections` (PRD:2273).
  *
- * Fuente: DATA-016 (PRD:2117), NFR-007 (PRD:2957).
+ * Fuente: DATA-016 (PRD:2111), NFR-007 (PRD:2957).
  *
  * `accessToken` y `refreshToken` están cifrados y **nunca se exponen**
- * (DATA-016, PRD:2117): no aparecen en este schema, que es el contrato público.
+ * (DATA-016, PRD:2111): no aparecen en este schema, que es el contrato público.
  */
 import { z } from "zod";
 import { connectionStatusSchema, platformSchema } from "../primitives/enums";

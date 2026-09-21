@@ -5,7 +5,8 @@ import { cn } from "../../cn.js";
 import { switchVariants, type SwitchVariants } from "./switch.variants.js";
 
 export interface SwitchProps
-  extends Omit<ComponentPropsWithRef<"button">, "onChange" | "type" | "value">,
+  extends
+    Omit<ComponentPropsWithRef<"button">, "onChange" | "type" | "value">,
     SwitchVariants {
   /** Estado controlado. Si se pasa, el componente no guarda estado propio. */
   checked?: boolean;

@@ -15,16 +15,16 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, tsColumn, timestamps } from "./_shared.js";
-import { companyRef } from "./identity.js";
-import { connections } from "./publishing.js";
+import { createdAtOnly, tsColumn, timestamps } from "./_shared";
+import { companyRef } from "./identity";
+import { connections } from "./publishing";
 import {
   acquisitionTierEnum,
   brandSourceFailureReasonEnum,
   brandSourceStatusEnum,
   brandSourceTypeEnum,
   companyProfileStatusEnum,
-} from "./enums.js";
+} from "./enums";
 
 /**
  * DATA-004 — `CompanyProfile` (Brand). 1:1 con company.
@@ -49,16 +49,24 @@ export const companyProfiles = pgTable(
 
     // ── Cuestionario de onboarding (CONFIRMED) ──
     businessModel: text(),
-    businessCategories: text().array().notNull().default(sql`'{}'::text[]`),
+    businessCategories: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     monthlyRevenueBand: text(),
     teamSize: text(),
     ownerRole: text(),
-    expectations: text().array().notNull().default(sql`'{}'::text[]`),
+    expectations: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
 
     /** Incrementa en cada guardado. */
     brandRevision: integer().notNull().default(0),
     status: companyProfileStatusEnum().notNull().default("pending"),
-    fieldMeta: jsonb().notNull().default(sql`'{}'::jsonb`),
+    fieldMeta: jsonb()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     ...timestamps(),
   },
   (t) => [
@@ -141,19 +149,22 @@ export const brandSourceSnapshots = pgTable(
      * engagement{likes,comments,views}, postedAt}`. **Extractos citables**, no una copia
      * del perfil ajeno.
      */
-    contentItems: jsonb().notNull().default(sql`'[]'::jsonb`),
+    contentItems: jsonb()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     /** map campo → `{value, confidence, excerpt}`. */
-    derivedFields: jsonb().notNull().default(sql`'{}'::jsonb`),
-    conflicts: jsonb().notNull().default(sql`'[]'::jsonb`),
+    derivedFields: jsonb()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    conflicts: jsonb()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     rawRetentionExpiresAt: tsColumn(),
     ...createdAtOnly(),
   },
   (t) => [
     index("brand_source_snapshots_company_created_idx").on(t.companyId, t.createdAt),
-    index("brand_source_snapshots_source_captured_idx").on(
-      t.brandSourceId,
-      t.capturedAt,
-    ),
+    index("brand_source_snapshots_source_captured_idx").on(t.brandSourceId, t.capturedAt),
     /** El barrido de purga (job 20 de §9.5) escanea por esta columna. */
     index("brand_source_snapshots_raw_retention_idx")
       .on(t.rawRetentionExpiresAt)

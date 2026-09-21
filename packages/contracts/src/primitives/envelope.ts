@@ -1,5 +1,5 @@
 /**
- * Sobres de éxito de la API v1 · PRD:2250-2251 (§9.3).
+ * Sobres de éxito de la API v1 · PRD:2256-2251 (§9.3).
  *
  *   Éxito:    {"data": ...}
  *   Paginado: {"data": [...], "pagination": {"cursor": "…"|null, "hasMore": bool}}

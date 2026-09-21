@@ -24,7 +24,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 
-import { PAGINATION } from "./limits.js";
+import { PAGINATION } from "./limits";
 
 export interface CursorKey {
   readonly createdAt: Date;
@@ -98,7 +98,10 @@ export function cursorCondition(
   if (cursor === null || cursor === undefined || cursor === "") return undefined;
   const key = decodeCursor(cursor);
   const tuple = sql`(${createdAtColumn}, ${idColumn}::text)`;
-  const bound = sql`(${key.createdAt}::timestamptz, ${key.id}::text)`;
+  // La fecha va como texto ISO con cast explícito, no como `Date`. Dentro de un
+  // constructor de fila Postgres describe el parámetro como desconocido y el driver
+  // no sabe serializar un `Date`: falla con "must be of type string or Buffer".
+  const bound = sql`(${key.createdAt.toISOString()}::timestamptz, ${key.id}::text)`;
   return direction === "desc" ? sql`${tuple} < ${bound}` : sql`${tuple} > ${bound}`;
 }
 

@@ -15,10 +15,10 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-import { softDelete, timestamps } from "./_shared.js";
-import { companyRef } from "./identity.js";
-import { contentStatusEnum, contentTypeEnum } from "./enums.js";
-import { CONTENT_TEXT_BOX, CONTENT_LIMITS } from "../limits.js";
+import { softDelete, timestamps } from "./_shared";
+import { companyRef } from "./identity";
+import { contentStatusEnum, contentTypeEnum } from "./enums";
+import { CONTENT_TEXT_BOX, CONTENT_LIMITS } from "../limits";
 
 /**
  * DATA-008 — `Content`.
@@ -35,7 +35,10 @@ export const contents = pgTable(
     type: contentTypeEnum().notNull(),
     status: contentStatusEnum().notNull().default("BUILDING"),
     /** URLs. Múltiples para slideshow (una por slide), una para video. */
-    files: text().array().notNull().default(sql`'{}'::text[]`),
+    files: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     thumbnailUrl: text(),
     /** *"copy extraíble actual, normalizada, ≤ 2 000 caracteres"*. */
     generatedText: varchar({ length: CONTENT_LIMITS.generatedTextMaxChars }),

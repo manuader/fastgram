@@ -4,8 +4,10 @@ import { Check, Minus } from "lucide-react";
 import { useCallback, type ComponentPropsWithRef, type ReactNode } from "react";
 import { cn } from "../../cn.js";
 
-export interface CheckboxProps
-  extends Omit<ComponentPropsWithRef<"input">, "type" | "size"> {
+export interface CheckboxProps extends Omit<
+  ComponentPropsWithRef<"input">,
+  "type" | "size"
+> {
   /** Texto junto a la caja. Va dentro del `<label>`, así que aumenta el área de click. */
   label?: ReactNode;
   /** Segunda línea, más apagada. Se enlaza con `aria-describedby` si hay `id`. */
@@ -37,7 +39,8 @@ export function Checkbox({
   ref,
   ...props
 }: CheckboxProps) {
-  const describedBy = description !== undefined && id !== undefined ? `${id}-description` : undefined;
+  const describedBy =
+    description !== undefined && id !== undefined ? `${id}-description` : undefined;
 
   const setNode = useCallback(
     (node: HTMLInputElement | null) => {

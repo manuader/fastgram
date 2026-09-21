@@ -19,14 +19,14 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, timestamps } from "./_shared.js";
+import { createdAtOnly, timestamps } from "./_shared";
 import {
   companyStatusEnum,
   membershipRoleEnum,
   membershipStatusEnum,
   subscriptionStatusEnum,
   userDeletionStatusEnum,
-} from "./enums.js";
+} from "./enums";
 
 /**
  * DATA-001 — `User`. **Global, no workspace-scoped**: un usuario pertenece a N
@@ -102,7 +102,10 @@ export const companies = pgTable(
     billingAnchorDay: integer().notNull(),
     timezone: text().notNull(),
     /** Lista abierta — ver `KNOWN_ENTITLEMENTS`. */
-    entitlements: text().array().notNull().default(sql`'{}'::text[]`),
+    entitlements: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     apiOverageEnabled: boolean().notNull().default(false),
     /**
      * `ref? → Partner`. Igual que `planId`: el PRD nombra `Partner` (§9.7) pero no lo

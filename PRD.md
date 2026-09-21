@@ -3721,6 +3721,20 @@ RAMA PARALELA — Programabilidad
 
 ---
 
+### OQ-21 — El tarifario de créditos no sigue al costo real (consecuencia de `P1-INFRA-001`)
+- **Qué falta:** decidir si el clon hereda el tarifario de AI Studio de Fastlane (4 créditos/imagen · 60 créditos/video · 250/influencer · 4/base image) o lo recalibra contra el costo del proveedor.
+- **Qué se midió** (2026-09-21, `docs/COST-MODEL.md`): **un crédito gastado en video cuesta 15,6× uno gastado en imagen.** El tarifario cobra 15×, así que la proporción casi coincide — pero el problema es otro: **un video de 10 s cuesta los mismos 60 créditos que uno de 5 s, pagando el doble de GPU.** El crédito no mide lo que cuesta.
+- **Por qué importa:** la generación de video en GPU es el **driver de costo dominante**, y por dos órdenes de magnitud: un usuario Pro que gaste sus 2.000 créditos en video consume $23,33 sobre un plan de $149 (**15,7 %**), mientras que egress, render, LLM, storage y OCR **sumados** no llegan a $0,50/usuario/mes. Cualquier error en este tarifario se multiplica por todo el volumen del producto; un error en los otros drivers no se nota.
+- **Riesgo asociado y sin mitigación escrita:** *"Unlimited content saves"* en el plan Pro (§16.1) deja el COGS **sin techo**. Es el mayor riesgo de margen del modelo y hoy no hay nada en el PRD que lo acote.
+- **Opciones:**
+  1. Heredar el tarifario tal cual (paridad con Fastlane; asume el riesgo de margen en videos largos).
+  2. Cobrar el video **por segundo generado** en vez de por pieza. Es lo que sigue al costo, pero cambia la promesa de la UI y hay que explicarlo.
+  3. Mantener el precio por pieza y **acotar la duración** que una pieza puede generar.
+- **Qué observar:** distribución real de duración de los videos generados una vez haya volumen. Si la mediana se pega al máximo, la opción 1 no se sostiene.
+- **Nota:** es un defecto de **diseño de producto heredado**, no de infraestructura. No se puede resolver optimizando el render.
+
+---
+
 # 25. Judgment Layer: puntos de decisión y features de juicio
 
 > **EXTENSION · EXT-008 · decisión D-05.** Esta sección no describe comportamiento observado en Fastlane: define **cómo el clon resuelve las decisiones semánticas** que el resto del PRD especifica sin decir con qué. Nace de la evaluación de arquitectura `EVAL-JEV.md` (2026-09-21).

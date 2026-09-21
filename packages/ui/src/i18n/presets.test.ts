@@ -10,7 +10,10 @@ const allPresets: Array<[string, StatePreset]> = [
 
 describe("presets de estado", () => {
   it("cubre los trece estados vacíos del PRD §19.1", () => {
-    const expected = Array.from({ length: 13 }, (_, i) => `ERR-E${String(i + 1).padStart(2, "0")}`);
+    const expected = Array.from(
+      { length: 13 },
+      (_, i) => `ERR-E${String(i + 1).padStart(2, "0")}`,
+    );
     expect(Object.keys(emptyStatePresets).sort()).toEqual(expected.sort());
   });
 

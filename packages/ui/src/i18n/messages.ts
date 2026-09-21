@@ -28,8 +28,7 @@ export const en = {
   "common.somethingWentWrong": "Something went wrong", // §19.3 · literal
   "common.somethingWentWrongContent":
     "Something went wrong while preparing your content. Please try again.", // §19.3 · literal
-  "common.somethingWentWrongRun":
-    "Something went wrong with this run. Please try again.", // §19.3 · literal
+  "common.somethingWentWrongRun": "Something went wrong with this run. Please try again.", // §19.3 · literal
 
   /* ------------------------------------------------------ empty states §19.1 */
   "empty.aiStudio.title": "No generations yet. Start generating with a prompt below.", // ERR-E01 · literal
@@ -170,8 +169,7 @@ export const en = {
   "billing.planLimitReached": "Plan content limit reached", // literal
   "billing.notIncluded": "This content isn't included in your plan.", // literal
   "billing.someNotIncluded": "Some items are not included in your plan", // literal
-  "billing.viewOnly":
-    "Your content is view-only. Upgrade to create and publish again.", // literal
+  "billing.viewOnly": "Your content is view-only. Upgrade to create and publish again.", // literal
   "billing.requiresSitePlan": "Requires a Site plan", // literal
   "billing.upgradeToUnlock": "Upgrade to unlock", // literal
 

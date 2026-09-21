@@ -10,8 +10,7 @@ export interface SelectOption {
 }
 
 export interface SelectProps
-  extends Omit<ComponentPropsWithRef<"select">, "size" | "children">,
-    SelectVariants {
+  extends Omit<ComponentPropsWithRef<"select">, "size" | "children">, SelectVariants {
   /** Opciones. Alternativa a pasar `<option>` por `children`. */
   options?: readonly SelectOption[];
   /**

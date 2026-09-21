@@ -88,7 +88,8 @@ const fromString = (def: ZodDef): JsonSchema => {
     if (check.kind === "min" && check.value !== undefined) out.minLength = check.value;
     if (check.kind === "max" && check.value !== undefined) out.maxLength = check.value;
     if (check.kind === "url") out.format = "uri";
-    if (check.kind === "regex" && check.regex !== undefined) out.pattern = check.regex.source;
+    if (check.kind === "regex" && check.regex !== undefined)
+      out.pattern = check.regex.source;
   }
   return out;
 };
@@ -201,14 +202,20 @@ type OperationObject = {
   summary: string;
   parameters?: ParameterObject[];
   requestBody?: { required: boolean; content: Record<string, { schema: JsonSchema }> };
-  responses: Record<string, { description: string; content?: Record<string, { schema: JsonSchema }> }>;
+  responses: Record<
+    string,
+    { description: string; content?: Record<string, { schema: JsonSchema }> }
+  >;
 };
 
 export type OpenApiDocument = {
   openapi: "3.1.0";
   info: { title: string; version: string; description: string };
   servers: { url: string }[];
-  paths: Record<string, Partial<Record<"get" | "post" | "patch" | "delete", OperationObject>>>;
+  paths: Record<
+    string,
+    Partial<Record<"get" | "post" | "patch" | "delete", OperationObject>>
+  >;
   components: {
     securitySchemes: Record<string, unknown>;
     schemas: Record<string, JsonSchema>;
@@ -218,7 +225,7 @@ export type OpenApiDocument = {
 
 const json = (schema: JsonSchema) => ({ "application/json": { schema } });
 
-/** Envelope de éxito `{"data": …}` (§9.3, PRD:2250). */
+/** Envelope de éxito `{"data": …}` (§9.3, PRD:2256). */
 const dataOf = (schema: JsonSchema): JsonSchema => ({
   type: "object",
   properties: { data: schema },
@@ -226,10 +233,13 @@ const dataOf = (schema: JsonSchema): JsonSchema => ({
   additionalProperties: false,
 });
 
-/** Envelope paginado `{"data": [...], "pagination": {...}}` (§9.3, PRD:2250). */
+/** Envelope paginado `{"data": [...], "pagination": {...}}` (§9.3, PRD:2256). */
 const pageOf = (item: JsonSchema): JsonSchema => ({
   type: "object",
-  properties: { data: { type: "array", items: item }, pagination: toJsonSchema(paginationSchema) },
+  properties: {
+    data: { type: "array", items: item },
+    pagination: toJsonSchema(paginationSchema),
+  },
   required: ["data", "pagination"],
   additionalProperties: false,
 });
@@ -261,7 +271,7 @@ const pathParam = (name: string): ParameterObject => ({
   schema: { type: "string", minLength: 1 },
 });
 
-/** §9.3 (PRD:2259) — `Idempotency-Key` obligatoria en los endpoints facturables. */
+/** §9.3 (PRD:2288) — `Idempotency-Key` obligatoria en los endpoints facturables. */
 const idempotencyParam: ParameterObject = {
   name: IDEMPOTENCY_KEY_HEADER,
   in: "header",
@@ -302,7 +312,11 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
     components: {
       securitySchemes: {
         // FR-180 (PRD:1860): `Authorization: Bearer fsln_live_<32 base62>`.
-        bearerApiKey: { type: "http", scheme: "bearer", bearerFormat: "fsln_live_<32 base62>" },
+        bearerApiKey: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "fsln_live_<32 base62>",
+        },
       },
       schemas: {
         ErrorEnvelope: toJsonSchema(errorEnvelopeSchema),
@@ -328,13 +342,18 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           operationId: "runBlitz",
           summary:
             "Saca una sugerencia lista de la discovery queue y lanza su build. No idempotente.",
-          requestBody: { required: false, content: json(toJsonSchema(blitz.runBlitzRequestSchema)) },
+          requestBody: {
+            required: false,
+            content: json(toJsonSchema(blitz.runBlitzRequestSchema)),
+          },
           responses: {
             "202": ok("Build encolado", dataOf(contentJs)),
             "400": errorResponse("bad_request — contentType o aspectRatio no reconocido"),
             "404": errorResponse("not_found — la discovery queue está vacía"),
             "409": errorResponse("company_profile_not_ready"),
-            "429": errorResponse("blitz_quota_exceeded / content_quota_exceeded / rate_limited"),
+            "429": errorResponse(
+              "blitz_quota_exceeded / content_quota_exceeded / rate_limited",
+            ),
           },
         },
       },
@@ -342,18 +361,23 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
         get: {
           operationId: "getBlitzPreferences",
           summary: "Preferencias del motor de generación",
-          responses: { "200": ok("OK", dataOf(toJsonSchema(blitz.blitzPreferencesSchema))) },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(blitz.blitzPreferencesSchema))),
+          },
         },
         patch: {
           operationId: "updateBlitzPreferences",
-          summary: "Actualiza preferencias. 3 req/min. Sólo afecta a generaciones futuras.",
+          summary:
+            "Actualiza preferencias. 3 req/min. Sólo afecta a generaciones futuras.",
           requestBody: {
             required: true,
             content: json(toJsonSchema(blitz.updateBlitzPreferencesRequestSchema)),
           },
           responses: {
             "200": ok("OK", dataOf(toJsonSchema(blitz.blitzPreferencesSchema))),
-            "400": errorResponse("bad_request — body vacío, set parcial de pesos o settingsApplication"),
+            "400": errorResponse(
+              "bad_request — body vacío, set parcial de pesos o settingsApplication",
+            ),
             "429": errorResponse("rate_limited"),
           },
         },
@@ -367,14 +391,17 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
         },
         post: {
           operationId: "createBlitzAngle",
-          summary: "Crea un content angle y reconcilia angleWeights en la misma transacción",
+          summary:
+            "Crea un content angle y reconcilia angleWeights en la misma transacción",
           requestBody: {
             required: true,
             content: json(toJsonSchema(angles.createContentAngleRequestSchema)),
           },
           responses: {
             "201": ok("Creado", dataOf(angleJs)),
-            "400": errorResponse("bad_request — MAX_ANGLES_EXCEEDED / MAX_ANGLES_PER_INFLUENCER_EXCEEDED"),
+            "400": errorResponse(
+              "bad_request — MAX_ANGLES_EXCEEDED / MAX_ANGLES_PER_INFLUENCER_EXCEEDED",
+            ),
           },
         },
       },
@@ -387,13 +414,19 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
             required: true,
             content: json(toJsonSchema(angles.updateContentAngleRequestSchema)),
           },
-          responses: { "200": ok("OK", dataOf(angleJs)), "404": errorResponse("not_found") },
+          responses: {
+            "200": ok("OK", dataOf(angleJs)),
+            "404": errorResponse("not_found"),
+          },
         },
         delete: {
           operationId: "deleteBlitzAngle",
           summary: "Soft-delete (desactivación) reversible por PATCH",
           parameters: [pathParam("id")],
-          responses: { "204": { description: "Borrado" }, "404": errorResponse("not_found") },
+          responses: {
+            "204": { description: "Borrado" },
+            "404": errorResponse("not_found"),
+          },
         },
       },
       "/blitz/angles/generate": {
@@ -419,7 +452,8 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
         },
         post: {
           operationId: "createInfluencer",
-          summary: "Crea y entrena un influencer (250 créditos). Requiere Idempotency-Key.",
+          summary:
+            "Crea y entrena un influencer (250 créditos). Requiere Idempotency-Key.",
           parameters: [idempotencyParam],
           requestBody: {
             required: true,
@@ -428,7 +462,9 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           responses: {
             "202": ok("Pipeline encolado", dataOf(influencerJs)),
             "402": errorResponse("payment_required — cap de 50, créditos o storage"),
-            "409": errorResponse("conflict — upload no alcanzable o idempotency key en uso"),
+            "409": errorResponse(
+              "conflict — upload no alcanzable o idempotency key en uso",
+            ),
           },
         },
       },
@@ -437,7 +473,10 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           operationId: "getInfluencer",
           summary: "Estado y progress del influencer",
           parameters: [pathParam("id")],
-          responses: { "200": ok("OK", dataOf(influencerJs)), "404": errorResponse("not_found") },
+          responses: {
+            "200": ok("OK", dataOf(influencerJs)),
+            "404": errorResponse("not_found"),
+          },
         },
       },
       "/influencers/base-image/upload-url": {
@@ -455,14 +494,24 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
         get: {
           operationId: "listConnections",
           summary: "Conexiones OAuth del workspace",
-          responses: { "200": ok("OK", dataOf({ type: "array", items: toJsonSchema(connections.connectionSchema) })) },
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf({
+                type: "array",
+                items: toJsonSchema(connections.connectionSchema),
+              }),
+            ),
+          },
         },
       },
       "/warmed-accounts": {
         get: {
           operationId: "listWarmedAccounts",
           summary: "Cuentas warmed (máx. 100 visibles, sin cursor)",
-          responses: { "200": ok("OK", toJsonSchema(warmed.listWarmedAccountsResponseSchema)) },
+          responses: {
+            "200": ok("OK", toJsonSchema(warmed.listWarmedAccountsResponseSchema)),
+          },
         },
       },
       "/tiktok/sounds": {
@@ -471,7 +520,10 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           summary: "Sonidos comerciales de TikTok para una cuenta warmed",
           parameters: queryParams(sounds.listTiktokSoundsQuerySchema),
           responses: {
-            "200": ok("OK", dataOf({ type: "array", items: toJsonSchema(sounds.tiktokSoundSchema) })),
+            "200": ok(
+              "OK",
+              dataOf({ type: "array", items: toJsonSchema(sounds.tiktokSoundSchema) }),
+            ),
           },
         },
       },
@@ -520,7 +572,10 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           operationId: "getMedia",
           summary: "Un asset del Media Bank",
           parameters: [pathParam("id")],
-          responses: { "200": ok("OK", dataOf(mediaJs)), "404": errorResponse("not_found") },
+          responses: {
+            "200": ok("OK", dataOf(mediaJs)),
+            "404": errorResponse("not_found"),
+          },
         },
         patch: {
           operationId: "updateMedia",
@@ -530,7 +585,10 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
             required: true,
             content: json(toJsonSchema(media.updateMediaRequestSchema)),
           },
-          responses: { "200": ok("OK", dataOf(mediaJs)), "404": errorResponse("not_found") },
+          responses: {
+            "200": ok("OK", dataOf(mediaJs)),
+            "404": errorResponse("not_found"),
+          },
         },
         delete: {
           operationId: "deleteMedia",
@@ -570,7 +628,10 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           operationId: "getContent",
           summary: "Estado del contenido (polling ~10 s durante el build)",
           parameters: [pathParam("id")],
-          responses: { "200": ok("OK", dataOf(contentJs)), "404": errorResponse("not_found") },
+          responses: {
+            "200": ok("OK", dataOf(contentJs)),
+            "404": errorResponse("not_found"),
+          },
         },
         patch: {
           operationId: "updateContent",
@@ -612,7 +673,8 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
       "/content/{id}/regenerate": {
         post: {
           operationId: "regenerateContent",
-          summary: "Reescribe toda la copy preservando media y layout. Requiere Idempotency-Key.",
+          summary:
+            "Reescribe toda la copy preservando media y layout. Requiere Idempotency-Key.",
           parameters: [pathParam("id"), idempotencyParam],
           requestBody: {
             required: true,
@@ -642,7 +704,9 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
             "402": errorResponse("payment_required — autoCaptions o post slots warmed"),
             "403": errorResponse("forbidden — falta tiktokDirect o warmed posting"),
             "409": errorResponse("conflict — cuenta warmed no postable"),
-            "429": errorResponse("tiktok_post_limit_exceeded / youtube_post_limit_exceeded / instagram_post_limit_exceeded"),
+            "429": errorResponse(
+              "tiktok_post_limit_exceeded / youtube_post_limit_exceeded / instagram_post_limit_exceeded",
+            ),
             "503": errorResponse("tiktok_creator_info_unavailable"),
           },
         },
@@ -682,7 +746,10 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           operationId: "getPost",
           summary: "Un post con su estado y métricas de la última sincronización",
           parameters: [pathParam("id")],
-          responses: { "200": ok("OK", dataOf(postJs)), "404": errorResponse("not_found") },
+          responses: {
+            "200": ok("OK", dataOf(postJs)),
+            "404": errorResponse("not_found"),
+          },
         },
       },
       "/posts/cancel": {
@@ -724,7 +791,10 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           responses: {
             "200": ok(
               "OK",
-              dataOf({ type: "array", items: toJsonSchema(analytics.postAnalyticsResultSchema) }),
+              dataOf({
+                type: "array",
+                items: toJsonSchema(analytics.postAnalyticsResultSchema),
+              }),
             ),
             "400": errorResponse("bad_request — details.invalidIds"),
           },
@@ -746,7 +816,8 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
       "/brand/sources": {
         post: {
           operationId: "createBrandSource",
-          summary: "EXTENSION · crea la fuente y encola el análisis. Requiere Idempotency-Key.",
+          summary:
+            "EXTENSION · crea la fuente y encola el análisis. Requiere Idempotency-Key.",
           parameters: [idempotencyParam],
           requestBody: {
             required: true,
@@ -761,7 +832,10 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           operationId: "listBrandSources",
           summary: "EXTENSION · fuentes del workspace",
           responses: {
-            "200": ok("OK", dataOf({ type: "array", items: toJsonSchema(brand.brandSourceSchema) })),
+            "200": ok(
+              "OK",
+              dataOf({ type: "array", items: toJsonSchema(brand.brandSourceSchema) }),
+            ),
           },
         },
       },
@@ -810,7 +884,9 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
         get: {
           operationId: "getCompanyProfile",
           summary: "EXTENSION · perfil con fieldMeta (confianza, origen, extracto)",
-          responses: { "200": ok("OK", dataOf(toJsonSchema(brand.companyProfileSchema))) },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(brand.companyProfileSchema))),
+          },
         },
         patch: {
           operationId: "updateCompanyProfile",

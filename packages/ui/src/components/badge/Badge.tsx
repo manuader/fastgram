@@ -15,7 +15,15 @@ export interface BadgeProps extends ComponentPropsWithRef<"span">, BadgeVariants
  * El color nunca es la única señal: siempre lleva texto. Un badge rojo sin
  * palabra no le dice nada a quien no distingue rojo de verde.
  */
-export function Badge({ tone, size, dot, icon, className, children, ...props }: BadgeProps) {
+export function Badge({
+  tone,
+  size,
+  dot,
+  icon,
+  className,
+  children,
+  ...props
+}: BadgeProps) {
   return (
     <span {...props} className={cn(badgeVariants({ tone, size }), className)}>
       {dot === true && <span className="fg-badge__dot" aria-hidden="true" />}

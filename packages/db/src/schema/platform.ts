@@ -16,13 +16,13 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, tsColumn, timestamps } from "./_shared.js";
-import { companies, companyRef, users } from "./identity.js";
+import { createdAtOnly, tsColumn, timestamps } from "./_shared";
+import { companies, companyRef, users } from "./identity";
 import {
   apiKeyKindEnum,
   idempotencyStateEnum,
   uploadReservationStateEnum,
-} from "./enums.js";
+} from "./enums";
 
 /**
  * DATA-026 — `ApiKey`.
@@ -154,7 +154,9 @@ export const onboardingRecords = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     draftCompanyId: uuid().references(() => companies.id, { onDelete: "set null" }),
     step: text().notNull(),
-    payload: jsonb().notNull().default(sql`'{}'::jsonb`),
+    payload: jsonb()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     ...createdAtOnly(),
   },
   (t) => [index("onboarding_records_owner_created_idx").on(t.ownerUserId, t.createdAt)],

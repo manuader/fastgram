@@ -15,7 +15,9 @@ export default defineConfig({
   casing: "snake_case",
   dbCredentials: {
     // Sólo lo usan `push` y `studio`; `generate` trabaja offline sobre el schema.
-    url: process.env["DATABASE_URL"] ?? "postgres://fastgram:fastgram@localhost:5432/fastgram",
+    url:
+      process.env["DATABASE_URL"] ??
+      "postgres://fastgram:fastgram@localhost:5432/fastgram",
   },
   strict: true,
   verbose: true,

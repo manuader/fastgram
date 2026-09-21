@@ -15,17 +15,17 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, tsColumn, timestamps } from "./_shared.js";
-import { companyRef } from "./identity.js";
-import { contents } from "./content.js";
+import { createdAtOnly, tsColumn, timestamps } from "./_shared";
+import { companyRef } from "./identity";
+import { contents } from "./content";
 import {
   automationSlotFailureReasonEnum,
   automationSlotStatusEnum,
   automationStatusEnum,
   contentTypeEnum,
   postingModeEnum,
-} from "./enums.js";
-import { AUTOMATION_LIMITS } from "../limits.js";
+} from "./enums";
+import { AUTOMATION_LIMITS } from "../limits";
 
 /** DATA-021 — `Automation`. */
 export const automations = pgTable(
@@ -36,7 +36,9 @@ export const automations = pgTable(
     name: varchar({ length: AUTOMATION_LIMITS.nameMaxChars }).notNull(),
     status: automationStatusEnum().notNull().default("DRAFT"),
     /** Cuentas destino; forma `[{platform, connectionId|warmedAccountId, …}]`. */
-    accounts: jsonb().notNull().default(sql`'[]'::jsonb`),
+    accounts: jsonb()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     perAccountPerDay: integer().notNull(),
     durationWeeks: integer().notNull(),
     startDateUtc: tsColumn().notNull(),
@@ -90,11 +92,16 @@ export const automationSlots = pgTable(
     suggestionData: jsonb(),
     generatedText: text(),
     /** map plataforma → caption. */
-    captionsByPlatform: jsonb().notNull().default(sql`'{}'::jsonb`),
+    captionsByPlatform: jsonb()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     scheduledAtUtc: tsColumn(),
     failureReason: automationSlotFailureReasonEnum(),
     contentId: uuid().references(() => contents.id, { onDelete: "set null" }),
-    postIds: uuid().array().notNull().default(sql`'{}'::uuid[]`),
+    postIds: uuid()
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
     ...timestamps(),
   },
   (t) => [

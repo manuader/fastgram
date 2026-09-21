@@ -13,7 +13,7 @@
 
 import { sql } from "drizzle-orm";
 
-import type { Database, Transaction } from "./client.js";
+import type { Database, Transaction } from "./client";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Identificador SQL simple. `SET LOCAL ROLE` no admite parámetros; ver abajo. */

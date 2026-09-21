@@ -1,4 +1,5 @@
 import type { MessageKey } from "./messages.js";
+import { t, type MessageVars } from "./t.js";
 
 /**
  * Un estado vacío o de error listo para renderizar: qué claves de copy usa.
@@ -95,3 +96,30 @@ export const errorStatePresets = {
 } as const satisfies Record<string, StatePreset>;
 
 export type ErrorStatePresetId = keyof typeof errorStatePresets;
+
+/** Un preset ya resuelto a strings del idioma activo. */
+export interface ResolvedState {
+  title: string;
+  description?: string;
+  actionLabel?: string;
+}
+
+/**
+ * Convierte un preset en los strings que van a pantalla.
+ *
+ * Existe para que el copy del PRD §19 llegue al componente sin que el
+ * componente sepa de dónde salió: `EmptyState` sigue siendo presentación pura.
+ */
+export function resolveStatePreset(
+  preset: StatePreset,
+  vars?: MessageVars,
+): ResolvedState {
+  const resolved: ResolvedState = { title: t(preset.titleKey, vars) };
+  if (preset.descriptionKey !== undefined) {
+    resolved.description = t(preset.descriptionKey, vars);
+  }
+  if (preset.actionKey !== undefined) {
+    resolved.actionLabel = t(preset.actionKey, vars);
+  }
+  return resolved;
+}

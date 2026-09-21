@@ -64,6 +64,10 @@
   gap: var(--fg-space-px);
 }
 
+.fg-checkbox__label {
+  color: var(--fg-color-text);
+}
+
 .fg-checkbox__description {
   color: var(--fg-color-text-muted);
   font-size: var(--fg-text-xs);

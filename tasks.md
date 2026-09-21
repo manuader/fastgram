@@ -73,7 +73,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P1-INFRA — Infraestructura y costos
 
-- [ ] **P1-INFRA-001** **Modelo de costos medido**: egress, CPU de render, GPU, tokens, ASR/OCR. Resultado fechado en `docs/HANDOFF.md` · IMPL §5 · ⚠️ ninguna cifra se asume
+- [x] **P1-INFRA-001** **Modelo de costos medido**: egress, CPU de render, GPU, tokens, ASR/OCR. Resultado fechado en `docs/HANDOFF.md` · IMPL §5 · ⚠️ ninguna cifra se asume
 - [ ] **P1-INFRA-002** Entornos `dev` / `staging` / `prod` con IaC
 - [ ] **P1-INFRA-003** Postgres gestionado + backups verificados (**probar un restore, no sólo configurarlo**)
 - [ ] **P1-INFRA-004** Bucket R2 + CDN + política de ciclo de vida · `ADR-006`
@@ -82,19 +82,19 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P1-DATA — Modelo de datos
 
-- [ ] **P1-DATA-001** Drizzle + primera migración + repositorios base · `ADR-004`
-- [ ] **P1-DATA-002** `User`, `Company`, `WorkspaceMembership` · `DATA-001`…`DATA-003`
-- [ ] **P1-DATA-003** `CompanyProfile` con `fieldMeta` · `DATA-004`
-- [ ] **P1-DATA-004** `BrandSource` + `BrandSourceSnapshot` · `DATA-031`, `DATA-032`
-- [ ] **P1-DATA-005** `QuotaLedger` · `DATA-029`
-- [ ] **P1-DATA-006** `IdempotencyRecord` · `DATA-027`
-- [ ] **P1-DATA-007** `UploadReservation` · `DATA-028`
-- [ ] **P1-DATA-008** `OnboardingRecord` · `DATA-030`
-- [ ] **P1-DATA-009** `JudgmentRecord` · `DATA-033`
-- [ ] **P1-DATA-010** **Row Level Security** por `companyId` en todas las tablas de cliente · IMPL §2.4
-- [ ] **P1-DATA-011** Índices `(companyId, createdAt)` y helper de paginación por cursor · PRD §9.10
-- [ ] **P1-DATA-012** Soft-delete transversal, excluido por defecto de todo listado · PRD §9.4
-- [ ] **P1-DATA-013** Habilitar `pgvector` (lo usa `FR-150` en P3) · `ADR-003`
+- [x] **P1-DATA-001** Drizzle + primera migración + repositorios base · `ADR-004`
+- [x] **P1-DATA-002** `User`, `Company`, `WorkspaceMembership` · `DATA-001`…`DATA-003`
+- [x] **P1-DATA-003** `CompanyProfile` con `fieldMeta` · `DATA-004`
+- [x] **P1-DATA-004** `BrandSource` + `BrandSourceSnapshot` · `DATA-031`, `DATA-032`
+- [x] **P1-DATA-005** `QuotaLedger` · `DATA-029`
+- [x] **P1-DATA-006** `IdempotencyRecord` · `DATA-027`
+- [x] **P1-DATA-007** `UploadReservation` · `DATA-028`
+- [x] **P1-DATA-008** `OnboardingRecord` · `DATA-030`
+- [x] **P1-DATA-009** `JudgmentRecord` · `DATA-033`
+- [x] **P1-DATA-010** **Row Level Security** por `companyId` en todas las tablas de cliente · IMPL §2.4
+- [x] **P1-DATA-011** Índices `(companyId, createdAt)` y helper de paginación por cursor · PRD §9.10
+- [x] **P1-DATA-012** Soft-delete transversal, excluido por defecto de todo listado · PRD §9.4
+- [x] **P1-DATA-013** Habilitar `pgvector` (lo usa `FR-150` en P3) · `ADR-003`
 
 ## P1-AUTH — Identidad
 
@@ -115,15 +115,15 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P1-QUOTA — Cuotas y rate limiting
 
-- [ ] **P1-QUOTA-001** Motor de content saves: incluidos → comprados → overage · PRD §16.2
-- [ ] **P1-QUOTA-002** Swipes diarios con reset 00:00 UTC · `F-066`
-- [ ] **P1-QUOTA-003** Créditos de AI Studio
-- [ ] **P1-QUOTA-004** Trial allowance **de por vida**, compartida entre workspaces personales, sin reset · PRD §16.2
-- [ ] **P1-QUOTA-005** **Reembolso de content save cuando el build falla** · `FR-050` · ⚠️ regla de negocio explícita
-- [ ] **P1-QUOTA-006** Orden de evaluación: el gate de saves **antes** que el cap de swipes · PRD §16.2
-- [ ] **P1-QUOTA-007** Rate limiting token-bucket por workspace, con `Retry-After` y `details.retryAfterMs` · `NFR-009`
-- [ ] **P1-QUOTA-008** `503 service_unavailable` cuando el límite no se puede comprobar (≠ 429) · `NFR-009`
-- [ ] **P1-QUOTA-009** Caps **configurables por plan**, no hardcodeados · `EXT-005`, `OQ-14`
+- [x] **P1-QUOTA-001** Motor de content saves: incluidos → comprados → overage · PRD §16.2
+- [x] **P1-QUOTA-002** Swipes diarios con reset 00:00 UTC · `F-066`
+- [x] **P1-QUOTA-003** Créditos de AI Studio
+- [x] **P1-QUOTA-004** Trial allowance **de por vida**, compartida entre workspaces personales, sin reset · PRD §16.2
+- [x] **P1-QUOTA-005** **Reembolso de content save cuando el build falla** · `FR-050` · ⚠️ regla de negocio explícita
+- [x] **P1-QUOTA-006** Orden de evaluación: el gate de saves **antes** que el cap de swipes · PRD §16.2
+- [x] **P1-QUOTA-007** Rate limiting token-bucket por workspace, con `Retry-After` y `details.retryAfterMs` · `NFR-009`
+- [x] **P1-QUOTA-008** `503 service_unavailable` cuando el límite no se puede comprobar (≠ 429) · `NFR-009`
+- [~] **P1-QUOTA-009** Caps **configurables por plan**, no hardcodeados · `EXT-005`, `OQ-14` · **parcial:** los caps existen y tienen test, pero son constantes: falta hacerlos configurables por plan
 
 ## P1-QUEUE — Colas y jobs
 
@@ -145,24 +145,24 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P1-API — Contrato y API
 
-- [ ] **P1-API-001** Scaffold Fastify + estructura de `apps/api`
-- [ ] **P1-API-002** `packages/contracts` con Zod → tipos + OpenAPI · `ADR-015`
-- [ ] **P1-API-003** Envelopes `{data}` / `{error:{code,message,details}}` / `pagination{cursor,hasMore}` · PRD §9.3
+- [~] **P1-API-001** Scaffold Fastify + estructura de `apps/api` · **parcial:** scaffold Fastify + capa HTTP (errores, rate limit, idempotencia, subidas, paginación) hecha; faltan las rutas
+- [x] **P1-API-002** `packages/contracts` con Zod → tipos + OpenAPI · `ADR-015`
+- [x] **P1-API-003** Envelopes `{data}` / `{error:{code,message,details}}` / `pagination{cursor,hasMore}` · PRD §9.3
 - [ ] **P1-API-004** Versionado en la ruta `/api/v1`
 - [ ] **P1-API-005** API keys `fsln_live_*`: hash en reposo, mostradas una sola vez, revocación inmediata · `FR-180`
-- [ ] **P1-API-006** `WWW-Authenticate: Bearer realm="api"` en todos los 401 · `FR-180`
+- [x] **P1-API-006** `WWW-Authenticate: Bearer realm="api"` en todos los 401 · `FR-180`
 - [ ] **P1-API-007** Middleware de scope: toda ruta resuelve `companyId` desde la key o la sesión
 
 ## P1-JUDGE — Puerto Judgment · `EXT-008`, `D-05`
 
-- [ ] **P1-JUDGE-001** Puerto `Judgment`: `choice` / `score` / `noul` · PRD §9.15.1
+- [x] **P1-JUDGE-001** Puerto `Judgment`: `choice` / `score` / `noul` · PRD §9.15.1
 - [ ] **P1-JUDGE-002** `LlmJudgmentAdapter` con decodificación restringida por JSON-schema · `ADR-009`
 - [ ] **P1-JUDGE-003** `StubJudgmentAdapter` para tests deterministas
 - [ ] **P1-JUDGE-004** Selección de adaptador **por punto de decisión**, no global · PRD §9.15.2
 - [ ] **P1-JUDGE-005** Persistencia de `JudgmentRecord` con `latencyMs` e `inputTokens` · `DATA-033`
 - [ ] **P1-JUDGE-006** **Evaluación de modelos y precios**, con resultado fechado en `HANDOFF.md` · `ADR-009` · ⚠️ nada de precios de memoria
-- [ ] **P1-JUDGE-007** Sanitización obligatoria del estado antes del puerto · PRD §9.15.3
-- [ ] **P1-JUDGE-008** Suite de contrato única que corre contra **todos** los adaptadores · IMPL §4
+- [x] **P1-JUDGE-007** Sanitización obligatoria del estado antes del puerto · PRD §9.15.3
+- [x] **P1-JUDGE-008** Suite de contrato única que corre contra **todos** los adaptadores · IMPL §4
 
 ## P1-VISION — Servicio de visión
 
@@ -224,12 +224,12 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P1-UI — Shell de aplicación
 
-- [ ] **P1-UI-001** Next.js + Tailwind + shadcn/ui, tokens y tema
-- [ ] **P1-UI-002** Tema claro/oscuro **sin flash** en la carga · `NFR-021`
+- [~] **P1-UI-001** Next.js + Tailwind + shadcn/ui, tokens y tema · **parcial:** design system y tokens hechos en `packages/ui`; falta cablearlo en `apps/web`
+- [x] **P1-UI-002** Tema claro/oscuro **sin flash** en la carga · `NFR-021`
 - [ ] **P1-UI-003** Sidebar colapsable con las 10 entradas + bloque secundario · `FR-001`
 - [ ] **P1-UI-004** Rutas de PRD §3.1 con sus guards
-- [ ] **P1-UI-005** Sistema de toasts con enlace de acción · PRD §3.5
-- [ ] **P1-UI-006** Primitivas de estado: `empty`, `loading`, `error`, skeletons · PRD §19
+- [x] **P1-UI-005** Sistema de toasts con enlace de acción · PRD §3.5
+- [x] **P1-UI-006** Primitivas de estado: `empty`, `loading`, `error`, skeletons · PRD §19
 - [ ] **P1-UI-007** TanStack Query + capa de cliente de API tipada
 - [ ] **P1-UI-008** Responsive: móvil y tablet · `NFR-019`
 - [ ] **P1-UI-009** Home con KPIs, Tasks y Views History · `FR-030`

@@ -113,8 +113,17 @@ SQL-first y sin motor en runtime. El PRD tiene paginación por cursor, transacci
 ### ADR-005 · pg-boss antes que BullMQ + Redis
 Evita un servicio más y, sobre todo, permite **encolar dentro de la transacción de negocio** (§2.3). Se migra a BullMQ sólo el job que demuestre saturar, detrás del puerto `Queue`. No al revés.
 
-### ADR-006 · Cloudflare R2 para objetos
-**Egress $0.** En un producto de video el tráfico de salida domina la factura: cada preview en Blitz, cada thumbnail del calendario y cada descarga sirve bytes. S3 cobra por GB servido; R2 no. Es S3-compatible, así que el puerto `Storage` permite MinIO en local y desarrollo.
+### ADR-006 · Cloudflare R2 para objetos — ⚠️ **premisa refutada, decisión en revisión**
+**La decisión sigue en pie por ahora; su razón, no.** Se escribió: *"en un producto de video el tráfico de salida domina la factura"*. `P1-INFRA-001` lo midió y **es falso para este producto** (ver [`COST-MODEL.md`](COST-MODEL.md) §4.3), por dos motivos distintos:
+
+1. FastGram **publica en TikTok e Instagram**: la audiencia masiva la sirven las plataformas, no nosotros. Nuestro egress son previews para el creador — céntimos por usuario/mes, no el driver dominante.
+2. El egress $0 es real como facturación, pero los **Service-Specific Terms de Cloudflare exigen un servicio pago (Stream) para servir video por el CDN** fuera de Enterprise, y las docs de agosto 2026 ya no nombran a R2 como vía habilitada. Tres fuentes oficiales de Cloudflare se contradicen entre sí.
+
+El razonamiento original no era tonto: es correcto para un producto de **distribución** de video. FastGram es de **producción**. Vale registrar el error porque es la clase de premisa que se hereda sin revisar.
+
+**Qué falta para cerrar esto (bloquea `P1-INFRA-004`):** confirmación escrita de Cloudflare sobre si R2 + Workers está permitido hoy para servir video fuera de Enterprise. No es un experimento técnico, es una pregunta legal. La alternativa medida —B2 + bunny.net— sale $0,03/usuario/mes y esquiva el problema.
+
+Lo que **no** cambia: R2 es S3-compatible, así que el puerto `Storage` permite MinIO en local. Esa parte del ADR se sostiene sola y es la que hace intercambiable el proveedor si hay que moverse.
 
 ### ADR-007 · Render con FFmpeg + sharp — **no Remotion**
 Remotion es gratis hasta 3 personas, pero un producto cuyo negocio es generar video automáticamente cae bajo su licencia **"Automators": $0,01 por render con mínimo de $100/mes** ([licencia verificada 2026-09-21](https://www.remotion.pro/license)). A un millón de renders eso son **$10.000**. El render *es* el producto: no puede tener un peaje por unidad.
@@ -143,9 +152,14 @@ Diferido por la decisión `D-03` del PRD. Cuando entre, self-host: el costo por 
 ### ADR-013 · Hosting: CPU barato + R2 + GPU serverless
 El render es CPU-bound y constante; la generación es GPU-bound y a ráfagas. Separarlos:
 - `web`, `api`, `worker`, `render`, Postgres → proveedor de cómputo por core barato (Hetzner o similar).
-- Objetos → R2 (ADR-006).
+- Objetos → R2 (ADR-006, ahora en revisión).
 - GPU → serverless por segundo (Modal / RunPod / fal), sin instancias ociosas.
-**No se fijan proveedores ni multiplicadores de precio acá.** `P1-INFRA-001` es medir y dejar el número.
+
+**Corregido por `P1-INFRA-001`** ([`COST-MODEL.md`](COST-MODEL.md) §3.3):
+- Hetzner subió los CCX entre **+113 % y +173 % el 15-jun-2026**. El múltiplo frente a AWS cayó de ~3,5× a 1,4–1,6×: sigue siendo más barato, pero ya no es una goleada y no conviene apoyar el modelo de costos en ese múltiplo.
+- **Un vCPU de Hetzner Cloud es un *thread*, no un core** (lo dice su propia FAQ). Para render eso importa: dimensionar por vCPU da la mitad de la capacidad esperada. El render va a un dedicado con cores reales, no a un CCX.
+
+La forma del ADR —separar CPU constante de GPU a ráfagas— se sostiene. Lo que cambió son los proveedores concretos y, sobre todo, **cuál de los dos pesa**: ver §5.
 
 ### ADR-014 · Polling como contrato público; SSE como mejora interna
 El PRD documenta polling cada ~10 s para builds, y eso es parte del contrato de la API v1 que terceros van a implementar. Se mantiene. SSE/websockets se agregan para la UI propia, sin tocar el contrato.
@@ -184,18 +198,37 @@ El PRD documenta polling cada ~10 s para builds, y eso es parte del contrato de 
 
 ---
 
-## 5. Modelo de costos: qué mirar, en orden
+## 5. Modelo de costos: el orden real, medido
 
-Ordenado por impacto esperado. Todos los valores se miden en `P1-INFRA-001`; ninguno se asume.
+> **Medido el 2026-09-21 en `P1-INFRA-001`.** Detalle, fuentes y fechas en [`COST-MODEL.md`](COST-MODEL.md). Los precios de IA se mueven en semanas: ese documento lleva aviso de caducidad y este resumen hereda la misma advertencia.
 
-| # | Driver | Palanca |
-|---|---|---|
-| 1 | **Egress de media** | R2 (egress $0) + CDN + thumbnails agresivos. Nunca servir el master para un preview. |
-| 2 | **CPU de render** | Cachear por hash del payload de build: el PRD dice que una edición menor reconstruye el *mismo* `contentId`; si sólo cambió el texto, no re-encodear el video de fondo. |
-| 3 | **GPU de generación** | Serverless por segundo. Batch de imágenes de influencer. El cap de 10 generaciones en vuelo del PRD ya limita el pico. |
-| 4 | **Tokens de LLM** | Modelos open-weight vía gateway; prompts cortos; **el puerto `Judgment` existe en parte por esto**: clasificar no necesita un modelo generativo. |
-| 5 | **ASR/OCR** | Self-host (ADR-011, ADR-012). Cap de 24 ítems por análisis (`OQ-18`). |
-| 6 | **Postgres** | Índices sobre `(companyId, createdAt)` desde el principio; particionar `posts` y `judgment_records` cuando crezcan. |
+**Este orden estaba invertido.** La versión anterior ponía el egress primero y la CPU de render segunda, "por impacto esperado". Medidos, son el #4 y el #6.
+
+| # medido | Driver | Puesto anterior | Costo/usuario/mes (Growth, caso caro) |
+|---|---|---|---|
+| **1** | **GPU — generación de video** | 3 | **$5,83** |
+| **2** | **GPU — fine-tune LoRA de influencer** | 3 | hasta $4,00 |
+| 3 | Cómputo base (CPU + Postgres) | 2 y 6 | fijo, no por usuario |
+| 4 | Egress + storage de media | **1** | $0,02–$0,21 |
+| 5 | Tokens de LLM | 4 | $0,01–$0,05 |
+| 6 | CPU de render | **2** | $0,001–$0,005 |
+| 7 | ASR / OCR | 5 | ~$0 self-host |
+
+**Por qué se erró, que es la parte que conviene no repetir:** el razonamiento fue *"producto de video ⇒ el egress domina"*. Es correcto para un producto de **distribución** de video. FastGram es de **producción**: entrega el archivo a TikTok o Instagram y **la distribución masiva la paga la plataforma**. Nuestro egress son previews para el creador.
+
+La distancia no es de matiz. La GPU de video cuesta **dos órdenes de magnitud** más que todo lo demás sumado: un usuario Pro que gaste sus 2.000 créditos en video consume **$23,33 sobre un plan de $149 — el 15,7 %**. Egress, render, LLM, storage y OCR juntos no llegan a $0,50.
+
+### Las tres consecuencias
+
+1. **Optimizar el render o el egress no mueve la aguja.** El cache por hash del payload (`P2-RENDER-010`) sigue valiendo, pero por latencia, no por costo.
+2. **El tarifario de créditos del PRD no sigue al costo.** Un crédito de video cuesta **15,6×** uno de imagen, y un video de 10 s cuesta los mismos 60 créditos que uno de 5 s pagando el doble. Es un defecto de producto heredado de Fastlane, no de infraestructura — queda abierto en el PRD como `OQ-21`.
+3. **"Unlimited content saves" en Pro deja el COGS sin techo.** Es el mayor riesgo de margen del modelo y no tiene mitigación escrita en ninguna parte.
+
+### Self-host de LLM: dónde está el cruce
+
+Contra el gateway más barato verificado, self-hostear con vLLM recién conviene a partir de **~2.421 M tokens de output al mes** (≈921 tok/s sostenidos 24×7), que son unos **12.000 usuarios Growth al tope de cuota**. Para **clasificación** el cruce está en el orden del techo teórico de prefill de un H100: **no se alcanza nunca — clasificar siempre por gateway.**
+
+Eso también corrige la expectativa de ADR-009: el self-host no es "cuando el volumen lo justifique" en el horizonte visible, es bastante más lejos de lo que parecía.
 
 ---
 
@@ -239,6 +272,7 @@ Las cinco fases son las del PRD §21. Aquí sólo el criterio de entrada/salida 
 |---|---|
 | [`PRD.md`](../PRD.md) | **Qué** se construye. Fuente de verdad funcional. |
 | [`EVAL-JEV.md`](../EVAL-JEV.md) | Por qué existe el puerto `Judgment` y qué se evaluó |
+| [`COST-MODEL.md`](COST-MODEL.md) | **Cuánto cuesta** cada driver, con fuente y fecha. Caduca rápido. |
 | este | **Cómo** se construye: arquitectura, stack, decisiones |
 | [`../tasks.md`](../tasks.md) | **En qué orden** y quién va tachando |
 | [`HANDOFF.md`](HANDOFF.md) | **Dónde está parado** el proyecto ahora mismo |

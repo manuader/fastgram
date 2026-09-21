@@ -1,8 +1,8 @@
 /**
  * Posts · `GET /posts`, `GET /posts/:id`, `POST /content/:id/schedule`,
- * `POST /posts/cancel`, `POST /posts/delete` (PRD:2275-2277).
+ * `POST /posts/cancel`, `POST /posts/delete` (PRD:2283-2285).
  *
- * Fuente: FR-060 (PRD:1327-1400), DATA-020 (PRD:2125), NFR-012 (PRD:2962).
+ * Fuente: FR-060 (PRD:1327-1400), DATA-020 (PRD:2122), NFR-012 (PRD:2962).
  */
 import { z } from "zod";
 import {
@@ -35,16 +35,16 @@ export const TIKTOK_TITLE_MAX = 90;
 export const TIKTOK_DESCRIPTION_MAX = 4000;
 /** NFR-012 (PRD:2962) / F-162 (PRD:630) — máx. 100 ids por lote. */
 export const BATCH_POST_IDS_MAX = 100;
-/** FR-060 (PRD:1393) — "Warmed-account posts can only be scheduled up to 30 days ahead." */
+/** FR-060 (PRD:1394) — "Warmed-account posts can only be scheduled up to 30 days ahead." */
 export const WARMED_MAX_SCHEDULE_DAYS_AHEAD = 30;
-/** NFR-015 (PRD:2969) / FR-060 (PRD:1385) — watcher del carril lento de TikTok. */
+/** NFR-015 (PRD:2965) / FR-060 (PRD:1385) — watcher del carril lento de TikTok. */
 export const TIKTOK_SLOW_LANE_RETRY_HOURS = 72;
 
 // --- Recurso · DATA-020 ------------------------------------------------------
 
 /**
  * `connectionId` y `warmedAccountId` son **mutuamente excluyentes**
- * (DATA-020 PRD:2130, FR-060 PRD:1374).
+ * (DATA-020 PRD:2128, FR-060 PRD:1374).
  */
 const accountRef = z
   .object({
@@ -80,7 +80,7 @@ export const postSchema = z
     cancellationPending: z.boolean().optional(),
     tiktokProcessingDelayed: z.boolean().optional(),
     /**
-     * "neutrales respecto al proveedor" (DATA-020, PRD:2141). El PRD da un
+     * "neutrales respecto al proveedor" (DATA-020, PRD:2143). El PRD da un
      * ejemplo (`instagram_repeated_mention`) pero no una lista cerrada, así que
      * no se contrata como enum.
      */
@@ -101,9 +101,9 @@ export type Post = z.infer<typeof postSchema>;
 // --- Listado -----------------------------------------------------------------
 
 /**
- * `GET /posts` · §12 (PRD:2723): `status` como lista separada por comas.
+ * `GET /posts` · §12 (PRD:2720): `status` como lista separada por comas.
  * La lista que el PRD enumera para el filtro **no incluye** `CANCELLED`, que sí
- * es un estado válido del post (FR-060, PRD:1381). Se copia tal cual.
+ * es un estado válido del post (FR-060, PRD:1379). Se copia tal cual.
  */
 export const postStatusFilterSchema = z.enum([
   "BUILDING",
@@ -224,7 +224,7 @@ export type YoutubeScheduleTarget = z.infer<typeof youtubeScheduleTargetSchema>;
 
 /**
  * Reddit. El PRD sólo dice que **no** soporta generación de caption (FR-060,
- * PRD:1377) y que la publicación es sólo OAuth (PRD:1374). No enumera campos de
+ * PRD:1376) y que la publicación es sólo OAuth (PRD:1374). No enumera campos de
  * copy, así que sólo se contrata `caption`, que es el mínimo común.
  */
 export const redditScheduleTargetSchema = z
@@ -249,7 +249,7 @@ export type ScheduleTarget = z.infer<typeof scheduleTargetSchema>;
  * `POST /content/:id/schedule`.
  *
  * `enableCaptionGeneration` rellena **sólo** campos vacíos u omitidos; los
- * valores explícitos no vacíos siempre ganan (AI-006, PRD:2670).
+ * valores explícitos no vacíos siempre ganan (AI-006, PRD:2625).
  *
  * El PRD documenta además una opción de "publicar ahora" (F-157, PRD:625) pero
  * no nombra su campo: no se contrata. Ver el reporte.
@@ -277,12 +277,16 @@ export const batchPostIdsSchema = z
   .transform((ids) => [...new Set(ids)])
   .pipe(z.array(postIdSchema).max(BATCH_POST_IDS_MAX));
 
-/** `POST /posts/cancel` — todo o nada (NFR-011, PRD:2961; ERR-F01, PRD:3188). */
-export const cancelPostsRequestSchema = z.object({ postIds: batchPostIdsSchema }).strict();
+/** `POST /posts/cancel` — todo o nada (NFR-011, PRD:2961; ERR-F01, PRD:3200). */
+export const cancelPostsRequestSchema = z
+  .object({ postIds: batchPostIdsSchema })
+  .strict();
 export type CancelPostsRequest = z.infer<typeof cancelPostsRequestSchema>;
 
 /** `POST /posts/delete` — mismas reglas de lote que cancel. */
-export const deletePostsRequestSchema = z.object({ postIds: batchPostIdsSchema }).strict();
+export const deletePostsRequestSchema = z
+  .object({ postIds: batchPostIdsSchema })
+  .strict();
 export type DeletePostsRequest = z.infer<typeof deletePostsRequestSchema>;
 
 export { accountRef as postAccountRefSchema };

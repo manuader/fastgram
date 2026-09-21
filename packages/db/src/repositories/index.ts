@@ -6,8 +6,8 @@
  * más que CRUD (idempotencia, cuotas) agregan métodos, nunca quitan el scope.
  */
 
-export * from "./base.js";
-export * from "./idempotency.js";
+export * from "./base";
+export * from "./idempotency";
 
 import {
   apiKeys,
@@ -37,8 +37,8 @@ import {
   warmedAccounts,
   warmedSlotBalances,
   workspaceMemberships,
-} from "../schema/index.js";
-import { createCompanyScopedRepository } from "./base.js";
+} from "../schema/index";
+import { createCompanyScopedRepository } from "./base";
 
 export const workspaceMembershipRepository = createCompanyScopedRepository({
   table: workspaceMemberships,

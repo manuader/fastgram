@@ -15,7 +15,10 @@ import { pgEnum } from "drizzle-orm/pg-core";
 // ───────────────────────── DATA-001 · User ─────────────────────────
 
 export const USER_DELETION_STATUS = ["none", "in_progress", "rejected"] as const;
-export const userDeletionStatusEnum = pgEnum("user_deletion_status", USER_DELETION_STATUS);
+export const userDeletionStatusEnum = pgEnum(
+  "user_deletion_status",
+  USER_DELETION_STATUS,
+);
 
 // ───────────────────────── DATA-002 · Company ─────────────────────────
 

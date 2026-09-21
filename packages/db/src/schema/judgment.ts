@@ -12,9 +12,9 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
 
-import { createdAtOnly } from "./_shared.js";
-import { companyRef } from "./identity.js";
-import { decisionPointEnum, judgmentAdapterEnum } from "./enums.js";
+import { createdAtOnly } from "./_shared";
+import { companyRef } from "./identity";
+import { decisionPointEnum, judgmentAdapterEnum } from "./enums";
 
 export const judgmentRecords = pgTable(
   "judgment_records",

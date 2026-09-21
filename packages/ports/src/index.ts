@@ -12,6 +12,7 @@ export * from "./social-reader.js";
 export * from "./social-publisher.js";
 export * from "./payments.js";
 export * from "./identity.js";
+export * from "./media-generation.js";
 export * from "./media-renderer.js";
 
 /**

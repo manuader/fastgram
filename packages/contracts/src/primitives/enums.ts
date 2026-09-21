@@ -22,7 +22,7 @@ export const blitzContentTypeSchema = z.enum([
 export type BlitzContentType = z.infer<typeof blitzContentTypeSchema>;
 
 /**
- * `Content.type` · DATA-008 (PRD:2078). Añade `custom`, que es el video propio
+ * `Content.type` · DATA-008 (PRD:2075). Añade `custom`, que es el video propio
  * subido por `POST /content/custom/video` y no un formato generable.
  */
 export const contentTypeSchema = z.enum([
@@ -38,20 +38,26 @@ export type ContentType = z.infer<typeof contentTypeSchema>;
 export const aspectRatioSchema = z.enum(["1:1", "4:5", "3:4", "9:16"]);
 export type AspectRatio = z.infer<typeof aspectRatioSchema>;
 
-/** DATA-008 (PRD:2079). */
+/** DATA-008 (PRD:2076). */
 export const contentStatusSchema = z.enum(["BUILDING", "CREATED", "FAILED"]);
 export type ContentStatus = z.infer<typeof contentStatusSchema>;
 
 // --- Plataformas -------------------------------------------------------------
 
-/** `Connection.platform` · DATA-016 (PRD:2117). */
-export const platformSchema = z.enum(["tiktok", "instagram", "youtube", "linkedin", "reddit"]);
+/** `Connection.platform` · DATA-016 (PRD:2111). */
+export const platformSchema = z.enum([
+  "tiktok",
+  "instagram",
+  "youtube",
+  "linkedin",
+  "reddit",
+]);
 export type Platform = z.infer<typeof platformSchema>;
 
 /**
- * `Post.platform` · DATA-020 (PRD:2127): `tiktok | instagram | youtube | reddit`,
+ * `Post.platform` · DATA-020 (PRD:2126): `tiktok | instagram | youtube | reddit`,
  * "+ `linkedin` en automations". Las automations son superficie **sólo MCP**
- * (AI-015, PRD:2707), no REST v1, así que el enum de posts v1 son estos cuatro.
+ * (AI-015, PRD:2706), no REST v1, así que el enum de posts v1 son estos cuatro.
  */
 export const postPlatformSchema = z.enum(["tiktok", "instagram", "youtube", "reddit"]);
 export type PostPlatform = z.infer<typeof postPlatformSchema>;
@@ -60,17 +66,17 @@ export type PostPlatform = z.infer<typeof postPlatformSchema>;
 export const warmedPlatformSchema = z.enum(["tiktok", "instagram"]);
 export type WarmedPlatform = z.infer<typeof warmedPlatformSchema>;
 
-/** DATA-016 (PRD:2117). */
+/** DATA-016 (PRD:2111). */
 export const connectionStatusSchema = z.enum(["active", "expired", "paused", "revoked"]);
 export type ConnectionStatus = z.infer<typeof connectionStatusSchema>;
 
-/** DATA-020 (PRD:2130). `connectionId` y `warmedAccountId` son excluyentes. */
+/** DATA-020 (PRD:2127). `connectionId` y `warmedAccountId` son excluyentes. */
 export const accountTypeSchema = z.enum(["oauth", "warmed"]);
 export type AccountType = z.infer<typeof accountTypeSchema>;
 
 // --- Publicación -------------------------------------------------------------
 
-/** FR-060 estados normativos de un Post (PRD:1381). */
+/** FR-060 estados normativos de un Post (PRD:1379). */
 export const postStatusSchema = z.enum([
   "BUILDING",
   "CREATED",
@@ -107,7 +113,7 @@ export const tiktokSoundModeSchema = z.enum(["audible", "silent"]);
 export type TiktokSoundMode = z.infer<typeof tiktokSoundModeSchema>;
 
 /**
- * DATA-020 (PRD:2134) / FR-060 (PRD:1387): "`captionAdjustmentReason`
+ * DATA-020 (PRD:2133) / FR-060 (PRD:1387): "`captionAdjustmentReason`
  * actualmente sólo vale `repeated_mention`".
  */
 export const captionAdjustmentReasonSchema = z.enum(["repeated_mention"]);
@@ -115,20 +121,28 @@ export type CaptionAdjustmentReason = z.infer<typeof captionAdjustmentReasonSche
 
 // --- Media -------------------------------------------------------------------
 
-/** DATA-010 (PRD:2094). */
+/** DATA-010 (PRD:2093). */
 export const mediaTypeSchema = z.enum(["image", "video"]);
 export type MediaType = z.infer<typeof mediaTypeSchema>;
 
-/** DATA-010 (PRD:2094) — los videos pasan por `processing` (normalización). */
+/** DATA-010 (PRD:2093) — los videos pasan por `processing` (normalización). */
 export const mediaStatusSchema = z.enum(["processing", "ready", "failed"]);
 export type MediaStatus = z.infer<typeof mediaStatusSchema>;
 
-/** DATA-010 (PRD:2094). `generated`, `demo` e `internal` nunca se listan (PRD:1618). */
-export const mediaOriginSchema = z.enum(["manual_upload", "generated", "demo", "internal"]);
+/** DATA-010 (PRD:2093). `generated`, `demo` e `internal` nunca se listan (PRD:1636). */
+export const mediaOriginSchema = z.enum([
+  "manual_upload",
+  "generated",
+  "demo",
+  "internal",
+]);
 export type MediaOrigin = z.infer<typeof mediaOriginSchema>;
 
-/** F-129 (PRD:601) · FR-100 (PRD:1614) — categorías válidas **por tipo**. */
-export const imageMediaCategorySchema = z.enum(["slideshow-image", "green-screen-background"]);
+/** F-129 (PRD:601) · FR-100 (PRD:1633) — categorías válidas **por tipo**. */
+export const imageMediaCategorySchema = z.enum([
+  "slideshow-image",
+  "green-screen-background",
+]);
 export type ImageMediaCategory = z.infer<typeof imageMediaCategorySchema>;
 
 export const videoMediaCategorySchema = z.enum([
@@ -138,24 +152,30 @@ export const videoMediaCategorySchema = z.enum([
 ]);
 export type VideoMediaCategory = z.infer<typeof videoMediaCategorySchema>;
 
-export const mediaCategorySchema = z.union([imageMediaCategorySchema, videoMediaCategorySchema]);
+export const mediaCategorySchema = z.union([
+  imageMediaCategorySchema,
+  videoMediaCategorySchema,
+]);
 export type MediaCategory = z.infer<typeof mediaCategorySchema>;
 
 /** DATA-011 (PRD:2096) — mayúsculas literales. */
 export const mediaSetKindSchema = z.enum(["SLIDESHOW", "VIDEO", "CURATED"]);
 export type MediaSetKind = z.infer<typeof mediaSetKindSchema>;
 
-/** §9.8 (PRD:2352) · FR-100 (PRD:1611) · NFR-013 (PRD:2965). */
+/** §9.8 (PRD:2339) · FR-100 (PRD:1631) · NFR-013 (PRD:2963). */
 export const imageContentTypeSchema = z.enum(["image/jpeg", "image/png", "image/webp"]);
 export type ImageContentType = z.infer<typeof imageContentTypeSchema>;
 
 export const videoContentTypeSchema = z.enum(["video/mp4", "video/quicktime"]);
 export type VideoContentType = z.infer<typeof videoContentTypeSchema>;
 
-export const uploadContentTypeSchema = z.union([imageContentTypeSchema, videoContentTypeSchema]);
+export const uploadContentTypeSchema = z.union([
+  imageContentTypeSchema,
+  videoContentTypeSchema,
+]);
 export type UploadContentType = z.infer<typeof uploadContentTypeSchema>;
 
-/** DATA-028 (PRD:2169). */
+/** DATA-028 (PRD:2170). */
 export const uploadReservationStateSchema = z.enum([
   "reserved",
   "finalizing",
@@ -168,8 +188,8 @@ export type UploadReservationState = z.infer<typeof uploadReservationStateSchema
 // --- Audio -------------------------------------------------------------------
 
 /**
- * `GET /audio?for=wall-of-text|video-hook` · FR-053 (PRD:1261) y §9.3 (PRD:2272).
- * DATA-012 (PRD:2098) lo llama `library`. Dos catálogos curados, globales.
+ * `GET /audio?for=wall-of-text|video-hook` · FR-053 (PRD:1232) y §9.3 (PRD:2280).
+ * DATA-012 (PRD:2099) lo llama `library`. Dos catálogos curados, globales.
  */
 export const audioLibrarySchema = z.enum(["wall-of-text", "video-hook"]);
 export type AudioLibrary = z.infer<typeof audioLibrarySchema>;
@@ -189,15 +209,15 @@ export type InfluencerStatus = z.infer<typeof influencerStatusSchema>;
 // --- Blitz preferences -------------------------------------------------------
 
 /**
- * FR-055 (PRD:1290) — `genderFilter`: `"man" | "woman" | null`.
- * Ojo: la regla 4 de FR-055 (PRD:1297) habla de `male`/`female` al describir el
+ * FR-055 (PRD:1275) — `genderFilter`: `"man" | "woman" | null`.
+ * Ojo: la regla 4 de FR-055 (PRD:1285) habla de `male`/`female` al describir el
  * filtrado de la librería. Son dos vocabularios distintos en el PRD; el contrato
  * de la API usa el de la tabla normativa, que es la que mapea a la API.
  */
 export const genderFilterSchema = z.enum(["man", "woman"]);
 export type GenderFilter = z.infer<typeof genderFilterSchema>;
 
-/** FR-055 (PRD:1293) — presets de estilo de caption. Siete, literales. */
+/** FR-055 (PRD:1279) — presets de estilo de caption. Siete, literales. */
 export const textStylePresetSchema = z.enum([
   "tiktok-classic",
   "bold-impact",
@@ -252,7 +272,7 @@ export const FONT_WEIGHTS: Readonly<Record<FontFamily, readonly number[]>> = {
 export const textBackgroundStyleSchema = z.enum(["pill", "full-width"]);
 export type TextBackgroundStyle = z.infer<typeof textBackgroundStyleSchema>;
 
-/** FR-070 (PRD:1454) — `textAlign` del payload de build. */
+/** FR-070 (PRD:1453) — `textAlign` del payload de build. */
 export const textAlignSchema = z.enum(["left", "center", "right"]);
 export type TextAlign = z.infer<typeof textAlignSchema>;
 

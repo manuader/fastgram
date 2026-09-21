@@ -1,0 +1,50 @@
+.fg-tooltip {
+  position: relative;
+  display: inline-flex;
+}
+
+.fg-tooltip__content {
+  position: absolute;
+  z-index: var(--fg-z-tooltip);
+  max-width: 16rem;
+  padding: var(--fg-space-1) var(--fg-space-2);
+  background-color: var(--fg-neutral-900);
+  border-radius: var(--fg-radius-md);
+  box-shadow: var(--fg-shadow-md);
+  color: var(--fg-neutral-50);
+  font-family: var(--fg-font-sans);
+  font-size: var(--fg-text-xs);
+  line-height: var(--fg-leading-snug);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: fg-fade-in var(--fg-duration-fast) var(--fg-ease-out);
+}
+
+:root[data-theme="dark"] .fg-tooltip__content {
+  background-color: var(--fg-neutral-700);
+  color: var(--fg-neutral-0);
+}
+
+.fg-tooltip__content--top {
+  inset-block-end: calc(100% + var(--fg-space-2));
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+}
+
+.fg-tooltip__content--bottom {
+  inset-block-start: calc(100% + var(--fg-space-2));
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+}
+
+.fg-tooltip__content--right {
+  inset-inline-start: calc(100% + var(--fg-space-2));
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.fg-tooltip__content--left {
+  inset-inline-end: calc(100% + var(--fg-space-2));
+  top: 50%;
+  transform: translateY(-50%);
+}

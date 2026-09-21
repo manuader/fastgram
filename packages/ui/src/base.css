@@ -6,7 +6,11 @@
 
 /* Anillo de foco único para todo el sistema. Se aplica a `:focus-visible`,
    nunca a `:focus`, para que el click con mouse no lo dispare pero el teclado
-   sí. Es la regla que hace que la app sea operable sin mouse. */
+   sí. Es la regla que hace que la app sea operable sin mouse.
+
+   `.fg-focusable` es la puerta para la app: un control propio que no sea uno de
+   estos componentes lleva esa clase y hereda el mismo anillo, en vez de
+   inventarse otro. */
 .fg-focusable:focus-visible,
 .fg-btn:focus-visible,
 .fg-input:focus-visible,
@@ -35,12 +39,6 @@
   clip-path: inset(50%);
   white-space: nowrap;
   border-width: 0;
-}
-
-.fg-stack {
-  display: flex;
-  flex-direction: column;
-  gap: var(--fg-space-2);
 }
 
 /* Bloquea el scroll del documento mientras hay un modal abierto. */

@@ -3,13 +3,13 @@
  * `GET /content/:id/editable`, `PATCH /content/:id`,
  * `POST /content/:id/regenerate`, `DELETE /content/:id`,
  * `POST /content/custom/video/upload-url`, `POST /content/custom/video`
- * (PRD:2269-2274).
+ * (PRD:2276-2284).
  *
- * Fuente: FR-070 payloads de build (PRD:1450-1461), FR-051 edición
- * (PRD:1177-1188), DATA-008 (PRD:2074) y DATA-009 (PRD:2090).
+ * Fuente: FR-070 payloads de build (PRD:1450-1459), FR-051 edición
+ * (PRD:1177-1188), DATA-008 (PRD:2070) y DATA-009 (PRD:2090).
  *
  * `POST /content`, `PATCH /content/:id` y `POST /content/:id/regenerate` exigen
- * `Idempotency-Key` (§9.3, PRD:2259).
+ * `Idempotency-Key` (§9.3, PRD:2288).
  */
 import { z } from "zod";
 import {
@@ -22,7 +22,12 @@ import {
   textBackgroundStyleSchema,
   FONT_WEIGHTS,
 } from "../primitives/enums";
-import { contentIdSchema, msEpochSchema, textBoxIdSchema, uploadIdSchema } from "../primitives/ids";
+import {
+  contentIdSchema,
+  msEpochSchema,
+  textBoxIdSchema,
+  uploadIdSchema,
+} from "../primitives/ids";
 import { cursorQuerySchema } from "../primitives/pagination";
 
 // --- Números del PRD ---------------------------------------------------------
@@ -46,14 +51,14 @@ export const STROKE_WIDTH_MAX = 8;
 /** FR-051 (PRD:1185) — `background.opacity` ∈ [0, 1]. */
 export const BACKGROUND_OPACITY_MIN = 0;
 export const BACKGROUND_OPACITY_MAX = 1;
-/** FR-051 (PRD:1187) / AI-004 (PRD:2652) — prompt de regeneración ≤ 500. */
+/** FR-051 (PRD:1187) / AI-004 (PRD:2603) — prompt de regeneración ≤ 500. */
 export const REGENERATE_PROMPT_MAX = 500;
-/** DATA-008 (PRD:2081) — `generatedText` normalizado ≤ 2 000. */
+/** DATA-008 (PRD:2079) — `generatedText` normalizado ≤ 2 000. */
 export const GENERATED_TEXT_MAX = 2000;
-/** FR-070 (PRD:1454) — `fontWeight` del payload de build. */
+/** FR-070 (PRD:1453) — `fontWeight` del payload de build. */
 export const BUILD_FONT_WEIGHT_MIN = 100;
 export const BUILD_FONT_WEIGHT_MAX = 900;
-/** ERR-P02 (PRD:3176) — un contenido `BUILDING` se puede borrar pasados 15 min. */
+/** ERR-P02 (PRD:3184) — un contenido `BUILDING` se puede borrar pasados 15 min. */
 export const CONTENT_BUILD_DELETE_GRACE_MINUTES = 15;
 
 // --- Caja de texto editable · DATA-009 (PRD:2090) ----------------------------
@@ -118,7 +123,7 @@ export const canvasSchema = z
   .strict();
 export type Canvas = z.infer<typeof canvasSchema>;
 
-/** Canvas de slide: añade `aspectRatio` (FR-070, PRD:1459). */
+/** Canvas de slide: añade `aspectRatio` (FR-070, PRD:1458). */
 export const slideCanvasSchema = z
   .object({
     width: z.number().int().positive(),
@@ -130,9 +135,9 @@ export type SlideCanvas = z.infer<typeof slideCanvasSchema>;
 
 /**
  * Elemento de media. "Cada elemento de media lleva `drawX/drawY/drawW/drawH`"
- * (FR-070, PRD:1455). La URL debe pertenecer al Media Bank del workspace o a la
+ * (FR-070, PRD:1454). La URL debe pertenecer al Media Bank del workspace o a la
  * librería compartida; una URL arbitraria es `400 bad_request` **antes** del
- * build (PRD:1461). Esa pertenencia la valida el servidor, no el schema.
+ * build (PRD:1459). Esa pertenencia la valida el servidor, no el schema.
  */
 export const mediaElementSchema = z
   .object({
@@ -145,11 +150,11 @@ export const mediaElementSchema = z
   .strict();
 export type MediaElement = z.infer<typeof mediaElementSchema>;
 
-/** "El audio sólo puede venir de la librería compartida" (FR-070, PRD:1461). */
+/** "El audio sólo puede venir de la librería compartida" (FR-070, PRD:1459). */
 export const audioElementSchema = z.object({ url: z.string().url() }).strict();
 export type AudioElement = z.infer<typeof audioElementSchema>;
 
-/** Objeto de texto común del payload de build (FR-070, PRD:1454). */
+/** Objeto de texto común del payload de build (FR-070, PRD:1453). */
 export const buildTextSchema = z
   .object({
     content: z.string(),
@@ -159,7 +164,12 @@ export const buildTextSchema = z
     fontSize: z.number().min(FONT_SIZE_MIN).max(FONT_SIZE_MAX),
     color: hexColorSchema,
     textAlign: textAlignSchema,
-    fontWeight: z.number().int().min(BUILD_FONT_WEIGHT_MIN).max(BUILD_FONT_WEIGHT_MAX).optional(),
+    fontWeight: z
+      .number()
+      .int()
+      .min(BUILD_FONT_WEIGHT_MIN)
+      .max(BUILD_FONT_WEIGHT_MAX)
+      .optional(),
     strokeWidth: z.number().min(STROKE_WIDTH_MIN).max(STROKE_WIDTH_MAX).optional(),
     strokeColor: hexColorSchema.optional(),
     backgroundColor: hexColorSchema.optional(),
@@ -167,12 +177,12 @@ export const buildTextSchema = z
   .strict();
 export type BuildText = z.infer<typeof buildTextSchema>;
 
-/** `wall-of-text`: `{canvas, video{url,draw…}, audio{url}, text}` (PRD:1456). */
+/** `wall-of-text`: `{canvas, video{url,draw…}, audio{url}, text}` (PRD:1455). */
 export const wallOfTextBuildPayloadSchema = z
   .object({
     canvas: canvasSchema,
     video: mediaElementSchema,
-    audio: audioElementSchema.optional(), // FR-053.1 (PRD:1272): `No audio` omite el bloque
+    audio: audioElementSchema.optional(), // FR-053.1 (PRD:1234): `No audio` omite el bloque
     text: buildTextSchema,
   })
   .strict();
@@ -180,7 +190,7 @@ export type WallOfTextBuildPayload = z.infer<typeof wallOfTextBuildPayloadSchema
 
 /**
  * `green-screen`: `{canvas, image{url,draw…}, video{url,draw…}, text}` — el
- * video con croma se compone **sobre** la imagen de fondo (PRD:1457).
+ * video con croma se compone **sobre** la imagen de fondo (PRD:1456).
  */
 export const greenScreenBuildPayloadSchema = z
   .object({
@@ -192,13 +202,13 @@ export const greenScreenBuildPayloadSchema = z
   .strict();
 export type GreenScreenBuildPayload = z.infer<typeof greenScreenBuildPayloadSchema>;
 
-/** `video-hook`: `{canvas, hook_video{…}, demo_video{…}, audio{url}, text}` (PRD:1458). */
+/** `video-hook`: `{canvas, hook_video{…}, demo_video{…}, audio{url}, text}` (PRD:1457). */
 export const videoHookBuildPayloadSchema = z
   .object({
     canvas: canvasSchema,
     hook_video: mediaElementSchema,
     demo_video: mediaElementSchema,
-    audio: audioElementSchema.optional(), // FR-053.1 (PRD:1272)
+    audio: audioElementSchema.optional(), // FR-053.1 (PRD:1234)
     text: buildTextSchema,
   })
   .strict();
@@ -215,7 +225,7 @@ export type SlideshowSlide = z.infer<typeof slideshowSlideSchema>;
 
 /**
  * `slideshow`: `{num_images, images:[…]}` con `num_images` igual a la longitud
- * de `images` (PRD:1459) y máximo 20 slides (PRD:1450).
+ * de `images` (PRD:1458) y máximo 20 slides (PRD:1450).
  */
 export const slideshowBuildPayloadSchema = z
   .object({
@@ -249,8 +259,8 @@ export type CreateContentRequest = z.infer<typeof createContentRequestSchema>;
 
 /**
  * Representación pública. `buildPayload` y `studioState` **nunca** se devuelven
- * por API (DATA-008, PRD:2083-2084) y por eso no están en el schema.
- * `lastEdit` sí es público (FR-051, PRD:1198) pero el PRD no enumera sus
+ * por API (DATA-008, PRD:2082-2083) y por eso no están en el schema.
+ * `lastEdit` sí es público (FR-051, PRD:1197) pero el PRD no enumera sus
  * campos: se contrata como objeto opaco y queda anotado como abierto.
  */
 export const contentSchema = z
@@ -269,7 +279,7 @@ export const contentSchema = z
   .strict();
 export type Content = z.infer<typeof contentSchema>;
 
-/** Parser de listas separadas por comas, como las usa `GET /content` (§12, PRD:2724). */
+/** Parser de listas separadas por comas, como las usa `GET /content` (§12, PRD:2721). */
 const commaSeparated = <T extends z.ZodTypeAny>(item: T) =>
   z
     .string()
@@ -278,7 +288,7 @@ const commaSeparated = <T extends z.ZodTypeAny>(item: T) =>
     .pipe(z.array(item).min(1));
 
 /**
- * `GET /content` · §12 (PRD:2724): filtros por `type` y `status`, ambos como
+ * `GET /content` · §12 (PRD:2721): filtros por `type` y `status`, ambos como
  * lista separada por comas; orden newest first.
  */
 export const listContentQuerySchema = cursorQuerySchema
@@ -312,13 +322,13 @@ export const updateContentRequestSchema = z
 export type UpdateContentRequest = z.infer<typeof updateContentRequestSchema>;
 
 /**
- * `GET /content/:id/editable`. ERR-F04 (PRD:3212): si el manifest legacy no se
+ * `GET /content/:id/editable`. ERR-F04 (PRD:3203): si el manifest legacy no se
  * puede parsear "se omite `media`, se mantienen `canvas` y texto editable" — de
  * ahí que estos dos sean los campos garantizados.
  *
  * El bloque `media` (sólo con `?include=media`, capacidad Partner · §9.7
- * PRD:2348) no se contrata: el PRD nombra únicamente su modo degradado
- * (`status: "unavailable"`, ERR-F03 PRD:3211), no su forma normal.
+ * PRD:2335) no se contrata: el PRD nombra únicamente su modo degradado
+ * (`status: "unavailable"`, ERR-F03 PRD:3202), no su forma normal.
  */
 export const editableContentSchema = z
   .object({
@@ -328,14 +338,14 @@ export const editableContentSchema = z
   .strict();
 export type EditableContent = z.infer<typeof editableContentSchema>;
 
-/** ERR-F03 (PRD:3211) — layer de media no resoluble. */
+/** ERR-F03 (PRD:3202) — layer de media no resoluble. */
 export const unavailableMediaLayerSchema = z
   .object({ status: z.literal("unavailable") })
   .strict();
 export type UnavailableMediaLayer = z.infer<typeof unavailableMediaLayerSchema>;
 
 /**
- * `POST /content/:id/regenerate` · AI-004 (PRD:2650-2655).
+ * `POST /content/:id/regenerate` · AI-004 (PRD:2602-2610).
  * Reescribe todas las cajas de texto preservando media, estructura y layout.
  */
 export const regenerateContentRequestSchema = z
@@ -348,8 +358,8 @@ export type RegenerateContentRequest = z.infer<typeof regenerateContentRequestSc
 
 /**
  * `POST /content/custom/video` — finalización de la subida de un video propio
- * (§9.8, PRD:2351). MP4/MOV, ≤ 50 MB; MOV se normaliza a MP4 en servidor
- * (FR-070, PRD:1464). El PRD no enumera más campos del body.
+ * (§9.8, PRD:2338). MP4/MOV, ≤ 50 MB; MOV se normaliza a MP4 en servidor
+ * (FR-070, PRD:1463). El PRD no enumera más campos del body.
  */
 export const createCustomVideoContentRequestSchema = z
   .object({ uploadId: uploadIdSchema })

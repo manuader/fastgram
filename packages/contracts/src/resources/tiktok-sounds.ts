@@ -1,5 +1,5 @@
 /**
- * TikTok sounds · `GET /tiktok/sounds?warmedAccountId=` (PRD:2271).
+ * TikTok sounds · `GET /tiktok/sounds?warmedAccountId=` (PRD:2275).
  *
  * Fuente: F-159 (PRD:627) y §9.10 (PRD:2347). Sonidos comerciales para
  * slideshows en cuentas warmed. Las URLs de preview son **firmadas y de vida

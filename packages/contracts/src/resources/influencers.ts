@@ -1,11 +1,11 @@
 /**
  * Influencers · `GET /influencers`, `POST /influencers/base-image/upload-url`,
- * `POST /influencers`, `GET /influencers/:id` (PRD:2267-2269).
+ * `POST /influencers`, `GET /influencers/:id` (PRD:2269-2272).
  *
  * Fuente: FR-080 (PRD:1481-1522), DATA-013 (PRD:2102), AI-007 (PRD:2630).
  *
  * `POST /influencers` es **facturable e idempotente**: exige `Idempotency-Key`
- * (PRD:2259, FR-080 PRD:1514) para que un reintento no duplique el personaje ni
+ * (PRD:2288, FR-080 PRD:1514) para que un reintento no duplique el personaje ni
  * reserve créditos dos veces.
  */
 import { z } from "zod";
@@ -26,7 +26,7 @@ export const INFLUENCER_PROGRESS_MIN = 0;
 export const INFLUENCER_PROGRESS_MAX = 100;
 
 /**
- * Costes en créditos, CONFIRMED en UI (FR-080, PRD:1519).
+ * Costes en créditos, CONFIRMED en UI (FR-080, PRD:1517).
  * Viven en el contrato porque el 402 de créditos insuficientes devuelve
  * `details.required` y el cliente necesita el mismo número para anticiparlo.
  */

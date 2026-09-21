@@ -3,7 +3,8 @@ import { cn } from "../../cn.js";
 import { inputVariants, type InputVariants } from "./input.variants.js";
 
 export interface InputProps
-  extends Omit<ComponentPropsWithRef<"input">, "size">,
+  extends
+    Omit<ComponentPropsWithRef<"input">, "size">,
     Omit<InputVariants, "hasLeadingIcon"> {
   /**
    * Marca el campo como inválido: pinta el borde **y** pone `aria-invalid`.

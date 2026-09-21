@@ -3,8 +3,7 @@ import { cn } from "../../cn.js";
 import { textareaVariants, type TextareaVariants } from "./textarea.variants.js";
 
 export interface TextareaProps
-  extends ComponentPropsWithRef<"textarea">,
-    TextareaVariants {
+  extends ComponentPropsWithRef<"textarea">, TextareaVariants {
   invalid?: boolean;
 }
 

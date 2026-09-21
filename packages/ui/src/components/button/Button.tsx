@@ -6,8 +6,7 @@ import { Spinner } from "../spinner/Spinner.js";
 import { buttonVariants, type ButtonVariants } from "./button.variants.js";
 
 export interface ButtonProps
-  extends Omit<ComponentPropsWithRef<"button">, "color">,
-    ButtonVariants {
+  extends Omit<ComponentPropsWithRef<"button">, "color">, ButtonVariants {
   /**
    * Muestra un spinner y deshabilita el botón. El label **no se reemplaza**:
    * un botón que cambia de ancho al pulsarlo mueve el resto de la fila.

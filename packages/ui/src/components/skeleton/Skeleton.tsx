@@ -3,12 +3,11 @@ import { cn } from "../../cn.js";
 import { skeletonVariants, type SkeletonVariants } from "./skeleton.variants.js";
 
 export interface SkeletonProps
-  extends Omit<ComponentPropsWithRef<"div">, "children">,
-    SkeletonVariants {
+  extends Omit<ComponentPropsWithRef<"div">, "children">, SkeletonVariants {
   /** Ancho CSS. Un número se interpreta en píxeles. */
-  width?: number | string;
+  width?: number | string | undefined;
   /** Alto CSS. Un número se interpreta en píxeles. */
-  height?: number | string;
+  height?: number | string | undefined;
 }
 
 /**

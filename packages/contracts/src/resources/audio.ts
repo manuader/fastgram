@@ -1,17 +1,17 @@
 /**
- * Audio · `GET /audio?for=wall-of-text|video-hook` (PRD:2272).
+ * Audio · `GET /audio?for=wall-of-text|video-hook` (PRD:2280).
  *
- * Fuente: FR-053 (PRD:1261-1272), DATA-012 (PRD:2098).
+ * Fuente: FR-053 (PRD:1219-1236), DATA-012 (PRD:2099).
  *
  * El catálogo es **global**, compartido por todos los workspaces y curado por
- * tipo de contenido. El Media Bank no acepta subidas de audio (PRD:1271).
+ * tipo de contenido. El Media Bank no acepta subidas de audio (PRD:1232).
  */
 import { z } from "zod";
 import { audioLibrarySchema } from "../primitives/enums";
 import { audioIdSchema } from "../primitives/ids";
 import { cursorQuerySchema } from "../primitives/pagination";
 
-/** `for` es obligatorio: los dos catálogos son distintos (FR-053, PRD:1268). */
+/** `for` es obligatorio: los dos catálogos son distintos (FR-053, PRD:1232). */
 export const listAudioQuerySchema = cursorQuerySchema
   .extend({ for: audioLibrarySchema })
   .strict();

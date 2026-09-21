@@ -1,0 +1,72 @@
+/* Compartido por EmptyState y ErrorState: la misma caja, distinto tono. */
+.fg-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--fg-space-2);
+  text-align: center;
+  font-family: var(--fg-font-sans);
+  color: var(--fg-color-text-muted);
+}
+
+.fg-state--sm {
+  padding: var(--fg-space-5) var(--fg-space-4);
+}
+
+.fg-state--md {
+  padding: var(--fg-space-10) var(--fg-space-5);
+}
+
+.fg-state--lg {
+  padding: var(--fg-space-16) var(--fg-space-6);
+}
+
+.fg-state--bordered {
+  background-color: var(--fg-color-surface);
+  border: 1px dashed var(--fg-color-border-strong);
+  border-radius: var(--fg-radius-xl);
+}
+
+.fg-state__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-color-text-subtle);
+}
+
+.fg-state__icon > svg {
+  width: var(--fg-space-8);
+  height: var(--fg-space-8);
+}
+
+.fg-state__title {
+  margin: 0;
+  max-width: 40ch;
+  color: var(--fg-color-text);
+  font-size: var(--fg-text-base);
+  font-weight: var(--fg-weight-semibold);
+  line-height: var(--fg-leading-snug);
+}
+
+.fg-state__description {
+  margin: 0;
+  max-width: 52ch;
+  font-size: var(--fg-text-sm);
+  line-height: var(--fg-leading-normal);
+}
+
+.fg-state__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fg-space-2);
+  justify-content: center;
+  margin-top: var(--fg-space-2);
+}
+
+.fg-state--danger .fg-state__icon {
+  color: var(--fg-color-danger);
+}
+
+.fg-state--warning .fg-state__icon {
+  color: var(--fg-color-warning);
+}

@@ -4,8 +4,7 @@ import { t } from "../../i18n/t.js";
 import { spinnerVariants, type SpinnerVariants } from "./spinner.variants.js";
 
 export interface SpinnerProps
-  extends Omit<ComponentPropsWithRef<"span">, "children">,
-    SpinnerVariants {
+  extends Omit<ComponentPropsWithRef<"span">, "children">, SpinnerVariants {
   /**
    * Qué anuncia el lector de pantalla. Por defecto `Loading...` (PRD ERR-L02).
    * Si el spinner acompaña a un texto que ya dice qué pasa —`Generating your

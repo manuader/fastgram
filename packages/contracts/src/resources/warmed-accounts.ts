@@ -1,7 +1,7 @@
 /**
- * Warmed accounts · `GET /warmed-accounts` (PRD:2270).
+ * Warmed accounts · `GET /warmed-accounts` (PRD:2274).
  *
- * Fuente: FR-130 (PRD:1679-1712), DATA-017 (PRD:2110), DATA-018 (PRD:2113).
+ * Fuente: FR-130 (PRD:1679-1712), DATA-017 (PRD:2114), DATA-018 (PRD:2117).
  *
  * "Máximo **100 cuentas visibles**, sin cursor de paginación" (PRD:1695): este
  * listado es el único de la v1 que **no** pagina por cursor.
@@ -12,10 +12,10 @@ import { msEpochSchema, warmedAccountIdSchema } from "../primitives/ids";
 
 /** FR-130 (PRD:1695) — tope de cuentas devueltas. */
 export const WARMED_ACCOUNTS_MAX_VISIBLE = 100;
-/** FR-130 (PRD:1685) — la cuenta se calienta 5 días en un teléfono real. */
+/** FR-130 (PRD:1687) — la cuenta se calienta 5 días en un teléfono real. */
 export const WARMED_ACCOUNT_WARMING_DAYS = 5;
 
-/** FR-130 (PRD:1701). `checking` y `replacement_needed` pausan la publicación. */
+/** FR-130 (PRD:1697). `checking` y `replacement_needed` pausan la publicación. */
 export const postingAvailabilitySchema = z.enum([
   "available",
   "checking",
@@ -23,16 +23,16 @@ export const postingAvailabilitySchema = z.enum([
 ]);
 export type PostingAvailability = z.infer<typeof postingAvailabilitySchema>;
 
-/** DATA-017 (PRD:2110) — país de provisión. */
+/** DATA-017 (PRD:2114) — país de provisión. */
 export const warmedAccountCountrySchema = z.enum(["US", "EU"]);
 export type WarmedAccountCountry = z.infer<typeof warmedAccountCountrySchema>;
 
-/** DATA-019 (PRD:2115). */
+/** DATA-019 (PRD:2120). */
 export const replacementDecisionStatusSchema = z.enum(["pending", "resolved"]);
 export type ReplacementDecisionStatus = z.infer<typeof replacementDecisionStatusSchema>;
 
 /**
- * El PRD enumera `options[]` sin decir qué hay dentro (DATA-019, PRD:2115): se
+ * El PRD enumera `options[]` sin decir qué hay dentro (DATA-019, PRD:2120): se
  * contrata como lista de strings y queda anotado como abierto.
  */
 export const replacementDecisionSchema = z

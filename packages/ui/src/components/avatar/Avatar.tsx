@@ -6,8 +6,7 @@ import { getInitials } from "../../lib/initials.js";
 import { avatarVariants, type AvatarVariants } from "./avatar.variants.js";
 
 export interface AvatarProps
-  extends Omit<ComponentPropsWithRef<"span">, "children">,
-    AvatarVariants {
+  extends Omit<ComponentPropsWithRef<"span">, "children">, AvatarVariants {
   /** URL de la imagen. Si falla la carga, se cae a las iniciales. */
   src?: string;
   /** Nombre de la persona o del influencer. Origen de las iniciales. */
@@ -53,7 +52,10 @@ export function Avatar({
           }}
         />
       ) : (
-        <span className="fg-avatar__fallback" aria-hidden={alt === "" ? "true" : undefined}>
+        <span
+          className="fg-avatar__fallback"
+          aria-hidden={alt === "" ? "true" : undefined}
+        >
           {fallback ?? initials}
         </span>
       )}

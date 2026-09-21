@@ -8,7 +8,9 @@ describe("selectVariants", () => {
 
   it("cubre los tres tamaños", () => {
     for (const selectSize of ["sm", "md", "lg"] as const) {
-      expect(selectVariants({ selectSize })).toContain(`fg-select__control--${selectSize}`);
+      expect(selectVariants({ selectSize })).toContain(
+        `fg-select__control--${selectSize}`,
+      );
     }
   });
 

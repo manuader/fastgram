@@ -5,16 +5,16 @@
 import { sql } from "drizzle-orm";
 import { index, integer, pgTable, real, text, uuid } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, softDelete, tsColumn, timestamps } from "./_shared.js";
-import { companyRef } from "./identity.js";
-import { influencers } from "./influencers.js";
+import { createdAtOnly, softDelete, tsColumn, timestamps } from "./_shared";
+import { companyRef } from "./identity";
+import { influencers } from "./influencers";
 import {
   audioLibraryEnum,
   mediaOriginEnum,
   mediaSetKindEnum,
   mediaStatusEnum,
   mediaTypeEnum,
-} from "./enums.js";
+} from "./enums";
 
 /**
  * DATA-010 — `Media`.
@@ -35,7 +35,10 @@ export const media = pgTable(
     status: mediaStatusEnum().notNull().default("processing"),
     sizeMb: real().notNull(),
     videoDurationSec: integer(),
-    categories: text().array().notNull().default(sql`'{}'::text[]`),
+    categories: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     origin: mediaOriginEnum().notNull(),
     uploadedAt: tsColumn().notNull().defaultNow(),
     ...softDelete(),
@@ -59,7 +62,10 @@ export const mediaSets = pgTable(
     name: text().notNull(),
     kind: mediaSetKindEnum().notNull(),
     influencerId: uuid().references(() => influencers.id, { onDelete: "set null" }),
-    mediaIds: uuid().array().notNull().default(sql`'{}'::uuid[]`),
+    mediaIds: uuid()
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
     ...createdAtOnly(),
   },
   (t) => [index("media_sets_company_created_idx").on(t.companyId, t.createdAt)],

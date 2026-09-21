@@ -13,8 +13,12 @@ describe("nextRovingIndex", () => {
   });
 
   it("se frena en los extremos con loop desactivado", () => {
-    expect(nextRovingIndex({ current: 2, count: 3, key: "ArrowRight", loop: false })).toBe(2);
-    expect(nextRovingIndex({ current: 0, count: 3, key: "ArrowLeft", loop: false })).toBe(0);
+    expect(
+      nextRovingIndex({ current: 2, count: 3, key: "ArrowRight", loop: false }),
+    ).toBe(2);
+    expect(nextRovingIndex({ current: 0, count: 3, key: "ArrowLeft", loop: false })).toBe(
+      0,
+    );
   });
 
   it("en vertical responde a las flechas verticales, no a las horizontales", () => {

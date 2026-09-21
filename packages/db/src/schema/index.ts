@@ -5,43 +5,43 @@
  * se le pasa a `drizzle()` como `schema`.
  */
 
-export * from "./enums.js";
-export * from "./identity.js";
-export * from "./brand.js";
-export * from "./blitz.js";
-export * from "./content.js";
-export * from "./media.js";
-export * from "./influencers.js";
-export * from "./publishing.js";
-export * from "./automations.js";
-export * from "./discovery.js";
-export * from "./platform.js";
-export * from "./judgment.js";
+export * from "./enums";
+export * from "./identity";
+export * from "./brand";
+export * from "./blitz";
+export * from "./content";
+export * from "./media";
+export * from "./influencers";
+export * from "./publishing";
+export * from "./automations";
+export * from "./discovery";
+export * from "./platform";
+export * from "./judgment";
 
-export { tsColumn, timestamps, createdAtOnly, softDelete } from "./_shared.js";
+export { tsColumn, timestamps, createdAtOnly, softDelete } from "./_shared";
 
-import { brandSources, brandSourceSnapshots, companyProfiles } from "./brand.js";
-import { blitzPreferences, contentAngles, suggestions } from "./blitz.js";
-import { automationSlots, automations } from "./automations.js";
-import { contentTextBoxes, contents } from "./content.js";
-import { banRiskAssessments, leads } from "./discovery.js";
-import { companies, workspaceMemberships } from "./identity.js";
-import { influencerAssets, influencerConfigs, influencers } from "./influencers.js";
-import { judgmentRecords } from "./judgment.js";
-import { media, mediaSets } from "./media.js";
+import { brandSources, brandSourceSnapshots, companyProfiles } from "./brand";
+import { blitzPreferences, contentAngles, suggestions } from "./blitz";
+import { automationSlots, automations } from "./automations";
+import { contentTextBoxes, contents } from "./content";
+import { banRiskAssessments, leads } from "./discovery";
+import { companies, workspaceMemberships } from "./identity";
+import { influencerAssets, influencerConfigs, influencers } from "./influencers";
+import { judgmentRecords } from "./judgment";
+import { media, mediaSets } from "./media";
 import {
   apiKeys,
   idempotencyRecords,
   quotaLedgers,
   uploadReservations,
-} from "./platform.js";
+} from "./platform";
 import {
   connections,
   posts,
   replacementDecisions,
   warmedAccounts,
   warmedSlotBalances,
-} from "./publishing.js";
+} from "./publishing";
 
 /**
  * Las tablas que llevan `companyId` y **deben** estar bajo RLS.

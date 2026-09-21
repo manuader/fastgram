@@ -15,10 +15,10 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, timestamps } from "./_shared.js";
-import { companyRef } from "./identity.js";
-import { influencerAssetKindEnum, influencerStatusEnum } from "./enums.js";
-import { INFLUENCER_LIMITS } from "../limits.js";
+import { createdAtOnly, timestamps } from "./_shared";
+import { companyRef } from "./identity";
+import { influencerAssetKindEnum, influencerStatusEnum } from "./enums";
+import { INFLUENCER_LIMITS } from "../limits";
 
 /** DATA-013 — `Influencer`. Cap: 50 activos por workspace (se aplica en el repo). */
 export const influencers = pgTable(
@@ -110,11 +110,22 @@ export const influencerConfigs = pgTable(
       .primaryKey()
       .references(() => influencers.id, { onDelete: "cascade" }),
     companyId: companyRef(),
-    angleIds: uuid().array().notNull().default(sql`'{}'::uuid[]`),
+    angleIds: uuid()
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
     /** `[{platform, connectionId, enabled}]`. */
-    publishingAccounts: jsonb().notNull().default(sql`'[]'::jsonb`),
-    slideshowSetIds: uuid().array().notNull().default(sql`'{}'::uuid[]`),
-    videoSetIds: uuid().array().notNull().default(sql`'{}'::uuid[]`),
+    publishingAccounts: jsonb()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    slideshowSetIds: uuid()
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    videoSetIds: uuid()
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
     ...timestamps(),
   },
   (t) => [index("influencer_configs_company_created_idx").on(t.companyId, t.createdAt)],

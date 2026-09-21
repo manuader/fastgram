@@ -1,0 +1,212 @@
+/**
+ * Carga y verificación de fuentes para el overlay de texto.
+ *
+ * ── Por qué esto existe ──────────────────────────────────────────────────────
+ * `sharp` 0.33 trae su propio libvips con fontconfig SIN configuración por
+ * defecto (imprime `Fontconfig error: Cannot load default config file`). En esa
+ * situación toda familia pedida por nombre cae en el MISMO tipo de reserva, y
+ * lo hace en silencio. Medido en esta máquina con la cadena sonda
+ * "MWiljq1080 Hamburgefonstiv" a 40px:
+ *
+ *     __NoSuchFamily__ → 517x39
+ *     Helvetica        → 517x39
+ *     Courier          → 517x39
+ *     Montserrat       → 517x39
+ *
+ * Idénticas. Es decir: pedir "Montserrat" y que ande no significa nada.
+ *
+ * Lo que SÍ funciona es pasar el archivo con `fontfile` (verificado con
+ * Georgia.ttf: 545x40 contra 517x39 del fallback, y "Georgia Bold" 633x40).
+ *
+ * Por eso acá cada peso se carga por archivo absoluto y después se VERIFICA
+ * contra la sonda centinela. Si las métricas coinciden con las del centinela,
+ * la fuente no cargó y se falla con `font_unavailable` en vez de renderizar la
+ * pieza con la tipografía equivocada.
+ */
+import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import sharp from "sharp";
+import { RenderError } from "../errors.js";
+import {
+  fontFileName,
+  resolvePangoFamily,
+  type FontFamily,
+  type FontManifest,
+} from "../domain/fonts.js";
+
+/** Cadena con ascendentes, descendentes, dígitos y pares con kerning. */
+export const FONT_PROBE_STRING = "MWiljq1080 Hamburgefonstiv";
+const SENTINEL_FAMILY = "__fastgram_no_such_family__";
+const PROBE_SIZE_PX = 40;
+
+export interface ResolvedFont {
+  readonly family: FontFamily;
+  readonly weight: number;
+  /** Descripción Pango, p. ej. `"Montserrat 600 42px"`. */
+  readonly pangoDescription: string;
+  /** Ruta absoluta al archivo, o `null` si se resolvió por nombre. */
+  readonly fontFile: string | null;
+  /** `false` = la fuente pedida NO cargó y se está usando la de reserva. */
+  readonly verified: boolean;
+}
+
+export interface FontLoaderOptions {
+  /** Directorio con los `.ttf`. Sin esto no hay ninguna de las 12 familias. */
+  readonly fontDir: string | null;
+  /**
+   * `true` (default): una familia que no carga es `font_unavailable`.
+   * `false`: se degrada a la fuente de reserva y se marca `verified: false`.
+   * Nunca se degrada en silencio.
+   */
+  readonly strict: boolean;
+}
+
+export function fontLoaderOptionsFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): FontLoaderOptions {
+  const dir = env["RENDER_FONT_DIR"];
+  return {
+    fontDir: dir === undefined || dir === "" ? null : path.resolve(dir),
+    strict: env["RENDER_FONT_STRICT"] !== "false",
+  };
+}
+
+/** Ancho×alto de la sonda con una descripción Pango dada. */
+async function probeMetrics(description: string, fontFile: string | null): Promise<string> {
+  const text: {
+    text: string;
+    font: string;
+    rgba: boolean;
+    dpi: number;
+    fontfile?: string;
+  } = { text: FONT_PROBE_STRING, font: description, rgba: true, dpi: 72 };
+  if (fontFile !== null) text.fontfile = fontFile;
+  const metadata = await sharp({ text }).metadata();
+  return `${metadata.width ?? 0}x${metadata.height ?? 0}`;
+}
+
+let sentinelMetrics: string | null = null;
+
+async function getSentinelMetrics(): Promise<string> {
+  sentinelMetrics ??= await probeMetrics(`${SENTINEL_FAMILY} ${PROBE_SIZE_PX}px`, null);
+  return sentinelMetrics;
+}
+
+export function resetFontProbeCache(): void {
+  sentinelMetrics = null;
+  manifestCache.clear();
+  verificationCache.clear();
+}
+
+const manifestCache = new Map<string, FontManifest | null>();
+
+async function loadManifest(fontDir: string | null): Promise<FontManifest | null> {
+  if (fontDir === null) return null;
+  const cached = manifestCache.get(fontDir);
+  if (cached !== undefined) return cached;
+  const manifestPath = path.join(fontDir, "fonts.json");
+  let manifest: FontManifest | null = null;
+  if (existsSync(manifestPath)) {
+    try {
+      // Archivo de configuración del operador: se parsea, no se ejecuta.
+      manifest = JSON.parse(await readFile(manifestPath, "utf8")) as FontManifest;
+    } catch (cause) {
+      throw new RenderError("font_unavailable", "fonts.json del directorio de fuentes es inválido", {
+        details: { manifestPath },
+        cause,
+      });
+    }
+  }
+  manifestCache.set(fontDir, manifest);
+  return manifest;
+}
+
+const verificationCache = new Map<string, boolean>();
+
+/**
+ * Resuelve una familia+peso a algo que sharp pueda usar, y verifica que la
+ * fuente realmente haya cargado.
+ */
+export async function resolveFont(
+  family: FontFamily,
+  weight: number,
+  sizePx: number,
+  options: FontLoaderOptions,
+): Promise<ResolvedFont> {
+  const manifest = await loadManifest(options.fontDir);
+  const pangoFamily = resolvePangoFamily(family, manifest);
+
+  if (pangoFamily === null) {
+    // Familia de marca sin archivo conocido (`tiktok`, `snapchat`).
+    if (options.strict) {
+      throw new RenderError(
+        "font_unavailable",
+        "la familia tipográfica no tiene un nombre de fuente resuelto",
+        { details: { family, hint: "definila en fonts.json del RENDER_FONT_DIR" } },
+      );
+    }
+    return {
+      family,
+      weight,
+      pangoDescription: `${family} ${weight} ${sizePx}px`,
+      fontFile: null,
+      verified: false,
+    };
+  }
+
+  const fontFile =
+    options.fontDir === null ? null : path.join(options.fontDir, fontFileName(family, weight));
+  const available = fontFile !== null && existsSync(fontFile);
+  const description = `${pangoFamily} ${weight} ${sizePx}px`;
+
+  if (!available) {
+    if (options.strict) {
+      throw new RenderError("font_unavailable", "falta el archivo de la fuente pedida", {
+        details: {
+          family,
+          weight,
+          expectedFile: fontFile ?? fontFileName(family, weight),
+          hint: "configurá RENDER_FONT_DIR con los .ttf de FR-051",
+        },
+      });
+    }
+    return { family, weight, pangoDescription: description, fontFile: null, verified: false };
+  }
+
+  const verified = await verifyFontLoads(pangoFamily, fontFile);
+  if (!verified && options.strict) {
+    throw new RenderError(
+      "font_unavailable",
+      "el archivo de la fuente existe pero no lo tomó el motor de texto",
+      { details: { family, weight, fontFile } },
+    );
+  }
+
+  return { family, weight, pangoDescription: description, fontFile, verified };
+}
+
+/**
+ * La verificación que evita el fallback silencioso: si las métricas de la sonda
+ * con esta fuente son idénticas a las del centinela inexistente, la fuente no
+ * cargó.
+ */
+export async function verifyFontLoads(
+  pangoFamily: string,
+  fontFile: string,
+): Promise<boolean> {
+  const cacheKey = `${pangoFamily}|${fontFile}`;
+  const cached = verificationCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  const sentinel = await getSentinelMetrics();
+  let metrics: string;
+  try {
+    metrics = await probeMetrics(`${pangoFamily} ${PROBE_SIZE_PX}px`, fontFile);
+  } catch {
+    verificationCache.set(cacheKey, false);
+    return false;
+  }
+  const ok = metrics !== sentinel;
+  verificationCache.set(cacheKey, ok);
+  return ok;
+}

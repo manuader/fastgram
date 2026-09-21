@@ -46,7 +46,10 @@ describe("catálogo en", () => {
   it("fija el copy literal que el PRD §19 y §3.5 especifican", () => {
     // Estos strings son parte de la especificación: si cambian, cambió el PRD.
     const literal: Array<[MessageKey, string]> = [
-      ["empty.aiStudio.title", "No generations yet. Start generating with a prompt below."],
+      [
+        "empty.aiStudio.title",
+        "No generations yet. Start generating with a prompt below.",
+      ],
       ["empty.inspiration.title", "No results"],
       ["empty.inspirationSetup.title", "Inspiration is being set up"],
       ["empty.mediaBank.title", "No images uploaded yet"],
@@ -81,9 +84,9 @@ describe("catálogo en", () => {
   });
 
   it("los mensajes con hueco lo declaran con la sintaxis {nombre}", () => {
-    expect(t("error.brand.handleNotFound.title", { handle: "acme", platform: "TikTok" })).toBe(
-      "We couldn't find @acme on TikTok. Check the spelling.",
-    );
+    expect(
+      t("error.brand.handleNotFound.title", { handle: "acme", platform: "TikTok" }),
+    ).toBe("We couldn't find @acme on TikTok. Check the spelling.");
     expect(t("error.brand.refreshCooldown.title", { hours: 6 })).toBe(
       "You've refreshed this source recently. Try again in 6 hours.",
     );

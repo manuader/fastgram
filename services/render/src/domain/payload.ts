@@ -73,35 +73,48 @@ export const slideSchema = z
   })
   .strict();
 
-export const slideshowPayloadSchema = z
+/**
+ * Base sin refinamientos cruzados: `z.discriminatedUnion` sólo acepta
+ * `ZodObject`, y un `.superRefine` lo convierte en `ZodEffects`. Los
+ * refinamientos se aplican sobre la unión (`buildPayloadSchema`) y sobre el
+ * esquema individual exportado.
+ */
+export const slideshowPayloadBaseSchema = z
   .object({
     type: z.literal("slideshow"),
     numImages: z.number().int().min(1).max(MAX_SLIDES),
     slides: z.array(slideSchema).min(1).max(MAX_SLIDES),
   })
-  .strict()
-  .superRefine((value, ctx) => {
-    // `FR-070`: "num_images debe coincidir con la longitud de images".
-    if (value.numImages !== value.slides.length) {
+  .strict();
+
+type SlideshowShape = z.infer<typeof slideshowPayloadBaseSchema>;
+
+function checkSlideshow(value: SlideshowShape, ctx: z.RefinementCtx, base: readonly (string | number)[] = []): void {
+  // `FR-070`: "num_images debe coincidir con la longitud de images".
+  if (value.numImages !== value.slides.length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [...base, "numImages"],
+      message: `numImages (${value.numImages}) no coincide con slides (${value.slides.length})`,
+    });
+  }
+  // Todos los slides comparten aspect ratio: es un carrusel, no un collage.
+  const first = value.slides[0];
+  if (first === undefined) return;
+  for (const [index, slide] of value.slides.entries()) {
+    if (slide.canvas.aspectRatio !== first.canvas.aspectRatio) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["numImages"],
-        message: `numImages (${value.numImages}) no coincide con slides (${value.slides.length})`,
+        path: [...base, "slides", index, "canvas", "aspectRatio"],
+        message: "todos los slides deben compartir el mismo aspectRatio",
       });
     }
-    // Todos los slides comparten aspect ratio: es un carrusel, no un collage.
-    const first = value.slides[0];
-    if (first === undefined) return;
-    for (const [index, slide] of value.slides.entries()) {
-      if (slide.canvas.aspectRatio !== first.canvas.aspectRatio) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["slides", index, "canvas", "aspectRatio"],
-          message: "todos los slides deben compartir el mismo aspectRatio",
-        });
-      }
-    }
-  });
+  }
+}
+
+export const slideshowPayloadSchema = slideshowPayloadBaseSchema.superRefine((value, ctx) => {
+  checkSlideshow(value, ctx);
+});
 
 export const wallOfTextPayloadSchema = z
   .object({
@@ -146,12 +159,16 @@ export const videoHookPayloadSchema = z
   })
   .strict();
 
-export const buildPayloadSchema = z.discriminatedUnion("type", [
-  slideshowPayloadSchema,
-  wallOfTextPayloadSchema,
-  greenScreenPayloadSchema,
-  videoHookPayloadSchema,
-]);
+export const buildPayloadSchema = z
+  .discriminatedUnion("type", [
+    slideshowPayloadBaseSchema,
+    wallOfTextPayloadSchema,
+    greenScreenPayloadSchema,
+    videoHookPayloadSchema,
+  ])
+  .superRefine((value, ctx) => {
+    if (value.type === "slideshow") checkSlideshow(value, ctx);
+  });
 
 export type SlideshowPayload = z.infer<typeof slideshowPayloadSchema>;
 export type WallOfTextPayload = z.infer<typeof wallOfTextPayloadSchema>;

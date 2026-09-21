@@ -30,6 +30,8 @@ describe("buttonVariants", () => {
   });
 
   it("siempre lleva la clase base, que es la que trae el anillo de foco", () => {
-    expect(buttonVariants({ variant: "link", size: "sm" }).split(" ")).toContain("fg-btn");
+    expect(buttonVariants({ variant: "link", size: "sm" }).split(" ")).toContain(
+      "fg-btn",
+    );
   });
 });

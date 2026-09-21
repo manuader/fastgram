@@ -12,19 +12,37 @@ describe("getPaginationRange", () => {
 
   it("elipsis sólo a la derecha cerca del principio", () => {
     expect(getPaginationRange({ current: 1, total: 100 })).toEqual([
-      1, 2, 3, 4, 5, "ellipsis", 100,
+      1,
+      2,
+      3,
+      4,
+      5,
+      "ellipsis",
+      100,
     ]);
   });
 
   it("elipsis a los dos lados en el medio", () => {
     expect(getPaginationRange({ current: 50, total: 100 })).toEqual([
-      1, "ellipsis", 49, 50, 51, "ellipsis", 100,
+      1,
+      "ellipsis",
+      49,
+      50,
+      51,
+      "ellipsis",
+      100,
     ]);
   });
 
   it("elipsis sólo a la izquierda cerca del final", () => {
     expect(getPaginationRange({ current: 100, total: 100 })).toEqual([
-      1, "ellipsis", 96, 97, 98, 99, 100,
+      1,
+      "ellipsis",
+      96,
+      97,
+      98,
+      99,
+      100,
     ]);
   });
 
@@ -43,7 +61,15 @@ describe("getPaginationRange", () => {
 
   it("respeta siblings y boundaries", () => {
     expect(getPaginationRange({ current: 50, total: 100, siblings: 2 })).toEqual([
-      1, "ellipsis", 48, 49, 50, 51, 52, "ellipsis", 100,
+      1,
+      "ellipsis",
+      48,
+      49,
+      50,
+      51,
+      52,
+      "ellipsis",
+      100,
     ]);
     expect(
       getPaginationRange({ current: 50, total: 100, siblings: 0, boundaries: 2 }),

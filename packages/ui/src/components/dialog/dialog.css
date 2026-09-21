@@ -1,0 +1,119 @@
+.fg-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--fg-z-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--fg-space-4);
+  background-color: var(--fg-color-overlay);
+  animation: fg-fade-in var(--fg-duration-fast) var(--fg-ease-out);
+}
+
+.fg-dialog {
+  position: relative;
+  z-index: var(--fg-z-modal);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: calc(100vh - var(--fg-space-8));
+  background-color: var(--fg-color-surface);
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-2xl);
+  box-shadow: var(--fg-shadow-overlay);
+  color: var(--fg-color-text);
+  animation: fg-dialog-in var(--fg-duration-normal) var(--fg-ease-out);
+}
+
+.fg-dialog--sm {
+  max-width: 24rem;
+}
+
+.fg-dialog--md {
+  max-width: 32rem;
+}
+
+.fg-dialog--lg {
+  max-width: 48rem;
+}
+
+.fg-dialog--xl {
+  max-width: 64rem;
+}
+
+.fg-dialog--full {
+  max-width: none;
+  height: 100%;
+  max-height: none;
+}
+
+.fg-dialog__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-1);
+  padding: var(--fg-space-5) var(--fg-space-5) var(--fg-space-3);
+}
+
+.fg-dialog__title {
+  margin: 0;
+  padding-inline-end: var(--fg-space-8);
+  font-size: var(--fg-text-lg);
+  font-weight: var(--fg-weight-semibold);
+  letter-spacing: var(--fg-tracking-tight);
+}
+
+.fg-dialog__description {
+  margin: 0;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-sm);
+}
+
+.fg-dialog__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 var(--fg-space-5) var(--fg-space-5);
+}
+
+.fg-dialog__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fg-space-2);
+  justify-content: flex-end;
+  padding: var(--fg-space-4) var(--fg-space-5);
+  border-top: 1px solid var(--fg-color-border);
+}
+
+.fg-dialog__close {
+  position: absolute;
+  inset-block-start: var(--fg-space-3);
+  inset-inline-end: var(--fg-space-3);
+}
+
+/* En móvil el diálogo se pega abajo y ocupa el ancho: es donde llega el pulgar
+   y evita el modal flotante que tapa medio teclado (NFR-019). */
+@media (max-width: 640px) {
+  .fg-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .fg-dialog {
+    max-width: none;
+    max-height: 90vh;
+    border-radius: var(--fg-radius-2xl) var(--fg-radius-2xl) 0 0;
+  }
+}
+
+@keyframes fg-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes fg-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--fg-space-4)) scale(0.98);
+  }
+}

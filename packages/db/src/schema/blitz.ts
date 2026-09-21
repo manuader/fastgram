@@ -15,16 +15,16 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, timestamps } from "./_shared.js";
-import { companyRef } from "./identity.js";
-import { influencers } from "./influencers.js";
-import { trendingItems } from "./discovery.js";
+import { createdAtOnly, timestamps } from "./_shared";
+import { companyRef } from "./identity";
+import { influencers } from "./influencers";
+import { trendingItems } from "./discovery";
 import {
   genderFilterEnum,
   suggestionContentTypeEnum,
   suggestionStatusEnum,
-} from "./enums.js";
-import { BLITZ_PREFERENCES_LIMITS, CONTENT_ANGLE_LIMITS } from "../limits.js";
+} from "./enums";
+import { BLITZ_PREFERENCES_LIMITS, CONTENT_ANGLE_LIMITS } from "../limits";
 
 /**
  * DATA-005 — `ContentAngle`.
@@ -42,7 +42,10 @@ export const contentAngles = pgTable(
     description: varchar({ length: CONTENT_ANGLE_LIMITS.descriptionMaxChars }),
     targetAudience: varchar({ length: CONTENT_ANGLE_LIMITS.targetAudienceMaxChars }),
     isActive: boolean().notNull().default(true),
-    influencerIds: uuid().array().notNull().default(sql`'{}'::uuid[]`),
+    influencerIds: uuid()
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
     ...timestamps(),
   },
   (t) => [index("content_angles_company_created_idx").on(t.companyId, t.createdAt)],
@@ -69,9 +72,13 @@ export const blitzPreferences = pgTable(
     /** `man` | `woman` | `null` — el `null` es "sin filtro". */
     genderFilter: genderFilterEnum(),
     /** map ángulo → peso. */
-    angleWeights: jsonb().notNull().default(sql`'{}'::jsonb`),
+    angleWeights: jsonb()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     /** map preset de estilo de texto → peso. */
-    textStyleWeights: jsonb().notNull().default(sql`'{}'::jsonb`),
+    textStyleWeights: jsonb()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     ...timestamps(),
   },
   (t) => [

@@ -15,9 +15,9 @@
  */
 
 import { and, eq, getTableColumns, isNull, sql, type SQL } from "drizzle-orm";
-import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
+import type { PgColumn, PgTable, PgUpdateSetSource } from "drizzle-orm/pg-core";
 
-import type { Executor } from "../client.js";
+import type { Executor } from "../client";
 import {
   buildPage,
   cursorCondition,
@@ -26,7 +26,7 @@ import {
   normalizeLimit,
   type Page,
   type PageRequest,
-} from "../pagination.js";
+} from "../pagination";
 
 /** Lo único que abre la puerta a los datos de un workspace. */
 export interface TenantScope {
@@ -86,6 +86,10 @@ export function createCompanyScopedRepository<TTable extends PgTable>(
   // SQL de la columna. Se resuelve una sola vez, acá, en vez de adivinar con un regex.
   const idKey = propertyKeyOf(config.table, config.id);
   const createdAtKey = propertyKeyOf(config.table, config.createdAt);
+  const deletedAtKey =
+    config.deletedAt === undefined
+      ? undefined
+      : propertyKeyOf(config.table, config.deletedAt);
 
   const liveOnly = (includeDeleted: boolean): SQL | undefined =>
     !includeDeleted && config.deletedAt !== undefined
@@ -157,22 +161,31 @@ export function createCompanyScopedRepository<TTable extends PgTable>(
 
     async softDelete(exec, scope, id) {
       const deletedAt = config.deletedAt;
-      if (deletedAt === undefined) {
+      if (deletedAt === undefined || deletedAtKey === undefined) {
         throw new Error(
           "Esta tabla no tiene soft-delete: falta `deletedAt` en el config del " +
             "repositorio. El borrado duro no pasa por acá.",
         );
       }
-      // Se escribe con `sql` y no con `.set({...})` porque la columna es dinámica
-      // (viene del config) y el tipo de `set` es literal por tabla.
-      const updated = await exec.execute(
-        sql`update ${config.table}
-               set ${deletedAt} = now()
-             where ${config.companyId} = ${scope.companyId}
-               and ${config.id} = ${id}
-               and ${deletedAt} is null
-         returning 1 as ok`,
-      );
+      // Se usa el query builder y no `sql` crudo por dos razones que costaron un
+      // ciclo de test cada una:
+      //  - dentro de `SET` va el nombre pelado de la columna; interpolar la columna
+      //    renderiza `"contents"."deleted_at"` y Postgres lo rechaza;
+      //  - `column.name` es la clave del schema (`deletedAt`), no el nombre SQL: la
+      //    conversión a snake_case la hace el dialecto al renderizar, no la columna.
+      // El builder resuelve las dos cosas. El cast es sólo porque la columna es
+      // dinámica (viene del config) y `set` está tipado por tabla concreta.
+      const updated = await exec
+        .update(config.table)
+        .set({ [deletedAtKey]: new Date() } as PgUpdateSetSource<TTable>)
+        .where(
+          and(
+            eq(config.companyId, scope.companyId),
+            eq(config.id, id),
+            isNull(deletedAt),
+          ),
+        )
+        .returning({ ok: config.id });
       return updated.length > 0;
     },
   };

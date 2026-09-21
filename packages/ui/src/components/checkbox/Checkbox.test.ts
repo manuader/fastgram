@@ -6,7 +6,10 @@ import { fileURLToPath } from "node:url";
 // fijar es el contrato de accesibilidad que su CSS sostiene: si alguien cambia
 // el input invisible por display:none, el checkbox deja de ser tabulable y
 // ningún test de variantes lo notaría.
-const css = readFileSync(fileURLToPath(new URL("./checkbox.css", import.meta.url)), "utf8");
+const css = readFileSync(
+  fileURLToPath(new URL("./checkbox.css", import.meta.url)),
+  "utf8",
+);
 
 describe("checkbox.css", () => {
   it("oculta el input con opacidad, no sacándolo del orden de tabulación", () => {

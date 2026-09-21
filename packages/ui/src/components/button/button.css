@@ -23,6 +23,12 @@
   opacity: 0.55;
 }
 
+.fg-btn__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .fg-btn__icon {
   display: inline-flex;
   flex-shrink: 0;

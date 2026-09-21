@@ -14,9 +14,9 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, softDelete, tsColumn, timestamps } from "./_shared.js";
-import { companyRef } from "./identity.js";
-import { banRiskLevelEnum, socialPlatformEnum } from "./enums.js";
+import { createdAtOnly, softDelete, tsColumn, timestamps } from "./_shared";
+import { companyRef } from "./identity";
+import { banRiskLevelEnum, socialPlatformEnum } from "./enums";
 
 /**
  * DATA-023 — `TrendingItem`.
@@ -34,13 +34,22 @@ export const trendingItems = pgTable(
     platform: socialPlatformEnum().notNull(),
     permalink: text().notNull(),
     thumbnailUrl: text(),
-    mediaUrls: text().array().notNull().default(sql`'{}'::text[]`),
+    mediaUrls: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     isSlideshow: boolean().notNull().default(false),
     slideCount: integer().notNull().default(0),
     views: integer().notNull().default(0),
     likes: integer().notNull().default(0),
-    niches: text().array().notNull().default(sql`'{}'::text[]`),
-    textOverlays: text().array().notNull().default(sql`'{}'::text[]`),
+    niches: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    textOverlays: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     fetchedAt: tsColumn().notNull().defaultNow(),
     ...timestamps(),
   },
