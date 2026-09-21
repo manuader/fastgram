@@ -16,6 +16,15 @@ export {
 } from "./judgment/llm-judgment.js";
 
 export {
+  hashState,
+  RecordingJudgment,
+  type JudgmentRecordEntry,
+  type JudgmentSink,
+  type JudgmentSubject,
+  type RecordingJudgmentOptions,
+} from "./judgment/recording-judgment.js";
+
+export {
   OpenAiCompatibleLlm,
   type FetchLike,
   type OpenAiCompatibleLlmConfig,
