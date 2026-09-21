@@ -136,7 +136,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 - [x] **P1-QUEUE-001** Puerto `Queue` + adaptador pg-boss · `ADR-005`
 - [~] **P1-QUEUE-002** **Encolar dentro de la transacción de negocio** + test que lo prueba · IMPL §2.3 · ⚠️ es la razón de ADR-005 · **parcial:** el adaptador existe y tiene tests; **falta el test que prueba que un rollback de la transacción deshace el encolado**, que es la razón entera de ADR-005
-- [ ] **P1-QUEUE-003** Estado de job consultable + contrato de polling de ~10 s · `NFR-002`, `ADR-014`
+- [x] **P1-QUEUE-003** Estado de job consultable + contrato de polling de ~10 s · `NFR-002`, `ADR-014`
 - [x] **P1-QUEUE-004** Reintentos con backoff y dead-letter queue
 - [~] **P1-QUEUE-005** Idempotencia: `Idempotency-Key`, replay de respuesta, `409` con body distinto, liberación al fallar · `NFR-004` · **parcial:** la política de idempotencia está en `apps/api/src/http/idempotency.ts` con 8 tests; falta cablearla a las rutas
 - [x] **P1-QUEUE-006** Scaffold del `apps/worker`
@@ -152,10 +152,10 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P1-API — Contrato y API
 
-- [~] **P1-API-001** Scaffold Fastify + estructura de `apps/api` · **parcial:** scaffold Fastify + capa HTTP (errores, rate limit, idempotencia, subidas, paginación) hecha; faltan las rutas
+- [x] **P1-API-001** Scaffold Fastify + estructura de `apps/api`
 - [x] **P1-API-002** `packages/contracts` con Zod → tipos + OpenAPI · `ADR-015`
 - [x] **P1-API-003** Envelopes `{data}` / `{error:{code,message,details}}` / `pagination{cursor,hasMore}` · PRD §9.3
-- [ ] **P1-API-004** Versionado en la ruta `/api/v1`
+- [x] **P1-API-004** Versionado en la ruta `/api/v1`
 - [ ] **P1-API-005** API keys `fsln_live_*`: hash en reposo, mostradas una sola vez, revocación inmediata · `FR-180`
 - [x] **P1-API-006** `WWW-Authenticate: Bearer realm="api"` en todos los 401 · `FR-180`
 - [ ] **P1-API-007** Middleware de scope: toda ruta resuelve `companyId` desde la key o la sesión
@@ -231,7 +231,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P1-UI — Shell de aplicación
 
-- [~] **P1-UI-001** Next.js + Tailwind + shadcn/ui, tokens y tema · **parcial:** design system y tokens hechos en `packages/ui`; falta cablearlo en `apps/web`
+- [x] **P1-UI-001** Next.js + Tailwind + shadcn/ui, tokens y tema
 - [x] **P1-UI-002** Tema claro/oscuro **sin flash** en la carga · `NFR-021`
 - [x] **P1-UI-003** Sidebar colapsable con las 10 entradas + bloque secundario · `FR-001`
 - [x] **P1-UI-004** Rutas de PRD §3.1 con sus guards
@@ -239,8 +239,8 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P1-UI-006** Primitivas de estado: `empty`, `loading`, `error`, skeletons · PRD §19
 - [x] **P1-UI-007** TanStack Query + capa de cliente de API tipada
 - [ ] **P1-UI-008** Responsive: móvil y tablet · `NFR-019`
-- [ ] **P1-UI-009** Home con KPIs, Tasks y Views History · `FR-030`
-- [ ] **P1-UI-010** FAQ del Home: 5 categorías, 37 preguntas, copy literal · `FR-030`
+- [x] **P1-UI-009** Home con KPIs, Tasks y Views History · `FR-030`
+- [x] **P1-UI-010** FAQ del Home: 5 categorías, 37 preguntas, copy literal · `FR-030`
 - [ ] **P1-UI-011** **`text-subtle` en modo oscuro no cumple AA para texto normal** · `NFR-019`
   > Medido el 2026-09-21: 3,65:1 sobre `surface` y 3,16:1 sobre `raised`, contra el 4,5:1 que exige AA. Cumple el 3:1 de texto grande y nada más. Hoy eso significa que **en oscuro `text-subtle` no se puede usar en tamaño normal**.
   > No se arregla subiéndolo a `neutral-400`, que es donde vive `muted`: se perdería la distinción entre los dos niveles. Es una decisión de paleta. `packages/ui/src/tokens.contrast.test.ts` fija los valores medidos, así que la limitación no puede empeorar en silencio.

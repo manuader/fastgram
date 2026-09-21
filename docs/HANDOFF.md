@@ -236,7 +236,31 @@ grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 0
    require 'docker login'"*, que **parece un problema de credenciales y no lo es**. MinIO publica
    en **quay.io**: `quay.io/minio/minio` y `quay.io/minio/mc`.
 
-10. **`*/` dentro de un comentario de bloque lo cierra.** Escribir `` `*/upload-url` `` en un
+10. **`singletonKey` de pg-boss NO deduplica con la política por defecto.** Los índices únicos de
+    pg-boss sobre `(name, singleton_key)` están **filtrados por política de cola**, y con la
+    política `standard` no hay ninguno. Medido: con `standard`, dos encolados con la misma
+    `singletonKey` crean **dos jobs**. Y cambiar a `short` no arregla nada — el índice es sobre
+    `COALESCE(singleton_key,'')`, así que **todos los jobs sin clave colapsan a `''`** y sólo
+    puede haber uno encolado en toda la cola.
+    Usado de forma ingenua, `NFR-004` sería una creencia y `NFR-015` —no duplicar un post de
+    TikTok— se rompería el día del primer reintento. La solución implementada: derivar el `id`
+    del job como UUID v5 de `(cola, singletonKey)`, con `ON CONFLICT DO NOTHING` sobre la PK.
+
+11. **La URL de subida firmada NO protege el `Content-Type` por defecto.**
+    `@aws-sdk/s3-request-presigner` firma `content-length;host` y **deja `content-type` afuera**,
+    aunque el comando lo declare. Medido contra MinIO: una reserva hecha para `image/png`
+    aceptaba con **200** un PUT con `application/zip`. Con `signableHeaders` incluyendo
+    `content-type`, ese mismo PUT da **403**.
+    Es el mismo agujero que la validación de extensión de `PRD §9.8` intenta cerrar del otro
+    lado: sin esto, un cliente reserva como `.png` y sube HTML.
+
+12. **Un adaptador de `Judgment` sobre un LLM tiene que ordenar las preguntas del lote.** §9.15.1
+    promete preguntas **independientes** sobre el mismo estado. Un modelo autorregresivo es
+    sensible al orden de las claves del esquema: verificado desactivando el ordenamiento, la
+    misma pregunta cambia de respuesta según con qué otras viaje. Sin ordenar por id, la promesa
+    de independencia es falsa.
+
+13. **`*/` dentro de un comentario de bloque lo cierra.** Escribir `` `*/upload-url` `` en un
     docstring produce un error de esbuild —*"Expected ';' but found 'POST'"*— apuntando a una
     línea de prosa.
 
