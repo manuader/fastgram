@@ -3100,7 +3100,7 @@ Contexto común (INFERRED a partir de la arquitectura): todo evento debe llevar 
 | ERR-E06 | Sin imágenes disponibles en picker | `No available images.` | subir o cambiar filtro |
 | ERR-E07 | Sin audio | `No audio` | elegir una pista |
 | ERR-E08 | Leads sin resultados | *"Try adjusting your filters or fetch new leads to discover conversations where your audience is seeking solutions."* | ajustar filtros / refrescar |
-| ERR-E09 | Sin cuentas warmed | `<N> accounts yet` / `<...> account in Settings or buy a warmed account.` | comprar o conectar |
+| ERR-E09 | Sin cuentas warmed | ⚠️ **copy incompleto** — `<N> accounts yet` / `<...> account in Settings or buy a warmed account.` El comienzo de la descripción se perdió en la captura y **no se reconstruye acá**: inventarlo lo haría indistinguible del copy verificado. Quien lo implemente usa un texto propio y lo marca como tal. | comprar o conectar |
 | ERR-E10 | Sin otros workspaces | `No other workspace available` | crear workspace |
 | ERR-E11 | Blitz con cola vacía | (API `404 not_found`) — *"discovery queue has no ready items yet. Try again shortly."* | esperar / forzar un tipo |
 | ERR-E12 | **EXTENSION** — sin Brand Sources en `/brand` | `No sources yet. Add your website or a social profile so we can learn your brand.` | `+ Add source` |
