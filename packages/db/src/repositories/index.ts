@@ -8,6 +8,7 @@
 
 export * from "./base";
 export * from "./catalog";
+export * from "./company";
 export * from "./filters";
 export * from "./idempotency";
 
