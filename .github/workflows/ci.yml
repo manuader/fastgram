@@ -64,8 +64,26 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U fastgram"
           --health-interval 5s --health-timeout 5s --health-retries 10
+      minio:
+        # Las imágenes de MinIO viven en quay.io: `minio/minio:latest` en
+        # Docker Hub falla con "pull access denied", que parece un problema de
+        # credenciales y no lo es.
+        image: quay.io/minio/minio:latest
+        env:
+          MINIO_ROOT_USER: fastgram
+          MINIO_ROOT_PASSWORD: fastgram-dev-secret
+        ports: ["9000:9000"]
+        options: >-
+          --health-cmd "mc ready local"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgres://fastgram:fastgram@localhost:5432/fastgram_test
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: auto
+      S3_BUCKET: fastgram-test
+      S3_ACCESS_KEY_ID: fastgram
+      S3_SECRET_ACCESS_KEY: fastgram-dev-secret
+      S3_PUBLIC_URL: http://localhost:9000/fastgram-test
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -74,7 +92,18 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: bucket de test
+        run: |
+          docker run --rm --network host quay.io/minio/mc:latest \
+            alias set l http://localhost:9000 fastgram fastgram-dev-secret
+          docker run --rm --network host quay.io/minio/mc:latest \
+            mb --ignore-existing l/fastgram-test
       - run: pnpm test:int
+      - name: suites que necesitan Postgres y MinIO de verdad
+        # Sin estos servicios, las suites de contrato de `Storage` y `Queue`
+        # se saltean solas indicando el motivo. Saltearse en CI es cobertura
+        # que nadie corre: acá corren.
+        run: pnpm --filter @fastgram/adapters test
 
   vision:
     name: servicio de visión (Python)

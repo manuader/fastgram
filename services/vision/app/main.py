@@ -9,9 +9,10 @@ import os
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Annotated
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 
 from .frames import ffmpeg_available
 from .models import HealthResponse, OcrRequest, OcrResponse, OcrStatus
@@ -57,6 +58,75 @@ async def health() -> HealthResponse:
         ocr_engine=getattr(engine, "name", "none"),
         ocr_available=available,
     )
+
+
+@app.post("/ocr/bytes", response_model=OcrResponse)
+async def ocr_bytes(
+    request: Request,
+    content_type: Annotated[str | None, Header(alias="X-Media-Content-Type")] = None,
+    sample_every_seconds: float = 2.0,
+    max_frames: int = 12,
+) -> OcrResponse:
+    """Lee los bytes directamente del cuerpo, sin descargar nada.
+
+    Es la forma correcta para este producto y no una comodidad. `DATA-032` y
+    `FR-011` dicen que **los binarios de terceros no se persisten**: se
+    procesan en memoria y se descartan. Si el servicio los descarga por URL,
+    alguien tiene que haberlos guardado en algún lado primero — que es
+    exactamente lo que la regla prohíbe.
+
+    Existía ya un `POST /ocr` por URL y sigue existiendo para el Media Bank
+    propio, donde el objeto sí vive en nuestro storage. Pero el adaptador
+    `Ocr` pasa bytes, y para cubrir el hueco estaba levantando un servidor
+    HTTP efímero en loopback y publicándose los bytes a sí mismo. Eso funciona
+    en desarrollo y **deja de funcionar apenas los dos procesos vivan en
+    contenedores distintos**, que es como van a correr.
+    """
+    engine = state.get("engine")
+    if engine is None:
+        raise HTTPException(status_code=503, detail="service not ready")
+
+    body = await request.body()
+    if len(body) == 0:
+        raise HTTPException(status_code=400, detail="empty body")
+    if len(body) > MAX_DOWNLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="payload too large")
+
+    suffix = _suffix_for(content_type)
+    fd, name = tempfile.mkstemp(suffix=suffix, prefix="vision-")
+    path = Path(name)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(body)
+
+        req = OcrRequest(
+            url="inline://bytes",
+            sample_every_seconds=sample_every_seconds,
+            max_frames=max_frames,
+        )
+        if suffix in _VIDEO_SUFFIXES:
+            if not ffmpeg_available():
+                return OcrResponse(
+                    status=OcrStatus.PARTIAL,
+                    reason="ffmpeg no disponible: no se pudo leer el video",
+                )
+            return await analyse_video(engine, path, req)  # type: ignore[arg-type]
+        return await analyse_image(engine, path, req)  # type: ignore[arg-type]
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def _suffix_for(content_type: str | None) -> str:
+    """Extensión a partir del content type. ffmpeg y sharp la miran."""
+    mapping = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+        "video/mp4": ".mp4",
+        "video/quicktime": ".mov",
+        "video/webm": ".webm",
+    }
+    return mapping.get((content_type or "").split(";")[0].strip().lower(), ".bin")
 
 
 @app.post("/ocr", response_model=OcrResponse)
