@@ -105,16 +105,42 @@ mismaLista("estados de Content (PRD DATA-008)", [
   ["packages/contracts/src/primitives/enums.ts", "contentStatusSchema"],
 ]);
 
-mismoNumero("slides por slideshow (PRD FR-070)", [
-  ["packages/core/src/quota/plans.ts", "slidesPerSlideshow"],
-]);
-
 mismoNumero("content angles por workspace (PRD FR-056)", [
   ["packages/core/src/quota/plans.ts", "contentAngles"],
 ]);
 
 mismoNumero("influencers activos por workspace (PRD FR-080)", [
   ["packages/core/src/quota/plans.ts", "activeInfluencers"],
+]);
+
+// Los del editor de texto viven en tres paquetes escritos por agentes que no
+// se hablaron entre sí: el contrato que valida la entrada, el dominio que
+// sostiene la invariante, y el motor que finalmente dibuja. Coinciden hoy;
+// nada lo garantizaba.
+mismoNumero("slides por slideshow (PRD FR-070) · 3 paquetes", [
+  ["packages/core/src/quota/plans.ts", "slidesPerSlideshow"],
+  ["packages/contracts/src/resources/content.ts", "SLIDESHOW_MAX_SLIDES"],
+  ["services/render/src/domain/payload.ts", "MAX_SLIDES"],
+]);
+
+mismoNumero("fontSize mínimo (PRD FR-051)", [
+  ["packages/contracts/src/resources/content.ts", "FONT_SIZE_MIN"],
+  ["services/render/src/domain/text.ts", "FONT_SIZE_MIN"],
+]);
+
+mismoNumero("fontSize máximo (PRD FR-051)", [
+  ["packages/contracts/src/resources/content.ts", "FONT_SIZE_MAX"],
+  ["services/render/src/domain/text.ts", "FONT_SIZE_MAX"],
+]);
+
+mismoNumero("widthPercent mínimo (PRD FR-051)", [
+  ["packages/contracts/src/resources/content.ts", "TEXT_WIDTH_PERCENT_MIN"],
+  ["services/render/src/domain/text.ts", "WIDTH_PERCENT_MIN"],
+]);
+
+mismoNumero("strokeWidth máximo (PRD FR-051)", [
+  ["packages/contracts/src/resources/content.ts", "STROKE_WIDTH_MAX"],
+  ["services/render/src/domain/text.ts", "STROKE_WIDTH_MAX"],
 ]);
 
 mismoNumero("generaciones en vuelo (PRD FR-090)", [
