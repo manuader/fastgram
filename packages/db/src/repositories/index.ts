@@ -237,3 +237,4 @@ export const judgmentRecordRepository = createCompanyScopedRepository({
   companyId: judgmentRecords.companyId,
   createdAt: judgmentRecords.createdAt,
 });
+export { resolveApiKeyByHash, type ApiKeyBootstrapRow } from "./api-key-bootstrap";

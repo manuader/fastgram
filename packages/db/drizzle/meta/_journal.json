@@ -22,6 +22,13 @@
       "when": 1790008494024,
       "tag": "0002_tenancy_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790008494025,
+      "tag": "0003_api_key_bootstrap",
+      "breakpoints": true
     }
   ]
 }

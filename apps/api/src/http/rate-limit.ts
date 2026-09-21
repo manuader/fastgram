@@ -54,10 +54,43 @@ export interface BucketState {
   updatedAtMs: number;
 }
 
+/**
+ * Almacén del bucket.
+ *
+ * **`compareAndSwap` y no `write`, y no es un detalle.** Entre leer y escribir
+ * hay un `await`: con `write` a secas, N peticiones concurrentes del mismo
+ * workspace leen todas el mismo estado y **pasan todas**, así que el límite
+ * efectivo es hasta N veces el configurado. Los tests secuenciales no lo ven —
+ * este bug vivió en el código hasta que alguien lo leyó pensando en
+ * concurrencia.
+ *
+ * Con CAS, el perdedor de la carrera reintenta sobre el estado nuevo. Cada
+ * implementación lo resuelve con lo que tenga: una comparación de referencia en
+ * memoria, un `UPDATE ... WHERE updated_at_ms = $esperado` en Postgres, un
+ * `WATCH`/`MULTI` en Redis.
+ */
 export interface BucketStore {
   read(key: string): Promise<BucketState | null>;
-  write(key: string, state: BucketState): Promise<void>;
+  /**
+   * Escribe `next` **sólo si** el estado guardado sigue siendo `expected`
+   * (`null` = no existía). Devuelve `false` si otro lo cambió primero.
+   */
+  compareAndSwap(
+    key: string,
+    expected: BucketState | null,
+    next: BucketState,
+  ): Promise<boolean>;
 }
+
+/**
+ * Cuántas veces reintentar cuando se pierde la carrera del CAS.
+ *
+ * Acotado a propósito: bajo contención extrema es preferible responder
+ * `unavailable` —que el PRD traduce a 503— antes que girar. Un 503 dice "no
+ * pude comprobarlo"; girar convierte el limitador en el cuello de botella que
+ * debía proteger.
+ */
+const MAX_CAS_ATTEMPTS = 5;
 
 export class TokenBucketLimiter {
   constructor(
@@ -72,40 +105,53 @@ export class TokenBucketLimiter {
   ): Promise<RateLimitDecision> {
     const { limit, windowMs } = RATE_LIMITS[name];
     const key = `${name}:${scopeId}`;
-    const now = this.clock.nowMs();
 
-    let state: BucketState | null;
-    try {
-      state = await this.store.read(key);
-    } catch (e) {
-      // Acá está la regla que importa: no sabemos si le queda cuota, así que
-      // no podemos afirmar que se le acabó.
-      return {
-        outcome: "unavailable",
-        reason: e instanceof Error ? e.message : "no se pudo leer el bucket",
-      };
+    for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
+      const now = this.clock.nowMs();
+
+      let state: BucketState | null;
+      try {
+        state = await this.store.read(key);
+      } catch (e) {
+        // La regla que importa: no sabemos si le queda cuota, así que no
+        // podemos afirmar que se le acabó.
+        return {
+          outcome: "unavailable",
+          reason: e instanceof Error ? e.message : "no se pudo leer el bucket",
+        };
+      }
+
+      const tokens = state === null ? limit : refill(state, limit, windowMs, now);
+
+      if (tokens < cost) {
+        // Cuánto falta esperar para juntar `cost` tokens, al ritmo de refill.
+        // No hace falta CAS: no estamos escribiendo nada.
+        const perMs = limit / windowMs;
+        const retryAfterMs = Math.ceil((cost - tokens) / perMs);
+        return { outcome: "limited", retryAfterMs };
+      }
+
+      const next: BucketState = { tokens: tokens - cost, updatedAtMs: now };
+      let won: boolean;
+      try {
+        won = await this.store.compareAndSwap(key, state, next);
+      } catch (e) {
+        return {
+          outcome: "unavailable",
+          reason: e instanceof Error ? e.message : "no se pudo escribir el bucket",
+        };
+      }
+
+      if (won) return { outcome: "allowed", remaining: Math.floor(next.tokens) };
+      // Perdimos la carrera: otro consumió mientras tanto. Releemos y
+      // reintentamos sobre el estado nuevo.
     }
 
-    const tokens = state === null ? limit : refill(state, limit, windowMs, now);
-
-    if (tokens < cost) {
-      // Cuánto falta esperar para juntar `cost` tokens, al ritmo de refill.
-      const perMs = limit / windowMs;
-      const retryAfterMs = Math.ceil((cost - tokens) / perMs);
-      return { outcome: "limited", retryAfterMs };
-    }
-
-    const next: BucketState = { tokens: tokens - cost, updatedAtMs: now };
-    try {
-      await this.store.write(key, next);
-    } catch (e) {
-      return {
-        outcome: "unavailable",
-        reason: e instanceof Error ? e.message : "no se pudo escribir el bucket",
-      };
-    }
-
-    return { outcome: "allowed", remaining: Math.floor(next.tokens) };
+    // Contención sostenida. 503, no 429: no llegamos a saber si le quedaba.
+    return {
+      outcome: "unavailable",
+      reason: `el bucket cambió bajo nosotros ${MAX_CAS_ATTEMPTS} veces seguidas`,
+    };
   }
 }
 

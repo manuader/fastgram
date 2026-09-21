@@ -47,6 +47,7 @@
  */
 import type { Clock } from "@fastgram/ports";
 import {
+  resolveApiKeyByHash,
   withCompany,
   withoutCompany,
   type Database,
@@ -123,68 +124,6 @@ export async function resolveScope(
   return { ok: false, reason: "missing_header" };
 }
 
-/** Fila que necesita el bootstrap. Se declara acá para no depender de tipos de Drizzle. */
-interface ApiKeyLookupRow {
-  readonly id: string;
-  readonly companyId: string;
-  readonly kind: "workspace" | "partner";
-  readonly revokedAt: Date | null;
-  readonly expiresAt: Date | null;
-}
-
-/**
- * El bootstrap. Ver la nota larga de la cabecera antes de tocar esto.
- *
- * `tx.query.apiKeys` es la relational query API: los operadores llegan en el segundo
- * argumento del callback, así que no hace falta importar `drizzle-orm`.
- */
-async function findApiKeyByHash(
-  tx: Transaction,
-  hash: string,
-): Promise<ApiKeyLookupRow | null> {
-  const relational = tx as unknown as {
-    query: {
-      apiKeys: {
-        findFirst(config: {
-          where: (
-            table: { hash: unknown },
-            operators: { eq: (a: unknown, b: unknown) => unknown },
-          ) => unknown;
-        }): Promise<ApiKeyLookupRow | undefined>;
-      };
-    };
-  };
-
-  const row = await relational.query.apiKeys.findFirst({
-    where: (table, { eq }) => eq(table.hash, hash),
-  });
-  return row ?? null;
-}
-
-/** Estado del workspace, para la causa de 401 "workspace soft-deleted" (PRD:1867). */
-async function findCompanyStatus(
-  tx: Transaction,
-  companyId: string,
-): Promise<string | null> {
-  const relational = tx as unknown as {
-    query: {
-      companies: {
-        findFirst(config: {
-          where: (
-            table: { id: unknown },
-            operators: { eq: (a: unknown, b: unknown) => unknown },
-          ) => unknown;
-        }): Promise<{ status: string } | undefined>;
-      };
-    };
-  };
-
-  const row = await relational.query.companies.findFirst({
-    where: (table, { eq }) => eq(table.id, companyId),
-  });
-  return row?.status ?? null;
-}
-
 async function resolveApiKey(
   options: ScopeResolverOptions,
   authHeader: string,
@@ -194,15 +133,11 @@ async function resolveApiKey(
 
   const hash = hashApiKey(extracted.token);
 
-  const found = await withoutCompany(options.db, async (tx) => {
-    const key = await findApiKeyByHash(tx, hash);
-    if (key === null) return null;
-    const status = await findCompanyStatus(tx, key.companyId);
-    return { key, status };
-  });
+  // Una sola ida, y por `app.resolve_api_key`: ver la nota de la cabecera.
+  // El rol de producción no puede leer `api_keys` directo.
+  const key = await withoutCompany(options.db, (tx) => resolveApiKeyByHash(tx, hash));
 
-  if (found === null) return { ok: false, reason: "no_match" };
-  const { key, status } = found;
+  if (key === null) return { ok: false, reason: "no_match" };
 
   // FR-180 acceptance (2): *"Revocar invalida en el acto"*. Sin caché entre el UPDATE
   // y el próximo request: el chequeo es sobre la fila, en cada request.
@@ -214,7 +149,7 @@ async function resolveApiKey(
 
   // PRD:1867 — workspace soft-deleted es causa de 401, no de 404: la credencial dejó
   // de ser válida, no es que el recurso no esté.
-  if (status === null || status === "soft_deleted") {
+  if (key.companyStatus === "soft_deleted") {
     return { ok: false, reason: "workspace_soft_deleted" };
   }
 
@@ -223,7 +158,7 @@ async function resolveApiKey(
     auth: {
       companyId: key.companyId,
       kind: "api_key",
-      apiKeyId: key.id,
+      apiKeyId: key.apiKeyId,
       apiKeyKind: key.kind,
     },
   };

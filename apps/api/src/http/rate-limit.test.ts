@@ -11,11 +11,20 @@ import {
 
 class MemoryStore implements BucketStore {
   readonly data = new Map<string, BucketState>();
+  /** Si es > 0, cada `read` cede el turno: simula latencia de red. */
+  constructor(private readonly latencyTicks = 0) {}
+
   async read(key: string) {
+    for (let i = 0; i < this.latencyTicks; i++) await Promise.resolve();
     return this.data.get(key) ?? null;
   }
-  async write(key: string, state: BucketState) {
-    this.data.set(key, state);
+  async compareAndSwap(key: string, expected: BucketState | null, next: BucketState) {
+    const actual = this.data.get(key) ?? null;
+    // Comparación por referencia: `read` devuelve el objeto guardado, así que
+    // si nadie escribió en el medio son el mismo.
+    if (actual !== expected) return false;
+    this.data.set(key, next);
+    return true;
   }
 }
 
@@ -23,7 +32,7 @@ class BrokenStore implements BucketStore {
   async read(): Promise<BucketState | null> {
     throw new Error("el contador no responde");
   }
-  async write(): Promise<void> {
+  async compareAndSwap(): Promise<boolean> {
     throw new Error("el contador no responde");
   }
 }
@@ -108,6 +117,49 @@ describe("TokenBucketLimiter", () => {
 
     clock.advanceMs(cortado.retryAfterMs);
     expect((await limiter.consume("contentBuilds", "co_1")).outcome).toBe("allowed");
+  });
+});
+
+describe("concurrencia — el bug que los tests secuenciales no veían", () => {
+  it("60 peticiones SIMULTÁNEAS no pasan más de 60", async () => {
+    // Antes esto dejaba pasar las 60 y además las 60 siguientes: entre el
+    // `read` y el `write` hay un `await`, así que todas leían el mismo estado
+    // y todas se creían la primera. El límite efectivo era N veces el real.
+    const limiter = new TokenBucketLimiter(new MemoryStore(2), new FixedClock());
+
+    const resultados = await Promise.all(
+      Array.from({ length: 120 }, () => limiter.consume("restPerWorkspace", "co_1")),
+    );
+
+    const pasaron = resultados.filter((r) => r.outcome === "allowed").length;
+    expect(pasaron).toBeLessThanOrEqual(60);
+  });
+
+  it("bajo contención responde `unavailable`, nunca `limited` por error", async () => {
+    // Perder la carrera del CAS no significa que se acabó la cuota. Decir 429
+    // ahí mandaría al cliente a esperar la próxima ventana por un problema
+    // nuestro de contención.
+    const limiter = new TokenBucketLimiter(new MemoryStore(3), new FixedClock());
+    const resultados = await Promise.all(
+      Array.from({ length: 30 }, () => limiter.consume("restPerWorkspace", "co_1")),
+    );
+    for (const r of resultados) {
+      expect(r.outcome === "allowed" || r.outcome === "unavailable").toBe(true);
+    }
+  });
+
+  it("los perdedores del CAS no consumen tokens de más", async () => {
+    const store = new MemoryStore(2);
+    const limiter = new TokenBucketLimiter(store, new FixedClock());
+
+    const resultados = await Promise.all(
+      Array.from({ length: 10 }, () => limiter.consume("contentBuilds", "co_1")),
+    );
+    const pasaron = resultados.filter((r) => r.outcome === "allowed").length;
+
+    const estado = await store.read("contentBuilds:co_1");
+    // Lo consumido tiene que coincidir exactamente con lo que se dejó pasar.
+    expect(10 - (estado?.tokens ?? 10)).toBe(pasaron);
   });
 });
 

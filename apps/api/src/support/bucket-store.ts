@@ -33,7 +33,23 @@ export function createMemoryBucketStore(
       return buckets.get(key) ?? null;
     },
 
-    async write(key: string, state: BucketState): Promise<void> {
+    /**
+     * Compare-and-swap, no `write` a secas.
+     *
+     * Entre el `read` y la escritura hay un `await`: con `write`, N peticiones
+     * concurrentes del mismo workspace leen todas el mismo estado y **pasan
+     * todas**, así que el límite efectivo es hasta N veces el configurado.
+     * La comparación es por referencia porque `read` devuelve el objeto
+     * guardado: si nadie escribió en el medio, son el mismo.
+     */
+    async compareAndSwap(
+      key: string,
+      expected: BucketState | null,
+      next: BucketState,
+    ): Promise<boolean> {
+      const actual = buckets.get(key) ?? null;
+      if (actual !== expected) return false;
+
       // Poda ingenua pero acotada: al tocar el techo se tira la entrada más vieja
       // por orden de inserción. Perder un bucket sólo regala tokens, nunca los
       // quita, así que el peor caso es ser permisivo de más con un workspace.
@@ -41,7 +57,8 @@ export function createMemoryBucketStore(
         const oldest = buckets.keys().next();
         if (!oldest.done) buckets.delete(oldest.value);
       }
-      buckets.set(key, state);
+      buckets.set(key, next);
+      return true;
     },
 
     size: () => buckets.size,
