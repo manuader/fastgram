@@ -19,6 +19,27 @@ Tres cosas, en este orden:
 
 El paso 3 es el que se saltea y el que sostiene todo el sistema.
 
+## Si trabajás en paralelo con otros agentes
+
+El protocolo de arriba asume **un** agente por vez. Con varios a la vez cambia, porque hay tres
+cosas que son estado compartido mutable y tocarlas rompe a todos:
+
+| No tocar | Por qué |
+|---|---|
+| `pnpm-lock.yaml` y **cualquier** `package.json` | Dos `pnpm install` concurrentes dejan el lockfile inconsistente, con symlinks colgados. Si te falta una dependencia, **no la instales: reportala.** |
+| `git` | Commits entrelazados de trabajo a medio escribir. |
+| `tasks.md`, `PRD.md`, `docs/**` | Ediciones ciegas sobre el mismo archivo. |
+
+Entonces, en paralelo:
+
+- **Vos** sos dueño de un directorio y de nada más. No marcás `tasks.md` ni escribís handoffs.
+- **Quien coordina** marca las tareas, actualiza `docs/HANDOFF.md` y escribe el session doc,
+  usando los reportes de cada agente.
+- Tu reporte final **es** tu handoff. Que diga qué construiste, el output **real** de los
+  comandos que corriste, qué decidiste que el PRD no cubre, y **qué quedó sin verificar**. Esa
+  última parte es la más valiosa: un reporte que dice "todo verde" con algo sin correr hace que
+  no se confíe en nada de lo que decís.
+
 ## Jerarquía de documentos
 
 | Documento | Responde |

@@ -163,22 +163,73 @@ Y tres que se decidieron al empezar a escribir código:
 
 ## 6. Cómo verificar
 
-**Hoy no hay nada que verificar: no hay código, ni tests, ni build.** Decirlo es más útil que
-inventar comandos que no corren.
-
-El primer comando verificable aparece al cerrar **`P0-REPO-008`** (CI). A partir de ahí, esta
-sección tiene que llenarse con los comandos reales, en orden, y **con los números esperados** —
-"unit 380, antes de la suite de UI"— porque los números son lo que permite distinguir "lo rompí yo"
-de "ya estaba rojo".
-
-**Quien cierre `P0-REPO-008`: tu tarea incluye escribir esta sección.**
-
-Mientras tanto, lo único verificable es documental:
+**Números al 2026-09-21.** Son lo que permite distinguir "lo rompí yo" de "ya estaba rojo".
+Si tu corrida da menos, algo se perdió; si da más, actualizá esta sección.
 
 ```bash
-grep -c '^- \[ \]' tasks.md     # tareas pendientes — hoy: 361
-grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 0
+pnpm install          # pnpm 12. Si falla, ver la trampa 7 de §7
+pnpm verify           # lint · typecheck · boundaries · consistency · test
 ```
+
+`pnpm verify` **tiene que salir en verde**. Lo que corre, en orden:
+
+| Comando | Qué mide | Esperado hoy |
+|---|---|---|
+| `pnpm lint` | eslint una vez sobre todo el repo | **0 errores** |
+| `pnpm typecheck` | `tsc --noEmit` por paquete, 12 tareas | **12 successful** |
+| `pnpm boundaries` | las reglas de la arquitectura | **0 errores**, ~3 warnings de huérfanos · 366 módulos |
+| `pnpm consistency` | los números del PRD escritos en más de un paquete | **9 invariantes** |
+| `pnpm test` | unitarios | **1.226** |
+
+Desglose de `pnpm test`, por si uno solo se cae:
+
+| Paquete | Tests | | Paquete | Tests |
+|---|---|---|---|---|
+| `core` | 391 | | `ui` | 170 |
+| `contracts` | 253 | | `adapters` | 153 |
+| `render-service` | 119 | | `api` | 62 |
+| `db` | 29 | | `web` | 22 |
+| `worker` | 18 | | `config` | 9 |
+
+### Lo que necesita servicios levantados
+
+```bash
+docker compose up -d                       # Postgres con pgvector + MinIO con el bucket creado
+pnpm test:int                              # db 44 · api 22  → 66
+```
+
+Las suites de contrato de `Storage` y `Queue` de `packages/adapters` corren dentro de
+`pnpm test` y **se saltean solas indicando el motivo en el nombre del caso** si los servicios
+no responden. Si ves `· sin MinIO` en un nombre de test, el compose no está arriba.
+
+### Python
+
+```bash
+cd services/vision
+uv venv --python 3.12 .venv && uv pip install -e ".[dev]"
+.venv/bin/python -m pytest -q              # 19 passed
+.venv/bin/python -m ruff check .           # limpio
+```
+
+**Arranca sin PaddleOCR a propósito** y lo publica en `GET /health` (`ocr_available`). Con el
+motor ausente, todo análisis devuelve `partial`: es lo que manda `AI-016`.
+
+### Estado del backlog
+
+```bash
+grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 78
+grep -c '^- \[~\]' tasks.md     # en curso o parciales — hoy: 7
+grep -c '^- \[!\]' tasks.md     # bloqueadas — hoy: 1
+grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 285
+```
+
+### Lo que `pnpm verify` NO mide
+
+- **Que el binario compilado arranque.** `pnpm build` pasa y `node dist/main.js` **no funciona**
+  (`P0-REPO-013`). Verde en CI y roto en producción.
+- **Que algo se vea bien.** Nadie abrió un navegador ni miró un frame renderizado.
+- **Calidad de los modelos.** Cero tokens de LLM gastados: los adaptadores se prueban contra
+  gateways falsos, lo que verifica el adaptador y no el modelo.
 
 ## 7. Trampas que ya pagamos
 
