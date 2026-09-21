@@ -76,6 +76,30 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:int
 
+  vision:
+    name: servicio de visión (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: ffmpeg
+        # Dependencia dura: sin él no hay OCR sobre video, y el test que
+        # verifica la degradación a `partial` necesita que exista para
+        # distinguir "ffmpeg no está" de "ffmpeg no sacó frames".
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: dependencias
+        working-directory: services/vision
+        run: uv venv --python 3.12 .venv && uv pip install -e ".[dev]"
+      - name: tests
+        working-directory: services/vision
+        # Sin el extra `ocr`: el servicio tiene que pasar sus tests SIN motor.
+        # Es la forma de verificar que la degradación de AI-016 funciona de
+        # verdad, y no sólo que el camino feliz anda.
+        run: .venv/bin/python -m pytest -q
+      - name: lint
+        working-directory: services/vision
+        run: .venv/bin/python -m ruff check . && .venv/bin/python -m ruff format --check .
+
   task-id:
     name: el PR declara su tarea
     if: github.event_name == 'pull_request'
