@@ -1,0 +1,39 @@
+.fg-textarea {
+  width: 100%;
+  min-width: 0;
+  padding: var(--fg-space-2) var(--fg-space-3);
+  background-color: var(--fg-color-surface);
+  border: 1px solid var(--fg-color-border-strong);
+  border-radius: var(--fg-radius-md);
+  color: var(--fg-color-text);
+  font-family: var(--fg-font-sans);
+  font-size: var(--fg-text-sm);
+  line-height: var(--fg-leading-normal);
+  transition: border-color var(--fg-duration-fast) var(--fg-ease-standard);
+}
+
+.fg-textarea::placeholder {
+  color: var(--fg-color-text-subtle);
+}
+
+.fg-textarea:disabled {
+  background-color: var(--fg-color-surface-sunken);
+  color: var(--fg-color-text-subtle);
+  cursor: not-allowed;
+}
+
+.fg-textarea--invalid {
+  border-color: var(--fg-color-danger);
+}
+
+.fg-textarea--resize-none {
+  resize: none;
+}
+
+.fg-textarea--resize-y {
+  resize: vertical;
+}
+
+.fg-textarea--resize-both {
+  resize: both;
+}

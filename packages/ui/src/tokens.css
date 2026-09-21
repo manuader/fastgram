@@ -1,0 +1,325 @@
+/**
+ * FastGram design tokens.
+ *
+ * Todo token es una CSS custom property con prefijo `--fg-`. Dos capas:
+ *
+ *   1. PRIMITIVAS  (`--fg-neutral-500`, `--fg-accent-600`): la paleta cruda.
+ *      No se usan directamente en los componentes.
+ *   2. SEMÁNTICAS  (`--fg-color-surface`, `--fg-color-text`): lo que consumen
+ *      los componentes. Son las únicas que cambian entre tema claro y oscuro.
+ *
+ * El tema oscuro se aplica de dos formas, a propósito (P1-UI-002, NFR-021):
+ *   - `:root[data-theme="dark"]`  → elección explícita del usuario. Un script
+ *     inline en el <head> puede fijar el atributo antes del primer paint y así
+ *     no hay flash.
+ *   - `@media (prefers-color-scheme: dark)` acotado a `:root:not([data-theme="light"])`
+ *     → preferencia del sistema, que la elección explícita puede anular.
+ */
+
+:root {
+  /* ---------------------------------------------------------------- color */
+  /* Neutrales: gris ligeramente cálido, para que conviva con el acento naranja. */
+  --fg-neutral-0: #ffffff;
+  --fg-neutral-50: #fafaf9;
+  --fg-neutral-100: #f5f5f4;
+  --fg-neutral-200: #e7e5e4;
+  --fg-neutral-300: #d6d3d1;
+  --fg-neutral-400: #a8a29e;
+  --fg-neutral-500: #78716c;
+  --fg-neutral-600: #57534e;
+  --fg-neutral-700: #44403c;
+  --fg-neutral-800: #292524;
+  --fg-neutral-900: #1c1917;
+  --fg-neutral-950: #0d0d0d;
+
+  /* Acento: naranja. Única pista cromática que da el PRD (burbuja de soporte
+     naranja, §3.2) y el host os.usefastlane.ai sobre #0d0d0d. */
+  --fg-accent-50: #fff7ed;
+  --fg-accent-100: #ffedd5;
+  --fg-accent-200: #fed7aa;
+  --fg-accent-300: #fdba74;
+  --fg-accent-400: #fb923c;
+  --fg-accent-500: #f97316;
+  --fg-accent-600: #ea580c;
+  --fg-accent-700: #c2410c;
+  --fg-accent-800: #9a3412;
+  --fg-accent-900: #7c2d12;
+
+  --fg-success-100: #dcfce7;
+  --fg-success-500: #22c55e;
+  --fg-success-600: #16a34a;
+  --fg-success-700: #15803d;
+
+  --fg-warning-100: #fef3c7;
+  --fg-warning-500: #f59e0b;
+  --fg-warning-600: #d97706;
+  --fg-warning-700: #b45309;
+
+  --fg-danger-100: #fee2e2;
+  --fg-danger-500: #ef4444;
+  --fg-danger-600: #dc2626;
+  --fg-danger-700: #b91c1c;
+
+  --fg-info-100: #dbeafe;
+  --fg-info-500: #3b82f6;
+  --fg-info-600: #2563eb;
+  --fg-info-700: #1d4ed8;
+
+  /* Colores de marca de cada plataforma. Los usa el chip de post del calendario
+     (F-141: "coloreado por plataforma") y los badges de Analytics (F-171). */
+  --fg-platform-tiktok: #000000;
+  --fg-platform-instagram: #e1306c;
+  --fg-platform-youtube: #ff0000;
+  --fg-platform-linkedin: #0a66c2;
+  --fg-platform-reddit: #ff4500;
+
+  /* ------------------------------------------------------- color semántico */
+  --fg-color-bg: var(--fg-neutral-50);
+  --fg-color-surface: var(--fg-neutral-0);
+  --fg-color-surface-raised: var(--fg-neutral-0);
+  --fg-color-surface-sunken: var(--fg-neutral-100);
+  --fg-color-surface-hover: var(--fg-neutral-100);
+  --fg-color-surface-active: var(--fg-neutral-200);
+
+  --fg-color-border: var(--fg-neutral-200);
+  --fg-color-border-strong: var(--fg-neutral-300);
+
+  --fg-color-text: var(--fg-neutral-900);
+  --fg-color-text-muted: var(--fg-neutral-600);
+  --fg-color-text-subtle: var(--fg-neutral-500);
+  --fg-color-text-inverse: var(--fg-neutral-0);
+
+  --fg-color-accent: var(--fg-accent-600);
+  --fg-color-accent-hover: var(--fg-accent-700);
+  --fg-color-accent-subtle: var(--fg-accent-50);
+  --fg-color-accent-text: var(--fg-accent-700);
+  --fg-color-on-accent: var(--fg-neutral-0);
+
+  --fg-color-success: var(--fg-success-600);
+  --fg-color-success-subtle: var(--fg-success-100);
+  --fg-color-success-text: var(--fg-success-700);
+
+  --fg-color-warning: var(--fg-warning-600);
+  --fg-color-warning-subtle: var(--fg-warning-100);
+  --fg-color-warning-text: var(--fg-warning-700);
+
+  --fg-color-danger: var(--fg-danger-600);
+  --fg-color-danger-subtle: var(--fg-danger-100);
+  --fg-color-danger-text: var(--fg-danger-700);
+  --fg-color-on-danger: var(--fg-neutral-0);
+
+  --fg-color-info: var(--fg-info-600);
+  --fg-color-info-subtle: var(--fg-info-100);
+  --fg-color-info-text: var(--fg-info-700);
+
+  --fg-color-overlay: rgb(28 25 23 / 55%);
+  --fg-color-focus-ring: var(--fg-accent-600);
+  --fg-color-skeleton: var(--fg-neutral-200);
+  --fg-color-skeleton-sheen: var(--fg-neutral-100);
+
+  /* ----------------------------------------------------------- tipografía */
+  --fg-font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  --fg-font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+
+  --fg-text-xs: 0.75rem; /* 12px */
+  --fg-text-sm: 0.875rem; /* 14px */
+  --fg-text-base: 1rem; /* 16px */
+  --fg-text-lg: 1.125rem; /* 18px */
+  --fg-text-xl: 1.25rem; /* 20px */
+  --fg-text-2xl: 1.5rem; /* 24px */
+  --fg-text-3xl: 1.875rem; /* 30px */
+  --fg-text-4xl: 2.25rem; /* 36px */
+
+  --fg-leading-tight: 1.2;
+  --fg-leading-snug: 1.35;
+  --fg-leading-normal: 1.5;
+  --fg-leading-relaxed: 1.65;
+
+  --fg-weight-regular: 400;
+  --fg-weight-medium: 500;
+  --fg-weight-semibold: 600;
+  --fg-weight-bold: 700;
+
+  --fg-tracking-tight: -0.01em;
+  --fg-tracking-normal: 0;
+  --fg-tracking-wide: 0.04em;
+
+  /* -------------------------------------------------------------- espacio */
+  /* Escala de 4px. El número es el múltiplo: `--fg-space-3` = 12px. */
+  --fg-space-0: 0;
+  --fg-space-px: 1px;
+  --fg-space-1: 0.25rem;
+  --fg-space-2: 0.5rem;
+  --fg-space-3: 0.75rem;
+  --fg-space-4: 1rem;
+  --fg-space-5: 1.25rem;
+  --fg-space-6: 1.5rem;
+  --fg-space-8: 2rem;
+  --fg-space-10: 2.5rem;
+  --fg-space-12: 3rem;
+  --fg-space-16: 4rem;
+  --fg-space-20: 5rem;
+
+  /* --------------------------------------------------------------- radios */
+  --fg-radius-none: 0;
+  --fg-radius-sm: 0.25rem;
+  --fg-radius-md: 0.375rem;
+  --fg-radius-lg: 0.5rem;
+  --fg-radius-xl: 0.75rem;
+  --fg-radius-2xl: 1rem;
+  --fg-radius-full: 9999px;
+
+  /* -------------------------------------------------------------- sombras */
+  --fg-shadow-xs: 0 1px 2px rgb(28 25 23 / 6%);
+  --fg-shadow-sm: 0 1px 3px rgb(28 25 23 / 8%), 0 1px 2px rgb(28 25 23 / 4%);
+  --fg-shadow-md: 0 4px 12px rgb(28 25 23 / 10%), 0 2px 4px rgb(28 25 23 / 4%);
+  --fg-shadow-lg: 0 12px 32px rgb(28 25 23 / 14%), 0 4px 8px rgb(28 25 23 / 6%);
+  --fg-shadow-overlay: 0 24px 64px rgb(28 25 23 / 22%);
+
+  /* ---------------------------------------------------------- superficies */
+  --fg-control-height-sm: 2rem; /* 32px */
+  --fg-control-height-md: 2.25rem; /* 36px */
+  --fg-control-height-lg: 2.75rem; /* 44px — mínimo táctil cómodo (NFR-019) */
+  --fg-focus-ring-width: 2px;
+  --fg-focus-ring-offset: 2px;
+
+  /* -------------------------------------------------------------- z-index */
+  --fg-z-base: 0;
+  --fg-z-dropdown: 1000;
+  --fg-z-sticky: 1100;
+  --fg-z-overlay: 1200;
+  --fg-z-modal: 1300;
+  --fg-z-toast: 1400;
+  --fg-z-tooltip: 1500;
+
+  /* --------------------------------------------------------------- motion */
+  --fg-duration-instant: 75ms;
+  --fg-duration-fast: 150ms;
+  --fg-duration-normal: 220ms;
+  --fg-duration-slow: 400ms;
+  --fg-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --fg-ease-out: cubic-bezier(0, 0, 0.2, 1);
+}
+
+/* ------------------------------------------------------------ tema oscuro */
+/* Un solo bloque de overrides, reutilizado por los dos selectores de abajo. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --fg-color-bg: var(--fg-neutral-950);
+    --fg-color-surface: var(--fg-neutral-900);
+    --fg-color-surface-raised: var(--fg-neutral-800);
+    --fg-color-surface-sunken: #000000;
+    --fg-color-surface-hover: var(--fg-neutral-800);
+    --fg-color-surface-active: var(--fg-neutral-700);
+
+    --fg-color-border: var(--fg-neutral-800);
+    --fg-color-border-strong: var(--fg-neutral-700);
+
+    --fg-color-text: var(--fg-neutral-50);
+    --fg-color-text-muted: var(--fg-neutral-400);
+    --fg-color-text-subtle: var(--fg-neutral-500);
+    --fg-color-text-inverse: var(--fg-neutral-950);
+
+    --fg-color-accent: var(--fg-accent-500);
+    --fg-color-accent-hover: var(--fg-accent-400);
+    --fg-color-accent-subtle: rgb(249 115 22 / 14%);
+    --fg-color-accent-text: var(--fg-accent-300);
+    --fg-color-on-accent: var(--fg-neutral-950);
+
+    --fg-color-success: var(--fg-success-500);
+    --fg-color-success-subtle: rgb(34 197 94 / 16%);
+    --fg-color-success-text: #86efac;
+
+    --fg-color-warning: var(--fg-warning-500);
+    --fg-color-warning-subtle: rgb(245 158 11 / 16%);
+    --fg-color-warning-text: #fcd34d;
+
+    --fg-color-danger: var(--fg-danger-500);
+    --fg-color-danger-subtle: rgb(239 68 68 / 16%);
+    --fg-color-danger-text: #fca5a5;
+    --fg-color-on-danger: var(--fg-neutral-950);
+
+    --fg-color-info: var(--fg-info-500);
+    --fg-color-info-subtle: rgb(59 130 246 / 16%);
+    --fg-color-info-text: #93c5fd;
+
+    --fg-color-overlay: rgb(0 0 0 / 70%);
+    --fg-color-focus-ring: var(--fg-accent-400);
+    --fg-color-skeleton: var(--fg-neutral-800);
+    --fg-color-skeleton-sheen: var(--fg-neutral-700);
+
+    /* TikTok en negro desaparece sobre fondo oscuro. */
+    --fg-platform-tiktok: #ffffff;
+
+    --fg-shadow-xs: 0 1px 2px rgb(0 0 0 / 40%);
+    --fg-shadow-sm: 0 1px 3px rgb(0 0 0 / 50%), 0 1px 2px rgb(0 0 0 / 30%);
+    --fg-shadow-md: 0 4px 12px rgb(0 0 0 / 55%), 0 2px 4px rgb(0 0 0 / 30%);
+    --fg-shadow-lg: 0 12px 32px rgb(0 0 0 / 60%), 0 4px 8px rgb(0 0 0 / 35%);
+    --fg-shadow-overlay: 0 24px 64px rgb(0 0 0 / 70%);
+  }
+}
+
+:root[data-theme="dark"] {
+  --fg-color-bg: var(--fg-neutral-950);
+  --fg-color-surface: var(--fg-neutral-900);
+  --fg-color-surface-raised: var(--fg-neutral-800);
+  --fg-color-surface-sunken: #000000;
+  --fg-color-surface-hover: var(--fg-neutral-800);
+  --fg-color-surface-active: var(--fg-neutral-700);
+
+  --fg-color-border: var(--fg-neutral-800);
+  --fg-color-border-strong: var(--fg-neutral-700);
+
+  --fg-color-text: var(--fg-neutral-50);
+  --fg-color-text-muted: var(--fg-neutral-400);
+  --fg-color-text-subtle: var(--fg-neutral-500);
+  --fg-color-text-inverse: var(--fg-neutral-950);
+
+  --fg-color-accent: var(--fg-accent-500);
+  --fg-color-accent-hover: var(--fg-accent-400);
+  --fg-color-accent-subtle: rgb(249 115 22 / 14%);
+  --fg-color-accent-text: var(--fg-accent-300);
+  --fg-color-on-accent: var(--fg-neutral-950);
+
+  --fg-color-success: var(--fg-success-500);
+  --fg-color-success-subtle: rgb(34 197 94 / 16%);
+  --fg-color-success-text: #86efac;
+
+  --fg-color-warning: var(--fg-warning-500);
+  --fg-color-warning-subtle: rgb(245 158 11 / 16%);
+  --fg-color-warning-text: #fcd34d;
+
+  --fg-color-danger: var(--fg-danger-500);
+  --fg-color-danger-subtle: rgb(239 68 68 / 16%);
+  --fg-color-danger-text: #fca5a5;
+  --fg-color-on-danger: var(--fg-neutral-950);
+
+  --fg-color-info: var(--fg-info-500);
+  --fg-color-info-subtle: rgb(59 130 246 / 16%);
+  --fg-color-info-text: #93c5fd;
+
+  --fg-color-overlay: rgb(0 0 0 / 70%);
+  --fg-color-focus-ring: var(--fg-accent-400);
+  --fg-color-skeleton: var(--fg-neutral-800);
+  --fg-color-skeleton-sheen: var(--fg-neutral-700);
+
+  --fg-platform-tiktok: #ffffff;
+
+  --fg-shadow-xs: 0 1px 2px rgb(0 0 0 / 40%);
+  --fg-shadow-sm: 0 1px 3px rgb(0 0 0 / 50%), 0 1px 2px rgb(0 0 0 / 30%);
+  --fg-shadow-md: 0 4px 12px rgb(0 0 0 / 55%), 0 2px 4px rgb(0 0 0 / 30%);
+  --fg-shadow-lg: 0 12px 32px rgb(0 0 0 / 60%), 0 4px 8px rgb(0 0 0 / 35%);
+  --fg-shadow-overlay: 0 24px 64px rgb(0 0 0 / 70%);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}

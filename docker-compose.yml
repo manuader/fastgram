@@ -21,7 +21,10 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:latest
+    # MinIO retiró `latest` de Docker Hub; las imágenes viven en quay.io.
+    # Un `minio/minio:latest` falla con "pull access denied", que parece
+    # un problema de credenciales y no lo es.
+    image: quay.io/minio/minio:latest
     container_name: fastgram-minio
     command: server /data --console-address ":9001"
     environment:
@@ -39,7 +42,7 @@ services:
   # Crea el bucket de desarrollo y se apaga. Sin esto, la primera subida falla
   # con NoSuchBucket y se pierde media hora buscando el error en el adaptador.
   minio-init:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:latest
     depends_on:
       minio: { condition: service_healthy }
     entrypoint: >

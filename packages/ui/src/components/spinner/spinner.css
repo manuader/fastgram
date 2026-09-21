@@ -1,0 +1,64 @@
+.fg-spinner {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.fg-spinner__track {
+  width: 1em;
+  height: 1em;
+  animation: fg-spin 720ms linear infinite;
+}
+
+.fg-spinner__rail,
+.fg-spinner__arc {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.fg-spinner__rail {
+  stroke: currentcolor;
+  opacity: 0.22;
+}
+
+.fg-spinner__arc {
+  stroke: currentcolor;
+  stroke-dasharray: 56.5; /* 2πr con r = 9 */
+  stroke-dashoffset: 42;
+}
+
+.fg-spinner--xs {
+  font-size: var(--fg-text-xs);
+}
+
+.fg-spinner--sm {
+  font-size: var(--fg-text-base);
+}
+
+.fg-spinner--md {
+  font-size: var(--fg-text-2xl);
+}
+
+.fg-spinner--lg {
+  font-size: var(--fg-text-4xl);
+}
+
+.fg-spinner--current {
+  color: currentcolor;
+}
+
+.fg-spinner--accent {
+  color: var(--fg-color-accent);
+}
+
+.fg-spinner--muted {
+  color: var(--fg-color-text-subtle);
+}
+
+@keyframes fg-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

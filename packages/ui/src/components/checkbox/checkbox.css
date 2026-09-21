@@ -1,0 +1,70 @@
+.fg-checkbox {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--fg-space-2);
+  font-family: var(--fg-font-sans);
+  font-size: var(--fg-text-sm);
+  line-height: var(--fg-leading-snug);
+  cursor: pointer;
+}
+
+.fg-checkbox:has(.fg-checkbox__input:disabled) {
+  color: var(--fg-color-text-subtle);
+  cursor: not-allowed;
+}
+
+/* El input real: invisible pero presente. No usa display:none ni
+   visibility:hidden porque eso lo saca del orden de tabulación. */
+.fg-checkbox__input {
+  position: absolute;
+  width: 1.125rem;
+  height: 1.125rem;
+  margin: 0;
+  opacity: 0;
+}
+
+.fg-checkbox__box {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  margin-top: 0.0625rem;
+  background-color: var(--fg-color-surface);
+  border: 1px solid var(--fg-color-border-strong);
+  border-radius: var(--fg-radius-sm);
+  color: transparent;
+  transition:
+    background-color var(--fg-duration-fast) var(--fg-ease-standard),
+    border-color var(--fg-duration-fast) var(--fg-ease-standard);
+}
+
+.fg-checkbox__mark {
+  width: 0.875rem;
+  height: 0.875rem;
+  stroke-width: 3;
+}
+
+.fg-checkbox__input:checked + .fg-checkbox__box,
+.fg-checkbox__input:indeterminate + .fg-checkbox__box {
+  background-color: var(--fg-color-accent);
+  border-color: var(--fg-color-accent);
+  color: var(--fg-color-on-accent);
+}
+
+.fg-checkbox__input:disabled + .fg-checkbox__box {
+  background-color: var(--fg-color-surface-sunken);
+  border-color: var(--fg-color-border);
+}
+
+.fg-checkbox__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-px);
+}
+
+.fg-checkbox__description {
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+}

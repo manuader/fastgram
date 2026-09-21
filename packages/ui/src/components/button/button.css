@@ -1,0 +1,117 @@
+.fg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--fg-space-2);
+  border: 1px solid transparent;
+  border-radius: var(--fg-radius-md);
+  font-family: var(--fg-font-sans);
+  font-weight: var(--fg-weight-medium);
+  line-height: var(--fg-leading-tight);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--fg-duration-fast) var(--fg-ease-standard),
+    border-color var(--fg-duration-fast) var(--fg-ease-standard),
+    color var(--fg-duration-fast) var(--fg-ease-standard);
+}
+
+.fg-btn:disabled,
+.fg-btn[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.fg-btn__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.fg-btn__icon > svg {
+  width: 1em;
+  height: 1em;
+}
+
+/* -------------------------------------------------------------- tamaños */
+.fg-btn--sm {
+  height: var(--fg-control-height-sm);
+  padding-inline: var(--fg-space-3);
+  font-size: var(--fg-text-sm);
+}
+
+.fg-btn--md {
+  height: var(--fg-control-height-md);
+  padding-inline: var(--fg-space-4);
+  font-size: var(--fg-text-sm);
+}
+
+.fg-btn--lg {
+  height: var(--fg-control-height-lg);
+  padding-inline: var(--fg-space-5);
+  font-size: var(--fg-text-base);
+}
+
+.fg-btn--icon {
+  width: var(--fg-control-height-md);
+  height: var(--fg-control-height-md);
+  padding: 0;
+}
+
+.fg-btn--full {
+  width: 100%;
+}
+
+/* ------------------------------------------------------------ variantes */
+.fg-btn--primary {
+  background-color: var(--fg-color-accent);
+  color: var(--fg-color-on-accent);
+}
+
+.fg-btn--primary:hover:not(:disabled) {
+  background-color: var(--fg-color-accent-hover);
+}
+
+.fg-btn--secondary {
+  background-color: var(--fg-color-surface);
+  border-color: var(--fg-color-border-strong);
+  color: var(--fg-color-text);
+}
+
+.fg-btn--secondary:hover:not(:disabled) {
+  background-color: var(--fg-color-surface-hover);
+}
+
+.fg-btn--ghost {
+  background-color: transparent;
+  color: var(--fg-color-text-muted);
+}
+
+.fg-btn--ghost:hover:not(:disabled) {
+  background-color: var(--fg-color-surface-hover);
+  color: var(--fg-color-text);
+}
+
+.fg-btn--danger {
+  background-color: var(--fg-color-danger);
+  color: var(--fg-color-on-danger);
+}
+
+.fg-btn--danger:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+
+.fg-btn--link {
+  height: auto;
+  padding: 0;
+  background-color: transparent;
+  color: var(--fg-color-accent-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.fg-btn--link:hover:not(:disabled) {
+  color: var(--fg-color-accent-hover);
+}

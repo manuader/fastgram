@@ -1,0 +1,56 @@
+.fg-switch {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  padding: 2px;
+  background-color: var(--fg-color-border-strong);
+  border: none;
+  border-radius: var(--fg-radius-full);
+  cursor: pointer;
+  transition: background-color var(--fg-duration-fast) var(--fg-ease-standard);
+}
+
+.fg-switch[aria-checked="true"] {
+  background-color: var(--fg-color-accent);
+}
+
+.fg-switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.fg-switch__thumb {
+  display: block;
+  background-color: var(--fg-neutral-0);
+  border-radius: var(--fg-radius-full);
+  box-shadow: var(--fg-shadow-sm);
+  transition: transform var(--fg-duration-fast) var(--fg-ease-standard);
+}
+
+.fg-switch--sm {
+  width: 1.75rem;
+  height: 1rem;
+}
+
+.fg-switch--sm .fg-switch__thumb {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.fg-switch--sm[aria-checked="true"] .fg-switch__thumb {
+  transform: translateX(0.75rem);
+}
+
+.fg-switch--md {
+  width: 2.25rem;
+  height: 1.25rem;
+}
+
+.fg-switch--md .fg-switch__thumb {
+  width: 1rem;
+  height: 1rem;
+}
+
+.fg-switch--md[aria-checked="true"] .fg-switch__thumb {
+  transform: translateX(1rem);
+}

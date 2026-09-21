@@ -1,0 +1,830 @@
+/**
+ * Generación de OpenAPI a partir de los schemas Zod · ADR-015 (IMPL §3).
+ *
+ * **Por qué está escrito a mano y no con `zod-to-json-schema`.** El paquete no
+ * puede sumar dependencias en esta tarea, y `zod` 3.25 sólo trae
+ * `z.toJSONSchema()` bajo el subpath `zod/v4`, que es otra API distinta de la
+ * que usan los schemas de este paquete (y el catálogo del workspace declara
+ * `zod: ^3.24.1`, rango en el que ese subpath **no** existe). Así que el
+ * conversor va acá, cubriendo exactamente los nodos que este contrato usa y
+ * fallando ruidosamente ante cualquier otro. Un conversor que cubre lo que hay
+ * es más honesto que uno genérico a medio hacer.
+ *
+ * El conversor describe el **input** del schema (lo que el cliente envía): por
+ * eso un `.pipe()` o un `.transform()` se describen por su lado de entrada, que
+ * es lo que viaja por el cable.
+ */
+import { z } from "zod";
+
+import { errorEnvelopeSchema } from "./primitives/errors";
+import { paginationSchema } from "./primitives/envelope";
+import { cursorQuerySchema } from "./primitives/pagination";
+import { IDEMPOTENCY_KEY_HEADER } from "./primitives/idempotency";
+import { uploadReservationSchema } from "./primitives/uploads";
+import * as blitz from "./resources/blitz";
+import * as angles from "./resources/angles";
+import * as influencers from "./resources/influencers";
+import * as media from "./resources/media";
+import * as content from "./resources/content";
+import * as posts from "./resources/posts";
+import * as analytics from "./resources/analytics";
+import * as connections from "./resources/connections";
+import * as warmed from "./resources/warmed-accounts";
+import * as audio from "./resources/audio";
+import * as sounds from "./resources/tiktok-sounds";
+import * as brand from "./resources/brand";
+import {
+  imageUploadReservationRequestSchema,
+  mediaUploadReservationRequestSchema,
+  videoUploadReservationRequestSchema,
+} from "./primitives/uploads";
+
+// ---------------------------------------------------------------------------
+// JSON Schema
+// ---------------------------------------------------------------------------
+
+export type JsonSchema = {
+  type?: string | string[];
+  format?: string;
+  pattern?: string;
+  enum?: readonly unknown[];
+  const?: unknown;
+  properties?: Record<string, JsonSchema>;
+  required?: string[];
+  additionalProperties?: boolean | JsonSchema;
+  items?: JsonSchema;
+  anyOf?: JsonSchema[];
+  minimum?: number;
+  maximum?: number;
+  minLength?: number;
+  maxLength?: number;
+  minItems?: number;
+  maxItems?: number;
+  default?: unknown;
+  description?: string;
+  nullable?: boolean;
+};
+
+/** Error explícito: es preferible a emitir un `{}` que nadie nota. */
+export class UnsupportedZodNodeError extends Error {
+  constructor(typeName: string) {
+    super(`openapi: unsupported Zod node "${typeName}"`);
+    this.name = "UnsupportedZodNodeError";
+  }
+}
+
+type ZodDef = { typeName: z.ZodFirstPartyTypeKind } & Record<string, unknown>;
+
+// `_def` está tipado como `any` por Zod; el cast lo estrecha a lo que se usa acá
+// y evita que ese `any` se propague al resto del archivo.
+const defOf = (schema: z.ZodTypeAny): ZodDef => schema._def as ZodDef;
+
+type StringCheck = { kind: string; value?: number; regex?: RegExp };
+type NumberCheck = { kind: string; value?: number };
+
+const fromString = (def: ZodDef): JsonSchema => {
+  const out: JsonSchema = { type: "string" };
+  for (const check of (def["checks"] ?? []) as StringCheck[]) {
+    if (check.kind === "min" && check.value !== undefined) out.minLength = check.value;
+    if (check.kind === "max" && check.value !== undefined) out.maxLength = check.value;
+    if (check.kind === "url") out.format = "uri";
+    if (check.kind === "regex" && check.regex !== undefined) out.pattern = check.regex.source;
+  }
+  return out;
+};
+
+const fromNumber = (def: ZodDef): JsonSchema => {
+  const out: JsonSchema = { type: "number" };
+  for (const check of (def["checks"] ?? []) as NumberCheck[]) {
+    if (check.kind === "int") out.type = "integer";
+    if (check.kind === "min" && check.value !== undefined) out.minimum = check.value;
+    if (check.kind === "max" && check.value !== undefined) out.maximum = check.value;
+  }
+  return out;
+};
+
+const fromObject = (def: ZodDef): JsonSchema => {
+  const shapeFn = def["shape"] as () => Record<string, z.ZodTypeAny>;
+  const shape = shapeFn();
+  const properties: Record<string, JsonSchema> = {};
+  const required: string[] = [];
+  for (const [key, value] of Object.entries(shape)) {
+    properties[key] = toJsonSchema(value);
+    if (!value.isOptional()) required.push(key);
+  }
+  const out: JsonSchema = { type: "object", properties };
+  if (required.length > 0) out.required = required;
+  if (def["unknownKeys"] === "strict") out.additionalProperties = false;
+  return out;
+};
+
+/**
+ * Convierte un schema Zod a JSON Schema (draft 2020-12, el dialecto de
+ * OpenAPI 3.1). Lanza `UnsupportedZodNodeError` ante un nodo no cubierto.
+ */
+export const toJsonSchema = (schema: z.ZodTypeAny): JsonSchema => {
+  const def = defOf(schema);
+  const K = z.ZodFirstPartyTypeKind;
+
+  switch (def.typeName) {
+    case K.ZodString:
+      return fromString(def);
+    case K.ZodNumber:
+      return fromNumber(def);
+    case K.ZodBoolean:
+      return { type: "boolean" };
+    case K.ZodLiteral:
+      return { const: def["value"] };
+    case K.ZodEnum:
+      return { type: "string", enum: def["values"] as readonly string[] };
+    case K.ZodArray: {
+      const out: JsonSchema = {
+        type: "array",
+        items: toJsonSchema(def["type"] as z.ZodTypeAny),
+      };
+      const min = def["minLength"] as { value: number } | null;
+      const max = def["maxLength"] as { value: number } | null;
+      if (min !== null && min !== undefined) out.minItems = min.value;
+      if (max !== null && max !== undefined) out.maxItems = max.value;
+      return out;
+    }
+    case K.ZodObject:
+      return fromObject(def);
+    case K.ZodRecord:
+      return {
+        type: "object",
+        additionalProperties: toJsonSchema(def["valueType"] as z.ZodTypeAny),
+      };
+    case K.ZodUnion:
+      return { anyOf: (def["options"] as z.ZodTypeAny[]).map(toJsonSchema) };
+    case K.ZodDiscriminatedUnion:
+      return { anyOf: (def["options"] as z.ZodTypeAny[]).map(toJsonSchema) };
+    case K.ZodOptional:
+      return toJsonSchema(def["innerType"] as z.ZodTypeAny);
+    case K.ZodNullable: {
+      const inner = toJsonSchema(def["innerType"] as z.ZodTypeAny);
+      return { anyOf: [inner, { type: "null" }] };
+    }
+    case K.ZodDefault: {
+      const inner = toJsonSchema(def["innerType"] as z.ZodTypeAny);
+      const getDefault = def["defaultValue"] as () => unknown;
+      return { ...inner, default: getDefault() };
+    }
+    // refine / superRefine / transform: se describe el lado de entrada.
+    case K.ZodEffects:
+      return toJsonSchema(def["schema"] as z.ZodTypeAny);
+    case K.ZodBranded:
+      return toJsonSchema(def["type"] as z.ZodTypeAny);
+    case K.ZodPipeline:
+      return toJsonSchema(def["in"] as z.ZodTypeAny);
+    case K.ZodUnknown:
+    case K.ZodAny:
+      return {};
+    default:
+      throw new UnsupportedZodNodeError(String(def.typeName));
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Documento OpenAPI
+// ---------------------------------------------------------------------------
+
+type ParameterObject = {
+  name: string;
+  in: "query" | "path" | "header";
+  required: boolean;
+  schema: JsonSchema;
+};
+
+type OperationObject = {
+  operationId: string;
+  summary: string;
+  parameters?: ParameterObject[];
+  requestBody?: { required: boolean; content: Record<string, { schema: JsonSchema }> };
+  responses: Record<string, { description: string; content?: Record<string, { schema: JsonSchema }> }>;
+};
+
+export type OpenApiDocument = {
+  openapi: "3.1.0";
+  info: { title: string; version: string; description: string };
+  servers: { url: string }[];
+  paths: Record<string, Partial<Record<"get" | "post" | "patch" | "delete", OperationObject>>>;
+  components: {
+    securitySchemes: Record<string, unknown>;
+    schemas: Record<string, JsonSchema>;
+  };
+  security: Record<string, string[]>[];
+};
+
+const json = (schema: JsonSchema) => ({ "application/json": { schema } });
+
+/** Envelope de éxito `{"data": …}` (§9.3, PRD:2250). */
+const dataOf = (schema: JsonSchema): JsonSchema => ({
+  type: "object",
+  properties: { data: schema },
+  required: ["data"],
+  additionalProperties: false,
+});
+
+/** Envelope paginado `{"data": [...], "pagination": {...}}` (§9.3, PRD:2250). */
+const pageOf = (item: JsonSchema): JsonSchema => ({
+  type: "object",
+  properties: { data: { type: "array", items: item }, pagination: toJsonSchema(paginationSchema) },
+  required: ["data", "pagination"],
+  additionalProperties: false,
+});
+
+const errorResponse = (description: string) => ({
+  description,
+  content: json(toJsonSchema(errorEnvelopeSchema)),
+});
+
+/**
+ * Query por cursor como parámetros sueltos. OpenAPI no acepta un objeto en
+ * `query`, así que el objeto Zod se desarma en parámetros.
+ */
+const queryParams = (schema: z.ZodTypeAny): ParameterObject[] => {
+  const js = toJsonSchema(schema);
+  const required = new Set(js.required ?? []);
+  return Object.entries(js.properties ?? {}).map(([name, prop]) => ({
+    name,
+    in: "query" as const,
+    required: required.has(name),
+    schema: prop,
+  }));
+};
+
+const pathParam = (name: string): ParameterObject => ({
+  name,
+  in: "path",
+  required: true,
+  schema: { type: "string", minLength: 1 },
+});
+
+/** §9.3 (PRD:2259) — `Idempotency-Key` obligatoria en los endpoints facturables. */
+const idempotencyParam: ParameterObject = {
+  name: IDEMPOTENCY_KEY_HEADER,
+  in: "header",
+  required: true,
+  schema: { type: "string", minLength: 1 },
+};
+
+/**
+ * Construye el documento OpenAPI 3.1 de la API v1 a partir de los schemas Zod.
+ * Una sola definición, tres usos: tipos, validación en runtime y este documento
+ * (ADR-015).
+ */
+export const buildOpenApiDocument = (): OpenApiDocument => {
+  const contentJs = toJsonSchema(content.contentSchema);
+  const postJs = toJsonSchema(posts.postSchema);
+  const mediaJs = toJsonSchema(media.mediaSchema);
+  const angleJs = toJsonSchema(angles.contentAngleSchema);
+  const influencerJs = toJsonSchema(influencers.influencerSchema);
+  const reservationJs = toJsonSchema(uploadReservationSchema);
+
+  const ok = (description: string, schema: JsonSchema) => ({
+    description,
+    content: json(schema),
+  });
+
+  return {
+    openapi: "3.1.0",
+    info: {
+      title: "FastGram API",
+      version: "1.0.0",
+      description:
+        "Contrato público v1. Envelopes `{data}` / `{error:{code,message,details}}` y " +
+        "paginación por cursor opaco (limit 1–100, default 20). Generado desde " +
+        "packages/contracts — no editar a mano.",
+    },
+    servers: [{ url: "/api/v1" }],
+    security: [{ bearerApiKey: [] }],
+    components: {
+      securitySchemes: {
+        // FR-180 (PRD:1860): `Authorization: Bearer fsln_live_<32 base62>`.
+        bearerApiKey: { type: "http", scheme: "bearer", bearerFormat: "fsln_live_<32 base62>" },
+      },
+      schemas: {
+        ErrorEnvelope: toJsonSchema(errorEnvelopeSchema),
+        Pagination: toJsonSchema(paginationSchema),
+        Content: contentJs,
+        Post: postJs,
+        Media: mediaJs,
+        ContentAngle: angleJs,
+        Influencer: influencerJs,
+        Connection: toJsonSchema(connections.connectionSchema),
+        WarmedAccount: toJsonSchema(warmed.warmedAccountSchema),
+        AudioTrack: toJsonSchema(audio.audioTrackSchema),
+        TiktokSound: toJsonSchema(sounds.tiktokSoundSchema),
+        BlitzPreferences: toJsonSchema(blitz.blitzPreferencesSchema),
+        UploadReservation: reservationJs,
+        BrandSource: toJsonSchema(brand.brandSourceSchema),
+        CompanyProfile: toJsonSchema(brand.companyProfileSchema),
+      },
+    },
+    paths: {
+      "/blitz": {
+        post: {
+          operationId: "runBlitz",
+          summary:
+            "Saca una sugerencia lista de la discovery queue y lanza su build. No idempotente.",
+          requestBody: { required: false, content: json(toJsonSchema(blitz.runBlitzRequestSchema)) },
+          responses: {
+            "202": ok("Build encolado", dataOf(contentJs)),
+            "400": errorResponse("bad_request — contentType o aspectRatio no reconocido"),
+            "404": errorResponse("not_found — la discovery queue está vacía"),
+            "409": errorResponse("company_profile_not_ready"),
+            "429": errorResponse("blitz_quota_exceeded / content_quota_exceeded / rate_limited"),
+          },
+        },
+      },
+      "/blitz/preferences": {
+        get: {
+          operationId: "getBlitzPreferences",
+          summary: "Preferencias del motor de generación",
+          responses: { "200": ok("OK", dataOf(toJsonSchema(blitz.blitzPreferencesSchema))) },
+        },
+        patch: {
+          operationId: "updateBlitzPreferences",
+          summary: "Actualiza preferencias. 3 req/min. Sólo afecta a generaciones futuras.",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(blitz.updateBlitzPreferencesRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(blitz.blitzPreferencesSchema))),
+            "400": errorResponse("bad_request — body vacío, set parcial de pesos o settingsApplication"),
+            "429": errorResponse("rate_limited"),
+          },
+        },
+      },
+      "/blitz/angles": {
+        get: {
+          operationId: "listBlitzAngles",
+          summary: "Lista de content angles",
+          parameters: queryParams(cursorQuerySchema),
+          responses: { "200": ok("OK", pageOf(angleJs)) },
+        },
+        post: {
+          operationId: "createBlitzAngle",
+          summary: "Crea un content angle y reconcilia angleWeights en la misma transacción",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(angles.createContentAngleRequestSchema)),
+          },
+          responses: {
+            "201": ok("Creado", dataOf(angleJs)),
+            "400": errorResponse("bad_request — MAX_ANGLES_EXCEEDED / MAX_ANGLES_PER_INFLUENCER_EXCEEDED"),
+          },
+        },
+      },
+      "/blitz/angles/{id}": {
+        patch: {
+          operationId: "updateBlitzAngle",
+          summary: "Edita un content angle. Desactivar borra sus enlaces de influencer.",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(angles.updateContentAngleRequestSchema)),
+          },
+          responses: { "200": ok("OK", dataOf(angleJs)), "404": errorResponse("not_found") },
+        },
+        delete: {
+          operationId: "deleteBlitzAngle",
+          summary: "Soft-delete (desactivación) reversible por PATCH",
+          parameters: [pathParam("id")],
+          responses: { "204": { description: "Borrado" }, "404": errorResponse("not_found") },
+        },
+      },
+      "/blitz/angles/generate": {
+        post: {
+          operationId: "generateBlitzAngle",
+          summary: "Genera un ángulo sin persistirlo. 5 exitosos/min. No idempotente.",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(angles.generateContentAngleRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(angles.generatedContentAngleSchema))),
+            "429": errorResponse("rate_limited"),
+          },
+        },
+      },
+      "/influencers": {
+        get: {
+          operationId: "listInfluencers",
+          summary: "Influencers activos y entrenados",
+          parameters: queryParams(cursorQuerySchema),
+          responses: { "200": ok("OK", pageOf(influencerJs)) },
+        },
+        post: {
+          operationId: "createInfluencer",
+          summary: "Crea y entrena un influencer (250 créditos). Requiere Idempotency-Key.",
+          parameters: [idempotencyParam],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(influencers.createInfluencerRequestSchema)),
+          },
+          responses: {
+            "202": ok("Pipeline encolado", dataOf(influencerJs)),
+            "402": errorResponse("payment_required — cap de 50, créditos o storage"),
+            "409": errorResponse("conflict — upload no alcanzable o idempotency key en uso"),
+          },
+        },
+      },
+      "/influencers/{id}": {
+        get: {
+          operationId: "getInfluencer",
+          summary: "Estado y progress del influencer",
+          parameters: [pathParam("id")],
+          responses: { "200": ok("OK", dataOf(influencerJs)), "404": errorResponse("not_found") },
+        },
+      },
+      "/influencers/base-image/upload-url": {
+        post: {
+          operationId: "reserveInfluencerBaseImageUpload",
+          summary: "Reserva de subida de la base image (≤10 MB)",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(imageUploadReservationRequestSchema)),
+          },
+          responses: { "200": ok("Reserva creada", dataOf(reservationJs)) },
+        },
+      },
+      "/connections": {
+        get: {
+          operationId: "listConnections",
+          summary: "Conexiones OAuth del workspace",
+          responses: { "200": ok("OK", dataOf({ type: "array", items: toJsonSchema(connections.connectionSchema) })) },
+        },
+      },
+      "/warmed-accounts": {
+        get: {
+          operationId: "listWarmedAccounts",
+          summary: "Cuentas warmed (máx. 100 visibles, sin cursor)",
+          responses: { "200": ok("OK", toJsonSchema(warmed.listWarmedAccountsResponseSchema)) },
+        },
+      },
+      "/tiktok/sounds": {
+        get: {
+          operationId: "listTiktokSounds",
+          summary: "Sonidos comerciales de TikTok para una cuenta warmed",
+          parameters: queryParams(sounds.listTiktokSoundsQuerySchema),
+          responses: {
+            "200": ok("OK", dataOf({ type: "array", items: toJsonSchema(sounds.tiktokSoundSchema) })),
+          },
+        },
+      },
+      "/audio": {
+        get: {
+          operationId: "listAudio",
+          summary: "Catálogo de audio compartido, curado por tipo de contenido",
+          parameters: queryParams(audio.listAudioQuerySchema),
+          responses: { "200": ok("OK", pageOf(toJsonSchema(audio.audioTrackSchema))) },
+        },
+      },
+      "/media/upload-url": {
+        post: {
+          operationId: "reserveMediaUpload",
+          summary: "Reserva de subida al Media Bank (imagen ≤10 MB, video ≤50 MB)",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(mediaUploadReservationRequestSchema)),
+          },
+          responses: {
+            "200": ok("Reserva creada", dataOf(reservationJs)),
+            "409": errorResponse("conflict"),
+            "410": errorResponse("gone — reserva expirada"),
+          },
+        },
+      },
+      "/media": {
+        post: {
+          operationId: "finalizeMedia",
+          summary: "Finaliza la subida y crea el asset",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(media.finalizeMediaRequestSchema)),
+          },
+          responses: { "201": ok("Creado", dataOf(mediaJs)) },
+        },
+        get: {
+          operationId: "listMedia",
+          summary: "Media Bank del workspace",
+          parameters: queryParams(media.listMediaQuerySchema),
+          responses: { "200": ok("OK", pageOf(mediaJs)) },
+        },
+      },
+      "/media/{id}": {
+        get: {
+          operationId: "getMedia",
+          summary: "Un asset del Media Bank",
+          parameters: [pathParam("id")],
+          responses: { "200": ok("OK", dataOf(mediaJs)), "404": errorResponse("not_found") },
+        },
+        patch: {
+          operationId: "updateMedia",
+          summary: "Reemplaza por completo las categorías del asset",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(media.updateMediaRequestSchema)),
+          },
+          responses: { "200": ok("OK", dataOf(mediaJs)), "404": errorResponse("not_found") },
+        },
+        delete: {
+          operationId: "deleteMedia",
+          summary: "Borrado idempotente; rechazado si el asset sigue referenciado",
+          parameters: [pathParam("id")],
+          responses: {
+            "204": { description: "Borrado" },
+            "409": errorResponse("media_in_use"),
+          },
+        },
+      },
+      "/content": {
+        post: {
+          operationId: "createContent",
+          summary: "Crea contenido desde un payload de build. Requiere Idempotency-Key.",
+          parameters: [idempotencyParam],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(content.createContentRequestSchema)),
+          },
+          responses: {
+            "202": ok("Build encolado", dataOf(contentJs)),
+            "400": errorResponse("bad_request — URL de media ajena al workspace"),
+            "409": errorResponse("conflict — misma key con body distinto"),
+            "429": errorResponse("content_quota_exceeded / rate_limited"),
+          },
+        },
+        get: {
+          operationId: "listContent",
+          summary: "Contenido del workspace, newest first",
+          parameters: queryParams(content.listContentQuerySchema),
+          responses: { "200": ok("OK", pageOf(contentJs)) },
+        },
+      },
+      "/content/{id}": {
+        get: {
+          operationId: "getContent",
+          summary: "Estado del contenido (polling ~10 s durante el build)",
+          parameters: [pathParam("id")],
+          responses: { "200": ok("OK", dataOf(contentJs)), "404": errorResponse("not_found") },
+        },
+        patch: {
+          operationId: "updateContent",
+          summary: "Edición menor con concurrencia optimista. Requiere Idempotency-Key.",
+          parameters: [pathParam("id"), idempotencyParam],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(content.updateContentRequestSchema)),
+          },
+          responses: {
+            "202": ok("Rebuild encolado", dataOf(contentJs)),
+            "409": errorResponse(
+              "stale_revision / content_edit_in_progress / content_has_linked_posts / unsupported_content_state",
+            ),
+            "422": errorResponse("content_not_editable"),
+          },
+        },
+        delete: {
+          operationId: "deleteContent",
+          summary: "Soft-delete; no devuelve el content save",
+          parameters: [pathParam("id")],
+          responses: {
+            "204": { description: "Borrado" },
+            "409": errorResponse("content_still_building / content_has_linked_posts"),
+          },
+        },
+      },
+      "/content/{id}/editable": {
+        get: {
+          operationId: "getEditableContent",
+          summary: "Representación editable: canvas y cajas de texto",
+          parameters: [pathParam("id")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(content.editableContentSchema))),
+            "422": errorResponse("content_not_editable"),
+          },
+        },
+      },
+      "/content/{id}/regenerate": {
+        post: {
+          operationId: "regenerateContent",
+          summary: "Reescribe toda la copy preservando media y layout. Requiere Idempotency-Key.",
+          parameters: [pathParam("id"), idempotencyParam],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(content.regenerateContentRequestSchema)),
+          },
+          responses: {
+            "202": ok("Rebuild encolado", dataOf(contentJs)),
+            "402": errorResponse("payment_required"),
+            "429": errorResponse("rate_limited"),
+          },
+        },
+      },
+      "/content/{id}/schedule": {
+        post: {
+          operationId: "scheduleContent",
+          summary: "Crea un Post por cada (contenido × plataforma × cuenta)",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(posts.scheduleContentRequestSchema)),
+          },
+          responses: {
+            "201": ok("Programado", dataOf({ type: "array", items: postJs })),
+            "400": errorResponse(
+              "connection_ambiguous / posting_mode_not_supported_for_platform / privacy_level_required / invalid_privacy_level",
+            ),
+            "402": errorResponse("payment_required — autoCaptions o post slots warmed"),
+            "403": errorResponse("forbidden — falta tiktokDirect o warmed posting"),
+            "409": errorResponse("conflict — cuenta warmed no postable"),
+            "429": errorResponse("tiktok_post_limit_exceeded / youtube_post_limit_exceeded / instagram_post_limit_exceeded"),
+            "503": errorResponse("tiktok_creator_info_unavailable"),
+          },
+        },
+      },
+      "/content/custom/video/upload-url": {
+        post: {
+          operationId: "reserveCustomVideoUpload",
+          summary: "Reserva de subida de video propio (≤50 MB, MP4/MOV)",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(videoUploadReservationRequestSchema)),
+          },
+          responses: { "200": ok("Reserva creada", dataOf(reservationJs)) },
+        },
+      },
+      "/content/custom/video": {
+        post: {
+          operationId: "createCustomVideoContent",
+          summary: "Finaliza la subida y crea contenido de tipo custom",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(content.createCustomVideoContentRequestSchema)),
+          },
+          responses: { "201": ok("Creado", dataOf(contentJs)) },
+        },
+      },
+      "/posts": {
+        get: {
+          operationId: "listPosts",
+          summary: "Posts del workspace, newest first",
+          parameters: queryParams(posts.listPostsQuerySchema),
+          responses: { "200": ok("OK", pageOf(postJs)) },
+        },
+      },
+      "/posts/{id}": {
+        get: {
+          operationId: "getPost",
+          summary: "Un post con su estado y métricas de la última sincronización",
+          parameters: [pathParam("id")],
+          responses: { "200": ok("OK", dataOf(postJs)), "404": errorResponse("not_found") },
+        },
+      },
+      "/posts/cancel": {
+        post: {
+          operationId: "cancelPosts",
+          summary: "Cancela hasta 100 posts. Todo o nada.",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(posts.cancelPostsRequestSchema)),
+          },
+          responses: {
+            "200": ok("Cancelados", dataOf({ type: "array", items: postJs })),
+            "409": errorResponse("conflict — details.failures con el motivo por id"),
+          },
+        },
+      },
+      "/posts/delete": {
+        post: {
+          operationId: "deletePosts",
+          summary: "Borra hasta 100 posts. Todo o nada.",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(posts.deletePostsRequestSchema)),
+          },
+          responses: {
+            "200": ok("Borrados", dataOf({ type: "array", items: postJs })),
+            "409": errorResponse("conflict — details.failures con el motivo por id"),
+          },
+        },
+      },
+      "/analytics/posts": {
+        post: {
+          operationId: "getPostAnalytics",
+          summary: "Métricas de hasta 100 posts. Éxito parcial por id desconocido.",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(analytics.postAnalyticsRequestSchema)),
+          },
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf({ type: "array", items: toJsonSchema(analytics.postAnalyticsResultSchema) }),
+            ),
+            "400": errorResponse("bad_request — details.invalidIds"),
+          },
+        },
+      },
+      "/brand/sources/resolve": {
+        post: {
+          operationId: "resolveBrandSource",
+          summary: "EXTENSION · resuelve un texto libre a una fuente, sin crear nada",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(brand.resolveBrandSourceRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(brand.resolveBrandSourceResponseSchema))),
+          },
+        },
+      },
+      "/brand/sources": {
+        post: {
+          operationId: "createBrandSource",
+          summary: "EXTENSION · crea la fuente y encola el análisis. Requiere Idempotency-Key.",
+          parameters: [idempotencyParam],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(brand.createBrandSourceRequestSchema)),
+          },
+          responses: {
+            "202": ok("Análisis encolado", dataOf(toJsonSchema(brand.brandSourceSchema))),
+            "400": errorResponse("bad_request — máx. 5 fuentes por workspace"),
+          },
+        },
+        get: {
+          operationId: "listBrandSources",
+          summary: "EXTENSION · fuentes del workspace",
+          responses: {
+            "200": ok("OK", dataOf({ type: "array", items: toJsonSchema(brand.brandSourceSchema) })),
+          },
+        },
+      },
+      "/brand/sources/{id}": {
+        get: {
+          operationId: "getBrandSource",
+          summary: "EXTENSION · polling de estado del análisis",
+          parameters: [pathParam("id")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(brand.brandSourceSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+        patch: {
+          operationId: "updateBrandSource",
+          summary: "EXTENSION · sólo isPrimary",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(brand.updateBrandSourceRequestSchema)),
+          },
+          responses: { "200": ok("OK", dataOf(toJsonSchema(brand.brandSourceSchema))) },
+        },
+        delete: {
+          operationId: "deleteBrandSource",
+          summary: "EXTENSION · rechazado si es la única fuente del perfil",
+          parameters: [pathParam("id")],
+          responses: {
+            "204": { description: "Borrada" },
+            "409": errorResponse("conflict — el perfil quedaría sin origen"),
+          },
+        },
+      },
+      "/brand/sources/{id}/reanalyse": {
+        post: {
+          operationId: "reanalyseBrandSource",
+          summary: "EXTENSION · sujeto al límite por fuente y día",
+          parameters: [pathParam("id")],
+          responses: {
+            "202": ok("Análisis encolado", dataOf(toJsonSchema(brand.brandSourceSchema))),
+            "429": errorResponse("rate_limited"),
+          },
+        },
+      },
+      "/brand/profile": {
+        get: {
+          operationId: "getCompanyProfile",
+          summary: "EXTENSION · perfil con fieldMeta (confianza, origen, extracto)",
+          responses: { "200": ok("OK", dataOf(toJsonSchema(brand.companyProfileSchema))) },
+        },
+        patch: {
+          operationId: "updateCompanyProfile",
+          summary: "EXTENSION · edición manual; marca editedByUser en los campos tocados",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(brand.updateCompanyProfileRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(brand.companyProfileSchema))),
+            "400": errorResponse("bad_request — body vacío"),
+          },
+        },
+      },
+    },
+  };
+};

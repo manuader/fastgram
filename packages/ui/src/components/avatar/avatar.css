@@ -1,0 +1,64 @@
+.fg-avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background-color: var(--fg-color-surface-sunken);
+  border: 1px solid var(--fg-color-border);
+  color: var(--fg-color-text-muted);
+  font-family: var(--fg-font-sans);
+  font-weight: var(--fg-weight-semibold);
+  line-height: 1;
+  user-select: none;
+}
+
+.fg-avatar--circle {
+  border-radius: var(--fg-radius-full);
+}
+
+.fg-avatar--square {
+  border-radius: var(--fg-radius-lg);
+}
+
+.fg-avatar--xs {
+  width: var(--fg-space-5);
+  height: var(--fg-space-5);
+  font-size: 0.5rem;
+}
+
+.fg-avatar--sm {
+  width: var(--fg-space-6);
+  height: var(--fg-space-6);
+  font-size: var(--fg-text-xs);
+}
+
+.fg-avatar--md {
+  width: var(--fg-space-8);
+  height: var(--fg-space-8);
+  font-size: var(--fg-text-xs);
+}
+
+.fg-avatar--lg {
+  width: var(--fg-space-10);
+  height: var(--fg-space-10);
+  font-size: var(--fg-text-sm);
+}
+
+.fg-avatar--xl {
+  width: var(--fg-space-16);
+  height: var(--fg-space-16);
+  font-size: var(--fg-text-xl);
+}
+
+.fg-avatar__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fg-avatar__fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

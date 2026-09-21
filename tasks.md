@@ -52,18 +52,18 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P0-REPO — Repositorio y tooling
 
-- [ ] **P0-REPO-001** `git init`, rama `main`, primer commit con el estado actual (PRD, EVAL, docs, videos)
-- [ ] **P0-REPO-002** `.gitignore` (node, build, `.env*`, `handoffs/`) · dep: P0-REPO-001
-- [ ] **P0-REPO-003** Monorepo pnpm + Turborepo con el layout de IMPLEMENTATION-PLAN §2.2 · `ADR-001`
-- [ ] **P0-REPO-004** **Decidir y documentar el build de FFmpeg** (componentes GPL vs LGPL) y el modelo de licencia del render · `ADR-007` · ⚠️ legal, no sólo técnico
-- [ ] **P0-REPO-005** `tsconfig` base compartido con `strict: true` · `ADR-002`
-- [ ] **P0-REPO-006** ESLint + Prettier + `dependency-cruiser` con la regla `core ↛ adapters` que **rompe el build** · IMPL §2.1
-- [ ] **P0-REPO-007** Vitest configurado en todos los paquetes
-- [ ] **P0-REPO-008** GitHub Actions: lint, typecheck, test, boundaries. Obligatorio en PR
-- [ ] **P0-REPO-009** Validación de entorno con Zod: si falta una variable, el proceso **no levanta**
-- [ ] **P0-REPO-010** `CLAUDE.md` con las reglas del repo y el protocolo de handoff
-- [ ] **P0-REPO-011** Plantilla de PR que exige el ID de tarea y la checklist de DoD
-- [ ] **P0-REPO-012** `docker-compose` de desarrollo: Postgres + MinIO (S3 local) + el servicio de visión
+- [x] **P0-REPO-001** `git init`, rama `main`, primer commit con el estado actual (PRD, EVAL, docs, videos)
+- [x] **P0-REPO-002** `.gitignore` (node, build, `.env*`, `handoffs/`) · dep: P0-REPO-001
+- [x] **P0-REPO-003** Monorepo pnpm + Turborepo con el layout de IMPLEMENTATION-PLAN §2.2 · `ADR-001`
+- [!] **P0-REPO-004** **Decidir y documentar el build de FFmpeg** (componentes GPL vs LGPL) y el modelo de licencia del render · `ADR-007` · ⚠️ legal, no sólo técnico · **BLOQUEADO: lo decide una persona, no un agente**
+- [x] **P0-REPO-005** `tsconfig` base compartido con `strict: true` · `ADR-002`
+- [x] **P0-REPO-006** ESLint + Prettier + `dependency-cruiser` con la regla `core ↛ adapters` que **rompe el build** · IMPL §2.1
+- [x] **P0-REPO-007** Vitest configurado en todos los paquetes
+- [x] **P0-REPO-008** GitHub Actions: lint, typecheck, test, boundaries. Obligatorio en PR
+- [x] **P0-REPO-009** Validación de entorno con Zod: si falta una variable, el proceso **no levanta**
+- [x] **P0-REPO-010** `CLAUDE.md` con las reglas del repo y el protocolo de handoff
+- [x] **P0-REPO-011** Plantilla de PR que exige el ID de tarea y la checklist de DoD
+- [x] **P0-REPO-012** `docker-compose` de desarrollo: Postgres + MinIO (S3 local) + el servicio de visión
 
 ---
 
@@ -166,11 +166,11 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P1-VISION — Servicio de visión
 
-- [ ] **P1-VISION-001** Scaffold `services/vision` (Python, HTTP, sin estado)
-- [ ] **P1-VISION-002** Puerto `Ocr` + adaptador PaddleOCR · `ADR-011`
-- [ ] **P1-VISION-003** OCR sobre imagen y sobre frames de video
-- [ ] **P1-VISION-004** Detección de idioma del texto extraído
-- [ ] **P1-VISION-005** Fallo de OCR degrada a `partial`, **nunca** aborta · `AI-016`
+- [x] **P1-VISION-001** Scaffold `services/vision` (Python, HTTP, sin estado)
+- [~] **P1-VISION-002** Puerto `Ocr` + adaptador PaddleOCR · `ADR-011` · motor PaddleOCR hecho en `services/vision`; falta el puerto `Ocr` TypeScript y el adaptador HTTP
+- [x] **P1-VISION-003** OCR sobre imagen y sobre frames de video
+- [x] **P1-VISION-004** Detección de idioma del texto extraído
+- [x] **P1-VISION-005** Fallo de OCR degrada a `partial`, **nunca** aborta · `AI-016`
 
 ## P1-BRAND — Brand Sources · `EXT-001`
 

@@ -1,0 +1,62 @@
+/**
+ * Base del design system: lo compartido por todos los componentes.
+ * No es un reset global — sólo toca lo que los componentes `fg-*` necesitan,
+ * para no pelearse con el reset de la app que lo consuma.
+ */
+
+/* Anillo de foco único para todo el sistema. Se aplica a `:focus-visible`,
+   nunca a `:focus`, para que el click con mouse no lo dispare pero el teclado
+   sí. Es la regla que hace que la app sea operable sin mouse. */
+.fg-focusable:focus-visible,
+.fg-btn:focus-visible,
+.fg-input:focus-visible,
+.fg-textarea:focus-visible,
+.fg-select__control:focus-visible,
+.fg-switch:focus-visible,
+.fg-tab:focus-visible,
+.fg-pagination__item:focus-visible,
+.fg-dialog:focus-visible,
+.fg-drawer:focus-visible,
+.fg-toast__action:focus-visible,
+.fg-checkbox__input:focus-visible + .fg-checkbox__box {
+  outline: var(--fg-focus-ring-width) solid var(--fg-color-focus-ring);
+  outline-offset: var(--fg-focus-ring-offset);
+}
+
+/* Texto sólo para lectores de pantalla. */
+.fg-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.fg-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-2);
+}
+
+/* Bloquea el scroll del documento mientras hay un modal abierto. */
+.fg-scroll-locked {
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fg-spinner__track,
+  .fg-skeleton,
+  .fg-toast,
+  .fg-dialog,
+  .fg-drawer,
+  .fg-overlay {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

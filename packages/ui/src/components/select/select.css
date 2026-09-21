@@ -1,0 +1,54 @@
+.fg-select {
+  position: relative;
+  display: block;
+}
+
+.fg-select__control {
+  width: 100%;
+  min-width: 0;
+  appearance: none;
+  background-color: var(--fg-color-surface);
+  border: 1px solid var(--fg-color-border-strong);
+  border-radius: var(--fg-radius-md);
+  color: var(--fg-color-text);
+  font-family: var(--fg-font-sans);
+  font-size: var(--fg-text-sm);
+  cursor: pointer;
+}
+
+.fg-select__control:disabled {
+  background-color: var(--fg-color-surface-sunken);
+  color: var(--fg-color-text-subtle);
+  cursor: not-allowed;
+}
+
+.fg-select__control--sm {
+  height: var(--fg-control-height-sm);
+  padding-inline: var(--fg-space-2) var(--fg-space-8);
+}
+
+.fg-select__control--md {
+  height: var(--fg-control-height-md);
+  padding-inline: var(--fg-space-3) var(--fg-space-8);
+}
+
+.fg-select__control--lg {
+  height: var(--fg-control-height-lg);
+  padding-inline: var(--fg-space-4) var(--fg-space-10);
+  font-size: var(--fg-text-base);
+}
+
+.fg-select__control--invalid {
+  border-color: var(--fg-color-danger);
+}
+
+.fg-select__chevron {
+  position: absolute;
+  inset-inline-end: var(--fg-space-3);
+  top: 50%;
+  width: 1rem;
+  height: 1rem;
+  color: var(--fg-color-text-subtle);
+  pointer-events: none;
+  transform: translateY(-50%);
+}

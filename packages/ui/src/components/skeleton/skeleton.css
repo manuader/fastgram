@@ -1,0 +1,46 @@
+.fg-skeleton {
+  display: block;
+  background-color: var(--fg-color-skeleton);
+  background-image: linear-gradient(
+    90deg,
+    var(--fg-color-skeleton) 0%,
+    var(--fg-color-skeleton-sheen) 50%,
+    var(--fg-color-skeleton) 100%
+  );
+  background-size: 200% 100%;
+  border-radius: var(--fg-radius-md);
+  animation: fg-skeleton-sheen 1.4s ease-in-out infinite;
+}
+
+.fg-skeleton--text {
+  height: 0.75em;
+  margin-block: 0.25em;
+  border-radius: var(--fg-radius-sm);
+}
+
+.fg-skeleton--rect {
+  width: 100%;
+  height: var(--fg-space-16);
+}
+
+.fg-skeleton--circle {
+  width: var(--fg-space-10);
+  height: var(--fg-space-10);
+  border-radius: var(--fg-radius-full);
+}
+
+.fg-skeleton-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fg-space-1);
+}
+
+@keyframes fg-skeleton-sheen {
+  from {
+    background-position: 200% 0;
+  }
+
+  to {
+    background-position: -200% 0;
+  }
+}
