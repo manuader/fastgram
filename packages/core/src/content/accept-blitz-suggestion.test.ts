@@ -314,7 +314,7 @@ describe("la pieza nace en BUILDING", () => {
     const h = harness();
     const out = await run(h);
     expect(out.content.status).toBe("BUILDING");
-    expect(out.content.revision).toBe(0);
+    expect(out.content.revision).toBe(1);
     expect(out.content.files).toEqual([]);
     expect(out.content.suggestionId).toBe("sug_1");
     expect(out.content.angleId).toBe("ang_1");

@@ -254,10 +254,18 @@ export interface CreateBuildingContentParams {
 /**
  * Crea la pieza en `BUILDING`.
  *
- * `revision` arranca en **0**, no en 1: el PRD dice «cada edición aceptada
- * incrementa `revision`», así que la primera edición la deja en 1. Empezar en
- * 1 haría que la pieza recién creada y la editada una vez sean
- * indistinguibles para el chequeo de concurrencia optimista.
+ * `revision` arranca en **1**.
+ *
+ * El PRD **no dice** con cuánto empieza: dice *"cada edición aceptada
+ * incrementa `revision`"* (PRD:1187) y *"`revision`+1"* (§2096), que se cumple
+ * arrancando en cualquier número. Así que la elección la decide otra cosa: la
+ * base ya tiene `default(1)` y un CHECK `revision >= 1`, con su test.
+ *
+ * Antes decía 0, y eso **no se podía persistir**: el INSERT lo rechazaba. El
+ * argumento que lo acompañaba —que arrancar en 1 volvería indistinguible la
+ * pieza recién creada de la editada una vez— no se sostiene: arrancando en 1,
+ * la editada una vez está en 2. Lo encontró el agente que escribió
+ * `PATCH /content/:id`, que es la primera ruta que usa el número de verdad.
  */
 export function createBuildingContent(params: CreateBuildingContentParams): Content {
   assertValidSlideCount(params.type, params.slideCount);
@@ -280,7 +288,7 @@ export function createBuildingContent(params: CreateBuildingContentParams): Cont
     files: [],
     generatedText: params.generatedText,
     remixSourceUrl: params.remixSourceUrl,
-    revision: 0,
+    revision: 1,
     textBoxes: params.textBoxes,
     slideCount: params.slideCount,
     saveBucket: params.saveBucket,

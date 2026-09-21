@@ -59,13 +59,13 @@ describe("edición menor — no crea fila, no consume save, no factura (FR-051)"
     const before = created();
     const out = applyMinorEdit(
       before,
-      0,
+      1,
       [{ id: "slide-1-text-0", text: "otra copy" }],
       NOW,
     );
 
     expect(out.content.id).toBe(before.id);
-    expect(out.content.revision).toBe(1);
+    expect(out.content.revision).toBe(2);
     expect(out.createsNewRow).toBe(false);
     expect(out.consumesSave).toBe(false);
     expect(out.billable).toBe(false);
@@ -80,7 +80,7 @@ describe("edición menor — no crea fila, no consume save, no factura (FR-051)"
   it("conserva los archivos: durante el rebuild la versión previa sigue usable", () => {
     const out = applyMinorEdit(
       created(),
-      0,
+      1,
       [{ id: "slide-0-text-0", color: "#FF0000" }],
       NOW,
     );
@@ -89,16 +89,16 @@ describe("edición menor — no crea fila, no consume save, no factura (FR-051)"
     expect(out.content.editInProgress).toBe(true);
   });
 
-  it("dos ediciones seguidas llevan la revision a 2, con un solo id", () => {
+  it("dos ediciones seguidas llevan la revision a 3, con un solo id", () => {
     const first = applyMinorEdit(
       created(),
-      0,
+      1,
       [{ id: "slide-0-text-0", text: "a" }],
       NOW,
     );
     const ready = markEditRebuildSucceeded(first.content, ["0.jpg"], undefined, NOW);
-    const second = applyMinorEdit(ready, 1, [{ id: "slide-0-text-0", text: "b" }], NOW);
-    expect(second.content.revision).toBe(2);
+    const second = applyMinorEdit(ready, 2, [{ id: "slide-0-text-0", text: "b" }], NOW);
+    expect(second.content.revision).toBe(3);
     expect(second.content.id).toBe("cnt_1");
   });
 });
@@ -135,7 +135,7 @@ describe("concurrencia optimista por revision (FR-051, criterio 3)", () => {
   });
 
   it("la revision correcta pasa", () => {
-    expect(() => assertRevisionMatches(created(), 0)).not.toThrow();
+    expect(() => assertRevisionMatches(created(), 1)).not.toThrow();
   });
 });
 
@@ -225,15 +225,15 @@ describe("una edición inválida no aplica NADA (FR-051, Validation)", () => {
       { id: "slide-1-text-0", text: "nueva 1" },
       { id: "slide-2-text-0", widthPercent: 10 }, // fuera de [25, 100]
     ];
-    expect(() => applyMinorEdit(before, 0, patches, NOW)).toThrow(DomainError);
+    expect(() => applyMinorEdit(before, 1, patches, NOW)).toThrow(DomainError);
     // `before` es inmutable y sigue intacto: el caso de uso lo descarta entero.
     expect(before.textBoxes[0]?.text).toBe("copy slide-0-text-0");
-    expect(before.revision).toBe(0);
+    expect(before.revision).toBe(1);
   });
 
   it("un id inexistente se rechaza", () => {
     expect(() =>
-      applyMinorEdit(created(), 0, [{ id: "slide-9-text-0", text: "x" }], NOW),
+      applyMinorEdit(created(), 1, [{ id: "slide-9-text-0", text: "x" }], NOW),
     ).toThrow(DomainError);
   });
 
@@ -241,7 +241,7 @@ describe("una edición inválida no aplica NADA (FR-051, Validation)", () => {
     expect(() =>
       applyMinorEdit(
         created(),
-        0,
+        1,
         [
           { id: "slide-0-text-0", text: "a" },
           { id: "slide-0-text-0", text: "b" },
@@ -255,7 +255,7 @@ describe("una edición inválida no aplica NADA (FR-051, Validation)", () => {
     expect(() =>
       applyMinorEdit(
         created(),
-        0,
+        1,
         [{ id: "slide-0-text-0", status: "CREATED" } as never],
         NOW,
       ),
@@ -263,7 +263,7 @@ describe("una edición inválida no aplica NADA (FR-051, Validation)", () => {
   });
 
   it("un parche vacío se rechaza", () => {
-    expect(() => applyMinorEdit(created(), 0, [], NOW)).toThrow(DomainError);
+    expect(() => applyMinorEdit(created(), 1, [], NOW)).toThrow(DomainError);
   });
 });
 
@@ -279,7 +279,7 @@ describe("mezcla del parche", () => {
       slideCount: 1,
     });
 
-    const kept = applyMinorEdit(withBg, 0, [{ id: "slide-0-text-0", text: "x" }], NOW);
+    const kept = applyMinorEdit(withBg, 1, [{ id: "slide-0-text-0", text: "x" }], NOW);
     expect(kept.content.textBoxes[0]?.background).toEqual({
       color: "#FFFFFF",
       opacity: 1,
@@ -288,7 +288,7 @@ describe("mezcla del parche", () => {
 
     const removed = applyMinorEdit(
       withBg,
-      0,
+      1,
       [{ id: "slide-0-text-0", background: null }],
       NOW,
     );
@@ -296,7 +296,7 @@ describe("mezcla del parche", () => {
   });
 
   it("las cajas que no se parchean quedan idénticas", () => {
-    const out = applyMinorEdit(created(), 0, [{ id: "slide-0-text-0", text: "x" }], NOW);
+    const out = applyMinorEdit(created(), 1, [{ id: "slide-0-text-0", text: "x" }], NOW);
     expect(out.content.textBoxes[1]).toEqual(box("slide-1-text-0", 1));
     expect(out.content.textBoxes[2]).toEqual(box("slide-2-text-0", 2));
   });
@@ -315,7 +315,7 @@ describe("Regenerate Text preserva estructura y número de slides (FR-051, crite
 
   it("reescribe TODAS las cajas y conserva slides, geometría y estilo", () => {
     const before = created();
-    const out = applyRegeneratedCopy(before, 0, fullCopy, NOW);
+    const out = applyRegeneratedCopy(before, 1, fullCopy, NOW);
 
     expect(out.content.slideCount).toBe(3);
     expect(out.content.textBoxes).toHaveLength(3);
@@ -328,18 +328,18 @@ describe("Regenerate Text preserva estructura y número de slides (FR-051, crite
     expect(out.content.textBoxes[0]?.font).toEqual(before.textBoxes[0]?.font);
     expect(out.content.textBoxes[0]?.position).toEqual(before.textBoxes[0]?.position);
     expect(out.content.files).toEqual(before.files);
-    expect(out.content.revision).toBe(1);
+    expect(out.content.revision).toBe(2);
   });
 
   it("no consume content save ni factura (AI-004)", () => {
-    const out = applyRegeneratedCopy(created(), 0, fullCopy, NOW);
+    const out = applyRegeneratedCopy(created(), 1, fullCopy, NOW);
     expect(out.consumesSave).toBe(false);
     expect(out.billable).toBe(false);
   });
 
   it("devolver MENOS cajas de las que hay es un error, no un recorte", () => {
     // Si se aceptara, el render se queda sin qué poner en dos superficies.
-    expect(() => applyRegeneratedCopy(created(), 0, fullCopy.slice(0, 2), NOW)).toThrow(
+    expect(() => applyRegeneratedCopy(created(), 1, fullCopy.slice(0, 2), NOW)).toThrow(
       DomainError,
     );
   });
@@ -357,7 +357,7 @@ describe("Regenerate Text preserva estructura y número de slides (FR-051, crite
 
   it("devolver la misma caja dos veces es un error", () => {
     expect(() =>
-      applyRegeneratedCopy(created(), 0, [fullCopy[0]!, fullCopy[1]!, fullCopy[1]!], NOW),
+      applyRegeneratedCopy(created(), 1, [fullCopy[0]!, fullCopy[1]!, fullCopy[1]!], NOW),
     ).toThrow(DomainError);
   });
 
@@ -381,7 +381,7 @@ describe("si el rebuild de una edición falla, la versión previa sigue usable",
   it("vuelve a CREATED con sus archivos viejos y reporta lastEdit fallido", () => {
     const edited = applyMinorEdit(
       created(),
-      0,
+      1,
       [{ id: "slide-0-text-0", text: "x" }],
       NOW,
     );
@@ -401,7 +401,7 @@ describe("si el rebuild de una edición falla, la versión previa sigue usable",
   it("NO reembolsa el save: ese se cobró por el build original, que salió bien", () => {
     const edited = applyMinorEdit(
       created(),
-      0,
+      1,
       [{ id: "slide-0-text-0", text: "x" }],
       NOW,
     );
@@ -412,7 +412,7 @@ describe("si el rebuild de una edición falla, la versión previa sigue usable",
   it("un rebuild exitoso reemplaza los archivos y libera la edición", () => {
     const edited = applyMinorEdit(
       created(),
-      0,
+      1,
       [{ id: "slide-0-text-0", text: "x" }],
       NOW,
     );
@@ -421,6 +421,6 @@ describe("si el rebuild de una edición falla, la versión previa sigue usable",
     expect(out.files).toEqual(["n0.jpg"]);
     expect(out.thumbnailUrl).toBe("nt.jpg");
     expect(out.editInProgress).toBe(false);
-    expect(out.revision).toBe(1);
+    expect(out.revision).toBe(2);
   });
 });

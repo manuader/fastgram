@@ -324,7 +324,7 @@ describe("ciclo de vida BUILDING → CREATED | FAILED", () => {
   it("nace en BUILDING con revision 0 y sin archivos", () => {
     const c = piece();
     expect(c.status).toBe("BUILDING");
-    expect(c.revision).toBe(0);
+    expect(c.revision).toBe(1);
     expect(c.files).toEqual([]);
     expect(c.saveRefundedAt).toBeUndefined();
   });
@@ -336,7 +336,7 @@ describe("ciclo de vida BUILDING → CREATED | FAILED", () => {
     });
     expect(done.status).toBe("CREATED");
     expect(done.files).toHaveLength(3);
-    expect(done.revision).toBe(0);
+    expect(done.revision).toBe(1);
   });
 
   it("un build que no produce archivos no es un build exitoso", () => {
