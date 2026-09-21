@@ -188,7 +188,8 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 ## P1-VISION — Servicio de visión
 
 - [x] **P1-VISION-001** Scaffold `services/vision` (Python, HTTP, sin estado)
-- [~] **P1-VISION-002** Puerto `Ocr` + adaptador PaddleOCR · `ADR-011` · motor PaddleOCR hecho en `services/vision`; falta el puerto `Ocr` TypeScript y el adaptador HTTP
+- [~] **P1-VISION-002** Puerto `Ocr` + adaptador PaddleOCR · `ADR-011` · **la nota anterior quedó vieja:** el puerto (`packages/ports/src/ocr.ts`) y el adaptador HTTP (`VisionOcr`) existen desde hace tiempo, con la suite de contrato corriendo contra un `services/vision` falso pero real como servidor
+  > Lo que sigue faltando es otra cosa, y está escrito en la cabecera de `vision-ocr.test.ts`: **nadie comprobó nunca que PaddleOCR lea un overlay de TikTok de verdad.** Necesita el servicio levantado con el extra `ocr` (`docker compose --profile vision up`, que no corre por defecto porque la imagen pesa) y una imagen real. Hasta entonces, lo verificado es el rodeo del adaptador —bytes → URL publicada → descarga → traducción de la respuesta—, no el motor.
 - [x] **P1-VISION-003** OCR sobre imagen y sobre frames de video
 - [x] **P1-VISION-004** Detección de idioma del texto extraído
 - [x] **P1-VISION-005** Fallo de OCR degrada a `partial`, **nunca** aborta · `AI-016`
