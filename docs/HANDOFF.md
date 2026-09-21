@@ -106,6 +106,28 @@ primera vez las 37 que nunca habían corrido (trampa 20).
 caía en `proceed`, o sea segundo cobro— y `createBuildingContent` devolvía un `revision: 0`
 que la base rechaza con su CHECK.
 
+### Sesión 2026-09-21 (cierre 2) — La cuota cobra
+
+`POST /content` **no cobraba nada**, y no por descuido: el motor de `core` estaba
+escrito y testeado, pero faltaban tres piezas alrededor. Las tres están:
+
+- **La clave del período** (`YYYY-MM-DD`, inicio del ciclo). El schema la dejaba
+  pendiente; la decide `billingPeriodKey`, y no es `YYYY-MM` porque §16.2 resetea en
+  el día ancla y el ciclo cruza meses calendario.
+- **`contents.save_bucket` y `save_period`** (migración `0005`), que es lo que hace
+  posible el reembolso de `FR-050`: devolver al bucket que no fue es un error de
+  facturación que nadie ve.
+- **El bloqueo** (`SELECT … FOR UPDATE` en `lockPeriod`), porque §9.4 pide reservas
+  atómicas y leer-y-escribir no lo es.
+
+El test extremo a extremo encontró además que el `402` llegaba **sin `resetAt`**:
+`DomainError.details` no se publica nunca, con razón, pero para los dos códigos de
+cuota el PRD nombra el detalle como parte del contrato.
+
+Y `pnpm smoke:binary` + el job `binario` de CI, que en su primera corrida encontró un
+foot-gun que yo mismo había documentado y no cerrado: los grants de la cola eran sólo
+para el esquema `pgboss`, y `QUEUE_SCHEMA` es configurable.
+
 ### Sesión 2026-09-21 (cierre) — El binario arranca y las rutas se ejecutan
 
 **`P0-REPO-013`.** Los paquetes emiten `dist` y `node dist/main.js` corre de verdad. La
@@ -221,17 +243,17 @@ pnpm verify           # lint · typecheck · boundaries · consistency · test
 |---|---|---|
 | `pnpm lint` | eslint una vez sobre todo el repo | **0 errores** |
 | `pnpm typecheck` | `tsc --noEmit` por paquete, 12 tareas | **12 successful** |
-| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 382 módulos · **1029 dependencias** |
+| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 385 módulos · **1042 dependencias** |
 | `pnpm consistency` | los números del PRD escritos en más de un paquete | **17 invariantes** |
-| `pnpm test` | unitarios | **1.417** |
+| `pnpm test` | unitarios | **1.433** |
 
 Desglose de `pnpm test`, por si uno solo se cae:
 
 | Paquete | Tests | | Paquete | Tests |
 |---|---|---|---|---|
-| `core` | 399 | | `adapters` | 266 |
+| `core` | 413 | | `adapters` | 266 |
 | `contracts` | 253 | | `ui` | 170 |
-| `render-service` | 119 | | `api` | 109 |
+| `render-service` | 119 | | `api` | 111 |
 | `db` | 52 | | `web` | 22 |
 | `worker` | 18 | | `config` | 9 |
 
@@ -239,9 +261,15 @@ Desglose de `pnpm test`, por si uno solo se cae:
 
 ```bash
 docker compose up -d                       # Postgres con pgvector + MinIO con el bucket creado
-pnpm test:int                              # db 87 · api 59  → 146
+pnpm test:int                              # db 94 · api 67  → 161
 pnpm --filter @fastgram/adapters test:int  # 9 — encolado dentro de la transacción de Drizzle
+pnpm build && pnpm smoke:binary           # el artefacto que se despliega, de verdad
 ```
+
+`pnpm smoke:binary` arranca `node apps/api/dist/main.js`, autentica, **escribe** y mira
+que el job haya quedado en pg-boss. Es lo único que ve si el artefacto funciona: todo lo
+demás corre con tsx o vitest, que resuelven TypeScript. Ya atrapó dos fallos que el build
+no veía.
 
 `packages/adapters` tiene su propio `test:int` y **no entra en el `pnpm test:int` de la
 raíz**: es el que prueba `ADR-005` por la vía real. Si lo salteás, la garantía que
@@ -266,7 +294,7 @@ motor ausente, todo análisis devuelve `partial`: es lo que manda `AI-016`.
 ### Estado del backlog
 
 ```bash
-grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 91
+grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 92
 grep -c '^- \[~\]' tasks.md     # en curso o parciales — hoy: 7
 grep -c '^- \[!\]' tasks.md     # bloqueadas — hoy: 1
 grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 275
@@ -274,10 +302,8 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 275
 
 ### Lo que `pnpm verify` NO mide
 
-- **Que el binario compilado arranque** ya **sí** se verificó (`P0-REPO-013`), pero a mano y no en
-  CI: `node dist/main.js` responde `/health` 200, autentica, crea contenido y deja el job en
-  `pgboss.job`. Mientras no haya un paso de CI que lo repita, sigue siendo una verificación con
-  fecha, no una garantía.
+- **Que el binario compilado arranque** ya lo mide `pnpm smoke:binary`, y lo corre el job
+  `binario` de CI. Lo que sigue sin medir `pnpm verify` es eso mismo: hay que correrlo aparte.
 - **Que algo se vea bien.** Nadie abrió un navegador ni miró un frame renderizado.
 - **Calidad de los modelos.** Cero tokens de LLM gastados: los adaptadores se prueban contra
   gateways falsos, lo que verifica el adaptador y no el modelo.
@@ -425,7 +451,15 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 275
     porque dentro de una transacción no hay forma de crear la cola al vuelo. Los tipos no lo
     ven: las dos llamadas existen y las dos compilan.
 
-22. **Una suite de contrato puede estar verde y no medir lo que promete.** La primera corrida de
+22. **Un test de concurrencia puede pasar por la razón equivocada.** El del ledger de
+    cuota creaba el período *dentro* de las dos transacciones paralelas, así que se
+    serializaban por el `ON CONFLICT DO NOTHING` del INSERT y el `FOR UPDATE` no se
+    estaba midiendo — pasaba con el bloqueo y sin él. El caso útil es el que corre
+    sobre una fila **que ya existe**, donde no hay conflicto de inserción que
+    serialice y el lock es lo único que queda. Regla: un test de carrera no vale nada
+    hasta que se lo ve rojo con el mecanismo quitado.
+
+23. **Una suite de contrato puede estar verde y no medir lo que promete.** La primera corrida de
     las 37 aserciones que nunca se habían ejecutado encontró cuatro casos así: un `fingerprint es
     puro` que comparaba dos llamadas sobre **la misma instancia** (un renderer con un `randomUUID()`
     por instancia pasaba las diez aserciones); un caso llamado "trae permalink" que nunca miraba
