@@ -134,21 +134,21 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P1-QUEUE — Colas y jobs
 
-- [ ] **P1-QUEUE-001** Puerto `Queue` + adaptador pg-boss · `ADR-005`
-- [ ] **P1-QUEUE-002** **Encolar dentro de la transacción de negocio** + test que lo prueba · IMPL §2.3 · ⚠️ es la razón de ADR-005
+- [x] **P1-QUEUE-001** Puerto `Queue` + adaptador pg-boss · `ADR-005`
+- [~] **P1-QUEUE-002** **Encolar dentro de la transacción de negocio** + test que lo prueba · IMPL §2.3 · ⚠️ es la razón de ADR-005 · **parcial:** el adaptador existe y tiene tests; **falta el test que prueba que un rollback de la transacción deshace el encolado**, que es la razón entera de ADR-005
 - [ ] **P1-QUEUE-003** Estado de job consultable + contrato de polling de ~10 s · `NFR-002`, `ADR-014`
-- [ ] **P1-QUEUE-004** Reintentos con backoff y dead-letter queue
-- [ ] **P1-QUEUE-005** Idempotencia: `Idempotency-Key`, replay de respuesta, `409` con body distinto, liberación al fallar · `NFR-004`
-- [ ] **P1-QUEUE-006** Scaffold del `apps/worker`
+- [x] **P1-QUEUE-004** Reintentos con backoff y dead-letter queue
+- [~] **P1-QUEUE-005** Idempotencia: `Idempotency-Key`, replay de respuesta, `409` con body distinto, liberación al fallar · `NFR-004` · **parcial:** la política de idempotencia está en `apps/api/src/http/idempotency.ts` con 8 tests; falta cablearla a las rutas
+- [x] **P1-QUEUE-006** Scaffold del `apps/worker`
 
 ## P1-STORAGE — Objetos y subidas
 
-- [ ] **P1-STORAGE-001** Puerto `Storage` + adaptador S3-compatible (R2 / MinIO) · `ADR-006`
-- [ ] **P1-STORAGE-002** Subida en 3 fases: reserva → PUT directo → finalización · PRD §9.8
-- [ ] **P1-STORAGE-003** Límites y tipos: imagen 10 MB, video 50 MB, extensión coherente con content-type · `NFR-013`
-- [ ] **P1-STORAGE-004** URLs firmadas de vida corta (1 h), **nunca logueadas ni persistidas** · `NFR-008`
-- [ ] **P1-STORAGE-005** Errores de reserva: `409` no alcanzable, `410` expirada, `404` ajena · PRD §9.8
-- [ ] **P1-STORAGE-006** Limpieza best-effort que **no bloquea** el borrado de la fila · `ERR-F05`
+- [x] **P1-STORAGE-001** Puerto `Storage` + adaptador S3-compatible (R2 / MinIO) · `ADR-006`
+- [x] **P1-STORAGE-002** Subida en 3 fases: reserva → PUT directo → finalización · PRD §9.8
+- [x] **P1-STORAGE-003** Límites y tipos: imagen 10 MB, video 50 MB, extensión coherente con content-type · `NFR-013`
+- [x] **P1-STORAGE-004** URLs firmadas de vida corta (1 h), **nunca logueadas ni persistidas** · `NFR-008`
+- [x] **P1-STORAGE-005** Errores de reserva: `409` no alcanzable, `410` expirada, `404` ajena · PRD §9.8
+- [~] **P1-STORAGE-006** Limpieza best-effort que **no bloquea** el borrado de la fila · `ERR-F05` · **parcial:** el puerto deja la política al llamador (correcto); falta el caso de uso que loguea y sigue
 
 ## P1-API — Contrato y API
 
@@ -163,8 +163,8 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 ## P1-JUDGE — Puerto Judgment · `EXT-008`, `D-05`
 
 - [x] **P1-JUDGE-001** Puerto `Judgment`: `choice` / `score` / `noul` · PRD §9.15.1
-- [ ] **P1-JUDGE-002** `LlmJudgmentAdapter` con decodificación restringida por JSON-schema · `ADR-009`
-- [ ] **P1-JUDGE-003** `StubJudgmentAdapter` para tests deterministas
+- [x] **P1-JUDGE-002** `LlmJudgmentAdapter` con decodificación restringida por JSON-schema · `ADR-009`
+- [x] **P1-JUDGE-003** `StubJudgmentAdapter` para tests deterministas
 - [ ] **P1-JUDGE-004** Selección de adaptador **por punto de decisión**, no global · PRD §9.15.2
 - [ ] **P1-JUDGE-005** Persistencia de `JudgmentRecord` con `latencyMs` e `inputTokens` · `DATA-033`
 - [ ] **P1-JUDGE-006** **Evaluación de modelos y precios**, con resultado fechado en `HANDOFF.md` · `ADR-009` · ⚠️ nada de precios de memoria
@@ -233,11 +233,11 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 - [~] **P1-UI-001** Next.js + Tailwind + shadcn/ui, tokens y tema · **parcial:** design system y tokens hechos en `packages/ui`; falta cablearlo en `apps/web`
 - [x] **P1-UI-002** Tema claro/oscuro **sin flash** en la carga · `NFR-021`
-- [ ] **P1-UI-003** Sidebar colapsable con las 10 entradas + bloque secundario · `FR-001`
-- [ ] **P1-UI-004** Rutas de PRD §3.1 con sus guards
+- [x] **P1-UI-003** Sidebar colapsable con las 10 entradas + bloque secundario · `FR-001`
+- [x] **P1-UI-004** Rutas de PRD §3.1 con sus guards
 - [x] **P1-UI-005** Sistema de toasts con enlace de acción · PRD §3.5
 - [x] **P1-UI-006** Primitivas de estado: `empty`, `loading`, `error`, skeletons · PRD §19
-- [ ] **P1-UI-007** TanStack Query + capa de cliente de API tipada
+- [x] **P1-UI-007** TanStack Query + capa de cliente de API tipada
 - [ ] **P1-UI-008** Responsive: móvil y tablet · `NFR-019`
 - [ ] **P1-UI-009** Home con KPIs, Tasks y Views History · `FR-030`
 - [ ] **P1-UI-010** FAQ del Home: 5 categorías, 37 preguntas, copy literal · `FR-030`
@@ -304,9 +304,9 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P2-CONTENT — Entidad Content
 
-- [ ] **P2-CONTENT-001** `DATA-008` + `DATA-009` + ciclo `BUILDING → CREATED|FAILED` · `FR-050`
-- [ ] **P2-CONTENT-002** Concurrencia optimista por `revision`; `409 stale_revision` · `FR-051`
-- [ ] **P2-CONTENT-003** Edición menor: **no** crea fila, **no** consume save, **no** factura · `FR-051`
+- [x] **P2-CONTENT-001** `DATA-008` + `DATA-009` + ciclo `BUILDING → CREATED|FAILED` · `FR-050`
+- [x] **P2-CONTENT-002** Concurrencia optimista por `revision`; `409 stale_revision` · `FR-051`
+- [x] **P2-CONTENT-003** Edición menor: **no** crea fila, **no** consume save, **no** factura · `FR-051`
 - [ ] **P2-CONTENT-004** Regeneración de copy preservando estructura y nº de slides · `AI-004`
 - [ ] **P2-CONTENT-005** Todas las validaciones de rango de `FR-051`
 - [ ] **P2-CONTENT-006** Borrado: soft-delete + `409 content_has_linked_posts` (cancelar no basta) · `FR-051`
