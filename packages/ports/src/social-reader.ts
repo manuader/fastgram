@@ -48,13 +48,7 @@
 
 /** Las cinco de `D-02`, más los orígenes no sociales de `FR-011.1`. */
 export type BrandSourceType =
-  | "instagram"
-  | "tiktok"
-  | "x"
-  | "youtube"
-  | "linkedin"
-  | "website"
-  | "other_url";
+  "instagram" | "tiktok" | "x" | "youtube" | "linkedin" | "website" | "other_url";
 
 /**
  * Niveles de `FR-011.4`. Sólo `A_oauth` aparece literal en el PRD (diagrama de
@@ -115,12 +109,7 @@ export interface SocialProfileSignals {
 export type ProfileSignal = keyof SocialProfileSignals;
 
 export type SocialContentKind =
-  | "image"
-  | "carousel"
-  | "video"
-  | "short"
-  | "text"
-  | "other";
+  "image" | "carousel" | "video" | "short" | "text" | "other";
 
 export interface SocialEngagement {
   readonly likes?: number;
@@ -267,10 +256,14 @@ export interface SocialReader {
   capabilities(): SocialReadCapabilities;
 
   /** Detección en vivo del input. No crea nada y no consume presupuesto. */
-  resolve(request: ResolveSourceRequest): Promise<SocialReadOutcome<ResolvedSocialSource>>;
+  resolve(
+    request: ResolveSourceRequest,
+  ): Promise<SocialReadOutcome<ResolvedSocialSource>>;
 
   /** Señales de perfil de `FR-011.3`. */
-  readProfile(request: ReadProfileRequest): Promise<SocialReadOutcome<SocialProfileSignals>>;
+  readProfile(
+    request: ReadProfileRequest,
+  ): Promise<SocialReadOutcome<SocialProfileSignals>>;
 
   /**
    * Últimos N ítems, **ordenados del más reciente al más viejo**. El orden es

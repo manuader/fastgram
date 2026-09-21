@@ -46,12 +46,7 @@
  * es de `core`, que sabe cuántas conexiones hay).
  */
 
-export type PublishPlatform =
-  | "tiktok"
-  | "instagram"
-  | "youtube"
-  | "linkedin"
-  | "reddit";
+export type PublishPlatform = "tiktok" | "instagram" | "youtube" | "linkedin" | "reddit";
 
 /** `DATA-020`. Mutuamente excluyentes en un `Post`. */
 export type PublishAccountType = "oauth" | "warmed";
@@ -61,17 +56,9 @@ export type PostingMode = "inbox" | "direct";
 
 /** `DATA-020`, literal. */
 export type PrivacyLevel =
-  | "PUBLIC_TO_EVERYONE"
-  | "MUTUAL_FOLLOW_FRIENDS"
-  | "FOLLOWER_OF_CREATOR"
-  | "SELF_ONLY";
+  "PUBLIC_TO_EVERYONE" | "MUTUAL_FOLLOW_FRIENDS" | "FOLLOWER_OF_CREATOR" | "SELF_ONLY";
 
-export type PublishMediaKind =
-  | "video"
-  | "image"
-  | "carousel"
-  | "slideshow"
-  | "text";
+export type PublishMediaKind = "video" | "image" | "carousel" | "slideshow" | "text";
 
 /** `NFR-012`: máx. 100 ids por llamada, con deduplicación previa. */
 export const MAX_METRICS_BATCH = 100;

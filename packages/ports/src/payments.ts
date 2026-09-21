@@ -185,7 +185,9 @@ export interface Payments {
   changePlan(request: ChangePlanRequest): Promise<SubscriptionSnapshot>;
 
   /** §16.3: `There is no scheduled plan switch to cancel.` ⇒ `conflict`. */
-  cancelScheduledPlanChange(customerRef: PaymentCustomerRef): Promise<SubscriptionSnapshot>;
+  cancelScheduledPlanChange(
+    customerRef: PaymentCustomerRef,
+  ): Promise<SubscriptionSnapshot>;
 
   /** §16.5. Efectiva a fin de periodo: deja `cancelAtPeriodEnd: true`. */
   cancelSubscription(request: CancelSubscriptionRequest): Promise<SubscriptionSnapshot>;

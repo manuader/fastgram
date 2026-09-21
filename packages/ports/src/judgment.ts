@@ -94,9 +94,7 @@ export const MAX_SCORE_LEVELS = 10;
 export type JsonPrimitive = string | number | boolean | null;
 
 export type JsonValue =
-  | JsonPrimitive
-  | readonly JsonValue[]
-  | { readonly [key: string]: JsonValue };
+  JsonPrimitive | readonly JsonValue[] | { readonly [key: string]: JsonValue };
 
 /**
  * El estado sobre el que se pregunta.
@@ -172,10 +170,7 @@ export interface NoulQuestion<TId extends string = string> {
   readonly criteria: { readonly true: string; readonly false: string };
 }
 
-export type JudgmentQuestion =
-  | ChoiceQuestion
-  | ScoreQuestion
-  | NoulQuestion;
+export type JudgmentQuestion = ChoiceQuestion | ScoreQuestion | NoulQuestion;
 
 /* ------------------------------------------------------------------------ *
  * Respuestas
@@ -223,7 +218,10 @@ export interface NoulAnswer {
 export type JudgmentAnswer = ChoiceAnswer | ScoreAnswer | NoulAnswer;
 
 /** Deriva el tipo de respuesta a partir del tipo de la pregunta. */
-export type AnswerFor<Q> = Q extends { readonly kind: "choice"; readonly criteria: infer C }
+export type AnswerFor<Q> = Q extends {
+  readonly kind: "choice";
+  readonly criteria: infer C;
+}
   ? ChoiceAnswer<Extract<keyof C, string>>
   : Q extends { readonly kind: "score" }
     ? ScoreAnswer
@@ -284,8 +282,9 @@ interface JudgmentRequestBase {
   readonly timeoutMs?: number;
 }
 
-export interface ChoiceRequest<TOption extends string = string>
-  extends JudgmentRequestBase {
+export interface ChoiceRequest<
+  TOption extends string = string,
+> extends JudgmentRequestBase {
   readonly question: ChoiceQuestion<string, TOption>;
 }
 
@@ -297,8 +296,9 @@ export interface NoulRequest extends JudgmentRequestBase {
   readonly question: NoulQuestion;
 }
 
-export interface AskRequest<Q extends readonly JudgmentQuestion[]>
-  extends JudgmentRequestBase {
+export interface AskRequest<
+  Q extends readonly JudgmentQuestion[],
+> extends JudgmentRequestBase {
   /** Ids únicos. Repetidos ⇒ `bad_request`. */
   readonly questions: Q;
 }
