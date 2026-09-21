@@ -183,7 +183,13 @@ export function describeSocialPublisherContract(
       );
     });
 
-    it("un estado publicado trae permalink y un fallo trae motivo neutral", async () => {
+    it("un estado publicado trae externalPostId y un fallo trae motivo neutral", async () => {
+      // El nombre decía "trae permalink" y el caso nunca lo miraba. No es un
+      // olvido que se arregle agregando la aserción: `permalink` es opcional
+      // en `PublishStatus` porque no todas las plataformas lo devuelven al
+      // publicar, así que exigirlo sería cambiar el contrato del puerto. Lo
+      // que se arregla es el nombre — un test que promete lo que no mide se
+      // cuenta como cobertura y es peor que no tenerlo.
       const publisher = await setup.makeAdapter();
       const request = setup.livePublish;
       if (request === undefined) return;

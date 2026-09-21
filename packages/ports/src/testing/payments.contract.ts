@@ -31,20 +31,34 @@ export interface PaymentsWebhookFixture {
   readonly signatureHeader: string;
 }
 
-export interface PaymentsContractSetup {
-  readonly makeAdapter: AdapterFactory<Payments>;
+export interface PaymentsContractSetup<TAdapter extends Payments = Payments> {
+  readonly makeAdapter: AdapterFactory<TAdapter>;
   /** Cliente de prueba con suscripción activa. */
   readonly customerRef: string;
   /** Plan de prueba al que se puede hacer checkout. */
   readonly planRef: string;
   /** Webhook firmado de verdad. Omitirlo saltea esa parte. */
   readonly webhook?: PaymentsWebhookFixture;
+  /**
+   * Total facturado de un medidor, si el adaptador puede leer su propio ledger.
+   *
+   * Existe porque sin él la aserción de idempotencia de `NFR-004` **no tiene
+   * aserción**: llamaba dos veces a `recordUsage` y no miraba nada, así que un
+   * adaptador que factura dos veces la pasaba. Contra un proveedor real puede
+   * no haber forma de leer el total en el acto; por eso es opcional, y cuando
+   * falta el caso lo dice en su nombre en vez de fingir que verificó.
+   */
+  readonly readUsageTotal?: (
+    adapter: TAdapter,
+    customerRef: string,
+    meter: string,
+  ) => number | Promise<number>;
 }
 
-export function describePaymentsContract(
+export function describePaymentsContract<TAdapter extends Payments = Payments>(
   harness: ContractHarness,
   name: string,
-  setup: PaymentsContractSetup,
+  setup: PaymentsContractSetup<TAdapter>,
 ): void {
   const { describe, it } = harness;
 
@@ -106,22 +120,39 @@ export function describePaymentsContract(
       }
     });
 
-    it("recordUsage con la misma idempotencyKey no factura dos veces (NFR-004)", async () => {
-      const payments = await setup.makeAdapter();
-      const idempotencyKey = `usage-${String(Date.now())}`;
-      const request = {
-        customerRef: setup.customerRef,
-        meter: "content_save_overage",
-        quantity: 1,
-        occurredAt: new Date(),
-        idempotencyKey,
-      };
+    const readTotal = setup.readUsageTotal;
+    it(
+      readTotal === undefined
+        ? "recordUsage con la misma idempotencyKey no lanza — NO verifica NFR-004: falta `readUsageTotal` en el setup"
+        : "recordUsage con la misma idempotencyKey no factura dos veces (NFR-004)",
+      async () => {
+        const payments = await setup.makeAdapter();
+        const meter = "content_save_overage";
+        const request = {
+          customerRef: setup.customerRef,
+          meter,
+          quantity: 1,
+          occurredAt: new Date(),
+          idempotencyKey: `usage-${String(Date.now())}`,
+        };
 
-      await payments.recordUsage(request);
-      // La segunda no puede lanzar: un reintento de red es normal. Lo que no
-      // puede es contar de nuevo, y eso se verifica contra el proveedor.
-      await payments.recordUsage(request);
-    });
+        // El total se lee del **mismo** adaptador que facturó: `makeAdapter`
+        // construye uno nuevo por caso, así que el ledger es de esta
+        // instancia y no de ninguna otra.
+        const antes = readTotal === undefined ? 0 : await readTotal(payments, setup.customerRef, meter);
+
+        await payments.recordUsage(request);
+        // La segunda no puede lanzar: un reintento de red es normal.
+        await payments.recordUsage(request);
+
+        if (readTotal === undefined) return;
+        checkEqual(
+          (await readTotal(payments, setup.customerRef, meter)) - antes,
+          request.quantity,
+          "NFR-004: el reintento con la misma idempotencyKey volvió a facturar",
+        );
+      },
+    );
 
     it("recordUsage rechaza cantidades no positivas", async () => {
       const payments = await setup.makeAdapter();

@@ -70,9 +70,20 @@ export function describeSocialReaderContract(
         caps.maxContentItems > 0 && caps.maxContentItems <= DEFAULT_CONTENT_ITEMS * 10,
         `maxContentItems implausible: ${String(caps.maxContentItems)}`,
       );
+      // La implicación va en este sentido y no en el otro, y el otro estaba
+      // mal: `tiers` es «lo que el adaptador **sabe** hacer» y
+      // `renderedFetchEnabled` es «bandera de **configuración**», según el
+      // propio puerto. Con `!C || enabled` —que era lo que decía— y `enabled`
+      // obligado a `false` mientras `OQ-16` siga abierto, ningún adaptador
+      // podía declarar el tier C jamás, y la bandera quedaba como duplicado
+      // de la lista. "Sé hacerlo, está apagado" es el estado normal.
       check(
-        !caps.tiers.includes("C_rendered_fetch") || caps.renderedFetchEnabled,
-        "declara el tier C soportado pero apagado: mientras OQ-16 siga abierto tiene que ir apagado, y entonces no debe anunciarse como disponible",
+        !caps.renderedFetchEnabled || caps.tiers.includes("C_rendered_fetch"),
+        "prende el tier C sin declararlo entre los que sabe usar",
+      );
+      check(
+        !caps.renderedFetchEnabled,
+        "el tier C tiene que ir apagado mientras OQ-16 (revisión legal del scraping) siga abierto",
       );
       check(
         !caps.tiers.includes("D_assisted"),

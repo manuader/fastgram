@@ -60,17 +60,34 @@ export function describeMediaRendererContract(
   const firstJob = setup.sampleJobs[0];
 
   describe(`MediaRenderer contract · ${name}`, () => {
-    it("fingerprint es puro: el mismo job da siempre el mismo hash", async () => {
-      const renderer = await setup.makeAdapter();
+    it("fingerprint es estable ENTRE INSTANCIAS, no sólo dentro de una", async () => {
+      // Medido: la versión anterior comparaba dos llamadas sobre **la misma
+      // instancia**, y un renderer con un `randomUUID()` por instancia metido
+      // en el hash pasaba las diez aserciones de esta suite. El cache de
+      // IMPL §5 no habría acertado nunca y nada lo habría dicho.
+      //
+      // La garantía que el cache necesita es entre procesos: cada worker
+      // construye su propio renderer y tiene que llegar al mismo hash para el
+      // mismo job. Dos instancias es lo más cerca que se puede estar de eso
+      // dentro de un test; captura el salto por instancia, que es el modo de
+      // falla real.
+      check(firstJob !== undefined, "sampleJobs vacío: la suite no probaría nada");
       if (firstJob === undefined) return;
 
-      const once = renderer.fingerprint(firstJob);
-      const twice = renderer.fingerprint(firstJob);
+      const uno = await setup.makeAdapter();
+      const otro = await setup.makeAdapter();
+
+      const once = uno.fingerprint(firstJob);
       checkNonEmpty(once, "fingerprint");
       checkEqual(
-        twice,
+        uno.fingerprint(firstJob),
         once,
-        "fingerprint no es determinista: el cache de IMPL §5 nunca acertaría",
+        "fingerprint no es determinista ni dentro de una instancia",
+      );
+      checkEqual(
+        otro.fingerprint(firstJob),
+        once,
+        "fingerprint cambia entre instancias del mismo motor: el cache de IMPL §5 nunca acertaría",
       );
     });
 
