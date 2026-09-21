@@ -80,19 +80,38 @@ describe("app.resolve_api_key", () => {
     expect((filas[0] as { company_id: string }).company_id).toBe(companyId);
   });
 
-  it("una clave revocada no resuelve", async () => {
-    // El PRD exige revocación **inmediata**: la siguiente petición ya falla.
+  it("una clave revocada SÍ resuelve, con su `revoked_at` — y es a propósito", async () => {
+    // Filtrarla acá sería más corto y perdería información. El PRD distingue
+    // ocho causas de 401, y aunque el **cuerpo de la respuesta es idéntico
+    // para todas** —para no decirle a quien sondea si el token existe— el
+    // **log** sí tiene que distinguirlas: "revocada hace dos días" y "nunca
+    // existió" piden respuestas operativas distintas. Filtrar acá las
+    // colapsaría a `no_match`. La decisión la toma la aplicación.
     const filas = await comoApp((tx) =>
-      tx.execute(sql`select 1 from app.resolve_api_key(${HASH_REVOCADA})`),
+      tx.execute(sql`select revoked_at from app.resolve_api_key(${HASH_REVOCADA})`),
     );
-    expect(filas).toHaveLength(0);
+    expect(filas).toHaveLength(1);
+    expect((filas[0] as { revoked_at: unknown }).revoked_at).not.toBeNull();
   });
 
-  it("una clave vencida no resuelve", async () => {
+  it("una clave vencida SÍ resuelve, con su `expires_at` en el pasado", async () => {
     const filas = await comoApp((tx) =>
-      tx.execute(sql`select 1 from app.resolve_api_key(${HASH_VENCIDA})`),
+      tx.execute(sql`select expires_at from app.resolve_api_key(${HASH_VENCIDA})`),
     );
-    expect(filas).toHaveLength(0);
+    expect(filas).toHaveLength(1);
+    const exp = (filas[0] as { expires_at: string | Date }).expires_at;
+    expect(new Date(exp).getTime()).toBeLessThan(Date.now());
+  });
+
+  it("una clave viva trae `revoked_at` y `expires_at` en null", async () => {
+    const filas = await comoApp((tx) =>
+      tx.execute(
+        sql`select revoked_at, expires_at from app.resolve_api_key(${HASH_VIVA})`,
+      ),
+    );
+    const f = filas[0] as { revoked_at: unknown; expires_at: unknown };
+    expect(f.revoked_at).toBeNull();
+    expect(f.expires_at).toBeNull();
   });
 
   it("un hash inexistente no resuelve", async () => {
@@ -102,17 +121,30 @@ describe("app.resolve_api_key", () => {
     expect(filas).toHaveLength(0);
   });
 
-  it("no expone el hash ni la etiqueta: sólo id, company y kind", async () => {
+  it("NO expone el hash ni la etiqueta", async () => {
     // Una función SECURITY DEFINER saltea RLS, así que su superficie es la
-    // única defensa que queda. Cuanto menos devuelva, menos hay que auditar.
+    // única defensa que queda. Devuelve lo necesario para autenticar y nada
+    // más: ni el hash, ni el `label`, ni el resto de la fila.
     const filas = await comoApp((tx) =>
       tx.execute(sql`select * from app.resolve_api_key(${HASH_VIVA})`),
     );
     expect(Object.keys(filas[0] as object).sort()).toEqual([
       "api_key_id",
       "company_id",
+      "company_status",
+      "expires_at",
       "kind",
+      "revoked_at",
     ]);
+  });
+
+  it("resuelve el estado del workspace en la misma ida", async () => {
+    // `companies` también tiene RLS, así que sin esto harían falta dos
+    // consultas privilegiadas en vez de una.
+    const filas = await comoApp((tx) =>
+      tx.execute(sql`select company_status from app.resolve_api_key(${HASH_VIVA})`),
+    );
+    expect(typeof (filas[0] as { company_status: string }).company_status).toBe("string");
   });
 
   it("no permite listar: sin hash no devuelve nada", async () => {

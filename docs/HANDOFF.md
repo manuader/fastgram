@@ -195,7 +195,7 @@ Desglose de `pnpm test`, por si uno solo se cae:
 
 ```bash
 docker compose up -d                       # Postgres con pgvector + MinIO con el bucket creado
-pnpm test:int                              # db 53 · api 22  → 75
+pnpm test:int                              # db 55 · api 22  → 77
 ```
 
 Las suites de contrato de `Storage` y `Queue` de `packages/adapters` corren dentro de
