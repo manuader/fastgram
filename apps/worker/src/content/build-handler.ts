@@ -1,0 +1,404 @@
+/**
+ * El handler de `content-build` — PRD §9.5.3, `FR-050`, IMPL §2.3.
+ *
+ * Es el que cierra el círculo. Hasta acá `POST /content` creaba la pieza,
+ * **cobraba el content save** y encolaba el job, y del otro lado no había
+ * nadie: la pieza quedaba en `BUILDING` para siempre y el save cobrado no se
+ * devolvía nunca, porque quien tiene que devolverlo es justamente el build que
+ * falla.
+ *
+ * ## La forma: leer corto, trabajar largo, escribir corto
+ *
+ * ```
+ *   [tx 1]  bloquear la fila, leer buildPayload            ~ms
+ *           render + subida a storage                      30 s – 2 min
+ *   [tx 2]  bloquear otra vez, comprobar, escribir         ~ms
+ * ```
+ *
+ * El render **no** puede ocurrir dentro de una transacción. `NFR-001` acota un
+ * build a 30 s – 2 min: una transacción abierta ese tiempo mantiene la fila
+ * bloqueada contra el `PATCH` del usuario, retiene una conexión del pool por
+ * cada build en vuelo y, si el proceso se cae, deja la transacción colgada
+ * hasta que el servidor la limpie. Con `NFR-025` hablando de 10 builds por
+ * minuto, eso es el pool entero.
+ *
+ * El precio de partirlo en dos es que entre las dos transacciones el mundo se
+ * mueve, y de ahí sale casi todo lo demás que hace este archivo.
+ *
+ * ## Las cuatro cosas que no se pueden romper
+ *
+ * 1. **La `revision` se comprueba al escribir, no sólo al leer.** Si entre las
+ *    dos transacciones el usuario editó la pieza, la revisión subió y hay otro
+ *    build en camino. Escribir el resultado viejo publicaría el render
+ *    **anterior** a la edición, con la `revision` nueva puesta — y sin error.
+ *    Se descarta el resultado y se borra lo subido.
+ *
+ * 2. **El reembolso ocurre una sola vez.** El puerto `Queue` dice que el
+ *    handler puede reintentarse; sin guarda, cada reintento sería un save
+ *    gratis. La guarda es `contents.saveRefundedAt`, se lee con la fila
+ *    bloqueada y la base la sostiene con un CHECK.
+ *
+ * 3. **Un fallo transitorio se reintenta; el último intento marca `FAILED`.**
+ *    Relanzar siempre deja la pieza en `BUILDING` cuando la cola se rinde, que
+ *    es el bug que este archivo existe para cerrar. Por eso el último intento
+ *    no relanza: cierra la pieza y devuelve el save. `maxAttempts` sale del
+ *    job, no de una constante escrita acá — ver {@link JobContext}.
+ *
+ * 4. **Un fallo permanente no se reintenta nunca.** Un `buildPayload` que no
+ *    parsea no va a parsear la tercera vez; reintentarlo sólo retrasa el
+ *    reembolso y ensucia la dead-letter con algo que no es un fallo de
+ *    infraestructura.
+ *
+ * ## Lo que este handler NO hace todavía
+ *
+ * - **`custom`** — las piezas de `POST /content/custom/video` no tienen
+ *   `buildPayload` (el archivo ya está subido) y **tampoco tienen forma de
+ *   encontrar su archivo**: la reserva de subida no deja la `storageKey` en la
+ *   fila del contenido. Su build es normalización + thumbnail (§9.5 #7), no un
+ *   render. Se marcan `FAILED` con un motivo explícito en vez de dejarlas en
+ *   `BUILDING`: no cobran save, así que no hay nada que devolver.
+ * - **`prompt` / `mentionBusiness`** — `AI-004` los usa para regenerar copy con
+ *   un modelo antes de construir. No hay puerto `Llm` cableado acá; el payload
+ *   los trae y este handler los ignora, que es mejor que fingir que los aplica.
+ */
+
+import { parseContentBuildJob, type ContentBuildJob, type SaveBucket } from "@fastgram/core";
+import {
+  contentBuildStore,
+  contentRepository,
+  withCompany,
+  type Database,
+  type Transaction,
+} from "@fastgram/db";
+import {
+  PortError,
+  type Clock,
+  type JobContext,
+  type JobHandler,
+  type MediaRenderer,
+  type RenderResult,
+  type Storage,
+  type StorageKey,
+} from "@fastgram/ports";
+import { canonicalObjectUrl } from "@fastgram/adapters";
+
+import { refundContentSave } from "../support/quota.js";
+import { toRenderJob } from "./render-job.js";
+
+/** Lo mínimo que el handler necesita loguear. `pino` lo cumple. */
+export interface BuildLogger {
+  info(obj: Record<string, unknown>, msg: string): void;
+  warn(obj: Record<string, unknown>, msg: string): void;
+  error(obj: Record<string, unknown>, msg: string): void;
+}
+
+export interface ContentBuildDeps {
+  readonly db: Database;
+  readonly renderer: MediaRenderer;
+  readonly storage: Storage;
+  readonly clock: Clock;
+  /**
+   * Rol para el `SET LOCAL ROLE` de cada transacción. Sin él, un proceso
+   * conectado como superusuario **saltea RLS por completo** y el aislamiento
+   * deja de existir sin que nada avise.
+   */
+  readonly appRole?: string | undefined;
+  readonly logger: BuildLogger;
+  /** Prefijo de las claves del bucket, sin barra final. */
+  readonly objectPrefix?: string;
+}
+
+/**
+ * Códigos de `PortError` que vale la pena reintentar.
+ *
+ * El resto —`bad_request`, `not_found`, `provider_contract_violation`— son
+ * deterministas: la segunda corrida produce el mismo error. `not_found` es el
+ * que más tienta a reintentar, y es el que menos conviene: significa que una
+ * URL del payload no resuelve, y esperar 15 segundos no la va a hacer aparecer.
+ */
+const RETRYABLE_PORT_CODES: ReadonlySet<string> = new Set([
+  "provider_unavailable",
+  "timeout",
+  "rate_limited",
+]);
+
+/** Un fallo que ya sabe si merece otro intento. */
+interface BuildFailure {
+  readonly reason: string;
+  readonly retryable: boolean;
+  readonly cause?: unknown;
+}
+
+const permanent = (reason: string, cause?: unknown): BuildFailure =>
+  cause === undefined ? { reason, retryable: false } : { reason, retryable: false, cause };
+
+function classify(error: unknown): BuildFailure {
+  if (error instanceof PortError) {
+    return {
+      reason: `${error.code}: ${error.message}`,
+      retryable: RETRYABLE_PORT_CODES.has(error.code),
+      cause: error,
+    };
+  }
+  // Un error que no es del puerto es un bug nuestro o una caída de la base.
+  // Se marca reintentable porque la mayoría de las caídas de infraestructura
+  // caen acá, y un bug determinista termina igual en `FAILED` al último intento.
+  return {
+    reason: error instanceof Error ? error.message : "unknown build error",
+    retryable: true,
+    cause: error,
+  };
+}
+
+/** Lo que se lee de la fila antes de trabajar. */
+interface BuildSubject {
+  readonly buildPayload: unknown;
+  readonly contentType: string;
+  readonly revision: number;
+}
+
+type ReadOutcome =
+  | { readonly kind: "build"; readonly subject: BuildSubject }
+  /** No hay nada que hacer y no es un error: la pieza se borró, ya está lista, o el job es viejo. */
+  | { readonly kind: "skip"; readonly why: string }
+  | { readonly kind: "fail"; readonly failure: BuildFailure };
+
+export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<unknown> {
+  const prefix = deps.objectPrefix ?? "content";
+
+  const inCompany = <T>(companyId: string, fn: (tx: Transaction) => Promise<T>): Promise<T> =>
+    withCompany(
+      deps.db,
+      companyId,
+      fn,
+      deps.appRole === undefined ? {} : { role: deps.appRole },
+    );
+
+  /** Transacción 1: bloquear, decidir y soltar. */
+  async function read(job: ContentBuildJob): Promise<ReadOutcome> {
+    return inCompany(job.companyId, async (tx) => {
+      const row = await contentBuildStore.lockContent(tx, { companyId: job.companyId }, job.contentId);
+
+      if (row === null) return { kind: "skip", why: "la pieza no existe o fue borrada" };
+
+      // Job viejo: la pieza ya avanzó. El build que corresponde a la revisión
+      // actual está encolado o ya corrió.
+      if (row.revision !== job.revision)
+        return {
+          kind: "skip",
+          why: `el job construye la revisión ${String(job.revision)} y la pieza va por ${String(row.revision)}`,
+        };
+
+      // Reintento después de una corrida que sí terminó: el estado ya no es
+      // `BUILDING`. Esto es lo que hace al handler idempotente de verdad.
+      if (row.status !== "BUILDING")
+        return { kind: "skip", why: `la pieza ya está en ${row.status}` };
+
+      if (row.type === "custom")
+        return {
+          kind: "fail",
+          failure: permanent(
+            "las piezas `custom` necesitan normalización, no render, y la fila no " +
+              "guarda la clave del objeto subido: no hay de dónde leerlo",
+          ),
+        };
+
+      return {
+        kind: "build",
+        subject: { buildPayload: row.buildPayload, contentType: row.type, revision: row.revision },
+      };
+    });
+  }
+
+  /** Transacción 2, camino feliz. Devuelve `false` si el resultado quedó obsoleto. */
+  async function commit(
+    job: ContentBuildJob,
+    files: readonly string[],
+    thumbnailUrl: string | undefined,
+  ): Promise<boolean> {
+    return inCompany(job.companyId, async (tx) => {
+      const row = await contentBuildStore.lockContent(tx, { companyId: job.companyId }, job.contentId);
+      if (row === null || row.revision !== job.revision || row.status !== "BUILDING") return false;
+
+      await contentRepository.update(
+        tx,
+        { companyId: job.companyId },
+        job.contentId,
+        {
+          status: "CREATED",
+          files: [...files],
+          ...(thumbnailUrl === undefined ? {} : { thumbnailUrl }),
+        },
+      );
+      return true;
+    });
+  }
+
+  /**
+   * Transacción 2, camino de fallo: `FAILED` **y reembolso**, juntos.
+   *
+   * Van en la misma transacción a propósito. Si el reembolso se confirmara
+   * aparte, entre los dos pasos habría una ventana en la que el usuario ya
+   * perdió el save y la pieza ya está muerta; y si fuera al revés, un reintento
+   * que encuentra `FAILED` sin `saveRefundedAt` no sabría si devolver o no.
+   */
+  async function fail(job: ContentBuildJob, reason: string): Promise<"refunded" | "closed" | "skipped"> {
+    return inCompany(job.companyId, async (tx) => {
+      const row = await contentBuildStore.lockContent(tx, { companyId: job.companyId }, job.contentId);
+      if (row === null || row.revision !== job.revision) return "skipped";
+      if (row.status === "CREATED") return "skipped";
+
+      const now = new Date(deps.clock.nowMs());
+
+      // El cargo puede no existir: `POST /content/custom/video` no cobra save,
+      // y una pieza sin `saveBucket` no tiene nada que devolver. El CHECK
+      // `contents_save_bucket_with_period` garantiza que bucket y período van
+      // de a dos, así que alcanza con mirar uno… pero se miran los dos, porque
+      // el que sostiene la invariante es la base y esto es el consumidor.
+      const bucket = row.saveBucket as SaveBucket | null;
+      const period = row.savePeriod;
+      const yaReembolsado = row.saveRefundedAt !== null;
+      const reembolsa = bucket !== null && period !== null && !yaReembolsado;
+
+      if (reembolsa) {
+        await refundContentSave(tx, { companyId: job.companyId }, period, bucket, deps.clock);
+      }
+
+      await contentRepository.update(
+        tx,
+        { companyId: job.companyId },
+        job.contentId,
+        {
+          status: "FAILED",
+          ...(reembolsa ? { saveRefundedAt: now } : {}),
+          // Mismo dialecto que el resto de la API: la fecha en ms epoch, no
+          // como `Date`, porque `lastEdit` sale tal cual por el contrato.
+          lastEdit: { at: now.getTime(), outcome: "failed", kind: "rebuild", failureReason: reason },
+        },
+      );
+
+      return reembolsa ? "refunded" : "closed";
+    });
+  }
+
+  /** Sube el artefacto y devuelve su URL canónica. */
+  async function upload(
+    job: ContentBuildJob,
+    result: RenderResult,
+    index: number,
+  ): Promise<{ key: StorageKey; url: string }> {
+    // La clave lleva la revisión: un rebuild de la misma pieza **no** puede
+    // sobrescribir el archivo de la revisión anterior, porque los `Post` ya
+    // programados la referencian por URL (`FR-060`).
+    const key = `${prefix}/${job.companyId}/${job.contentId}/${String(job.revision)}/${String(index)}`;
+    const object = await deps.storage.put({
+      key,
+      body: result.body,
+      contentType: result.contentType,
+    });
+    return { key: object.key, url: await canonicalObjectUrl(deps.storage, object.key) };
+  }
+
+  /** Best-effort, como pide §9.11: un huérfano en el bucket no puede romper el job. */
+  async function discard(keys: readonly StorageKey[]): Promise<void> {
+    for (const key of keys) {
+      try {
+        await deps.storage.delete(key);
+      } catch (error: unknown) {
+        deps.logger.warn({ key, error }, "no se pudo borrar un artefacto obsoleto");
+      }
+    }
+  }
+
+  return async function handle(ctx: JobContext<unknown>): Promise<void> {
+    const parsed = parseContentBuildJob(ctx.payload);
+    if (!parsed.ok) {
+      // No se relanza: reintentar un payload roto da el mismo error tres veces
+      // y después parece un fallo de infraestructura en la dead-letter. Es un
+      // bug del productor y no hay pieza identificable que cerrar.
+      deps.logger.error({ jobId: ctx.jobId, reason: parsed.reason }, "payload de content-build inválido");
+      return;
+    }
+
+    const job = parsed.payload;
+    const base = { jobId: ctx.jobId, contentId: job.contentId, revision: job.revision };
+
+    const outcome = await read(job);
+    if (outcome.kind === "skip") {
+      deps.logger.info({ ...base, why: outcome.why }, "build omitido");
+      return;
+    }
+
+    let failure: BuildFailure | null = outcome.kind === "fail" ? outcome.failure : null;
+    const uploaded: StorageKey[] = [];
+    let files: string[] = [];
+    let thumbnailUrl: string | undefined;
+
+    if (outcome.kind === "build") {
+      const mapped = toRenderJob(outcome.subject.buildPayload, outcome.subject.contentType);
+      if (!mapped.ok) {
+        failure = permanent(mapped.reason);
+      } else {
+        try {
+          const result = await deps.renderer.render(mapped.job);
+          const artifact = await upload(job, result, 0);
+          uploaded.push(artifact.key);
+          files = [artifact.url];
+
+          // El thumbnail es IMPL §5 —«nunca servir el master para un
+          // preview»— y **no** puede hundir el build: la pieza es utilizable
+          // sin miniatura, y fallarla por eso reembolsaría un save por un
+          // preview. Se loguea y sigue.
+          try {
+            const thumb = await deps.renderer.thumbnail({ url: artifact.url, maxWidth: 480 });
+            const key = `${prefix}/${job.companyId}/${job.contentId}/${String(job.revision)}/thumb`;
+            const stored = await deps.storage.put({
+              key,
+              body: thumb.body,
+              contentType: thumb.contentType,
+            });
+            uploaded.push(stored.key);
+            thumbnailUrl = await canonicalObjectUrl(deps.storage, stored.key);
+          } catch (error: unknown) {
+            deps.logger.warn({ ...base, error }, "no se pudo generar el thumbnail");
+          }
+        } catch (error: unknown) {
+          failure = classify(error);
+        }
+      }
+    }
+
+    if (failure === null) {
+      const committed = await commit(job, files, thumbnailUrl);
+      if (committed) {
+        deps.logger.info({ ...base, files: files.length }, "build completado");
+        return;
+      }
+      // La pieza se movió mientras construíamos. El render es basura y lo
+      // subido también: borrarlo es lo que evita pagar storage por artefactos
+      // que ninguna fila referencia.
+      await discard(uploaded);
+      deps.logger.info(base, "resultado descartado: la pieza cambió durante el build");
+      return;
+    }
+
+    await discard(uploaded);
+
+    const ultimoIntento = ctx.attempt >= ctx.maxAttempts;
+    if (failure.retryable && !ultimoIntento) {
+      deps.logger.warn(
+        { ...base, attempt: ctx.attempt, maxAttempts: ctx.maxAttempts, reason: failure.reason },
+        "build fallido, se reintenta",
+      );
+      // Relanzar es lo que hace que la cola reintente con su backoff. La pieza
+      // queda en `BUILDING`, que es correcto: todavía puede terminar bien.
+      throw failure.cause instanceof Error ? failure.cause : new Error(failure.reason);
+    }
+
+    const resultado = await fail(job, failure.reason);
+    deps.logger.error(
+      { ...base, attempt: ctx.attempt, reason: failure.reason, resultado },
+      "build fallido definitivamente",
+    );
+  };
+}

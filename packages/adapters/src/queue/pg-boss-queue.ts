@@ -372,12 +372,17 @@ export class PgBossQueue implements Queue {
             },
             async (batch) => {
               for (const job of batch) {
-                const retryCount = (job as { retryCount?: number }).retryCount ?? 0;
+                const meta = job as { retryCount?: number; retryLimit?: number };
+                const retryCount = meta.retryCount ?? 0;
                 await handler({
                   jobId: encodeJobId(queue, job.id),
                   payload: job.data as TPayload,
                   // `attempt` empieza en 1; `retryCount` de pg-boss empieza en 0.
                   attempt: retryCount + 1,
+                  // Y `retryLimit` son los **re**intentos, así que los intentos
+                  // totales son uno más. Un job encolado con `retryLimit: 2`
+                  // tiene 3 intentos, y el tercero es el último.
+                  maxAttempts: (meta.retryLimit ?? 0) + 1,
                 });
               }
             },

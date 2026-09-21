@@ -157,6 +157,9 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P1-QUEUE-004** Reintentos con backoff y dead-letter queue
 - [~] **P1-QUEUE-005** Idempotencia: `Idempotency-Key`, replay de respuesta, `409` con body distinto, liberación al fallar · `NFR-004` · **parcial:** cableada a las cuatro rutas que §9.3 exige (`POST /content`, `PATCH /content/:id`, `POST /content/:id/regenerate`, `POST /influencers`); **el replay nunca se ejerció de punta a punta** — no hay test que haga dos peticiones con la misma key contra la base
 - [x] **P1-QUEUE-006** Scaffold del `apps/worker`
+- [~] **P1-QUEUE-008** Handler de `content-build` en `apps/worker`: construye, sube y cierra `BUILDING → CREATED|FAILED` **con reembolso del save** · `FR-050`, IMPL §2.3 · **parcial:** el pipeline corre de punta a punta contra los binarios compilados, pero **con `MemoryMediaRenderer`**: el artefacto son bytes sintéticos. El render real es `services/render` y sigue sin adaptador (`P2-RENDER-002`). Tampoco construye `custom` —la fila no guarda la clave del objeto subido— ni aplica `prompt`/`mentionBusiness` de `AI-004`.
+  > **El círculo cierra.** `POST /content` cobraba el save y encolaba, y del otro lado no había nadie: la pieza quedaba en `BUILDING` para siempre y el save cobrado no se devolvía nunca. `pnpm smoke:binary` levanta ahora los **dos** procesos y espera a que la pieza llegue a `CREATED`.
+  > Siete mecanismos verificados **rompiéndolos**: la guarda de doble reembolso, el chequeo de `revision` al leer, al escribir y al fallar, el corte del último intento, el `FOR UPDATE` de `lockContent` y el filtro de soft-delete. Dos de mis tests pasaban por la razón equivocada y lo encontré así.
 
 ## P1-STORAGE — Objetos y subidas
 
@@ -312,7 +315,8 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 ## P2-RENDER — Motor de render
 
 - [x] **P2-RENDER-001** Scaffold `services/render` (FFmpeg + sharp, sin estado) · `ADR-007`
-- [ ] **P2-RENDER-002** Puerto `MediaRenderer` + adaptador
+- [~] **P2-RENDER-002** Puerto `MediaRenderer` + adaptador · **parcial:** el puerto está y tiene su suite de contrato; el adaptador **real contra `services/render` no existe**. Hoy `apps/worker` monta `MemoryMediaRenderer`, así que el pipeline de build corre completo y el artefacto son bytes sintéticos.
+  > Al escribir el handler apareció que `audio` era **obligatorio** en `WallOfTextJob` y `VideoHookJob`, y `FR-053.1` (PRD:1234) dice que *No audio* omite el bloque. El contrato público ya lo tenía opcional: una pieza válida de `POST /content` no se podía ni escribir como `RenderJob`. Corregido en el puerto. **`services/render` todavía lo exige** (`payload.ts`), así que el adaptador real se va a topar con eso.
 - [x] **P2-RENDER-003** Esquema de text-object compartido por los 4 formatos · `FR-070`
 - [x] **P2-RENDER-004** Render `slideshow` (hasta 20 slides, 4 aspect ratios) · `FR-070`
 - [x] **P2-RENDER-005** Render `wall-of-text` · `FR-070`

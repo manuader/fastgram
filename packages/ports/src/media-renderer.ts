@@ -146,7 +146,14 @@ export interface WallOfTextJob {
   readonly format: "wall-of-text";
   readonly canvas: Canvas;
   readonly video: RenderVideo;
-  readonly audio: RenderAudio;
+  /**
+   * **Opcional**: `FR-053.1` (PRD:1234) dice que elegir *No audio* omite el
+   * bloque entero. Estaba obligatorio acá, y el contrato público
+   * (`contentBuildPayloadSchema`) ya lo tenía opcional — así que una pieza
+   * perfectamente válida creada por `POST /content` no se podía ni escribir
+   * como {@link RenderJob}. El que manda es el PRD.
+   */
+  readonly audio?: RenderAudio | undefined;
   readonly text: RenderText;
 }
 
@@ -166,7 +173,8 @@ export interface VideoHookJob {
   readonly hook_video: RenderVideo;
   /** Abajo. Sin esto el formato no se puede generar (`ERR-P07`). */
   readonly demo_video: RenderVideo;
-  readonly audio: RenderAudio;
+  /** Opcional por la misma razón que en {@link WallOfTextJob}. */
+  readonly audio?: RenderAudio | undefined;
   readonly text: RenderText;
 }
 

@@ -231,6 +231,47 @@ mismoNumero("generaciones en vuelo (PRD FR-090)", [
 }
 
 /**
+ * El presupuesto de reintentos del build: lo elige el productor, lo declara el
+ * consumidor.
+ *
+ * `POST /content` encola con `retryLimit`, que son **re**intentos; el catálogo
+ * del worker declara `maxAttempts`, que son intentos totales. Uno tiene que ser
+ * el otro más uno.
+ *
+ * Por qué importa y no es cosmética: el handler decide con el **último**
+ * intento. Ahí no relanza —cierra la pieza en `FAILED` y devuelve el content
+ * save (`FR-050`)—, y lee `maxAttempts` del job, así que si el productor encola
+ * con menos reintentos de los que el catálogo promete, el handler nunca llega a
+ * su último intento según el catálogo pero la cola ya se rindió: la pieza queda
+ * en `BUILDING` para siempre con el save cobrado. Que es exactamente el estado
+ * que `P1-QUEUE-008` vino a cerrar.
+ */
+{
+  const ruta = leer("apps/api/src/routes/v1/content.ts");
+  const catalogo = leer("apps/worker/src/jobs/catalog.ts");
+  if (ruta !== null && catalogo !== null) {
+    const retry = /retryLimit:\s*(\d+)/.exec(ruta);
+    const attempts = /contentBuild:\s*\{[\s\S]*?maxAttempts:\s*(\d+)/.exec(catalogo);
+    if (retry === null || attempts === null) {
+      problemas.push(
+        "no encontré el `retryLimit` de `POST /content` o el `maxAttempts` de " +
+          "`contentBuild` — ¿cambió la forma?",
+      );
+    } else if (Number(retry[1]) + 1 !== Number(attempts[1])) {
+      problemas.push(
+        `la ruta encola el build con retryLimit ${retry[1]} (o sea ${Number(retry[1]) + 1} ` +
+          `intentos) y el catálogo del worker declara maxAttempts ${attempts[1]}`,
+      );
+    } else {
+      verificados.push(
+        `intentos del build de contenido (PRD §9.5.3) = ${attempts[1]}, ` +
+          `productor y catálogo de acuerdo`,
+      );
+    }
+  }
+}
+
+/**
  * Los alias de `tsconfig.base.json` cubren el especificador **pelado**.
  *
  * Es el chequeo menos obvio del archivo y el que más silenciosamente se rompe.

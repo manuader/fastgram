@@ -1,5 +1,146 @@
 /**
- * Worker — consumidores de la cola (ADR-005, cola en Postgres).
- * Los handlers concretos llegan con P1-QUEUE-* y P2-RENDER-*.
+ * Worker — consumidores de la cola (`ADR-005`, cola en Postgres).
+ *
+ * Hasta esta tanda este archivo imprimía *"sin handlers todavía"* y terminaba.
+ * Eso tenía una consecuencia que no se veía desde acá: `POST /content` creaba
+ * la pieza, **cobraba el content save** y encolaba el build, y la pieza se
+ * quedaba en `BUILDING` para siempre con el save cobrado y sin devolver.
+ *
+ * Ahora consume `content-build`. Los otros 20 trabajos de §9.5 siguen sin
+ * handler, y eso se dice en el log al arrancar en vez de quedar implícito: una
+ * cola con productor y sin consumidor es el peor modo de falla que tiene este
+ * sistema, porque no falla nada.
+ *
+ * Orden de arranque, y por qué ése:
+ *  1. **Validar el entorno.** Si falta algo, el proceso muere acá con el nombre
+ *     de la variable.
+ *  2. Abrir la base y construir los adaptadores.
+ *  3. Registrar los handlers — antes de `start()`, porque el adaptador los
+ *     encola y los registra al arrancar.
+ *  4. Arrancar la cola, y recién entonces el apagado limpio.
  */
-console.log("[worker] sin handlers todavía — ver tasks.md P1-QUEUE");
+import {
+  createPgBossQueue,
+  drizzleTransactionToExecutor,
+  MemoryMediaRenderer,
+  MemoryStorage,
+  systemClock,
+} from "@fastgram/adapters";
+import { ALL_JOB_QUEUES, JOB_QUEUES } from "@fastgram/core";
+import { createDb } from "@fastgram/db";
+import type { JobHandler } from "@fastgram/ports";
+import pino from "pino";
+
+import { createContentBuildHandler } from "./content/build-handler.js";
+import { loadWorkerEnv } from "./env.js";
+import { JOB_CATALOG } from "./jobs/catalog.js";
+
+const env = loadWorkerEnv();
+const logger = pino({ level: env.LOG_LEVEL });
+
+const handle = createDb({ url: env.DATABASE_URL, max: env.DATABASE_POOL_MAX });
+const clock = systemClock;
+const appRole = env.DATABASE_APP_ROLE === "" ? undefined : env.DATABASE_APP_ROLE;
+
+/**
+ * La cola.
+ *
+ * `supervise: true` y `schedule: true`, al revés que en la API: el
+ * mantenimiento (expirar, archivar) y el cron de §9.5 son trabajo del
+ * consumidor. Si los hiciera la API, cada réplica de la API los haría en
+ * paralelo con todas las demás.
+ *
+ * `migrate: false` sin bandera que lo cambie: el DDL del esquema de la cola lo
+ * hace la API con `QUEUE_MIGRATE`. Dos procesos compitiendo por los mismos
+ * objetos al arrancar es un modo de falla que no hace falta tener.
+ */
+const { queue } = createPgBossQueue({
+  connectionString: env.DATABASE_URL,
+  schema: env.QUEUE_SCHEMA,
+  queues: [...ALL_JOB_QUEUES],
+  toExecutor: drizzleTransactionToExecutor,
+  migrate: false,
+  supervise: true,
+  schedule: true,
+});
+
+/**
+ * `MemoryMediaRenderer` y `MemoryStorage` son puestos de guardia, no la
+ * solución — el mismo criterio que `apps/api/src/main.ts` deja escrito para el
+ * storage.
+ *
+ * El motor real es `services/render`, que existe, tiene 119 tests y **no tiene
+ * adaptador**: `P2-RENDER-002` sigue abierta. Con esto montado, el pipeline
+ * corre de punta a punta —se lee la pieza, se "construye", se sube, se cierra
+ * en `CREATED`— pero el artefacto son bytes sintéticos derivados del
+ * fingerprint. Es explícito a propósito: lo que se prueba así es el pipeline,
+ * que es lo que no existía; el render ya está probado del otro lado.
+ */
+const renderer = new MemoryMediaRenderer();
+const storage = new MemoryStorage(clock, env.S3_PUBLIC_URL ?? "memory://bucket");
+
+/**
+ * Los handlers, en **un solo lugar**.
+ *
+ * El mapa existe para que la lista de colas que sí se consumen no se escriba
+ * dos veces: una al registrar y otra al reportar. Lo tenía duplicado y lo
+ * encontré rompiéndolo a propósito — con el `work()` apuntando a otra cola, el
+ * log seguía diciendo que `content-build` tenía handler. Un reporte de arranque
+ * que miente sobre esto es peor que no tenerlo, porque es exactamente donde uno
+ * va a mirar cuando una pieza se quede en `BUILDING`.
+ */
+const HANDLERS: Readonly<Record<string, JobHandler<unknown>>> = {
+  [JOB_QUEUES.contentBuild]: createContentBuildHandler({
+    db: handle.db,
+    renderer,
+    storage,
+    clock,
+    appRole,
+    logger,
+  }),
+};
+
+for (const [name, handler] of Object.entries(HANDLERS)) {
+  await queue.work(name, handler, { concurrency: env.WORKER_CONCURRENCY });
+}
+
+const conHandler = Object.keys(HANDLERS);
+const sinHandler = Object.values(JOB_CATALOG)
+  .map((p) => p.name)
+  .filter((name) => !(name in HANDLERS));
+
+await queue.start();
+
+logger.info(
+  { colas: conHandler, sinHandler: sinHandler.length, concurrency: env.WORKER_CONCURRENCY },
+  "worker arriba",
+);
+// A nivel `warn` y con la lista entera: son 20 colas en las que la API ya
+// encola y que nadie lee. Verlo cada vez que arranca el proceso es el punto.
+logger.warn({ colas: sinHandler }, "colas sin handler: lo que se encole ahí no lo consume nadie");
+
+/**
+ * Apagado limpio.
+ *
+ * `queue.stop()` deja de tomar trabajo nuevo y **espera a que terminen los jobs
+ * activos**. Importa: un build a mitad de camino puede estar en la transacción
+ * que reembolsa un save. La base se cierra después, no antes, por eso mismo.
+ */
+let shuttingDown = false;
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.once(signal, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info({ signal }, "apagando");
+    void (async () => {
+      try {
+        await queue.stop();
+        await handle.close();
+        process.exit(0);
+      } catch (error: unknown) {
+        logger.error({ error }, "fallo durante el apagado");
+        process.exit(1);
+      }
+    })();
+  });
+}

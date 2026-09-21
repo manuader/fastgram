@@ -8,11 +8,13 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "test:int": "vitest run --config vitest.int.config.ts"
   },
   "dependencies": {
     "@fastgram/adapters": "workspace:*",
     "@fastgram/config": "workspace:*",
+    "@fastgram/contracts": "workspace:*",
     "@fastgram/core": "workspace:*",
     "@fastgram/db": "workspace:*",
     "@fastgram/ports": "workspace:*",

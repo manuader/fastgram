@@ -67,29 +67,13 @@ export function extensionFor(contentType: string): string {
 /**
  * URL estable del objeto, la que se guarda en `Media.r2Url` (DATA-010).
  *
- * **No es una URL firmada.** §9.10 prohíbe persistir y loguear las firmadas porque son
- * capacidades bearer de una hora; `r2Url` es un campo persistido del modelo, así que
- * tiene que ser la dirección del objeto y nada más. Se obtiene firmando una y quitándole
- * la query, que es donde vive la firma: lo que queda es la ruta del objeto en el bucket.
- *
- * Es un rodeo, y conviene saber por qué está: el puerto `Storage` no expone "dame la URL
- * pública de esta clave" y `ApiDeps` no lleva la base pública del bucket (`S3_PUBLIC_URL`
- * existe en `env.ts` pero no llega hasta acá). Con el adaptador S3 montado, el resultado
- * apunta al endpoint de firma y no a un CDN — está en el reporte.
+ * Se re-exporta desde `@fastgram/adapters` —no vive más acá— porque
+ * `apps/worker` necesita exactamente la misma al guardar el resultado de un
+ * build, y dos definiciones de "cuál es la dirección de un objeto" se separan
+ * sin que nadie lo note: las dos siguen devolviendo una URL plausible. El
+ * porqué del rodeo (firmar y tirar la query) está en el archivo de destino.
  */
-export async function canonicalObjectUrl(
-  storage: Storage,
-  key: string,
-): Promise<string> {
-  const signed = await storage.createDownloadUrl({
-    key,
-    ttlSeconds: MAX_SIGNED_URL_TTL_SECONDS,
-  });
-  const url = new URL(signed.url);
-  url.search = "";
-  url.hash = "";
-  return url.toString();
-}
+export { canonicalObjectUrl } from "@fastgram/adapters";
 
 export interface ReserveUploadInput {
   readonly tx: Transaction;

@@ -141,12 +141,17 @@ jobs:
         run: pnpm build
       - name: migrar
         run: pnpm --filter @fastgram/db db:migrate
-      - name: arrancar el binario, autenticar, escribir y encolar
+      - name: los dos binarios: la API escribe y encola, el worker consume
         # `pnpm verify` no puede ver esto: ahí todo corre con tsx o vitest, que
         # resuelven TypeScript. Dos veces ya pasó que el build quedara verde y
         # el artefacto no arrancara — la primera por `exports` a `.ts`, la
         # segunda por arrancar `boss` en vez del adaptador, con `/health` en 200
         # y el primer encolado muerto.
+        #
+        # Y desde P1-QUEUE-008 levanta también el worker, porque encolar sin
+        # consumir no es un circuito: el nombre de la cola, la forma del payload
+        # y los permisos del rol sobre el esquema de pg-boss sólo se verifican
+        # con los dos procesos hablando entre sí.
         run: pnpm smoke:binary
 
   vision:

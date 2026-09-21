@@ -32,6 +32,7 @@
  */
 import type { Clock, EnqueuedJob, Queue, QueueTransaction } from "@fastgram/ports";
 import { JOB_QUEUES } from "../jobs/queues.js";
+import type { ContentBuildJob } from "../jobs/content-build.js";
 import { DomainError, crossTenantAsNotFound } from "../errors.js";
 import type { IdGenerator } from "../ids.js";
 import {
@@ -96,16 +97,16 @@ export interface BlitzQuotaSnapshot {
   readonly swipes: SwipesLedger;
 }
 
-/** El payload que recibe el worker de build. */
-export interface ContentBuildJob {
-  readonly companyId: string;
-  readonly contentId: string;
-  readonly contentType: BlitzContentType;
-  readonly aspectRatio?: AspectRatio | undefined;
-  readonly suggestionId: string;
-  readonly influencerId?: string | undefined;
-  readonly revision: number;
-}
+/**
+ * El payload que recibe el worker de build.
+ *
+ * Vive en `jobs/content-build.ts` y se re-exporta acá porque este archivo lo
+ * tenía primero. La forma que había —con `suggestionId` obligatorio y
+ * `contentType` acotado a los tipos de Blitz— **no la podía usar
+ * `POST /content`**, así que esa ruta inventó la suya y la cola terminó con dos
+ * payloads y ningún consumidor que reconociera a los dos. Ver ahí el porqué.
+ */
+export type { ContentBuildJob };
 
 /**
  * Puerto de salida del caso de uso.
@@ -338,6 +339,7 @@ export async function acceptBlitzSuggestionUseCase(
     suggestionId: suggestion.id,
     influencerId: content.influencerId,
     revision: content.revision,
+    reason: "blitz",
   };
 
   const job = await queue.enqueue<ContentBuildJob>({

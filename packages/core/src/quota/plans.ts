@@ -10,8 +10,29 @@
  * marcado con `UNKNOWN_*` y explicado.
  */
 
+import { DomainError } from "../errors.js";
+
 export const PLAN_IDS = ["free", "starter", "growth", "pro"] as const;
 export type PlanId = (typeof PLAN_IDS)[number];
+
+/**
+ * Estrecha el `planId` que sale de la base, que es `text`.
+ *
+ * `companies.planId` es texto libre porque el PRD no define `Plan` como
+ * entidad. Un plan desconocido **no** cae a `free`: eso cobraría de menos o
+ * bloquearía de más, en silencio y a un cliente real. Es un error de datos y
+ * tiene que verse como tal.
+ *
+ * Está acá y no en cada app porque las dos lo necesitan —la API para cobrar y
+ * el worker para reembolsar— y un default distinto de cada lado sería un
+ * descuadre de facturación que nadie mira.
+ */
+export function parsePlanId(value: string): PlanId {
+  if ((PLAN_IDS as readonly string[]).includes(value)) return value as PlanId;
+  throw new DomainError("invalid_state", "This workspace has an unknown plan.", {
+    planId: value,
+  });
+}
 
 export interface PlanLimits {
   /** Precio mensual en centavos de USD. */

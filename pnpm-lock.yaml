@@ -289,6 +289,9 @@ importers:
       '@fastgram/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@fastgram/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@fastgram/core':
         specifier: workspace:*
         version: link:../../packages/core

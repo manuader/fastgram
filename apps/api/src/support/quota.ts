@@ -31,12 +31,9 @@
 import {
   billingPeriodKey,
   consumeSave,
-  DomainError,
   nextBillingResetUtc,
+  parsePlanId,
   PLANS,
-  PLAN_IDS,
-  refundSave,
-  type PlanId,
   type SaveBucket,
   type SavesLedger,
 } from "@fastgram/core";
@@ -76,7 +73,7 @@ export async function consumeContentSave(
     );
   }
 
-  const plan = asPlanId(company.planId);
+  const plan = parsePlanId(company.planId);
   const now = new Date(clock.nowMs());
   const period = billingPeriodKey(now, company.billingAnchorDay);
 
@@ -111,63 +108,8 @@ export async function consumeContentSave(
 }
 
 /**
- * Devuelve un save al bucket del que salió — `FR-050`.
- *
- * Quien llama es responsable de no llamarlo dos veces por el mismo cargo: esa
- * guarda es `contents.saveRefundedAt`, y la base la sostiene con un CHECK que
- * impide marcar un reembolso sobre una pieza que nunca se cobró.
- *
- * `period` es el del cobro, no el de hoy. Un build que falla en el ciclo
- * siguiente tiene que devolver el save **al período que lo cobró**; devolverlo
- * al actual le sumaría cupo de un mes que el cliente no pagó y dejaría el
- * anterior cobrado de más.
+ * **El reembolso no está acá.** Vive en `apps/worker/src/support/quota.ts`,
+ * porque quien reembolsa es el handler del build que falla, y este proceso no
+ * falla ningún build. Tenerlo de los dos lados habría sido la segunda copia de
+ * una regla de facturación: la que decide **a qué bucket** vuelve el save.
  */
-export async function refundContentSave(
-  tx: Transaction,
-  scope: TenantScope,
-  period: string,
-  bucket: SaveBucket,
-  clock: Clock,
-): Promise<void> {
-  const company = await companyRepository.billing(tx, scope);
-  if (company === null) return;
-
-  const plan = asPlanId(company.planId);
-  const now = new Date(clock.nowMs());
-
-  const fila = await quotaLedgerStore.lockPeriod(tx, scope, period, {
-    contentSavesIncluded: PLANS[plan].contentSaves ?? 0,
-  });
-
-  const despues = refundSave(
-    {
-      plan,
-      includedUsed: fila.contentSavesUsed,
-      purchasedRemaining: fila.contentSavesPurchased,
-      overageUsed: fila.overageUnits,
-      overageEnabled: company.apiOverageEnabled,
-      resetAt: nextBillingResetUtc(now, company.billingAnchorDay),
-    },
-    bucket,
-  );
-
-  await quotaLedgerStore.writeCounters(tx, scope, period, {
-    contentSavesUsed: despues.includedUsed,
-    contentSavesPurchased: despues.purchasedRemaining,
-    overageUnits: despues.overageUsed,
-  });
-}
-
-/**
- * `companies.planId` es `text` porque el PRD no define `Plan` como entidad.
- *
- * Un plan desconocido **no** cae a `free`: eso cobraría de menos o bloquearía
- * de más, en silencio y a un cliente real. Es un error de datos y tiene que
- * verse como tal.
- */
-function asPlanId(value: string): PlanId {
-  if ((PLAN_IDS as readonly string[]).includes(value)) return value as PlanId;
-  throw new DomainError("invalid_state", "This workspace has an unknown plan.", {
-    planId: value,
-  });
-}

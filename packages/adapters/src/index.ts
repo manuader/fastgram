@@ -3,6 +3,7 @@ export { systemRng, SeededRng } from "./rng/index.js";
 
 export { MemoryStorage } from "./storage/memory-storage.js";
 export { S3Storage, type S3StorageConfig } from "./storage/s3-storage.js";
+export { canonicalObjectUrl } from "./storage/canonical-url.js";
 
 export {
   StubJudgmentAdapter,

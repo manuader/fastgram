@@ -115,6 +115,20 @@ export interface JobContext<TPayload> {
   readonly payload: TPayload;
   /** Intento actual, empezando en 1. Un handler idempotente lo ignora. */
   readonly attempt: number;
+  /**
+   * Intentos totales que este job tiene. `attempt === maxAttempts` es el
+   * último: después de éste, la cola lo da por muerto y no vuelve a llamar.
+   *
+   * Está acá porque hay handlers que **tienen** que hacer algo distinto en el
+   * último intento, y el ejemplo es el build de contenido: un fallo transitorio
+   * se relanza para que la cola reintente, pero si se relanza también el
+   * último, la pieza se queda en `BUILDING` para siempre y el content save
+   * cobrado no se devuelve nunca (`FR-050`). Sin este dato, el consumidor
+   * tendría que volver a escribir el número de reintentos que eligió el
+   * productor — que es la clase de constante duplicada que se separa en
+   * silencio.
+   */
+  readonly maxAttempts: number;
 }
 
 export type JobHandler<TPayload> = (job: JobContext<TPayload>) => Promise<void>;

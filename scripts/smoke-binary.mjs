@@ -19,8 +19,20 @@
  * ## Qué asume
  *
  * `DATABASE_URL` apuntando a una base **ya migrada** (`pnpm --filter
- * @fastgram/db db:migrate`), y `apps/api` ya construido. No migra ni construye:
- * si lo hiciera, un fallo de migración se leería como un fallo del binario.
+ * @fastgram/db db:migrate`), y `apps/api` y `apps/worker` ya construidos. No
+ * migra ni construye: si lo hiciera, un fallo de migración se leería como un
+ * fallo del binario.
+ *
+ * ## Y el worker, porque encolar sin consumir no es un circuito
+ *
+ * Con la API sola, esto comprobaba que el job **quedaba** en la cola. Eso es la
+ * mitad: durante toda una tanda la pieza se creaba, se cobraba el content save
+ * y se encolaba, y del otro lado no había nadie — la pieza quedaba en
+ * `BUILDING` para siempre sin que nada fallara. Por eso ahora se levanta
+ * también `apps/worker/dist/main.js` y se espera a que la pieza llegue a
+ * `CREATED`. Es la única parte de este script que verifica que los **dos**
+ * procesos se entienden: el nombre de la cola, la forma del payload y los
+ * permisos del rol sobre el esquema de pg-boss.
  *
  * Correr: `node scripts/smoke-binary.mjs`
  */
@@ -110,7 +122,25 @@ const WALL_OF_TEXT = {
   },
 };
 
+/** Espera a que la pieza salga de `BUILDING`. Devuelve el estado final, o `null`. */
+async function esperarEstado(contentId, proc, salida) {
+  // 30 s: el render de memoria tarda milisegundos, así que lo que se está
+  // esperando de verdad es el polling de pg-boss, no el trabajo.
+  const limite = Date.now() + 30_000;
+  while (Date.now() < limite) {
+    if (proc.exitCode !== null) {
+      throw new Error(`el worker murió con código ${proc.exitCode}:\n${salida.join("")}`);
+    }
+    const [fila] = await sql`select status from contents where id = ${contentId}`;
+    if (fila !== undefined && fila.status !== "BUILDING") return fila.status;
+    await sleep(500);
+  }
+  const [fila] = await sql`select status from contents where id = ${contentId}`;
+  return fila?.status ?? null;
+}
+
 let proc;
+let worker;
 try {
   await sembrar();
 
@@ -172,16 +202,58 @@ try {
       "el job quedó encolado en pg-boss",
       `encontré ${filas[0]?.n ?? 0}`,
     );
+
+    // ── El worker, contra el mismo esquema de cola ──────────────────────────
+    //
+    // `QUEUE_MIGRATE` no se le pasa: el DDL ya lo hizo la API. Es a propósito y
+    // es lo que el worker hace en producción — dos procesos corriendo el mismo
+    // DDL al arrancar compiten por los mismos objetos.
+    worker = spawn(process.execPath, ["dist/main.js"], {
+      cwd: new URL("../apps/worker/", import.meta.url).pathname,
+      env: {
+        ...process.env,
+        DATABASE_URL,
+        DATABASE_APP_ROLE: process.env.DATABASE_APP_ROLE ?? "fastgram_app",
+        QUEUE_SCHEMA,
+        LOG_LEVEL: "warn",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const salidaWorker = [];
+    worker.stdout.on("data", (c) => salidaWorker.push(String(c)));
+    worker.stderr.on("data", (c) => salidaWorker.push(String(c)));
+
+    const estado = await esperarEstado(contentId, worker, salidaWorker);
+    check(
+      estado === "CREATED",
+      "el worker consumió el job y la pieza llegó a CREATED",
+      `quedó en ${estado ?? "sin fila"}:\n${salidaWorker.join("")}`,
+    );
+
+    const [pieza] = await sql`
+      select array_length(files, 1) as n, save_refunded_at
+      from contents where id = ${contentId}
+    `;
+    check((pieza?.n ?? 0) >= 1, "la pieza quedó con archivos", `tenía ${pieza?.n ?? 0}`);
+    // Un build que salió bien **no** devuelve el save. Si esto fallara, cada
+    // pieza construida regalaría cuota, y el único síntoma sería la factura.
+    check(
+      pieza?.save_refunded_at === null,
+      "un build exitoso NO devuelve el content save",
+      `save_refunded_at = ${String(pieza?.save_refunded_at)}`,
+    );
   } else {
     check(false, "el job quedó encolado en pg-boss", "no hubo contentId que buscar");
   }
 } catch (error) {
   fallos.push(String(error instanceof Error ? error.message : error));
 } finally {
-  if (proc !== undefined && proc.exitCode === null) {
-    proc.kill("SIGTERM");
-    await sleep(1500);
-    if (proc.exitCode === null) proc.kill("SIGKILL");
+  for (const p of [worker, proc]) {
+    if (p !== undefined && p.exitCode === null) {
+      p.kill("SIGTERM");
+      await sleep(1500);
+      if (p.exitCode === null) p.kill("SIGKILL");
+    }
   }
   await limpiar();
 }
@@ -196,4 +268,4 @@ if (fallos.length > 0) {
   );
   process.exit(1);
 }
-console.log(`\n✓ el binario compilado arranca, autentica, escribe y encola`);
+console.log(`\n✓ los binarios compilados arrancan: la API escribe y encola, el worker consume`);
