@@ -141,3 +141,64 @@ export function buildPage<T>(
 export function fetchLimit(limit: number): number {
   return limit + 1;
 }
+
+/**
+ * ## Paginación por página numerada
+ *
+ * PRD §9.10 pide las dos: *"Paginación por **cursor opaco** … Paginación por **página
+ * numerada** en la UI de pickers (`Page X of Y`)"*, y está marcada CONFIRMED. No es una
+ * alternativa al cursor: es para las listas donde el usuario ve los números y puede
+ * saltar a la página 7.
+ *
+ * Lo que cuesta es el `Y`: no hay forma de saber cuántas páginas hay sin un `COUNT(*)`
+ * sobre el conjunto filtrado, en cada request. Ésa es exactamente la razón por la que
+ * el resto de la API pagina por cursor — y por la que esto no debe usarse para listados
+ * grandes ni de scroll infinito.
+ */
+
+export interface OffsetPageRequest {
+  /** Número de página **base 1**: `Page X of Y` empieza en 1, no en 0. */
+  readonly page?: number;
+  /** 1–100. Default 20, igual que el cursor. */
+  readonly limit?: number;
+}
+
+export interface OffsetPage<T> {
+  readonly items: readonly T[];
+  readonly page: number;
+  readonly pageSize: number;
+  readonly totalItems: number;
+  /** El `Y` de `Page X of Y`. */
+  readonly totalPages: number;
+  readonly hasMore: boolean;
+}
+
+/** Acota la página a un entero ≥ 1. Una página inválida es la primera, no un error. */
+export function normalizePage(page?: number): number {
+  if (page === undefined || !Number.isFinite(page)) return 1;
+  const floored = Math.floor(page);
+  return floored < 1 ? 1 : floored;
+}
+
+export function offsetOf(page: number, limit: number): number {
+  return (page - 1) * limit;
+}
+
+export function buildOffsetPage<T>(
+  rows: readonly T[],
+  page: number,
+  pageSize: number,
+  totalItems: number,
+): OffsetPage<T> {
+  // Con cero resultados la UI muestra "Page 1 of 1" y una lista vacía; "Page 1 of 0"
+  // no es una posición que exista. Por eso el piso es 1 y no 0.
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  return {
+    items: rows,
+    page,
+    pageSize,
+    totalItems,
+    totalPages,
+    hasMore: page < totalPages,
+  };
+}

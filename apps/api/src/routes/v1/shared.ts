@@ -17,9 +17,13 @@ export const data = <T>(value: T): { data: T } => ({ data: value });
  * §9.3 — envelope paginado.
  *
  * El cursor es el de `@fastgram/db`, que es el que los repositorios saben decodificar.
- * `src/http/pagination.ts` implementa el mismo contrato con otro payload interno; usar
- * los dos pondría dos formatos de cursor incompatibles en el mismo wire, y el cliente
- * que guardara uno de la lista A no podría usarlo en la lista B.
+ * Hubo un segundo módulo acá (`src/http/pagination.ts`) que implementaba el mismo
+ * contrato con otro payload interno —`{createdAtMs, id}` en JSON contra `"<ISO>|<id>"`—
+ * y se borró en `P1-DATA-015`. No estaba en uso, pero seguía siendo un cursor
+ * plausible a un import de distancia, y el día que alguien lo usara en una lista, el
+ * cliente que guardara ese cursor no podría pasarlo a otra: los repositorios sólo
+ * decodifican el suyo. Dos formatos opacos en el mismo wire no se notan hasta que ya
+ * hay clientes con cursores guardados.
  */
 export function page<TRow, TOut>(
   p: Page<TRow>,

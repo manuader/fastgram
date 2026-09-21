@@ -11,6 +11,11 @@ catalog:
   vitest: ^2.1.8
   zod: ^3.24.1
   "@vitest/coverage-v8": ^2.1.8
+  # Drizzle y su driver cruzan `packages/db` y los tests de `packages/adapters`
+  # que prueban el encolado transaccional (ADR-005). Dos versiones distintas del
+  # mismo cliente harian que ese test midiera otra cosa que la que corre en prod.
+  drizzle-orm: ^0.38.2
+  postgres: ^3.4.5
 
 # Scripts de build permitidos. pnpm los bloquea por defecto y está bien: un
 # postinstall arbitrario es una vía de supply chain. Estos dos los necesitamos

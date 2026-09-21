@@ -7,6 +7,8 @@
  */
 
 export * from "./base";
+export * from "./catalog";
+export * from "./filters";
 export * from "./idempotency";
 
 import {
@@ -81,6 +83,9 @@ export const blitzPreferencesRepository = createCompanyScopedRepository({
   id: blitzPreferences.companyId,
   companyId: blitzPreferences.companyId,
   createdAt: blitzPreferences.createdAt,
+  // `PATCH /blitz/preferences` tiene que funcionar antes de que la fila exista: el
+  // workspace recién creado no tiene preferencias y el usuario igual abre el drawer.
+  upsertTarget: [blitzPreferences.companyId],
 });
 
 export const suggestionRepository = createCompanyScopedRepository({
@@ -104,6 +109,12 @@ export const contentTextBoxRepository = createCompanyScopedRepository({
   id: contentTextBoxes.id,
   companyId: contentTextBoxes.companyId,
   createdAt: contentTextBoxes.createdAt,
+  // PK compuesta `(contentId, id)`: el id de la caja (`slide-0-text-0`) sólo es único
+  // dentro de su contenido. Editar un contenido reescribe sus cajas, y el conflicto
+  // tiene que resolver por el par — por `id` solo chocaría con la caja homónima de
+  // otro contenido. El `companyId` **no** está en el target, así que acá el `setWhere`
+  // de `upsert` es lo único que impide escribir sobre la caja de otro workspace.
+  upsertTarget: [contentTextBoxes.contentId, contentTextBoxes.id],
 });
 
 /** `Media` tiene soft-delete (DATA-010). */
@@ -141,6 +152,9 @@ export const influencerConfigRepository = createCompanyScopedRepository({
   id: influencerConfigs.influencerId,
   companyId: influencerConfigs.companyId,
   createdAt: influencerConfigs.createdAt,
+  // 1:1 con el influencer. Igual que en las cajas de texto, `companyId` no está en el
+  // target y el aislamiento lo sostiene el `setWhere`.
+  upsertTarget: [influencerConfigs.influencerId],
 });
 
 export const connectionRepository = createCompanyScopedRepository({
@@ -162,6 +176,7 @@ export const warmedSlotBalanceRepository = createCompanyScopedRepository({
   id: warmedSlotBalances.companyId,
   companyId: warmedSlotBalances.companyId,
   createdAt: warmedSlotBalances.createdAt,
+  upsertTarget: [warmedSlotBalances.companyId],
 });
 
 export const replacementDecisionRepository = createCompanyScopedRepository({
@@ -206,6 +221,7 @@ export const banRiskAssessmentRepository = createCompanyScopedRepository({
   id: banRiskAssessments.companyId,
   companyId: banRiskAssessments.companyId,
   createdAt: banRiskAssessments.createdAt,
+  upsertTarget: [banRiskAssessments.companyId],
 });
 
 export const apiKeyRepository = createCompanyScopedRepository({
@@ -229,6 +245,9 @@ export const quotaLedgerRepository = createCompanyScopedRepository({
   id: quotaLedgers.period,
   companyId: quotaLedgers.companyId,
   createdAt: quotaLedgers.createdAt,
+  // La PK compuesta completa. `period` solo no es único y Postgres rechazaría el
+  // `ON CONFLICT`: es el caso que motiva que `upsertTarget` sea explícito.
+  upsertTarget: [quotaLedgers.companyId, quotaLedgers.period],
 });
 
 export const judgmentRecordRepository = createCompanyScopedRepository({

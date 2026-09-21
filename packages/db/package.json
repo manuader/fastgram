@@ -19,8 +19,8 @@
   },
   "dependencies": {
     "@fastgram/ports": "workspace:*",
-    "drizzle-orm": "^0.38.2",
-    "postgres": "^3.4.5"
+    "drizzle-orm": "catalog:",
+    "postgres": "catalog:"
   },
   "devDependencies": {
     "@fastgram/config": "workspace:*",
