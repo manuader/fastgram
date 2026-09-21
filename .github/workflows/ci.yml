@@ -47,6 +47,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: core no importa adapters, ports son puros, sin ciclos
         run: pnpm boundaries
+      - name: los números del PRD no divergen entre paquetes
+        run: pnpm consistency
 
   integration:
     name: integración (Postgres real)

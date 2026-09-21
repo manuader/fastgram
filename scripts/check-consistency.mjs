@@ -1,0 +1,140 @@
+#!/usr/bin/env node
+/**
+ * Consistencia entre paquetes — un chequeo que ningún paquete puede hacer solo.
+ *
+ * El PRD fija números y enumeraciones que terminan escritos en más de un lugar:
+ * el cap de 20 slides vive en `contracts` (validación de entrada), en `core`
+ * (invariante de dominio) y a veces en `db` (constraint). Cada uno lo escribe
+ * quien construye ese paquete, y nadie ve los tres a la vez.
+ *
+ * Si divergen, el síntoma es horrible de diagnosticar: la API acepta 25 slides,
+ * el dominio los rechaza, y el usuario ve un error genérico en una operación
+ * que el contrato decía soportar.
+ *
+ * Esto compara los valores donde están escritos. Es a propósito **tonto y
+ * explícito**: extrae por nombre y **falla si no encuentra** la constante, en
+ * vez de pasar en silencio. Un chequeo que puede no encontrar nada y decir que
+ * todo está bien es peor que no tenerlo.
+ *
+ * Correr: `node scripts/check-consistency.mjs`
+ */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const ROOT = new URL("..", import.meta.url).pathname;
+const problemas = [];
+const verificados = [];
+
+function leer(rel) {
+  try {
+    return readFileSync(join(ROOT, rel), "utf8");
+  } catch {
+    problemas.push(`no existe el archivo ${rel}`);
+    return null;
+  }
+}
+
+/** Extrae `NOMBRE = 123` o `nombre: 123`. Falla si no lo encuentra. */
+function numero(rel, nombre) {
+  const src = leer(rel);
+  if (src === null) return null;
+  const m =
+    src.match(new RegExp(`\\b${nombre}\\s*[=:]\\s*(\\d[\\d_]*)`)) ??
+    src.match(new RegExp(`\\b${nombre}\\b[^\\n]*?(\\d[\\d_]*)`));
+  if (!m) {
+    problemas.push(`no encontré \`${nombre}\` en ${rel} — ¿lo renombraron?`);
+    return null;
+  }
+  return Number(m[1].replace(/_/g, ""));
+}
+
+/** Extrae los literales de un array `NOMBRE = ["a", "b"]`. */
+function literales(rel, nombre) {
+  const src = leer(rel);
+  if (src === null) return null;
+  const m = src.match(new RegExp(`\\b${nombre}\\s*=\\s*(?:z\\.enum\\()?\\[([^\\]]+)\\]`));
+  if (!m) {
+    problemas.push(`no encontré la lista \`${nombre}\` en ${rel} — ¿la renombraron?`);
+    return null;
+  }
+  return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+}
+
+function mismoNumero(etiqueta, fuentes) {
+  const valores = fuentes.map(([rel, nombre]) => ({
+    rel,
+    nombre,
+    valor: numero(rel, nombre),
+  }));
+  if (valores.some((v) => v.valor === null)) return;
+  const distintos = [...new Set(valores.map((v) => v.valor))];
+  if (distintos.length > 1) {
+    problemas.push(
+      `${etiqueta} difiere entre paquetes:\n` +
+        valores.map((v) => `      ${v.rel} · ${v.nombre} = ${v.valor}`).join("\n"),
+    );
+  } else {
+    verificados.push(`${etiqueta} = ${distintos[0]} (${valores.length} lugares)`);
+  }
+}
+
+function mismaLista(etiqueta, fuentes) {
+  const valores = fuentes.map(([rel, nombre]) => ({
+    rel,
+    nombre,
+    valor: literales(rel, nombre),
+  }));
+  if (valores.some((v) => v.valor === null)) return;
+  const canon = valores.map((v) => JSON.stringify([...v.valor].sort()));
+  if (new Set(canon).size > 1) {
+    problemas.push(
+      `${etiqueta} difiere entre paquetes:\n` +
+        valores.map((v) => `      ${v.rel} · ${v.nombre} = ${v.valor.join(", ")}`).join("\n"),
+    );
+  } else {
+    verificados.push(`${etiqueta} = [${valores[0].valor.join(", ")}]`);
+  }
+}
+
+// ── Lo que se compara ──────────────────────────────────────────────────────
+// Agregá una entrada cada vez que un número del PRD quede escrito en dos
+// paquetes. Es más barato que descubrir la divergencia en producción.
+
+mismaLista("estados de Content (PRD DATA-008)", [
+  ["packages/db/src/schema/enums.ts", "CONTENT_STATUS"],
+  ["packages/contracts/src/primitives/enums.ts", "contentStatusSchema"],
+]);
+
+mismoNumero("slides por slideshow (PRD FR-070)", [
+  ["packages/core/src/quota/plans.ts", "slidesPerSlideshow"],
+]);
+
+mismoNumero("content angles por workspace (PRD FR-056)", [
+  ["packages/core/src/quota/plans.ts", "contentAngles"],
+]);
+
+mismoNumero("influencers activos por workspace (PRD FR-080)", [
+  ["packages/core/src/quota/plans.ts", "activeInfluencers"],
+]);
+
+mismoNumero("generaciones en vuelo (PRD FR-090)", [
+  ["packages/core/src/quota/plans.ts", "inFlightGenerations"],
+  ["apps/worker/src/jobs/catalog.ts", "concurrency"],
+]);
+
+// ── Informe ────────────────────────────────────────────────────────────────
+for (const v of verificados) console.log(`  ok  ${v}`);
+
+if (problemas.length > 0) {
+  const unicos = [...new Set(problemas)];
+  console.error(`\n✗ ${unicos.length} problema(s) de consistencia entre paquetes:\n`);
+  for (const p of [...new Set(problemas)]) console.error(`  · ${p}`);
+  console.error(
+    "\nUn número del PRD escrito en dos lugares con dos valores hace que la API\n" +
+      "acepte lo que el dominio rechaza, y el usuario ve un error genérico en una\n" +
+      "operación que el contrato decía soportar.\n",
+  );
+  process.exit(1);
+}
+
+console.log(`\n✓ ${verificados.length} invariantes consistentes entre paquetes`);

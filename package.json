@@ -18,7 +18,8 @@
     "format:check": "prettier --check .",
     "db:generate": "pnpm --filter @fastgram/db db:generate",
     "db:migrate": "pnpm --filter @fastgram/db db:migrate",
-    "verify": "pnpm lint && pnpm typecheck && pnpm boundaries && pnpm test"
+    "verify": "pnpm lint && pnpm typecheck && pnpm boundaries && pnpm consistency && pnpm test",
+    "consistency": "node scripts/check-consistency.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
