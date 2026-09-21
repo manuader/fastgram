@@ -78,6 +78,34 @@ El detalle está en `docs/IMPLEMENTATION-PLAN.md` §2. No lo repito acá para qu
 
 ## 4. Qué cambió, sesión por sesión
 
+### Sesión 2026-09-21 (tarde) — Escritura, los 16 endpoints, y tres cosas que no funcionaban
+
+**El desbloqueo.** Los 28 repositorios eran sólo lectura y `drizzle-orm` no es alcanzable
+desde `apps/api`, así que no había forma de implementar ninguna escritura: 16 endpoints
+bloqueados. `P1-DATA-014` agrega `create`/`update`/`upsert`/`hardDelete` y un **filtro
+declarativo** —data, no SQL— que es lo que le permite cruzar esa frontera. La propiedad que
+lo sostiene no es "acordate del scope": **`companyId` no está en el tipo de los valores**.
+
+**Los 16 endpoints**, con cuatro agentes en paralelo, un archivo de rutas cada uno. Detalle
+en `docs/SESSION-2026-09-21-escritura-y-endpoints.md`.
+
+**Tres cosas que no funcionaban y nadie lo sabía:**
+
+1. **Encolar dentro de la transacción de Drizzle no andaba.** Es la razón entera de `ADR-005`
+   y sólo se había probado contra el ejecutor interno de pg-boss, que corre sobre `pg`. Por la
+   vía real fallaban tres cosas distintas (trampa 18 y el commit `21a2e62`).
+2. **`fastgram_app` no podía encolar**: `permission denied for schema pgboss`. Las cuatro
+   rutas que encolan fallaban en producción y andaban en desarrollo. Tercera aparición de la
+   misma clase de bug — ver trampa 16.
+3. **`core` y el worker usaban nombres de cola distintos** (trampa 19).
+
+**Cuatro aserciones de contrato que no medían lo que prometían**, encontradas al ejecutar por
+primera vez las 37 que nunca habían corrido (trampa 20).
+
+**Y dos bugs de mi propio código anterior**: `canFinalize` fallaba **abierto** —un `committed`
+caía en `proceed`, o sea segundo cobro— y `createBuildingContent` devolvía un `revision: 0`
+que la base rechaza con su CHECK.
+
 ### Sesión 2026-09-21 — Del PRD al plan ejecutable
 
 Se cerró la investigación del producto original y se construyó todo el andamiaje de
@@ -177,26 +205,31 @@ pnpm verify           # lint · typecheck · boundaries · consistency · test
 |---|---|---|
 | `pnpm lint` | eslint una vez sobre todo el repo | **0 errores** |
 | `pnpm typecheck` | `tsc --noEmit` por paquete, 12 tareas | **12 successful** |
-| `pnpm boundaries` | las reglas de la arquitectura | **0 errores**, ~3 warnings de huérfanos · 366 módulos |
-| `pnpm consistency` | los números del PRD escritos en más de un paquete | **9 invariantes** |
-| `pnpm test` | unitarios | **1.229** |
+| `pnpm boundaries` | las reglas de la arquitectura | **0 errores**, ~3 warnings de huérfanos · 381 módulos |
+| `pnpm consistency` | los números del PRD escritos en más de un paquete | **16 invariantes** |
+| `pnpm test` | unitarios | **1.417** |
 
 Desglose de `pnpm test`, por si uno solo se cae:
 
 | Paquete | Tests | | Paquete | Tests |
 |---|---|---|---|---|
-| `core` | 391 | | `ui` | 170 |
-| `contracts` | 253 | | `adapters` | 153 |
-| `render-service` | 119 | | `api` | 65 |
-| `db` | 29 | | `web` | 22 |
+| `core` | 399 | | `adapters` | 266 |
+| `contracts` | 253 | | `ui` | 170 |
+| `render-service` | 119 | | `api` | 109 |
+| `db` | 52 | | `web` | 22 |
 | `worker` | 18 | | `config` | 9 |
 
 ### Lo que necesita servicios levantados
 
 ```bash
 docker compose up -d                       # Postgres con pgvector + MinIO con el bucket creado
-pnpm test:int                              # db 55 · api 22  → 77
+pnpm test:int                              # db 87 · api 38  → 125
+pnpm --filter @fastgram/adapters test:int  # 9 — encolado dentro de la transacción de Drizzle
 ```
+
+`packages/adapters` tiene su propio `test:int` y **no entra en el `pnpm test:int` de la
+raíz**: es el que prueba `ADR-005` por la vía real. Si lo salteás, la garantía que
+justifica toda la decisión de usar Postgres en vez de Redis queda sin medir.
 
 Las suites de contrato de `Storage` y `Queue` de `packages/adapters` corren dentro de
 `pnpm test` y **se saltean solas indicando el motivo en el nombre del caso** si los servicios
@@ -217,10 +250,10 @@ motor ausente, todo análisis devuelve `partial`: es lo que manda `AI-016`.
 ### Estado del backlog
 
 ```bash
-grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 81
+grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 89
 grep -c '^- \[~\]' tasks.md     # en curso o parciales — hoy: 7
 grep -c '^- \[!\]' tasks.md     # bloqueadas — hoy: 1
-grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 284
+grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 277
 ```
 
 ### Lo que `pnpm verify` NO mide
@@ -328,6 +361,46 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 284
 15. **`*/` dentro de un comentario de bloque lo cierra.** Escribir `` `*/upload-url` `` en un
     docstring produce un error de esbuild —*"Expected ';' but found 'POST'"*— apuntando a una
     línea de prosa.
+
+16. **«Funciona en desarrollo y no en producción» ya es una *clase*, no un incidente.** Van tres,
+    y las tres veces el mecanismo fue el mismo: en desarrollo la conexión es **superusuario** y
+    saltea RLS y privilegios, así que el camino roto se ve verde. Las tres:
+    `FORCE ROW LEVEL SECURITY` sobre `api_keys` (trampa 13), el `WHERE` que parecía aislar y sólo
+    aislaba porque nadie corría como `fastgram_app`, y ahora `permission denied for schema pgboss`
+    — que tiraba abajo **las cuatro rutas que encolan**.
+    **La regla que sale de esto:** todo test que verifique aislamiento o permisos corre con
+    `SET LOCAL ROLE fastgram_app`, y si no lo hace no está midiendo nada. Si escribís código que
+    toca un esquema nuevo, la pregunta no es "¿anda?": es "¿anda con el rol de la aplicación?".
+
+17. **Un `GRANT ON ALL TABLES` sobre un esquema vacío no falla: no hace nada.** Y esa es la peor
+    combinación posible en una migración. pg-boss crea sus tablas en otro proceso y **después**
+    del deploy, así que el grant tiene que ser `ALTER DEFAULT PRIVILEGES`, que aplica a lo que se
+    cree más adelante. Si alguien cambia `QUEUE_SCHEMA`, **hay que repetir los grants para el
+    esquema nuevo**: una migración SQL no se parametriza, y un grant sobre el esquema equivocado
+    tampoco falla.
+
+18. **`drizzle()` le cambia los serializadores al cliente que recibe.** Pone la identidad en los
+    tipos `json` y `jsonb` porque serializa por su cuenta — pero el cliente es **compartido**, así
+    que cualquier otro que inserte un objeto plano en una columna `jsonb` por esa conexión lo
+    manda crudo al protocolo y postgres.js muere con `ERR_INVALID_ARG_TYPE`. Es el caso del `data`
+    de un job de pg-boss. Y **no se puede autodetectar**: medido, el handle que `db.transaction()`
+    pasa al callback es una función **sin `.options`**. Por eso el puente se elige a mano
+    (`drizzleTransactionToExecutor`) y no hay una rama automática.
+
+19. **Un nombre de cola escrito de los dos lados ya divergió una vez.** `core` encolaba en
+    `build-content` y el catálogo del worker escuchaba `content-build`. El job entra en una cola
+    que nadie lee: el POST devuelve `201`, la pieza queda en `BUILDING` para siempre y **nunca
+    falla**, así que el save tampoco se reembolsa. No aparece en ningún log de errores. Ahora los
+    21 nombres salen de `JOB_QUEUES` y hay un invariante que lo verifica.
+
+20. **Una suite de contrato puede estar verde y no medir lo que promete.** La primera corrida de
+    las 37 aserciones que nunca se habían ejecutado encontró cuatro casos así: un `fingerprint es
+    puro` que comparaba dos llamadas sobre **la misma instancia** (un renderer con un `randomUUID()`
+    por instancia pasaba las diez aserciones); un caso llamado "trae permalink" que nunca miraba
+    `permalink`; una aserción de idempotencia de facturación **sin ninguna aserción**; y una
+    implicación al revés que hacía imposible declarar un tier. La lección operativa: cuando
+    escribas una suite de contrato, **rompé el adaptador a propósito** y confirmá que se pone
+    roja. Verde sin eso no significa nada.
 
 ## 8. Qué falta
 

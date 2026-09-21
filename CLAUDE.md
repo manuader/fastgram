@@ -30,6 +30,10 @@ cosas que son estado compartido mutable y tocarlas rompe a todos:
 | `git` | Commits entrelazados de trabajo a medio escribir. |
 | `tasks.md`, `PRD.md`, `docs/**` | Ediciones ciegas sobre el mismo archivo. |
 
+Y una que es del coordinador, no de los agentes: **nunca `git add -A` con agentes corriendo.**
+Se lleva archivos ajenos a medio escribir dentro de tus commits, y el historial queda diciendo
+que un commit de consistencia trae 600 líneas de un adaptador. Agregá rutas explícitas.
+
 Entonces, en paralelo:
 
 - **Vos** sos dueño de un directorio y de nada más. No marcás `tasks.md` ni escribís handoffs.

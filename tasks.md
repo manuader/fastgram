@@ -147,11 +147,12 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
   > 9 tests de integración en `packages/adapters/src/queue/pg-boss-transaction.int.test.ts`, por la vía real (Drizzle sobre postgres.js) y no por el ejecutor interno de pg-boss.
   > **Por esa vía no funcionaba.** Tres causas, todas medidas: (1) pg-boss deja parámetros `undefined` que postgres.js rechaza —arreglado adentro—; (2) `drizzle()` le pone la identidad a los serializadores de `jsonb` del cliente **compartido**, y el handle de la transacción no expone `.options`, así que no se puede autodetectar; (3) el bridge por defecto no reconocía el handle de Drizzle, que es el que `core` propaga.
   > (2) y (3) se resuelven con un puente **con nombre** que el cableado elige a mano: `drizzleTransactionToExecutor`.
-- [ ] **P1-QUEUE-007** **Verificar que `fastgram_app` puede encolar** dentro de `withCompany` · ⚠️ misma familia que la trampa 13
-  > El test de `P1-QUEUE-002` conecta como `fastgram` (el dueño). **Nadie comprobó que el rol de la aplicación tenga privilegios sobre el esquema de pg-boss.** Si le faltan, encolar dentro de `withCompany(..., { role: APP_ROLE })` falla con *permission denied* — y como el rol de desarrollo suele ser superusuario, en desarrollo andaría. Es lo primero que hay que probar al cablear el worker.
+- [x] **P1-QUEUE-007** **Verificar que `fastgram_app` puede encolar** dentro de `withCompany`
+  > **No podía.** `ERROR: permission denied for schema pgboss`, reproducido a mano. Las cuatro rutas que encolan fallaban en producción y andaban en desarrollo, que es la tercera vez que aparece esta clase de bug en el proyecto.
+  > Arreglado en la migración `0004_queue_grants.sql`, con `ALTER DEFAULT PRIVILEGES` y no `GRANT ON ALL TABLES`: pg-boss crea sus tablas después y en otro proceso, así que un grant sobre "todas" no encontraría ninguna y **no fallaría**. 4 tests, verificados rompiendo el `ALTER`.
 - [x] **P1-QUEUE-003** Estado de job consultable + contrato de polling de ~10 s · `NFR-002`, `ADR-014`
 - [x] **P1-QUEUE-004** Reintentos con backoff y dead-letter queue
-- [~] **P1-QUEUE-005** Idempotencia: `Idempotency-Key`, replay de respuesta, `409` con body distinto, liberación al fallar · `NFR-004` · **parcial:** la política de idempotencia está en `apps/api/src/http/idempotency.ts` con 8 tests; falta cablearla a las rutas
+- [~] **P1-QUEUE-005** Idempotencia: `Idempotency-Key`, replay de respuesta, `409` con body distinto, liberación al fallar · `NFR-004` · **parcial:** cableada a las cuatro rutas que §9.3 exige (`POST /content`, `PATCH /content/:id`, `POST /content/:id/regenerate`, `POST /influencers`); **el replay nunca se ejerció de punta a punta** — no hay test que haga dos peticiones con la misma key contra la base
 - [x] **P1-QUEUE-006** Scaffold del `apps/worker`
 
 ## P1-STORAGE — Objetos y subidas
@@ -322,11 +323,12 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P2-CONTENT-001** `DATA-008` + `DATA-009` + ciclo `BUILDING → CREATED|FAILED` · `FR-050`
 - [x] **P2-CONTENT-002** Concurrencia optimista por `revision`; `409 stale_revision` · `FR-051`
 - [x] **P2-CONTENT-003** Edición menor: **no** crea fila, **no** consume save, **no** factura · `FR-051`
-- [ ] **P2-CONTENT-004** Regeneración de copy preservando estructura y nº de slides · `AI-004`
-- [ ] **P2-CONTENT-005** Todas las validaciones de rango de `FR-051`
-- [ ] **P2-CONTENT-006** Borrado: soft-delete + `409 content_has_linked_posts` (cancelar no basta) · `FR-051`
-- [ ] **P2-CONTENT-007** `409 content_still_building` con la ventana de 15 min · `ERR-P02`
-- [ ] **P2-CONTENT-008** `buildPayload` y `studioState` **nunca** salen por la API · `DATA-008`
+- [~] **P2-CONTENT-004** Regeneración de copy preservando estructura y nº de slides · `AI-004` · **parcial:** `POST /content/:id/regenerate` valida, sube la revisión y encola; el modelo lo llama el worker, que no existe
+- [x] **P2-CONTENT-005** Todas las validaciones de rango de `FR-051`
+- [~] **P2-CONTENT-006** Borrado: soft-delete + `409 content_has_linked_posts` (cancelar no basta) · `FR-051` · **parcial:** el 409 está en `PATCH`; el `DELETE` no lo comprueba
+- [x] **P2-CONTENT-007** `409 content_still_building` con la ventana de 15 min · `ERR-P02`
+- [x] **P2-CONTENT-008** `buildPayload` y `studioState` **nunca** salen por la API · `DATA-008`
+  > No es una omisión que haya que recordar: el tipo de retorno del serializador es explícito, así que agregarlos sería un error de compilación.
 
 ## P2-BLITZ — Blitz
 
