@@ -38,7 +38,11 @@ const created = (over: Partial<Content> = {}): Content => ({
       companyId: "co_1",
       type: "slideshow",
       saveBucket: "included",
-      textBoxes: [box("slide-0-text-0", 0), box("slide-1-text-0", 1), box("slide-2-text-0", 2)],
+      textBoxes: [
+        box("slide-0-text-0", 0),
+        box("slide-1-text-0", 1),
+        box("slide-2-text-0", 2),
+      ],
       slideCount: 3,
     }),
     { files: ["0.jpg", "1.jpg", "2.jpg"], thumbnailUrl: "t.jpg" },
@@ -74,14 +78,24 @@ describe("edición menor — no crea fila, no consume save, no factura (FR-051)"
   });
 
   it("conserva los archivos: durante el rebuild la versión previa sigue usable", () => {
-    const out = applyMinorEdit(created(), 0, [{ id: "slide-0-text-0", color: "#FF0000" }], NOW);
+    const out = applyMinorEdit(
+      created(),
+      0,
+      [{ id: "slide-0-text-0", color: "#FF0000" }],
+      NOW,
+    );
     expect(out.content.status).toBe("BUILDING");
     expect(out.content.files).toEqual(["0.jpg", "1.jpg", "2.jpg"]);
     expect(out.content.editInProgress).toBe(true);
   });
 
   it("dos ediciones seguidas llevan la revision a 2, con un solo id", () => {
-    const first = applyMinorEdit(created(), 0, [{ id: "slide-0-text-0", text: "a" }], NOW);
+    const first = applyMinorEdit(
+      created(),
+      0,
+      [{ id: "slide-0-text-0", text: "a" }],
+      NOW,
+    );
     const ready = markEditRebuildSucceeded(first.content, ["0.jpg"], undefined, NOW);
     const second = applyMinorEdit(ready, 1, [{ id: "slide-0-text-0", text: "b" }], NOW);
     expect(second.content.revision).toBe(2);
@@ -136,9 +150,7 @@ describe("cuándo NO se puede editar (FR-051, edge cases)", () => {
     try {
       assertContentEditable(c);
     } catch (e) {
-      expect((e as DomainError).details?.code).toBe(
-        CONTENT_ERROR_CODES.unsupportedState,
-      );
+      expect((e as DomainError).details?.code).toBe(CONTENT_ERROR_CODES.unsupportedState);
     }
   });
 
@@ -147,9 +159,7 @@ describe("cuándo NO se puede editar (FR-051, edge cases)", () => {
       assertContentEditable(created({ status: "FAILED" }));
       expect.unreachable("tenía que lanzar");
     } catch (e) {
-      expect((e as DomainError).details?.code).toBe(
-        CONTENT_ERROR_CODES.unsupportedState,
-      );
+      expect((e as DomainError).details?.code).toBe(CONTENT_ERROR_CODES.unsupportedState);
     }
   });
 
@@ -329,9 +339,9 @@ describe("Regenerate Text preserva estructura y número de slides (FR-051, crite
 
   it("devolver MENOS cajas de las que hay es un error, no un recorte", () => {
     // Si se aceptara, el render se queda sin qué poner en dos superficies.
-    expect(() =>
-      applyRegeneratedCopy(created(), 0, fullCopy.slice(0, 2), NOW),
-    ).toThrow(DomainError);
+    expect(() => applyRegeneratedCopy(created(), 0, fullCopy.slice(0, 2), NOW)).toThrow(
+      DomainError,
+    );
   });
 
   it("devolver una caja de MÁS es un error, no un añadido", () => {
@@ -347,12 +357,7 @@ describe("Regenerate Text preserva estructura y número de slides (FR-051, crite
 
   it("devolver la misma caja dos veces es un error", () => {
     expect(() =>
-      applyRegeneratedCopy(
-        created(),
-        0,
-        [fullCopy[0]!, fullCopy[1]!, fullCopy[1]!],
-        NOW,
-      ),
+      applyRegeneratedCopy(created(), 0, [fullCopy[0]!, fullCopy[1]!, fullCopy[1]!], NOW),
     ).toThrow(DomainError);
   });
 
@@ -361,11 +366,7 @@ describe("Regenerate Text preserva estructura y número de slides (FR-051, crite
       applyRegeneratedCopy(
         created(),
         0,
-        [
-          { boxId: "slide-0-text-0", text: "a".repeat(5001) },
-          fullCopy[1]!,
-          fullCopy[2]!,
-        ],
+        [{ boxId: "slide-0-text-0", text: "a".repeat(5001) }, fullCopy[1]!, fullCopy[2]!],
         NOW,
       ),
     ).toThrow(DomainError);
@@ -378,7 +379,12 @@ describe("Regenerate Text preserva estructura y número de slides (FR-051, crite
 
 describe("si el rebuild de una edición falla, la versión previa sigue usable", () => {
   it("vuelve a CREATED con sus archivos viejos y reporta lastEdit fallido", () => {
-    const edited = applyMinorEdit(created(), 0, [{ id: "slide-0-text-0", text: "x" }], NOW);
+    const edited = applyMinorEdit(
+      created(),
+      0,
+      [{ id: "slide-0-text-0", text: "x" }],
+      NOW,
+    );
     const out = markEditRebuildFailed(edited.content, "render_timeout", NOW);
 
     expect(out.status).toBe("CREATED");
@@ -393,13 +399,23 @@ describe("si el rebuild de una edición falla, la versión previa sigue usable",
   });
 
   it("NO reembolsa el save: ese se cobró por el build original, que salió bien", () => {
-    const edited = applyMinorEdit(created(), 0, [{ id: "slide-0-text-0", text: "x" }], NOW);
+    const edited = applyMinorEdit(
+      created(),
+      0,
+      [{ id: "slide-0-text-0", text: "x" }],
+      NOW,
+    );
     const out = markEditRebuildFailed(edited.content, "render_timeout", NOW);
     expect(out.saveRefundedAt).toBeUndefined();
   });
 
   it("un rebuild exitoso reemplaza los archivos y libera la edición", () => {
-    const edited = applyMinorEdit(created(), 0, [{ id: "slide-0-text-0", text: "x" }], NOW);
+    const edited = applyMinorEdit(
+      created(),
+      0,
+      [{ id: "slide-0-text-0", text: "x" }],
+      NOW,
+    );
     const out = markEditRebuildSucceeded(edited.content, ["n0.jpg"], "nt.jpg", NOW);
     expect(out.status).toBe("CREATED");
     expect(out.files).toEqual(["n0.jpg"]);

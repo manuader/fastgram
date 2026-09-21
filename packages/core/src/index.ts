@@ -19,3 +19,6 @@ export * from "./brand/acquisition.js";
 export * from "./brand/brand-source.js";
 export * from "./brand/synthesis.js";
 export * from "./onboarding/onboarding.js";
+export * from "./discovery/blitz-preferences.js";
+export * from "./discovery/plan-suggestion.js";
+export * from "./scheduling/schedule-post.js";

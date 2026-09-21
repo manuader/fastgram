@@ -58,9 +58,7 @@ describe("NUNCA INVENTAR — un campo sin señal queda vacío (AI-016)", () => {
   });
 
   it("las dos preguntas literales del PRD están tal cual", () => {
-    expect(GAP_QUESTIONS.productOffering).toBe(
-      "In one line: what do you actually sell?",
-    );
+    expect(GAP_QUESTIONS.productOffering).toBe("In one line: what do you actually sell?");
     expect(GAP_QUESTIONS.problemSolution).toBe(
       "What problem does someone have right before they find you?",
     );
@@ -178,12 +176,12 @@ describe("precedencia de fusión (FR-011.6)", () => {
       sourceType: "tiktok",
     });
     expect(
-      mergeFieldCandidates("coreIdentity", [ig, tt], { primarySourceId: "bs_tt" })
-        .field.value,
+      mergeFieldCandidates("coreIdentity", [ig, tt], { primarySourceId: "bs_tt" }).field
+        .value,
     ).toBe("desde tiktok");
     expect(
-      mergeFieldCandidates("coreIdentity", [ig, tt], { primarySourceId: "bs_ig" })
-        .field.value,
+      mergeFieldCandidates("coreIdentity", [ig, tt], { primarySourceId: "bs_ig" }).field
+        .value,
     ).toBe("desde instagram");
   });
 

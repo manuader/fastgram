@@ -55,9 +55,7 @@ export interface AcquisitionContext {
  * Una lista sin D sería una lista que puede terminar sin ningún resultado, y
  * el PRD es explícito en que ningún fallo de lectura bloquea el alta.
  */
-export function acquisitionPlan(
-  context: AcquisitionContext,
-): readonly AcquisitionTier[] {
+export function acquisitionPlan(context: AcquisitionContext): readonly AcquisitionTier[] {
   const plan: AcquisitionTier[] = [];
 
   // Caso especial: la plataforma no expone nada en público. Intentar B y C
@@ -87,11 +85,7 @@ export function acquisitionPlan(
  * `ok` es el único que corta la escalada.
  */
 export type AcquisitionOutcome =
-  | "ok"
-  | "not_found"
-  | "private"
-  | "insufficient_content"
-  | "unavailable";
+  "ok" | "not_found" | "private" | "insufficient_content" | "unavailable";
 
 export interface AcquisitionStep {
   readonly tier: AcquisitionTier;

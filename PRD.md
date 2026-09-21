@@ -819,6 +819,8 @@ Formato: `ID · nombre · descripción · objetivo · módulo · entry point · 
 - Un `@handle` sin dominio es ambiguo: la UI muestra un desambiguador con las plataformas soportadas y **preselecciona la que el usuario ya tenga conectada por OAuth**, si la hay.
 - Un enlace a un **post concreto** (no a un perfil) se resuelve al perfil de su autor y se avisa: `We'll analyse the whole @<handle> profile, not just that post.`
 - Si el host no se reconoce, el `sourceType` es `other_url` y se procesa con el mismo extractor que `website`.
+  > **Aclaración (2026-09-21, al implementar la detección).** La tabla de arriba define `website` como "URL http(s)", lo que se lee como que **toda** URL http(s) es `website`; esta regla dice que un host no reconocido es `other_url`. Se contradicen. **Gana esta regla**, que es la normativa explícita: la detección automática devuelve `other_url` para cualquier host que no se reconozca.
+  > Para que el camino de web siga siendo idéntico al de Fastlane, el chip `Website` de `FR-011.2` y el campo legacy `Company Website` pasan un **hint** que fuerza `website`. No es cosmético: la precedencia de fusión de `FR-011.6` pone `website` primero y `other_url` penúltimo, así que confundirlos cambia qué fuente gana un conflicto.
 
 ### FR-011.2 — UI
 
@@ -1114,6 +1116,7 @@ Owner y member pueden añadir y re-analizar fuentes. Sólo el owner puede elimin
 - Rechazar **no** consume cuota (INFERRED: sólo el endpoint de aceptación aparece como facturable).
 - La cola se rellena sola en background hasta ~5 items; puede exceder transitoriamente por refills concurrentes. SUPPORTED `[DEV]`
 - La operación **no es idempotente**: nunca reintentar automáticamente un timeout o 5xx. SUPPORTED `[DEV]`
+  > **Aclaración (2026-09-21, al implementarla).** Parece chocar con `NFR-004` (*"toda operación facturable acepta `Idempotency-Key`"*), y aceptar una sugerencia **es** facturable. No chocan, y la diferencia importa: `NFR-004` dice que la operación **acepta** la key, y `NFR-005` dice que el cliente **no debe reintentar solo**. O sea: **sin** key no es idempotente y reintentar a ciegas cobra dos saves; **con** key sí lo es. Por eso la key es **opcional** acá, y obligatoria en los cuatro endpoints que lista §9.3. Nótese que `POST /blitz` **no** está en esa lista.
 
 **Data.** Lee `Suggestion` de la cola y el Company Profile. Crea `Content`. Opcionalmente crea `Post`. Actualiza contadores de cuota.
 

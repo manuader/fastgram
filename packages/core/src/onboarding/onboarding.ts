@@ -47,8 +47,7 @@ export const ONBOARDING_MESSAGES = {
   companyNameTooShort: "Company name must be at least 2 characters",
   answerTooLong: "Each answer is limited to 4,000 characters.",
   incompleteDetails: "Add your company details before finishing setup.",
-  workspaceLimit:
-    "You've reached your workspace creation limit. Please try again later.",
+  workspaceLimit: "You've reached your workspace creation limit. Please try again later.",
   analysisFailed: "Your company profile needs support before setup can finish.",
 } as const;
 

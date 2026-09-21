@@ -25,11 +25,7 @@
  */
 import { DomainError, crossTenantAsNotFound } from "../errors.js";
 import { HARD_CAPS } from "../quota/plans.js";
-import {
-  type SaveBucket,
-  type SavesLedger,
-  refundSave,
-} from "../quota/content-saves.js";
+import { type SaveBucket, type SavesLedger, refundSave } from "../quota/content-saves.js";
 import { TEXT_BOX_LIMITS, type ContentTextBox } from "./text-boxes.js";
 
 /** `DATA-008.type`. `custom` es el de `POST /content/custom/video`. */
@@ -155,11 +151,10 @@ export function assertValidBlitzRequest(request: {
   if (request.aspectRatio === undefined) return;
 
   if (request.contentType !== "slideshow") {
-    throw new DomainError(
-      "out_of_range",
-      "Aspect ratio only applies to slideshows.",
-      { contentType: request.contentType, aspectRatio: request.aspectRatio },
-    );
+    throw new DomainError("out_of_range", "Aspect ratio only applies to slideshows.", {
+      contentType: request.contentType,
+      aspectRatio: request.aspectRatio,
+    });
   }
   if (!(ASPECT_RATIOS as readonly string[]).includes(request.aspectRatio)) {
     throw new DomainError("out_of_range", "That aspect ratio isn't available.", {
@@ -204,7 +199,9 @@ export function assertValidSlideCount(type: ContentType, slideCount: number): vo
  */
 export function resolveInfluencerForType(
   type: BlitzContentType,
-  influencer: { readonly id: string; readonly isActive: boolean; readonly isTrained: boolean } | undefined,
+  influencer:
+    | { readonly id: string; readonly isActive: boolean; readonly isTrained: boolean }
+    | undefined,
 ): string | undefined {
   if (type === "green-screen") return undefined;
   if (influencer === undefined) return undefined;
@@ -305,11 +302,10 @@ export interface BuildResult {
 /** `BUILDING → CREATED`. */
 export function markBuildSucceeded(content: Content, result: BuildResult): Content {
   if (content.status !== "BUILDING") {
-    throw new DomainError(
-      "invalid_state",
-      "Only a building piece can finish building.",
-      { contentId: content.id, status: content.status },
-    );
+    throw new DomainError("invalid_state", "Only a building piece can finish building.", {
+      contentId: content.id,
+      status: content.status,
+    });
   }
   if (result.files.length === 0) {
     throw new DomainError("invalid_state", "A finished build must produce files.", {

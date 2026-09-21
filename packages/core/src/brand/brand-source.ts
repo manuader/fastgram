@@ -47,8 +47,7 @@ export const BRAND_SOURCE_FAILURE_REASONS = [
   "unsupported_platform",
   "already_registered",
 ] as const;
-export type BrandSourceFailureReason =
-  (typeof BRAND_SOURCE_FAILURE_REASONS)[number];
+export type BrandSourceFailureReason = (typeof BRAND_SOURCE_FAILURE_REASONS)[number];
 
 /** `DATA-031`: `stale` a los 90 días. */
 export const STALE_AFTER_DAYS = 90;

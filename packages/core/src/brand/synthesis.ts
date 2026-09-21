@@ -158,9 +158,7 @@ export function materializeField(derived: DerivedField): MaterializedField {
 
 /** Los campos que el alta tiene que preguntar, en el paso de detalles. */
 export function gapQuestions(fields: readonly MaterializedField[]): readonly string[] {
-  return fields
-    .filter((f) => f.question !== null)
-    .map((f) => f.question as string);
+  return fields.filter((f) => f.question !== null).map((f) => f.question as string);
 }
 
 /**

@@ -103,7 +103,11 @@ describe("el resto del wizard es IDÉNTICO sea cual sea el origen (criterio 7)",
     };
 
     const web = run([
-      { sourceType: "website", handle: "miproducto.com", canonicalUrl: "https://miproducto.com" },
+      {
+        sourceType: "website",
+        handle: "miproducto.com",
+        canonicalUrl: "https://miproducto.com",
+      },
     ]);
     const social = run([instagramSource()]);
     expect(web).toEqual(social);
@@ -178,7 +182,9 @@ describe("Company details (FR-010, copy literal)", () => {
       assertValidCompanyDetails({ ...details, description: "a".repeat(4001) });
       expect.unreachable("tenía que lanzar");
     } catch (e) {
-      expect((e as DomainError).message).toBe("Each answer is limited to 4,000 characters.");
+      expect((e as DomainError).message).toBe(
+        "Each answer is limited to 4,000 characters.",
+      );
     }
   });
 });

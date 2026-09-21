@@ -265,6 +265,12 @@ export async function acceptBlitzSuggestionUseCase(
       now,
     });
     if (decision.kind === "replay") {
+      // `responseSnapshot` es `unknown` porque el repositorio lo guardó como
+      // JSON y el dominio no puede probar su forma. El `as` es el único de
+      // este archivo y está acotado a eso: quien deserializa es el adaptador,
+      // y si algún día cambia la forma de la respuesta, el snapshot viejo se
+      // devuelve tal cual —que es lo correcto: la idempotencia promete
+      // **aquella** respuesta, no una traducida a la versión de hoy.
       return {
         ...(decision.response as Omit<AcceptBlitzSuggestionOutput, "replayed">),
         replayed: true,

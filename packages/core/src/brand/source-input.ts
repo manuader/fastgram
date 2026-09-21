@@ -91,10 +91,7 @@ export interface UnrecognizedInput {
 }
 
 export type BrandSourceDetection =
-  | ResolvedInput
-  | AmbiguousInput
-  | NeedsLookupInput
-  | UnrecognizedInput;
+  ResolvedInput | AmbiguousInput | NeedsLookupInput | UnrecognizedInput;
 
 // ───────────────────────────────────────────────────────────────────────────
 // SSRF — FR-010 (copy literal) y FR-011.9
@@ -297,10 +294,7 @@ function isSocial(t: CoreBrandSourceType): t is SocialSourceType {
  * no participa de la unicidad —ésa es `(sourceType, handle)` por `DATA-031`—,
  * así que sólo tiene que ser estable y presentable.
  */
-export function canonicalSocialUrl(
-  sourceType: SocialSourceType,
-  handle: string,
-): string {
+export function canonicalSocialUrl(sourceType: SocialSourceType, handle: string): string {
   switch (sourceType) {
     case "instagram":
       return `https://instagram.com/${handle}`;
@@ -431,7 +425,8 @@ function detectYouTube(
   if ((first === "channel" || first === "c" || first === "user") && path[1]) {
     // Los ids de canal (`UCxxxx`) **son sensibles a mayúsculas**: pasarlos a
     // minúsculas produce un id que no existe. Sólo se normaliza el `@handle`.
-    const handle = first === "channel" ? `channel/${path[1]}` : `c/${path[1].toLowerCase()}`;
+    const handle =
+      first === "channel" ? `channel/${path[1]}` : `c/${path[1].toLowerCase()}`;
     return {
       kind: "resolved",
       sourceType: "youtube",

@@ -19,11 +19,7 @@
  * que permite que el test afirme la regla en vez de afirmar la implementación.
  */
 import { DomainError } from "../errors.js";
-import {
-  CONTENT_ERROR_CODES,
-  type Content,
-  type ContentLastEdit,
-} from "./content.js";
+import { CONTENT_ERROR_CODES, type Content, type ContentLastEdit } from "./content.js";
 import {
   assertNoUnknownFields,
   assertValidTextBoxes,
@@ -134,11 +130,10 @@ export function assertContentEditable(content: Content): void {
   }
 
   if (content.editInProgress) {
-    throw new DomainError(
-      "conflict",
-      "There's already an edit running on this piece.",
-      { code: CONTENT_ERROR_CODES.editInProgress, contentId: content.id },
-    );
+    throw new DomainError("conflict", "There's already an edit running on this piece.", {
+      code: CONTENT_ERROR_CODES.editInProgress,
+      contentId: content.id,
+    });
   }
 
   // "cancelar no basta, hay que borrarlos" — el PRD es explícito. Un post

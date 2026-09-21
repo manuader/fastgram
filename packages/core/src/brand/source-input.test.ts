@@ -28,7 +28,11 @@ describe("detección de plataforma — FR-011.1", () => {
   });
 
   it("x.com y twitter.com se normalizan AMBOS a x", () => {
-    for (const input of ["x.com/mimarca", "twitter.com/mimarca", "mobile.twitter.com/mimarca"]) {
+    for (const input of [
+      "x.com/mimarca",
+      "twitter.com/mimarca",
+      "mobile.twitter.com/mimarca",
+    ]) {
       const d = resolved(detectBrandSource(input));
       expect(d.sourceType, input).toBe("x");
       expect(d.handle, input).toBe("mimarca");
@@ -65,9 +69,7 @@ describe("detección de plataforma — FR-011.1", () => {
 
   it("un host desconocido es other_url; con la pista del chip Website es website", () => {
     // La ambigüedad del PRD, resuelta: ver la nota en `detectBrandSource`.
-    expect(resolved(detectBrandSource("miproducto.com/es")).sourceType).toBe(
-      "other_url",
-    );
+    expect(resolved(detectBrandSource("miproducto.com/es")).sourceType).toBe("other_url");
     expect(
       resolved(detectBrandSource("miproducto.com/es", { hint: "website" })).sourceType,
     ).toBe("website");

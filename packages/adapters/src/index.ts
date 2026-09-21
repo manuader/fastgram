@@ -38,3 +38,9 @@ export {
   type OcrBytesPublisher,
   type VisionOcrConfig,
 } from "./ocr/vision-ocr.js";
+
+export {
+  MemoryIdentity,
+  type MemoryIdentityOptions,
+  type MemoryIdentitySeedUser,
+} from "./identity/memory-identity.js";

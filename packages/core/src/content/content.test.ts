@@ -72,9 +72,7 @@ describe("cajas de texto — rangos literales de FR-051 y DATA-009", () => {
       assertValidTextBoxes([box({ text: "a".repeat(TEXT_BOX_LIMITS.textMaxChars) })]),
     ).not.toThrow();
     expect(() =>
-      assertValidTextBoxes([
-        box({ text: "a".repeat(TEXT_BOX_LIMITS.textMaxChars + 1) }),
-      ]),
+      assertValidTextBoxes([box({ text: "a".repeat(TEXT_BOX_LIMITS.textMaxChars + 1) })]),
     ).toThrow(DomainError);
   });
 
@@ -93,12 +91,8 @@ describe("cajas de texto — rangos literales de FR-051 y DATA-009", () => {
   it("widthPercent vive en [25, 100] — 24 es el error clásico", () => {
     expect(() => assertValidTextBoxes([box({ widthPercent: 25 })])).not.toThrow();
     expect(() => assertValidTextBoxes([box({ widthPercent: 100 })])).not.toThrow();
-    expect(() => assertValidTextBoxes([box({ widthPercent: 24 })])).toThrow(
-      DomainError,
-    );
-    expect(() => assertValidTextBoxes([box({ widthPercent: 101 })])).toThrow(
-      DomainError,
-    );
+    expect(() => assertValidTextBoxes([box({ widthPercent: 24 })])).toThrow(DomainError);
+    expect(() => assertValidTextBoxes([box({ widthPercent: 101 })])).toThrow(DomainError);
   });
 
   it("font.size vive en [8, 72]", () => {
@@ -129,9 +123,9 @@ describe("cajas de texto — rangos literales de FR-051 y DATA-009", () => {
   it("los colores son #RRGGBB y nada más", () => {
     expect(() => assertValidTextBoxes([box({ color: "#fff" })])).toThrow(DomainError);
     expect(() => assertValidTextBoxes([box({ color: "white" })])).toThrow(DomainError);
-    expect(() =>
-      assertValidTextBoxes([box({ color: "rgba(255,255,255,1)" })]),
-    ).toThrow(DomainError);
+    expect(() => assertValidTextBoxes([box({ color: "rgba(255,255,255,1)" })])).toThrow(
+      DomainError,
+    );
     expect(() => assertValidTextBoxes([box({ color: "#AaBbCc" })])).not.toThrow();
   });
 
@@ -169,7 +163,14 @@ describe("cajas de texto — rangos literales de FR-051 y DATA-009", () => {
 
 describe("familias tipográficas — la tabla NO es uniforme (FR-051)", () => {
   it("las seis primeras aceptan 300–700 en pasos de 100", () => {
-    for (const family of ["tiktok", "snapchat", "montserrat", "poppins", "inter", "oswald"] as const) {
+    for (const family of [
+      "tiktok",
+      "snapchat",
+      "montserrat",
+      "poppins",
+      "inter",
+      "oswald",
+    ] as const) {
       expect(FONT_WEIGHTS[family]).toEqual([300, 400, 500, 600, 700]);
       for (const weight of [300, 400, 500, 600, 700]) {
         expect(() =>
@@ -249,9 +250,7 @@ describe("assertValidBlitzRequest — FR-050", () => {
     ]) {
       expect(() => assertValidBlitzRequest({ contentType })).not.toThrow();
     }
-    expect(() => assertValidBlitzRequest({ contentType: "custom" })).toThrow(
-      DomainError,
-    );
+    expect(() => assertValidBlitzRequest({ contentType: "custom" })).toThrow(DomainError);
     expect(() => assertValidBlitzRequest({ contentType: "carousel" })).toThrow(
       DomainError,
     );

@@ -93,12 +93,14 @@ interface Harness {
   readonly records: Map<string, IdempotencyRecord>;
 }
 
-function harness(options: {
-  suggestion?: Suggestion | null | undefined;
-  quota?: BlitzQuotaSnapshot | undefined;
-  queueFails?: boolean | undefined;
-  seedRecord?: IdempotencyRecord | undefined;
-} = {}): Harness {
+function harness(
+  options: {
+    suggestion?: Suggestion | null | undefined;
+    quota?: BlitzQuotaSnapshot | undefined;
+    queueFails?: boolean | undefined;
+    seedRecord?: IdempotencyRecord | undefined;
+  } = {},
+): Harness {
   const trace: Trace[] = [];
   const enqueued: JobSpec<unknown>[] = [];
   const inserted: Content[] = [];
@@ -333,7 +335,11 @@ describe("la pieza nace en BUILDING", () => {
 
   it("en los formatos que lo admiten el influencer viaja", async () => {
     const h = harness({
-      suggestion: suggestion({ contentType: "video-hook", influencerId: "inf_1", slideCount: 1 }),
+      suggestion: suggestion({
+        contentType: "video-hook",
+        influencerId: "inf_1",
+        slideCount: 1,
+      }),
     });
     const out = await run(h);
     expect(out.content.influencerId).toBe("inf_1");

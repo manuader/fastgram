@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { DomainError } from "../errors.js";
 import { HARD_CAPS } from "../quota/plans.js";
-import { ANGLE_ERROR_CODES, type ContentAngle, type InfluencerRef } from "../angles/angles.js";
+import {
+  ANGLE_ERROR_CODES,
+  type ContentAngle,
+  type InfluencerRef,
+} from "../angles/angles.js";
 import type { CreditsLedger } from "../quota/content-saves.js";
 import type { IdGenerator } from "../ids.js";
 import {
@@ -227,10 +231,7 @@ describe("crear un ángulo — campos y enlaces (FR-056)", () => {
     const { repository } = angleRepo();
     for (const field of ["title", "description", "targetAudience"] as const) {
       await expect(
-        createContentAngle(
-          { ids: ids(), repository },
-          { ...angleInput, [field]: "   " },
-        ),
+        createContentAngle({ ids: ids(), repository }, { ...angleInput, [field]: "   " }),
       ).rejects.toThrow(DomainError);
     }
   });
@@ -280,9 +281,7 @@ describe("crear un ángulo — campos y enlaces (FR-056)", () => {
       );
       expect.unreachable("tenía que lanzar");
     } catch (e) {
-      expect((e as DomainError).details?.code).toBe(
-        ANGLE_ERROR_CODES.maxPerInfluencer,
-      );
+      expect((e as DomainError).details?.code).toBe(ANGLE_ERROR_CODES.maxPerInfluencer);
     }
   });
 

@@ -297,9 +297,9 @@ describe("límite de re-análisis por fuente y día (ERR-B11)", () => {
       analysisCount: 3,
       analysisWindowStartedAt: NOW,
     });
-    expect(() =>
-      assertCanReanalyse(s, new Date(NOW.getTime() + 23 * 3_600_000)),
-    ).toThrow(DomainError);
+    expect(() => assertCanReanalyse(s, new Date(NOW.getTime() + 23 * 3_600_000))).toThrow(
+      DomainError,
+    );
     expect(() =>
       assertCanReanalyse(s, new Date(NOW.getTime() + 24 * 3_600_000)),
     ).not.toThrow();
