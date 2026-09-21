@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DomainError, crossTenantAsNotFound } from "@fastgram/core";
 import { PortError } from "@fastgram/ports";
-import { translateError, unauthorized } from "./errors.js";
+import { ApiRejection, translateError, unauthorized } from "./errors.js";
 
 describe("translateError", () => {
   it("el acceso cruzado sale como 404, nunca como 403 (PRD §9.2)", () => {
@@ -84,5 +84,41 @@ describe("translateError", () => {
     const t = translateError(new DomainError("out_of_range", "slides must be 1–20"));
     expect(Object.keys(t.body)).toEqual(["error"]);
     expect(Object.keys(t.body.error).sort()).toEqual(["code", "message"]);
+  });
+});
+
+describe("ApiRejection — los códigos del contrato que el dominio no tiene", () => {
+  it("publica el código, el mensaje y los `publicDetails`", () => {
+    // `errorCodeSchema` tiene 30 códigos y `DomainErrorCode` 6. Sin esto, un
+    // `409 stale_revision` con `details.connections` no se podía responder.
+    const t = translateError(
+      new ApiRejection(409, "connection_ambiguous", "Pick an account.", {
+        connections: ["cn_1", "cn_2"],
+      }),
+    );
+    expect(t.status).toBe(409);
+    expect(t.body.error.code).toBe("connection_ambiguous");
+    expect(t.body.error.details).toEqual({ connections: ["cn_1", "cn_2"] });
+  });
+
+  it("sin `publicDetails` no inventa un `details` vacío", () => {
+    const t = translateError(new ApiRejection(409, "stale_revision", "Reload."));
+    expect(t.body.error.details).toBeUndefined();
+  });
+
+  it("el `details` de un DomainError SIGUE sin salir", () => {
+    // Es la razón por la que `publicDetails` es un campo aparte y no el mismo:
+    // en `DomainError.details` viajan `attemptedBy` y `crossTenant`, que son
+    // exactamente lo que §9.2 no quiere publicar. Si algún día alguien unifica
+    // los dos campos, este test se pone rojo antes que la filtración.
+    const t = translateError(
+      new DomainError("not_found", "content not found", {
+        attemptedBy: "co_intruso",
+        crossTenant: true,
+      }),
+    );
+    expect(JSON.stringify(t.body)).not.toContain("co_intruso");
+    expect(t.body.error.details).toBeUndefined();
+    expect(t.logContext["details"]).toMatchObject({ crossTenant: true });
   });
 });

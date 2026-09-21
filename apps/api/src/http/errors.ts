@@ -7,6 +7,7 @@
  * la promesa no sería auditable.
  */
 import { DomainError, isDomainError } from "@fastgram/core";
+import type { ErrorCode } from "@fastgram/contracts";
 import { isPortError, type PortErrorCode } from "@fastgram/ports";
 import type { DomainErrorCode } from "@fastgram/core";
 
@@ -54,7 +55,63 @@ export interface TranslatedError {
   logContext: Record<string, unknown>;
 }
 
+/**
+ * Un rechazo con un código del contrato que el dominio no tiene.
+ *
+ * ## Por qué hizo falta
+ *
+ * `errorCodeSchema` tiene 30 códigos; `DomainErrorCode` tiene 6. Los de
+ * `FR-051` y `FR-060` —`stale_revision`, `content_has_linked_posts`,
+ * `connection_ambiguous`— viven sólo en el contrato, y `DomainError.toPublic()`
+ * emite `code` + `message` y **descarta `details`**. Una ruta que quisiera
+ * responder `409 stale_revision` con `details.connections` no tenía cómo.
+ *
+ * Tres agentes que escribieron rutas distintas, sin hablarse, inventaron cada
+ * uno su propia clase centinela local para esto. Cuando tres implementaciones
+ * independientes llegan al mismo parche, lo que falta es la abstracción.
+ *
+ * ## `publicDetails` es un campo aparte, y tiene que serlo
+ *
+ * `DomainError.details` **no se serializa nunca** hacia afuera, y eso no es un
+ * descuido: ahí viajan cosas como `attemptedBy` y `crossTenant`, que son
+ * precisamente lo que §9.2 no quiere que salga. Reutilizar ese campo para
+ * detalles públicos convertiría una decisión de seguridad en un accidente de
+ * nombre. Por eso lo público entra por su propia puerta: lo que se pone acá se
+ * publica, y se lee así en el sitio donde se escribe.
+ */
+export class ApiRejection extends Error {
+  override readonly name = "ApiRejection";
+  constructor(
+    readonly status: number,
+    readonly code: ErrorCode,
+    message: string,
+    /** Se publica. Ver arriba: nada que no deba salir del sistema. */
+    readonly publicDetails?: Record<string, unknown>,
+  ) {
+    super(message);
+  }
+}
+
+export function isApiRejection(e: unknown): e is ApiRejection {
+  return e instanceof ApiRejection;
+}
+
 export function translateError(e: unknown): TranslatedError {
+  if (isApiRejection(e)) {
+    return {
+      status: e.status,
+      body: {
+        error: {
+          code: e.code,
+          message: e.message,
+          ...(e.publicDetails === undefined ? {} : { details: e.publicDetails }),
+        },
+      },
+      headers: {},
+      logContext: { kind: "rejection", code: e.code },
+    };
+  }
+
   if (isDomainError(e)) {
     return {
       status: DOMAIN_STATUS[e.code],
