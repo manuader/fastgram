@@ -50,6 +50,16 @@ services:
       echo 'bucket fastgram-dev listo'
       "
 
+  vision:
+    build: ./services/vision
+    container_name: fastgram-vision
+    environment:
+      LOG_LEVEL: info
+    ports: ["8000:8000"]
+    # No se levanta por defecto: la imagen con PaddleOCR pesa y tarda en
+    # construir. `docker compose --profile vision up` cuando haga falta.
+    profiles: ["vision"]
+
 volumes:
   postgres-data:
   minio-data:
