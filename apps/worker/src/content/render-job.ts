@@ -44,12 +44,7 @@ import {
   type ContentBuildPayload,
   type MediaElement,
 } from "@fastgram/contracts";
-import type {
-  RenderImage,
-  RenderJob,
-  RenderText,
-  RenderVideo,
-} from "@fastgram/ports";
+import type { RenderImage, RenderJob, RenderText, RenderVideo } from "@fastgram/ports";
 
 /** Los cuatro formatos que el motor sabe construir. `custom` no está: ver el handler. */
 export type RenderableFormat = RenderJob["format"];

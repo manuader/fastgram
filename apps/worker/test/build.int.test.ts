@@ -22,10 +22,18 @@
  */
 import { FixedClock, MemoryMediaRenderer, MemoryStorage } from "@fastgram/adapters";
 import { APP_ROLE, migrateWithUrl, type DbHandle } from "@fastgram/db";
-import { PortError, type JobContext, type MediaRenderer, type RenderJob } from "@fastgram/ports";
+import {
+  PortError,
+  type JobContext,
+  type MediaRenderer,
+  type RenderJob,
+} from "@fastgram/ports";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { createContentBuildHandler, type BuildLogger } from "../src/content/build-handler.js";
+import {
+  createContentBuildHandler,
+  type BuildLogger,
+} from "../src/content/build-handler.js";
 import {
   DATABASE_URL,
   PERIOD,
@@ -111,11 +119,12 @@ function handler() {
 }
 
 /** El contexto que la cola le pasaría al handler. `maxAttempts` 3 = el del catálogo. */
-const ctx = (
-  payload: unknown,
-  attempt = 1,
-  maxAttempts = 3,
-): JobContext<unknown> => ({ jobId: "job_1", payload, attempt, maxAttempts });
+const ctx = (payload: unknown, attempt = 1, maxAttempts = 3): JobContext<unknown> => ({
+  jobId: "job_1",
+  payload,
+  attempt,
+  maxAttempts,
+});
 
 const jobFor = (contentId: string, revision = 1, contentType = "wall-of-text") => ({
   companyId,
@@ -351,7 +360,9 @@ describe("reintentos", () => {
     // Un payload que no parsea no va a parsear la tercera vez. Reintentarlo sólo
     // retrasa el reembolso y ensucia la dead-letter con algo que no es un fallo
     // de infraestructura.
-    const contentId = await seedPiece(handle, companyId, { buildPayload: { roto: true } });
+    const contentId = await seedPiece(handle, companyId, {
+      buildPayload: { roto: true },
+    });
 
     await handler()(ctx(jobFor(contentId), 1, 3));
 

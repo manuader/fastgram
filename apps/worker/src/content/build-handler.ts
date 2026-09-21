@@ -62,7 +62,11 @@
  *   los trae y este handler los ignora, que es mejor que fingir que los aplica.
  */
 
-import { parseContentBuildJob, type ContentBuildJob, type SaveBucket } from "@fastgram/core";
+import {
+  parseContentBuildJob,
+  type ContentBuildJob,
+  type SaveBucket,
+} from "@fastgram/core";
 import {
   contentBuildStore,
   contentRepository,
@@ -130,7 +134,9 @@ interface BuildFailure {
 }
 
 const permanent = (reason: string, cause?: unknown): BuildFailure =>
-  cause === undefined ? { reason, retryable: false } : { reason, retryable: false, cause };
+  cause === undefined
+    ? { reason, retryable: false }
+    : { reason, retryable: false, cause };
 
 function classify(error: unknown): BuildFailure {
   if (error instanceof PortError) {
@@ -166,7 +172,10 @@ type ReadOutcome =
 export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<unknown> {
   const prefix = deps.objectPrefix ?? "content";
 
-  const inCompany = <T>(companyId: string, fn: (tx: Transaction) => Promise<T>): Promise<T> =>
+  const inCompany = <T>(
+    companyId: string,
+    fn: (tx: Transaction) => Promise<T>,
+  ): Promise<T> =>
     withCompany(
       deps.db,
       companyId,
@@ -177,7 +186,11 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
   /** Transacción 1: bloquear, decidir y soltar. */
   async function read(job: ContentBuildJob): Promise<ReadOutcome> {
     return inCompany(job.companyId, async (tx) => {
-      const row = await contentBuildStore.lockContent(tx, { companyId: job.companyId }, job.contentId);
+      const row = await contentBuildStore.lockContent(
+        tx,
+        { companyId: job.companyId },
+        job.contentId,
+      );
 
       if (row === null) return { kind: "skip", why: "la pieza no existe o fue borrada" };
 
@@ -205,7 +218,11 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
 
       return {
         kind: "build",
-        subject: { buildPayload: row.buildPayload, contentType: row.type, revision: row.revision },
+        subject: {
+          buildPayload: row.buildPayload,
+          contentType: row.type,
+          revision: row.revision,
+        },
       };
     });
   }
@@ -217,19 +234,19 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
     thumbnailUrl: string | undefined,
   ): Promise<boolean> {
     return inCompany(job.companyId, async (tx) => {
-      const row = await contentBuildStore.lockContent(tx, { companyId: job.companyId }, job.contentId);
-      if (row === null || row.revision !== job.revision || row.status !== "BUILDING") return false;
-
-      await contentRepository.update(
+      const row = await contentBuildStore.lockContent(
         tx,
         { companyId: job.companyId },
         job.contentId,
-        {
-          status: "CREATED",
-          files: [...files],
-          ...(thumbnailUrl === undefined ? {} : { thumbnailUrl }),
-        },
       );
+      if (row === null || row.revision !== job.revision || row.status !== "BUILDING")
+        return false;
+
+      await contentRepository.update(tx, { companyId: job.companyId }, job.contentId, {
+        status: "CREATED",
+        files: [...files],
+        ...(thumbnailUrl === undefined ? {} : { thumbnailUrl }),
+      });
       return true;
     });
   }
@@ -242,9 +259,16 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
    * perdió el save y la pieza ya está muerta; y si fuera al revés, un reintento
    * que encuentra `FAILED` sin `saveRefundedAt` no sabría si devolver o no.
    */
-  async function fail(job: ContentBuildJob, reason: string): Promise<"refunded" | "closed" | "skipped"> {
+  async function fail(
+    job: ContentBuildJob,
+    reason: string,
+  ): Promise<"refunded" | "closed" | "skipped"> {
     return inCompany(job.companyId, async (tx) => {
-      const row = await contentBuildStore.lockContent(tx, { companyId: job.companyId }, job.contentId);
+      const row = await contentBuildStore.lockContent(
+        tx,
+        { companyId: job.companyId },
+        job.contentId,
+      );
       if (row === null || row.revision !== job.revision) return "skipped";
       if (row.status === "CREATED") return "skipped";
 
@@ -261,21 +285,27 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
       const reembolsa = bucket !== null && period !== null && !yaReembolsado;
 
       if (reembolsa) {
-        await refundContentSave(tx, { companyId: job.companyId }, period, bucket, deps.clock);
+        await refundContentSave(
+          tx,
+          { companyId: job.companyId },
+          period,
+          bucket,
+          deps.clock,
+        );
       }
 
-      await contentRepository.update(
-        tx,
-        { companyId: job.companyId },
-        job.contentId,
-        {
-          status: "FAILED",
-          ...(reembolsa ? { saveRefundedAt: now } : {}),
-          // Mismo dialecto que el resto de la API: la fecha en ms epoch, no
-          // como `Date`, porque `lastEdit` sale tal cual por el contrato.
-          lastEdit: { at: now.getTime(), outcome: "failed", kind: "rebuild", failureReason: reason },
+      await contentRepository.update(tx, { companyId: job.companyId }, job.contentId, {
+        status: "FAILED",
+        ...(reembolsa ? { saveRefundedAt: now } : {}),
+        // Mismo dialecto que el resto de la API: la fecha en ms epoch, no
+        // como `Date`, porque `lastEdit` sale tal cual por el contrato.
+        lastEdit: {
+          at: now.getTime(),
+          outcome: "failed",
+          kind: "rebuild",
+          failureReason: reason,
         },
-      );
+      });
 
       return reembolsa ? "refunded" : "closed";
     });
@@ -316,7 +346,10 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
       // No se relanza: reintentar un payload roto da el mismo error tres veces
       // y después parece un fallo de infraestructura en la dead-letter. Es un
       // bug del productor y no hay pieza identificable que cerrar.
-      deps.logger.error({ jobId: ctx.jobId, reason: parsed.reason }, "payload de content-build inválido");
+      deps.logger.error(
+        { jobId: ctx.jobId, reason: parsed.reason },
+        "payload de content-build inválido",
+      );
       return;
     }
 
@@ -335,7 +368,10 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
     let thumbnailUrl: string | undefined;
 
     if (outcome.kind === "build") {
-      const mapped = toRenderJob(outcome.subject.buildPayload, outcome.subject.contentType);
+      const mapped = toRenderJob(
+        outcome.subject.buildPayload,
+        outcome.subject.contentType,
+      );
       if (!mapped.ok) {
         failure = permanent(mapped.reason);
       } else {
@@ -350,7 +386,10 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
           // sin miniatura, y fallarla por eso reembolsaría un save por un
           // preview. Se loguea y sigue.
           try {
-            const thumb = await deps.renderer.thumbnail({ url: artifact.url, maxWidth: 480 });
+            const thumb = await deps.renderer.thumbnail({
+              url: artifact.url,
+              maxWidth: 480,
+            });
             const key = `${prefix}/${job.companyId}/${job.contentId}/${String(job.revision)}/thumb`;
             const stored = await deps.storage.put({
               key,
@@ -387,7 +426,12 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
     const ultimoIntento = ctx.attempt >= ctx.maxAttempts;
     if (failure.retryable && !ultimoIntento) {
       deps.logger.warn(
-        { ...base, attempt: ctx.attempt, maxAttempts: ctx.maxAttempts, reason: failure.reason },
+        {
+          ...base,
+          attempt: ctx.attempt,
+          maxAttempts: ctx.maxAttempts,
+          reason: failure.reason,
+        },
         "build fallido, se reintenta",
       );
       // Relanzar es lo que hace que la cola reintente con su backoff. La pieza

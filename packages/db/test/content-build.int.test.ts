@@ -31,7 +31,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { contentBuildStore } from "../src/repositories/index.js";
 import { contents } from "../src/schema/index.js";
 import { withCompany } from "../src/tenancy.js";
-import { APP_ROLE, seedCompany, startTestDatabase, type TestDatabase } from "./helpers/postgres.js";
+import {
+  APP_ROLE,
+  seedCompany,
+  startTestDatabase,
+  type TestDatabase,
+} from "./helpers/postgres.js";
 
 let ctx: TestDatabase;
 let companyId: string;
@@ -63,7 +68,9 @@ afterAll(async () => {
 describe("lockContent", () => {
   it("devuelve la fila del workspace", async () => {
     const id = await nuevaPieza();
-    const row = await asApp(companyId, (tx) => contentBuildStore.lockContent(tx, { companyId }, id));
+    const row = await asApp(companyId, (tx) =>
+      contentBuildStore.lockContent(tx, { companyId }, id),
+    );
     expect(row?.id).toBe(id);
     expect(row?.status).toBe("BUILDING");
   });

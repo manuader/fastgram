@@ -112,12 +112,19 @@ const sinHandler = Object.values(JOB_CATALOG)
 await queue.start();
 
 logger.info(
-  { colas: conHandler, sinHandler: sinHandler.length, concurrency: env.WORKER_CONCURRENCY },
+  {
+    colas: conHandler,
+    sinHandler: sinHandler.length,
+    concurrency: env.WORKER_CONCURRENCY,
+  },
   "worker arriba",
 );
 // A nivel `warn` y con la lista entera: son 20 colas en las que la API ya
 // encola y que nadie lee. Verlo cada vez que arranca el proceso es el punto.
-logger.warn({ colas: sinHandler }, "colas sin handler: lo que se encole ahí no lo consume nadie");
+logger.warn(
+  { colas: sinHandler },
+  "colas sin handler: lo que se encole ahí no lo consume nadie",
+);
 
 /**
  * Apagado limpio.

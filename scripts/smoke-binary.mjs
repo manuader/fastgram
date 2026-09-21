@@ -75,7 +75,9 @@ async function sembrar() {
 async function limpiar() {
   // En orden de dependencia. `pgboss` aparte porque su esquema es propio.
   await sql`delete from contents where company_id = ${COMPANY_ID}`.catch(() => {});
-  await sql`delete from idempotency_records where company_id = ${COMPANY_ID}`.catch(() => {});
+  await sql`delete from idempotency_records where company_id = ${COMPANY_ID}`.catch(
+    () => {},
+  );
   await sql`delete from api_keys where company_id = ${COMPANY_ID}`.catch(() => {});
   await sql`delete from companies where id = ${COMPANY_ID}`.catch(() => {});
   await sql`delete from users where id = ${USER_ID}`.catch(() => {});
@@ -88,7 +90,9 @@ async function esperarSalud(proc, salida) {
   const limite = Date.now() + 40_000;
   while (Date.now() < limite) {
     if (proc.exitCode !== null) {
-      throw new Error(`el binario murió con código ${proc.exitCode}:\n${salida.join("")}`);
+      throw new Error(
+        `el binario murió con código ${proc.exitCode}:\n${salida.join("")}`,
+      );
     }
     try {
       const res = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(2000) });
@@ -110,7 +114,13 @@ const pedir = (path, init = {}) =>
 
 const WALL_OF_TEXT = {
   canvas: { width: 1080, height: 1920 },
-  video: { url: "https://cdn.smoke.test/a.mp4", drawX: 0, drawY: 0, drawW: 1080, drawH: 1920 },
+  video: {
+    url: "https://cdn.smoke.test/a.mp4",
+    drawX: 0,
+    drawY: 0,
+    drawW: 1080,
+    drawH: 1920,
+  },
   text: {
     content: "Smoke",
     x: 50,
@@ -169,7 +179,11 @@ try {
   const sinCredencial = await fetch(`${BASE}/api/v1/content`, {
     signal: AbortSignal.timeout(10_000),
   });
-  check(sinCredencial.status === 401, "sin credencial → 401", `dio ${sinCredencial.status}`);
+  check(
+    sinCredencial.status === 401,
+    "sin credencial → 401",
+    `dio ${sinCredencial.status}`,
+  );
   check(
     (sinCredencial.headers.get("www-authenticate") ?? "").includes("Bearer"),
     "el 401 trae `WWW-Authenticate: Bearer` (§9.1)",
@@ -181,7 +195,10 @@ try {
   // La escritura: es la que encontró que `boss.start()` no registraba las colas.
   const creada = await pedir("/api/v1/content", {
     method: "POST",
-    headers: { "content-type": "application/json", "idempotency-key": `smoke-${randomUUID()}` },
+    headers: {
+      "content-type": "application/json",
+      "idempotency-key": `smoke-${randomUUID()}`,
+    },
     body: JSON.stringify(WALL_OF_TEXT),
   });
   const cuerpo = await creada.json().catch(() => ({}));
@@ -268,4 +285,6 @@ if (fallos.length > 0) {
   );
   process.exit(1);
 }
-console.log(`\n✓ los binarios compilados arrancan: la API escribe y encola, el worker consume`);
+console.log(
+  `\n✓ los binarios compilados arrancan: la API escribe y encola, el worker consume`,
+);

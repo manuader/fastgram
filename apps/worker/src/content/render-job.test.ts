@@ -25,7 +25,13 @@ const TEXTO = {
   textAlign: "center" as const,
 };
 
-const MEDIA = { url: "https://cdn.example.test/a.mp4", drawX: 0, drawY: 0, drawW: 1080, drawH: 1920 };
+const MEDIA = {
+  url: "https://cdn.example.test/a.mp4",
+  drawX: 0,
+  drawY: 0,
+  drawW: 1080,
+  drawH: 1920,
+};
 const CANVAS = { width: 1080, height: 1920 };
 
 const WALL_OF_TEXT = { canvas: CANVAS, video: MEDIA, text: TEXTO };

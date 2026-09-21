@@ -21,7 +21,11 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { CONTENT_TYPE_EXTENSIONS, type ErrorCode, type UploadReservation } from "@fastgram/contracts";
+import {
+  CONTENT_TYPE_EXTENSIONS,
+  type ErrorCode,
+  type UploadReservation,
+} from "@fastgram/contracts";
 import {
   uploadReservationRepository,
   type Transaction,
@@ -226,4 +230,3 @@ export async function claimReservation(
 
   return { ok: true, row, sizeBytes: object.sizeBytes };
 }
-

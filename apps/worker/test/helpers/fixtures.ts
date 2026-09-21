@@ -136,11 +136,12 @@ export async function seedPiece(
         type: options.type ?? "wall-of-text",
         status: options.status ?? "BUILDING",
         revision: options.revision ?? 1,
-        buildPayload: options.buildPayload === undefined ? WALL_OF_TEXT : options.buildPayload,
-        ...(bucket === null
+        buildPayload:
+          options.buildPayload === undefined ? WALL_OF_TEXT : options.buildPayload,
+        ...(bucket === null ? {} : { saveBucket: bucket, savePeriod: PERIOD }),
+        ...(options.saveRefundedAt === undefined
           ? {}
-          : { saveBucket: bucket, savePeriod: PERIOD }),
-        ...(options.saveRefundedAt === undefined ? {} : { saveRefundedAt: options.saveRefundedAt }),
+          : { saveRefundedAt: options.saveRefundedAt }),
       })
       .returning({ id: contents.id });
     if (row === undefined) throw new Error("no se creó el content");

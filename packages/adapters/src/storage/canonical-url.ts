@@ -23,7 +23,11 @@
  * plausible. Es una función pura sobre el puerto, así que no arrastra nada.
  */
 
-import { MAX_SIGNED_URL_TTL_SECONDS, type Storage, type StorageKey } from "@fastgram/ports";
+import {
+  MAX_SIGNED_URL_TTL_SECONDS,
+  type Storage,
+  type StorageKey,
+} from "@fastgram/ports";
 
 export async function canonicalObjectUrl(
   storage: Storage,

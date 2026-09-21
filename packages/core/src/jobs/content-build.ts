@@ -42,7 +42,13 @@
 import { CONTENT_TYPES, type ContentType } from "../content/content.js";
 
 /** Qué disparó el build. El handler decide con esto si construye o rehace. */
-export const BUILD_REASONS = ["create", "edit", "regenerate", "custom-video", "blitz"] as const;
+export const BUILD_REASONS = [
+  "create",
+  "edit",
+  "regenerate",
+  "custom-video",
+  "blitz",
+] as const;
 export type BuildReason = (typeof BUILD_REASONS)[number];
 
 /**
@@ -81,8 +87,7 @@ export interface InvalidContentBuildJob {
 }
 
 export type ParsedContentBuildJob =
-  | { readonly ok: true; readonly payload: ContentBuildJob }
-  | InvalidContentBuildJob;
+  { readonly ok: true; readonly payload: ContentBuildJob } | InvalidContentBuildJob;
 
 function optionalString(
   source: Record<string, unknown>,
@@ -115,7 +120,10 @@ export function parseContentBuildJob(raw: unknown): ParsedContentBuildJob {
     return { ok: false, reason: "companyId is missing" };
   if (typeof contentId !== "string" || contentId.length === 0)
     return { ok: false, reason: "contentId is missing" };
-  if (typeof contentType !== "string" || !(CONTENT_TYPES as readonly string[]).includes(contentType))
+  if (
+    typeof contentType !== "string" ||
+    !(CONTENT_TYPES as readonly string[]).includes(contentType)
+  )
     return { ok: false, reason: `contentType is not one of ${CONTENT_TYPES.join(", ")}` };
   // `Number.isInteger` y no `typeof === "number"`: un `revision` fraccionario o
   // `NaN` nunca va a coincidir con el de la fila, así que el handler
@@ -135,7 +143,8 @@ export function parseContentBuildJob(raw: unknown): ParsedContentBuildJob {
   const rawReason = source["reason"];
   if (
     rawReason !== undefined &&
-    (typeof rawReason !== "string" || !(BUILD_REASONS as readonly string[]).includes(rawReason))
+    (typeof rawReason !== "string" ||
+      !(BUILD_REASONS as readonly string[]).includes(rawReason))
   )
     return { ok: false, reason: `reason is not one of ${BUILD_REASONS.join(", ")}` };
 

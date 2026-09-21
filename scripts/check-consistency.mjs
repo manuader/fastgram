@@ -89,7 +89,9 @@ function mismaLista(etiqueta, fuentes) {
   if (new Set(canon).size > 1) {
     problemas.push(
       `${etiqueta} difiere entre paquetes:\n` +
-        valores.map((v) => `      ${v.rel} · ${v.nombre} = ${v.valor.join(", ")}`).join("\n"),
+        valores
+          .map((v) => `      ${v.rel} · ${v.nombre} = ${v.valor.join(", ")}`)
+          .join("\n"),
     );
   } else {
     verificados.push(`${etiqueta} = [${valores[0].valor.join(", ")}]`);
@@ -205,12 +207,16 @@ mismoNumero("generaciones en vuelo (PRD FR-090)", [
   const registro = leer("packages/core/src/jobs/queues.ts");
   const catalogo = leer("apps/worker/src/jobs/catalog.ts");
   if (registro !== null && catalogo !== null) {
-    const declarados = [...registro.matchAll(/^\s{2}(\w+): "([^"]+)",/gm)].map((m) => m[1]);
+    const declarados = [...registro.matchAll(/^\s{2}(\w+): "([^"]+)",/gm)].map(
+      (m) => m[1],
+    );
     const usados = [...catalogo.matchAll(/name: JOB_QUEUES\.(\w+),/g)].map((m) => m[1]);
     const literales = [...catalogo.matchAll(/^\s+name: "([^"]+)",/gm)].map((m) => m[1]);
 
     if (declarados.length === 0) {
-      problemas.push("no encontré ningún nombre de cola en `JOB_QUEUES` — ¿cambió la forma?");
+      problemas.push(
+        "no encontré ningún nombre de cola en `JOB_QUEUES` — ¿cambió la forma?",
+      );
     } else if (literales.length > 0) {
       problemas.push(
         `el catálogo del worker escribe ${literales.length} nombre(s) de cola a mano ` +
@@ -220,7 +226,9 @@ mismoNumero("generaciones en vuelo (PRD FR-090)", [
     } else {
       const huerfanos = usados.filter((k) => !declarados.includes(k));
       if (huerfanos.length > 0) {
-        problemas.push(`el catálogo usa claves que \`JOB_QUEUES\` no declara: ${huerfanos.join(", ")}`);
+        problemas.push(
+          `el catálogo usa claves que \`JOB_QUEUES\` no declara: ${huerfanos.join(", ")}`,
+        );
       } else {
         verificados.push(
           `nombres de cola (PRD §9.5) = ${declarados.length} declarados, ${usados.length} consumidos por el catálogo`,

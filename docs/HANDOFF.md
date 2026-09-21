@@ -78,6 +78,40 @@ El detalle está en `docs/IMPLEMENTATION-PLAN.md` §2. No lo repito acá para qu
 
 ## 4. Qué cambió, sesión por sesión
 
+### Sesión 2026-09-21 (cierre 3) — El worker consume, y el círculo cierra
+
+**Nadie consumía la cola.** `POST /content` creaba la pieza, **cobraba el content save**
+y encolaba el build; `apps/worker` imprimía *"sin handlers todavía"* y terminaba. La pieza
+quedaba en `BUILDING` para siempre con el save cobrado y sin devolver, y **no fallaba nada**.
+
+Ahora hay handler de `content-build`, y `pnpm smoke:binary` levanta **los dos binarios** y
+espera a que la pieza llegue a `CREATED`. Encolar sin consumir no es un circuito.
+
+La forma que va a valer para los 20 handlers que faltan: **leer corto, trabajar largo,
+escribir corto.** El render dura 30 s – 2 min (`NFR-001`) y no puede ocurrir dentro de una
+transacción; el precio es que entre medio el mundo se mueve, y de ahí sale todo lo demás —
+la `revision` se comprueba **al escribir**, no sólo al leer.
+
+**Cuatro cosas que aparecieron al escribirlo:**
+
+1. **Dos payloads en la misma cola** y ningún consumidor que reconociera a los dos: Blitz
+   encolaba uno con `suggestionId` obligatorio, la ruta otro con `reason` y `custom`.
+   Unificados en `core/jobs/content-build.ts`, con parser a mano — el payload vuelve de la
+   cola como `unknown` y un `as` ahí termina en `WHERE id = 'undefined'`, que no falla.
+2. **`audio` era obligatorio en el puerto `MediaRenderer`** y `FR-053.1` dice que *No audio*
+   omite el bloque. El contrato ya lo tenía opcional: el payload más común del producto no se
+   podía ni escribir como `RenderJob`. **`services/render` todavía lo exige.**
+3. **`JobContext` no decía cuántos intentos quedan**, y el handler tiene que cerrar la pieza
+   en el último en vez de relanzar. Se agregó `maxAttempts`, con un invariante nuevo que lo
+   ata al `retryLimit` del productor.
+4. **El log de "colas sin handler" mentía** — la lista estaba escrita dos veces en `main.ts`.
+
+**Y dos de mis tests pasaban por la razón equivocada** (trampa 24), que es la parte que más
+vale de la sesión: los dos se veían verdes y sólo se vio quitando el mecanismo.
+
+Detalle en `docs/SESSION-2026-09-21-worker-content-build.md`.
+
+
 ### Sesión 2026-09-21 (tarde) — Escritura, los 16 endpoints, y tres cosas que no funcionaban
 
 **El desbloqueo.** Los 28 repositorios eran sólo lectura y `drizzle-orm` no es alcanzable
@@ -227,6 +261,18 @@ Y tres que se decidieron al empezar a escribir código:
    **red, no mecanismo**: si el reset dependiera del cron, la cuota de un cliente dependería de que
    el cron haya corrido. Así depende del reloj, que es lo que el usuario ve.
 
+Y una de la sesión del worker:
+
+8. **La API cobra y el worker reembolsa; ninguna app hace las dos cosas.** Es lo que evita la
+   segunda copia de la regla que decide **a qué bucket** vuelve un content save — la parte cara de
+   equivocarse, porque los tres tienen precio distinto y el error no tiene síntoma. Lo que sí es
+   común sube: la parte pura a `core` (`parsePlanId`), la que sólo toca el puerto a `adapters`
+   (`canonicalObjectUrl`), la que es SQL a `db` (`lockContent`).
+   **No hay ningún paquete que dependa de `core` y de `db` a la vez**, y esa ausencia es
+   deliberada: no existe una capa de casos de uso compartida entre apps. Cada vez que algo
+   necesite las dos, la salida es una de esas tres. Si aparece algo que no entra en ninguna, es
+   una decisión de IMPL §2.2 y no de una tarea suelta.
+
 ## 6. Cómo verificar
 
 **Números al 2026-09-21.** Son lo que permite distinguir "lo rompí yo" de "ya estaba rojo".
@@ -243,33 +289,35 @@ pnpm verify           # lint · typecheck · boundaries · consistency · test
 |---|---|---|
 | `pnpm lint` | eslint una vez sobre todo el repo | **0 errores** |
 | `pnpm typecheck` | `tsc --noEmit` por paquete, 12 tareas | **12 successful** |
-| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 385 módulos · **1042 dependencias** |
-| `pnpm consistency` | los números del PRD escritos en más de un paquete | **17 invariantes** |
-| `pnpm test` | unitarios | **1.433** |
+| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 395 módulos · **1077 dependencias** |
+| `pnpm consistency` | los números del PRD escritos en más de un paquete | **18 invariantes** |
+| `pnpm test` | unitarios | **1.455** |
 
 Desglose de `pnpm test`, por si uno solo se cae:
 
 | Paquete | Tests | | Paquete | Tests |
 |---|---|---|---|---|
-| `core` | 413 | | `adapters` | 266 |
+| `core` | 425 | | `adapters` | 266 |
 | `contracts` | 253 | | `ui` | 170 |
 | `render-service` | 119 | | `api` | 111 |
 | `db` | 52 | | `web` | 22 |
-| `worker` | 18 | | `config` | 9 |
+| `worker` | 28 | | `config` | 9 |
 
 ### Lo que necesita servicios levantados
 
 ```bash
 docker compose up -d                       # Postgres con pgvector + MinIO con el bucket creado
-pnpm test:int                              # db 94 · api 67  → 161
+pnpm test:int                              # db 99 · api 67 · worker 21 → 187
 pnpm --filter @fastgram/adapters test:int  # 9 — encolado dentro de la transacción de Drizzle
 pnpm build && pnpm smoke:binary           # el artefacto que se despliega, de verdad
 ```
 
-`pnpm smoke:binary` arranca `node apps/api/dist/main.js`, autentica, **escribe** y mira
-que el job haya quedado en pg-boss. Es lo único que ve si el artefacto funciona: todo lo
-demás corre con tsx o vitest, que resuelven TypeScript. Ya atrapó dos fallos que el build
-no veía.
+`pnpm smoke:binary` arranca `node apps/api/dist/main.js` **y `node apps/worker/dist/main.js`**:
+autentica, escribe, mira que el job quede en pg-boss, y espera a que el worker lo consuma y
+deje la pieza en `CREATED`. Es lo único que ve si el artefacto funciona —todo lo demás corre
+con tsx o vitest, que resuelven TypeScript— y lo único que verifica que los **dos procesos se
+entienden**: el nombre de la cola, la forma del payload y los permisos del rol sobre `pgboss`.
+Ya atrapó tres fallos que el build no veía.
 
 `packages/adapters` tiene su propio `test:int` y **no entra en el `pnpm test:int` de la
 raíz**: es el que prueba `ADR-005` por la vía real. Si lo salteás, la garantía que
@@ -295,7 +343,7 @@ motor ausente, todo análisis devuelve `partial`: es lo que manda `AI-016`.
 
 ```bash
 grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 92
-grep -c '^- \[~\]' tasks.md     # en curso o parciales — hoy: 7
+grep -c '^- \[~\]' tasks.md     # en curso o parciales — hoy: 9
 grep -c '^- \[!\]' tasks.md     # bloqueadas — hoy: 1
 grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 275
 ```
@@ -468,6 +516,23 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 275
     escribas una suite de contrato, **rompé el adaptador a propósito** y confirmá que se pone
     roja. Verde sin eso no significa nada.
 
+24. **Un test de idempotencia también puede pasar por la razón equivocada** — y peor que el de
+    concurrencia, porque no hay pausa que meter para desenmascararlo. El del reembolso decía
+    *"reejecutar el handler no devuelve el save dos veces"*, corría verde, y seguía verde con la
+    guarda de `saveRefundedAt` **quitada**: lo que frena el segundo reembolso es el chequeo de
+    **estado**, que ve la pieza en `FAILED` y ni llega al reembolso. La guarda está detrás y el
+    handler hoy no puede alcanzarla.
+
+    El segundo caso: el chequeo de `revision` estaba probado en la **lectura** —llega un job
+    viejo— y no en la **escritura**, que es donde importa. La carrera real es la edición que entra
+    *durante* el render, entre las dos transacciones, y quitar esa comprobación no ponía nada en
+    rojo. Para provocarla hay que **hacer que el doble inyectado mute la base desde adentro**: un
+    callback en `render()` que corre el `UPDATE`. Con `Promise.all` desde afuera no se reproduce,
+    porque las dos transacciones del handler son cortas y se ordenan solas.
+
+    Regla que resume las trampas 20, 22, 23 y ésta: **un test verde no dice nada hasta que se lo
+    vio rojo.** Romper el mecanismo y volver a correr cuesta un minuto.
+
 ## 8. Qué falta
 
 El backlog real es `tasks.md`. El estado de hoy está en §6.
@@ -495,10 +560,13 @@ archivo distribuible que se pueda nombrar sin inventarlo** — es una decisión 
 
 | Qué | Por qué urge | Tarea |
 |---|---|---|
-| Los paquetes exportan `.ts` crudo: **`pnpm build` pasa y el binario no arranca** | verde en CI y roto en producción es la peor forma de tenerlo | `P0-REPO-013` |
-| **Los repositorios no tienen métodos de escritura** | bloquea **16 endpoints** de la API v1; es el desbloqueo más grande que queda | `P1-DATA-014` |
-| Dos formatos de cursor incompatibles conviviendo | publicar los dos pone dos contratos distintos en el mismo cable | `P1-DATA-015` |
+| **No hay adaptador real de `MediaRenderer`**: el worker monta el de memoria y los bytes son sintéticos | es lo único que separa al pipeline de build de ser de verdad. El handler ya está escrito contra el puerto | `P2-RENDER-002` |
+| **`S3Storage` existe y no está montado**: las dos apps montan `MemoryStorage` | `POST /media` siempre da `409`, y las URLs que el worker guarda en `contents.files` apuntan a `memory://bucket` | `P1-STORAGE-*` |
+| **20 de las 21 colas siguen sin consumidor** | la API ya encola en varias; un job sin handler no falla, se queda esperando para siempre | `P1-QUEUE-*` |
 | `text-subtle` en modo oscuro no llega a AA para texto normal (3,65:1 y 3,16:1) | accesibilidad, y hoy está sin restricción de uso | `P1-UI-011` |
+
+Los dos bloqueantes que estaban acá —`P0-REPO-013` (los paquetes exportaban `.ts` crudo) y
+`P1-DATA-014` (los repositorios no tenían escritura)— están cerrados, junto con `P1-DATA-015`.
 
 ### Lo que nadie miró todavía
 
@@ -524,4 +592,6 @@ archivo distribuible que se pueda nombrar sin inventarlo** — es una decisión 
 | [`COST-MODEL.md`](COST-MODEL.md) | **cuánto cuesta** cada driver, con fuente y fecha. **Caduca rápido**: los precios de IA se mueven en semanas |
 | [`SESSION-2026-09-21-plan-implementacion.md`](SESSION-2026-09-21-plan-implementacion.md) | cómo se llegó del PRD al plan, y qué se descartó |
 | [`SESSION-2026-09-21-implementacion.md`](SESSION-2026-09-21-implementacion.md) | cómo se organizó el trabajo en paralelo, y las trampas que costaron tiempo |
+| [`SESSION-2026-09-21-escritura-y-endpoints.md`](SESSION-2026-09-21-escritura-y-endpoints.md) | la escritura en los repositorios y los 16 endpoints, con cuatro agentes en paralelo |
+| [`SESSION-2026-09-21-worker-content-build.md`](SESSION-2026-09-21-worker-content-build.md) | el handler que cierra el círculo, y dónde va lo que dos apps comparten |
 | [`../CLAUDE.md`](../CLAUDE.md) | instrucciones de arranque para agentes |
