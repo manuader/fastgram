@@ -171,6 +171,10 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P1-API-005** API keys `fsln_live_*`: hash en reposo, mostradas una sola vez, revocación inmediata · `FR-180`
 - [x] **P1-API-006** `WWW-Authenticate: Bearer realm="api"` en todos los 401 · `FR-180`
 - [x] **P1-API-007** Middleware de scope: toda ruta resuelve `companyId` desde la key o la sesión
+- [x] **P1-API-008** **Arnés de tests de ruta** — `apps/api/test/helpers/harness.ts`
+  > Los 16 endpoints se escribieron y **ninguno se había ejecutado**: lo verificado eran funciones puras y tipos. Los cuatro agentes lo reportaron por separado como su limitación principal.
+  > `startApi()` monta la app con Postgres real y `SET LOCAL ROLE fastgram_app`, y agrega las dos cosas que faltaban: una **cola que se puede inspeccionar** —sin ella lo único comprobable de las rutas que encolan era el status— y poder montar la app **sin** cola, que es el otro camino real (`503` sin escribir).
+  > 21 tests nuevos sobre los caminos que nadie había ejercido: los códigos de estado, el **replay de idempotencia** y el encolado. Verificados rompiendo la ruta dos veces: encolando en otra cola (2 rojos) y quitando el `guard.fail` que libera la key (1 rojo, `409` donde debía ir `201`).
 
 ## P1-JUDGE — Puerto Judgment · `EXT-008`, `D-05`
 

@@ -16,51 +16,30 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { FixedClock, MemoryStorage } from "@fastgram/adapters";
-import { APP_ROLE, migrateWithUrl, type DbHandle } from "@fastgram/db";
 
-import { buildServer } from "../src/server/app.js";
-import { IdempotencyGuard } from "../src/http/idempotency.js";
-import { TokenBucketLimiter } from "../src/http/rate-limit.js";
-import { createDbIdempotencyStore } from "../src/support/idempotency-store.js";
-import { createMemoryBucketStore } from "../src/support/bucket-store.js";
-import { DATABASE_URL, bearer, openDb, seed, type Seed } from "./helpers/fixtures.js";
+import { APP_ROLE } from "@fastgram/db";
 
-let handle: DbHandle;
+import { bearer, type Seed } from "./helpers/fixtures.js";
+import { startApi, type ApiHarness } from "./helpers/harness.js";
+
+let api: ApiHarness;
 let app: FastifyInstance;
 let data: Seed;
+let handle: ApiHarness["handle"];
 
 beforeAll(async () => {
-  await migrateWithUrl(DATABASE_URL);
-  handle = openDb();
-  data = await seed(handle);
-
-  const clock = new FixedClock("2026-09-21T12:00:00.000Z");
-  app = await buildServer({
-    deps: {
-      db: handle.db,
-      clock,
-      storage: new MemoryStorage(clock),
-      // Límite alto: esta suite mide aislamiento, no rate limiting. Con el límite
-      // real de 60/min, los ~40 requests de acá lo agotarían a mitad de archivo y
-      // los fallos dirían "429" en vez de lo que se está probando.
-      limiter: new TokenBucketLimiter(createMemoryBucketStore(), clock),
-      idempotency: new IdempotencyGuard(
-        createDbIdempotencyStore({ db: handle.db, appRole: APP_ROLE }),
-        clock,
-      ),
-      // Sin esto, RLS no se aplica y el test mide la mitad de lo que dice medir.
-      appRole: APP_ROLE,
-    },
-    logLevel: "silent",
-    enableAccessLog: false,
-  });
-  await app.ready();
-});
+  // El montaje vive en `helpers/harness.ts`: migra, siembra los dos workspaces,
+  // monta `MemoryStorage` y una cola que anota, y —lo que hace que esta suite
+  // signifique algo— pone `appRole`, sin el cual la conexión de desarrollo es
+  // superusuario, saltea RLS, y el archivo mediría sólo los repositorios.
+  api = await startApi();
+  app = api.app;
+  data = api.data;
+  handle = api.handle;
+}, 180_000);
 
 afterAll(async () => {
-  await app?.close();
-  await handle?.close();
+  await api?.close();
 });
 
 /** Los recursos que exponen `GET /:id`, con el id de cada workspace. */

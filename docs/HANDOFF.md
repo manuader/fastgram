@@ -106,6 +106,22 @@ primera vez las 37 que nunca habían corrido (trampa 20).
 caía en `proceed`, o sea segundo cobro— y `createBuildingContent` devolvía un `revision: 0`
 que la base rechaza con su CHECK.
 
+### Sesión 2026-09-21 (cierre) — El binario arranca y las rutas se ejecutan
+
+**`P0-REPO-013`.** Los paquetes emiten `dist` y `node dist/main.js` corre de verdad. La
+complicación de `packages/db` tenía una cuarta salida que la tarea no listaba y es mejor que
+las tres: apuntar drizzle-kit al schema **compilado**, que ya es JavaScript y no tiene el
+conflicto de `.js` contra `.ts`. `@fastgram/ui` es la única excepción y sigue exportando
+fuente, porque su único consumidor empaqueta.
+
+Dejó dos trampas, las dos silenciosas: dependency-cruiser se quedó ciego entre paquetes
+(trampa 20) y `boss.start()` levanta el proceso pero no registra las colas (trampa 21).
+
+**El arnés de rutas** (`P1-API-008`). Los 16 endpoints estaban escritos y ninguno se había
+ejecutado. `startApi()` monta la app entera contra Postgres real con `app.inject()`, con una
+cola que se puede inspeccionar y la opción de montarla **sin** cola. 21 tests sobre lo que
+nadie había ejercido: los códigos de estado, el replay de idempotencia y el encolado.
+
 ### Sesión 2026-09-21 — Del PRD al plan ejecutable
 
 Se cerró la investigación del producto original y se construyó todo el andamiaje de
@@ -205,8 +221,8 @@ pnpm verify           # lint · typecheck · boundaries · consistency · test
 |---|---|---|
 | `pnpm lint` | eslint una vez sobre todo el repo | **0 errores** |
 | `pnpm typecheck` | `tsc --noEmit` por paquete, 12 tareas | **12 successful** |
-| `pnpm boundaries` | las reglas de la arquitectura | **0 errores**, ~3 warnings de huérfanos · 381 módulos |
-| `pnpm consistency` | los números del PRD escritos en más de un paquete | **16 invariantes** |
+| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 382 módulos · **1029 dependencias** |
+| `pnpm consistency` | los números del PRD escritos en más de un paquete | **17 invariantes** |
 | `pnpm test` | unitarios | **1.417** |
 
 Desglose de `pnpm test`, por si uno solo se cae:
@@ -223,7 +239,7 @@ Desglose de `pnpm test`, por si uno solo se cae:
 
 ```bash
 docker compose up -d                       # Postgres con pgvector + MinIO con el bucket creado
-pnpm test:int                              # db 87 · api 38  → 125
+pnpm test:int                              # db 87 · api 59  → 146
 pnpm --filter @fastgram/adapters test:int  # 9 — encolado dentro de la transacción de Drizzle
 ```
 
@@ -250,16 +266,18 @@ motor ausente, todo análisis devuelve `partial`: es lo que manda `AI-016`.
 ### Estado del backlog
 
 ```bash
-grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 89
+grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 91
 grep -c '^- \[~\]' tasks.md     # en curso o parciales — hoy: 7
 grep -c '^- \[!\]' tasks.md     # bloqueadas — hoy: 1
-grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 277
+grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 275
 ```
 
 ### Lo que `pnpm verify` NO mide
 
-- **Que el binario compilado arranque.** `pnpm build` pasa y `node dist/main.js` **no funciona**
-  (`P0-REPO-013`). Verde en CI y roto en producción.
+- **Que el binario compilado arranque** ya **sí** se verificó (`P0-REPO-013`), pero a mano y no en
+  CI: `node dist/main.js` responde `/health` 200, autentica, crea contenido y deja el job en
+  `pgboss.job`. Mientras no haya un paso de CI que lo repita, sigue siendo una verificación con
+  fecha, no una garantía.
 - **Que algo se vea bien.** Nadie abrió un navegador ni miró un frame renderizado.
 - **Calidad de los modelos.** Cero tokens de LLM gastados: los adaptadores se prueban contra
   gateways falsos, lo que verifica el adaptador y no el modelo.
@@ -393,7 +411,21 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 277
     falla**, así que el save tampoco se reembolsa. No aparece en ningún log de errores. Ahora los
     21 nombres salen de `JOB_QUEUES` y hay un invariante que lo verifica.
 
-20. **Una suite de contrato puede estar verde y no medir lo que promete.** La primera corrida de
+20. **Al mover los paquetes a `dist`, dependency-cruiser se queda ciego y no lo dice.**
+    `dist` está en el `exclude` del cruise, así que cuando `exports` pasa a apuntar ahí, todos
+    los imports entre paquetes dejan de tener un módulo destino y **las reglas de frontera
+    quedan verdes sin comprobar nada**. Se ve sólo en un número: las dependencias cruzadas
+    cayeron de 1019 a 949. Se arregla con los alias **pelados** (`@fastgram/core`, no sólo
+    `@fastgram/core/*`) en `tsconfig.base.json`, y lo cubre un invariante de consistencia —
+    una regla de depcruise no sirve, porque la arista excluida no llega a existir.
+
+21. **`boss.start()` no es `queue.start()`.** El adaptador arranca pg-boss **y crea las colas**;
+    el `boss` pelado sólo lo primero. El proceso levanta bien y la primera petición que encola
+    muere con *"Queue must be registered before enqueuing inside a transaction"* — correcto,
+    porque dentro de una transacción no hay forma de crear la cola al vuelo. Los tipos no lo
+    ven: las dos llamadas existen y las dos compilan.
+
+22. **Una suite de contrato puede estar verde y no medir lo que promete.** La primera corrida de
     las 37 aserciones que nunca se habían ejecutado encontró cuatro casos así: un `fingerprint es
     puro` que comparaba dos llamadas sobre **la misma instancia** (un renderer con un `randomUUID()`
     por instancia pasaba las diez aserciones); un caso llamado "trae permalink" que nunca miraba
