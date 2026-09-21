@@ -1,0 +1,33 @@
+{
+  "name": "fastgram",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "eslint .",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:int": "turbo run test:int",
+    "boundaries": "depcruise --config .dependency-cruiser.cjs packages apps services",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:generate": "pnpm --filter @fastgram/db db:generate",
+    "db:migrate": "pnpm --filter @fastgram/db db:migrate",
+    "verify": "pnpm lint && pnpm typecheck && pnpm boundaries && pnpm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "dependency-cruiser": "^16.9.0",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "type": "module"
+}

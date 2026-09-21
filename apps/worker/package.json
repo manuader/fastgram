@@ -1,0 +1,28 @@
+{
+  "name": "@fastgram/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@fastgram/adapters": "workspace:*",
+    "@fastgram/config": "workspace:*",
+    "@fastgram/core": "workspace:*",
+    "@fastgram/db": "workspace:*",
+    "@fastgram/ports": "workspace:*",
+    "pino": "^9.5.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@fastgram/config": "workspace:*",
+    "tsx": "^4.19.2",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

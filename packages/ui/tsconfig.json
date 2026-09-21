@@ -1,0 +1,4 @@
+{
+  "extends": "@fastgram/config/tsconfig/react.json",
+  "include": ["src/**/*"]
+}

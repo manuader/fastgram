@@ -1,0 +1,24 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "services/*"
+
+# Catálogo: una sola versión para las dependencias que cruzan paquetes.
+# Con varios agentes trabajando en paralelo, esto evita que cada uno fije
+# una versión distinta de zod o vitest y que los tipos dejen de unificar.
+catalog:
+  typescript: ^5.7.2
+  vitest: ^2.1.8
+  zod: ^3.24.1
+  "@vitest/coverage-v8": ^2.1.8
+
+# Scripts de build permitidos. pnpm los bloquea por defecto y está bien: un
+# postinstall arbitrario es una vía de supply chain. Estos dos los necesitamos
+# de verdad — esbuild (vitest, tsx) y sharp (motor de imagen del render,
+# ADR-007). Los de testcontainers son optimizaciones nativas opcionales.
+allowBuilds:
+  esbuild: true
+  sharp: true
+  cpu-features: false
+  ssh2: false
+  protobufjs: false

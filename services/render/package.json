@@ -1,0 +1,25 @@
+{
+  "name": "@fastgram/render-service",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@fastgram/config": "workspace:*",
+    "fastify": "^5.2.0",
+    "sharp": "^0.33.5",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@fastgram/config": "workspace:*",
+    "tsx": "^4.19.2",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

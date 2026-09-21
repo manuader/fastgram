@@ -1,0 +1,55 @@
+# Entorno de desarrollo — P0-REPO-012
+#
+# Levanta lo mínimo para correr la app entera local: Postgres (con pgvector,
+# porque el análisis de marca lo necesita desde Fase 1) y MinIO como S3 local.
+# El servicio de visión se agrega cuando exista (P1-VISION-001).
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: fastgram-postgres
+    environment:
+      POSTGRES_USER: fastgram
+      POSTGRES_PASSWORD: fastgram
+      POSTGRES_DB: fastgram
+    ports: ["5432:5432"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fastgram -d fastgram"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: fastgram-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: fastgram
+      MINIO_ROOT_PASSWORD: fastgram-dev-secret
+    ports: ["9000:9000", "9001:9001"]
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Crea el bucket de desarrollo y se apaga. Sin esto, la primera subida falla
+  # con NoSuchBucket y se pierde media hora buscando el error en el adaptador.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio: { condition: service_healthy }
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 fastgram fastgram-dev-secret &&
+      mc mb --ignore-existing local/fastgram-dev &&
+      mc anonymous set download local/fastgram-dev &&
+      echo 'bucket fastgram-dev listo'
+      "
+
+volumes:
+  postgres-data:
+  minio-data:

@@ -1,0 +1,90 @@
+# CI — P0-REPO-008. Obligatorio en todo PR.
+#
+# `boundaries` es un job aparte a propósito: cuando falla, el mensaje tiene que
+# decir "cruzaste una frontera de la arquitectura", no perderse entre 200
+# líneas de errores de tipos.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+
+jobs:
+  verify:
+    name: lint · typecheck · test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  boundaries:
+    name: fronteras de la arquitectura
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: core no importa adapters, ports son puros, sin ciclos
+        run: pnpm boundaries
+
+  integration:
+    name: integración (Postgres real)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: fastgram
+          POSTGRES_PASSWORD: fastgram
+          POSTGRES_DB: fastgram_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U fastgram"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://fastgram:fastgram@localhost:5432/fastgram_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:int
+
+  task-id:
+    name: el PR declara su tarea
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: El título arranca con un ID de tasks.md
+        run: |
+          TITLE="${{ github.event.pull_request.title }}"
+          if ! echo "$TITLE" | grep -qE '^P[0-5]-[A-Z]+-[0-9]{3}'; then
+            echo "::error::El título del PR tiene que arrancar con el ID de la tarea."
+            echo "Recibido: $TITLE"
+            echo "Esperado por ejemplo: 'P1-QUOTA-003: descuento atómico de content saves'"
+            exit 1
+          fi

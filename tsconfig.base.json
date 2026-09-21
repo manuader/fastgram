@@ -1,0 +1,15 @@
+{
+  "extends": "./packages/config/tsconfig/base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@fastgram/core/*": ["packages/core/src/*"],
+      "@fastgram/ports/*": ["packages/ports/src/*"],
+      "@fastgram/adapters/*": ["packages/adapters/src/*"],
+      "@fastgram/db/*": ["packages/db/src/*"],
+      "@fastgram/contracts/*": ["packages/contracts/src/*"],
+      "@fastgram/ui/*": ["packages/ui/src/*"],
+      "@fastgram/config/*": ["packages/config/src/*"]
+    }
+  }
+}
