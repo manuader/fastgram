@@ -1283,6 +1283,7 @@ Owner y member pueden añadir y re-analizar fuentes. Sólo el owner puede elimin
 2. `influencerChance` es una tirada independiente por generación, **no** un ratio objetivo sobre un lote. `0` desactiva; `100` intenta siempre que sea elegible.
 3. Si no hay influencer activo y entrenado elegible para el tipo habilitado, se cae a contenido regular.
 4. `genderFilter` excluye el género opuesto para valores conocidos (`male`/`female`); otros valores siguen siendo elegibles.
+   > **Aclaración (2026-09-21).** Parecen dos vocabularios en conflicto —la tabla de arriba dice `"man"`\|`"woman"` y esta regla dice `male`/`female`— pero son **dos campos distintos**: `BlitzPreferences.genderFilter` toma `man`\|`woman`\|`null`, y lo que filtra es `Influencer.gender`, que es el campo con valores `male`/`female` (la UI de `FR-080` muestra `male · 25 · White`). La correspondencia entre ambos la hace el código. Es una inconsistencia de nomenclatura del producto original, **no** una contradicción de la especificación: los dos vocabularios se conservan porque los dos son literales observados.
 5. El contenido con influencer soporta `slideshow`, `wall-of-text` y `video-hook`. **`green-screen` es siempre contenido regular.**
 6. Una automation nueva **congela** el valor actual en su `prefsSnapshot`; cambiar la preferencia del workspace no altera una automation existente.
 7. `settingsApplication` (`mode: "future_generations"`, `targetQueuedItems: 5`) es **sólo de respuesta**: enviarlo en un PATCH devuelve `400 bad_request`.
@@ -1456,6 +1457,7 @@ Tarjetas compactas sin numeración: `Mode` (`⊕ Create New` / `⤫ Remix`) · `
 - `green-screen`: `{canvas, image{url,draw…}, video{url,draw…}, text}` — el video con croma se compone **sobre** la imagen de fondo.
 - `video-hook`: `{canvas, hook_video{…}, demo_video{…}, audio{url}, text}` — hook arriba, demo abajo.
 - `slideshow`: `{num_images, images:[{canvas{width,height,aspectRatio}, image{url,draw…}, texts:[…]}]}`; `num_images` debe coincidir con la longitud de `images`.
+- **Aclaración (2026-09-21, al contratar la API).** `wall-of-text`, `green-screen` y `video-hook` llevan **`text` en singular**: un solo objeto de texto. Sólo `slideshow` lleva `texts:[…]`, y por imagen. `FR-051` habla de "las cajas de texto" en plural describiendo el editor, lo que se lee como que los cuatro formatos aceptan varias; **no es así**. Este payload está marcado *contrato normativo* y gana. Si en el futuro un formato necesita varias cajas, es un cambio de contrato con versión nueva, no una lectura distinta de este párrafo.
 - **Toda URL de media debe pertenecer al Media Bank del workspace o a la librería compartida de Fastlane.** Una URL arbitraria se rechaza con `400 bad_request` antes de iniciar el build. El audio sólo puede venir de la librería compartida.
 
 **States.** default · source-selected · generating (`Generating your content...`) · preview · saving · scheduling · error.
