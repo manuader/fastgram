@@ -71,6 +71,8 @@ import {
 import type { JobSpec } from "@fastgram/ports";
 import type { FastifyReply } from "fastify";
 
+import { JOB_QUEUES } from "@fastgram/core";
+
 import { rateLimit } from "../../plugins/rate-limit.js";
 import { toPost } from "../../support/serializers.js";
 import { crossTenant, data, notFound, page } from "./shared.js";
@@ -81,13 +83,28 @@ const idParams = z.object({ id: z.string().min(1) });
 /**
  * Cola del *publishing job* (§9.5 punto 8).
  *
- * **Vive acá de prestado.** El único precedente —`CONTENT_BUILD_QUEUE`— está en
- * `packages/core` junto al caso de uso que encola, que es donde le corresponde a éste
- * también: el worker que lo consuma va a necesitar el mismo literal y no puede importarlo
- * de una ruta HTTP. Se exporta para que mover la constante sea un import menos, y queda
- * en el reporte como el cambio que hacía falta en un archivo ajeno.
+ * **Esto decía `"publish-post"` y estaba roto.** El literal se escribió acá cuando no
+ * había registro compartido de colas, con la nota de que *"el worker que lo consuma tiene
+ * que usar el mismo string y hoy nada lo verifica"*. El registro apareció después
+ * (`JOB_QUEUES` en `packages/core`) y nombró a esta cola **`"publishing"`**, así que los
+ * dos nombres convivieron sin que nada fallara en los tests.
+ *
+ * Y no era cosmético: `main.ts` registra `[...ALL_JOB_QUEUES]`, que **no contiene**
+ * `"publish-post"`, y pg-boss se niega a encolar en una cola no registrada dentro de una
+ * transacción. Medido contra pg-boss de verdad:
+ *
+ * ```
+ * FALLO  en "publish-post" -> Queue "publish-post" must be registered before
+ *                             enqueuing inside a transaction
+ * ENCOLO en "publishing"
+ * ```
+ *
+ * O sea que **programar un post devolvía 500, siempre**. Los tests de integración no lo
+ * podían ver porque el arnés usaba una cola que acepta cualquier nombre; ahora valida
+ * contra `ALL_JOB_QUEUES`, que es lo que convierte a cada test de ruta en una guarda.
+ * Cuarta aparición de la misma clase de bug — ver la trampa 19.
  */
-export const PUBLISH_POST_QUEUE = "publish-post";
+const PUBLISH_POST_QUEUE = JOB_QUEUES.publishing;
 
 /**
  * Los estados desde los que cancelar tiene sentido. **Decisión de esta tajada**: el PRD
@@ -129,9 +146,7 @@ export interface CancellablePost {
 
 /** El patch que aplica una cancelación. `null` = la fila ya está donde tiene que estar. */
 export type CancelPatch =
-  | { readonly status: "CANCELLED" }
-  | { readonly cancellationPending: true }
-  | null;
+  { readonly status: "CANCELLED" } | { readonly cancellationPending: true } | null;
 
 /**
  * Cancelar no escribe lo mismo en los dos tipos de cuenta — FR-060 (PRD:1393).
@@ -166,8 +181,7 @@ export type BatchOutcome = BatchFailureReason | null;
  * y `details.invalidIds` en el de analytics—, así que la forma se comprueba acá antes de
  * tocar la base. Es el único punto del archivo que sabe cómo se almacena un id.
  */
-const STORAGE_ID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const STORAGE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function isStorableId(id: string): boolean {
   return STORAGE_ID_RE.test(id);
@@ -348,26 +362,30 @@ export function registerPostRoutes(app: ZodApp): void {
   const { limiter, clock, queue } = app.deps;
 
   // ── GET /posts ──
-  app.get("/posts", { schema: { querystring: listPostsQuerySchema } }, async (request) => {
-    const q = request.query;
+  app.get(
+    "/posts",
+    { schema: { querystring: listPostsQuerySchema } },
+    async (request) => {
+      const q = request.query;
 
-    const result = await request.tx((tx) =>
-      postRepository.list(
-        tx,
-        { companyId: request.auth.companyId },
-        {
-          limit: q.limit,
-          ...(q.cursor === undefined ? {} : { cursor: q.cursor }),
-          // §12 (PRD:2723): `status` es una lista separada por comas; el contrato ya la
-          // partió y validó contra el enum, así que acá sólo se traduce a un `IN`. El
-          // `400 bad_request` que devolvía esta ruta era del tiempo en que filtrar pedía
-          // un `SQL` de Drizzle, inalcanzable desde `apps/api`.
-          ...(q.status === undefined ? {} : { filter: { status: { in: q.status } } }),
-        },
-      ),
-    );
-    return page(result, toPost);
-  });
+      const result = await request.tx((tx) =>
+        postRepository.list(
+          tx,
+          { companyId: request.auth.companyId },
+          {
+            limit: q.limit,
+            ...(q.cursor === undefined ? {} : { cursor: q.cursor }),
+            // §12 (PRD:2723): `status` es una lista separada por comas; el contrato ya la
+            // partió y validó contra el enum, así que acá sólo se traduce a un `IN`. El
+            // `400 bad_request` que devolvía esta ruta era del tiempo en que filtrar pedía
+            // un `SQL` de Drizzle, inalcanzable desde `apps/api`.
+            ...(q.status === undefined ? {} : { filter: { status: { in: q.status } } }),
+          },
+        ),
+      );
+      return page(result, toPost);
+    },
+  );
 
   // ── GET /posts/:id ──
   app.get("/posts/:id", { schema: { params: idParams } }, async (request) => {
@@ -497,26 +515,28 @@ export function registerPostRoutes(app: ZodApp): void {
         // ADR-005: el encolado va **dentro** de la transacción que creó las filas. Si el
         // commit se cae, no queda ni post ni job; si la cola se cae, `PortError` aborta la
         // transacción y no quedan posts sin publicador.
-        const jobs: JobSpec<{ companyId: string; postId: string }>[] = rows.map((row) => ({
-          queue: PUBLISH_POST_QUEUE,
-          // Payload mínimo a propósito: el worker relee la fila con su propio scope. Copiar
-          // caption, cuenta o privacidad acá los congelaría en el momento de programar, y
-          // un `Reschedule` posterior publicaría lo viejo.
-          payload: { companyId, postId: row.id },
-          options: {
-            transaction: tx,
-            startAfter: scheduledAt,
-            // Un post por fila. La fila es nueva en cada programación, así que esto no
-            // deduplica programaciones distintas: deduplica el reintento del mismo
-            // encolado si la transacción se reintenta por un deadlock.
-            singletonKey: `${PUBLISH_POST_QUEUE}:${row.id}`,
-            // Sin reintentos automáticos. `NFR-015` prohíbe duplicar un post y `NFR-005`
-            // prohíbe reintentar solo lo no idempotente: un segundo intento después de un
-            // timeout del proveedor puede publicar dos veces. El watcher del carril lento
-            // (72 h) es el mecanismo de recuperación, no el retry de la cola.
-            retryLimit: 0,
-          },
-        }));
+        const jobs: JobSpec<{ companyId: string; postId: string }>[] = rows.map(
+          (row) => ({
+            queue: PUBLISH_POST_QUEUE,
+            // Payload mínimo a propósito: el worker relee la fila con su propio scope. Copiar
+            // caption, cuenta o privacidad acá los congelaría en el momento de programar, y
+            // un `Reschedule` posterior publicaría lo viejo.
+            payload: { companyId, postId: row.id },
+            options: {
+              transaction: tx,
+              startAfter: scheduledAt,
+              // Un post por fila. La fila es nueva en cada programación, así que esto no
+              // deduplica programaciones distintas: deduplica el reintento del mismo
+              // encolado si la transacción se reintenta por un deadlock.
+              singletonKey: `${PUBLISH_POST_QUEUE}:${row.id}`,
+              // Sin reintentos automáticos. `NFR-015` prohíbe duplicar un post y `NFR-005`
+              // prohíbe reintentar solo lo no idempotente: un segundo intento después de un
+              // timeout del proveedor puede publicar dos veces. El watcher del carril lento
+              // (72 h) es el mecanismo de recuperación, no el retry de la cola.
+              retryLimit: 0,
+            },
+          }),
+        );
         await queue.enqueueMany(jobs);
 
         return { kind: "created" as const, rows };

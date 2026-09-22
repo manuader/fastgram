@@ -1,5 +1,6 @@
 /**
- * El cobro de content saves — `FR-050`, PRD §16.2 y §9.4.
+ * El cobro de cuota: content saves (`FR-050`) y créditos de AI Studio
+ * (`FR-080`, `NFR-025`) — PRD §16.2 y §9.4.
  *
  * ## Por qué esto no estaba
  *
@@ -26,24 +27,62 @@
  *    confirmara por su cuenta y la creación del contenido fallara después, el
  *    cliente pagaría por una pieza que no existe — y no habría nada a qué
  *    asociar el reembolso, porque el reembolso se dispara desde el contenido.
+ *
+ * ## `quota_ledgers.ai_credits` cuenta CONSUMIDOS, no saldo restante
+ *
+ * La columna existía sin usarse y el PRD (`DATA-029`) sólo la nombra, así que
+ * las dos lecturas eran posibles y la decisión es de acá. Es **consumidos en el
+ * período**: el saldo se calcula contra el cupo del plan
+ * (`PLANS[plan].aiStudioCredits`), igual que `consumeSave` calcula el de saves
+ * contra `PLANS[plan].contentSaves` en vez de leerlo de la fila.
+ *
+ * Elegir "saldo restante" habría sido defendible por el nombre y por el campo
+ * `aiCredits` de `NewPeriodDefaults`, pero **rompe sin ruido**: la fila del
+ * período la crea quien llega primero, y hoy son tres caminos —el save de
+ * `POST /content`, el reembolso del worker y esto— de los cuales dos la crean
+ * con el default `0`. Con semántica de saldo, un workspace Growth que guardó
+ * contenido antes de crear un influencer arranca el período con saldo 0 y
+ * **todo influencer se rechaza con 402**, sin forma de distinguir "nunca se
+ * sembró" de "se gastó todo". Con semántica de consumidos, `0` significa lo
+ * mismo en los tres caminos: nada gastado.
+ *
+ * Lo que esta elección **no** cubre es `Buy more` / `+ Add credits` (FR-080):
+ * un saldo comprado puede pasarse del cupo del plan y un contador de
+ * consumidos no puede bajar de 0 (lo prohíbe el CHECK de la tabla). Cuando se
+ * implemente la compra hace falta una columna aparte —`ai_credits_purchased`,
+ * exactamente el papel que `content_saves_purchased` cumple para los saves—.
+ * Está en el reporte; no se inventa acá porque comprar créditos pasa por el
+ * puerto `Payments` y es otra tarea.
  */
 
 import {
+  AI_STUDIO_COST,
   billingPeriodKey,
   consumeSave,
+  HARD_CAPS,
+  isDomainError,
   nextBillingResetUtc,
   parsePlanId,
   PLANS,
+  startAiStudioGeneration,
+  type AiStudioOperation,
+  type CreditsLedger,
+  type PlanId,
   type SaveBucket,
   type SavesLedger,
 } from "@fastgram/core";
+import type { InsufficientCreditsDetails } from "@fastgram/contracts";
 import {
   companyRepository,
   quotaLedgerStore,
+  type CompanyBilling,
+  type QuotaLedgerRow,
   type TenantScope,
   type Transaction,
 } from "@fastgram/db";
 import type { Clock } from "@fastgram/ports";
+
+import { ApiRejection } from "../http/errors.js";
 
 export interface ConsumedSave {
   readonly bucket: SaveBucket;
@@ -51,17 +90,27 @@ export interface ConsumedSave {
   readonly period: string;
 }
 
+interface LockedLedger {
+  readonly company: CompanyBilling;
+  readonly plan: PlanId;
+  readonly now: Date;
+  readonly period: string;
+  readonly row: QuotaLedgerRow;
+}
+
 /**
- * Descuenta un content save, o lanza `content_quota_exceeded` (→ `402`).
+ * Lee el plan y deja el ledger del período **bloqueado** hasta el commit.
  *
- * Tiene que llamarse **dentro** de la transacción que crea el contenido, y
- * **antes** de encolar el build.
+ * Los dos cobros pasan por acá para que los defaults del período los decida un
+ * solo sitio. Cuando había un solo llamador eso era una preferencia; con dos
+ * es lo que evita que el período se cree con un cupo distinto según quién
+ * llegue primero, que es un descuadre que sólo se ve en la factura.
  */
-export async function consumeContentSave(
+async function lockLedger(
   tx: Transaction,
   scope: TenantScope,
   clock: Clock,
-): Promise<ConsumedSave> {
+): Promise<LockedLedger> {
   const company = await companyRepository.billing(tx, scope);
   if (company === null) {
     // El scope viene del hook de auth, así que el workspace existe. Si no está,
@@ -77,12 +126,30 @@ export async function consumeContentSave(
   const now = new Date(clock.nowMs());
   const period = billingPeriodKey(now, company.billingAnchorDay);
 
-  const fila = await quotaLedgerStore.lockPeriod(tx, scope, period, {
+  const row = await quotaLedgerStore.lockPeriod(tx, scope, period, {
     // `null` = ilimitado (Pro). Se guarda 0 porque la columna es `integer` no
     // nulo, y da igual: `consumeSave` lee el cupo de `PLANS`, no de acá. Esta
     // columna es para soporte, no para decidir.
     contentSavesIncluded: PLANS[plan].contentSaves ?? 0,
+    // `aiCredits` NO se siembra a propósito: es un contador de consumidos y su
+    // default `0` ya es el valor correcto. Ver la cabecera.
   });
+
+  return { company, plan, now, period, row };
+}
+
+/**
+ * Descuenta un content save, o lanza `content_quota_exceeded` (→ `402`).
+ *
+ * Tiene que llamarse **dentro** de la transacción que crea el contenido, y
+ * **antes** de encolar el build.
+ */
+export async function consumeContentSave(
+  tx: Transaction,
+  scope: TenantScope,
+  clock: Clock,
+): Promise<ConsumedSave> {
+  const { company, plan, now, period, row: fila } = await lockLedger(tx, scope, clock);
 
   const ledger: SavesLedger = {
     plan,
@@ -113,3 +180,155 @@ export async function consumeContentSave(
  * falla ningún build. Tenerlo de los dos lados habría sido la segunda copia de
  * una regla de facturación: la que decide **a qué bucket** vuelve el save.
  */
+
+// ───────────────────────────────────────────────────────────────────────────
+// Créditos de AI Studio — `FR-080`, `NFR-025`, §9.5 #6
+// ───────────────────────────────────────────────────────────────────────────
+
+export interface ConsumeCreditsRequest {
+  readonly operation: AiStudioOperation;
+  /** Cuántas unidades. Un lote de 4 imágenes son 4 × 4 = 16 créditos. */
+  readonly units?: number | undefined;
+  /**
+   * Generaciones encoladas o corriendo ahora mismo en este workspace.
+   *
+   * Lo cuenta el llamador porque no hay una sola tabla que lo sepa: ver la nota
+   * de `POST /influencers`. **Un `0` de relleno convierte el cap de 10 en
+   * decoración**, así que quien no pueda contarlo de verdad tiene que decirlo,
+   * no pasar cero.
+   */
+  readonly inFlightCount: number;
+}
+
+export interface ConsumedAiCredits {
+  /** La clave del ledger que se tocó. Hay que guardarla para reembolsar. */
+  readonly period: string;
+  /** Lo reservado. Es lo que hay que devolver si la generación falla. */
+  readonly charged: number;
+  /** Saldo antes del cargo. Sirve para el `details.balance` de FR-080. */
+  readonly balanceBefore: number;
+}
+
+/**
+ * Reserva créditos de AI Studio antes del trabajo caro.
+ *
+ * Tiene que llamarse **dentro** de la transacción que crea la fila y **antes**
+ * de encolar el pipeline, por lo mismo que el save de content: si el cobro se
+ * confirmara aparte y el encolado fallara después, el cliente pagaría 250
+ * créditos por un pipeline que no existe.
+ *
+ * El orden de los dos límites —concurrencia y después créditos— lo impone
+ * `startAiStudioGeneration` y está argumentado en su cabecera: rechazando
+ * primero lo barato no queda nada que compensar. Acá no se reordena.
+ */
+export async function consumeAiStudioCredits(
+  tx: Transaction,
+  scope: TenantScope,
+  clock: Clock,
+  request: ConsumeCreditsRequest,
+): Promise<ConsumedAiCredits> {
+  const { company, plan, now, period, row } = await lockLedger(tx, scope, clock);
+
+  // Saldo = cupo del plan − consumidos. Se acota en 0 porque una bajada de plan
+  // deja consumidos > cupo (gastó 400 en Growth y pasó a Starter, que trae 250)
+  // y un saldo negativo haría que el mensaje del 402 hablara de un número
+  // imposible.
+  const balanceBefore = Math.max(0, PLANS[plan].aiStudioCredits - row.aiCredits);
+
+  const credits: CreditsLedger = {
+    remaining: balanceBefore,
+    resetAt: nextBillingResetUtc(now, company.billingAnchorDay),
+  };
+
+  let charged: number;
+  try {
+    charged = startAiStudioGeneration({
+      operation: request.operation,
+      units: request.units,
+      inFlightCount: request.inFlightCount,
+      credits,
+    }).reservedCredits;
+  } catch (e: unknown) {
+    throw asApiRejection(e, request, balanceBefore);
+  }
+
+  // El cargo se escribe sobre lo que leyó el `lockPeriod` de esta misma
+  // transacción, no sobre `credits.remaining`: `charged` es exactamente lo que
+  // hay que devolver si el pipeline falla, y sumarlo al contador mantiene esa
+  // simetría incluso cuando el saldo venía acotado por el `Math.max` de arriba.
+  await quotaLedgerStore.writeAiCredits(tx, scope, period, row.aiCredits + charged);
+
+  return { period, charged, balanceBefore };
+}
+
+/**
+ * Traduce los dos rechazos de `startAiStudioGeneration` al contrato del PRD.
+ *
+ * Hace falta porque `DomainError` no alcanza para ninguno de los dos:
+ *
+ *  - **Créditos insuficientes.** FR-080 (PRD:1519) fija `402 payment_required`
+ *    con `details.balance` y `details.required`, y hay un schema del contrato
+ *    que lo tipa (`insufficientCreditsDetailsSchema`). `reserveCredits` lanza
+ *    `content_quota_exceeded` con `{resetAt, required}`: el código no es el que
+ *    el PRD nombra para este endpoint y **falta `balance`**, que es el dato que
+ *    la UI usa para el copy *"<N> more credits to continue."*. El saldo sólo se
+ *    conoce acá, así que acá se arma.
+ *
+ *    Por eso **no** se toca `DOMAIN_CODES_WITH_PUBLIC_DETAILS`: no hace falta:
+ *    `ApiRejection.publicDetails` ya es la puerta explícita para lo que sí se
+ *    publica, y el default de `DomainError.details` —no salir— se queda como
+ *    está.
+ *
+ *  - **Cap de concurrencia.** `assertCanStartGeneration` lanza `out_of_range`,
+ *    que `http/errors.ts` mapea a **400**. Un 400 le dice al cliente que su
+ *    petición está mal formada y que no reintente, cuando el PRD manda
+ *    justamente esperar (ERR-R07, acción *"esperar"*). El PRD **no fija el
+ *    código HTTP** de este caso: §19.8 le da copy literal y acción pero no
+ *    status, y la lista de errores de FR-080 no lo menciona. Se elige `409
+ *    conflict` —un código que FR-080 ya usa en este endpoint y que significa
+ *    "el estado actual no lo permite, volvé a intentar"— en vez de `429
+ *    rate_limited`, porque el `details` tipado de `rate_limited`
+ *    (`rateLimitedDetailsSchema`) exige `retryAfterMs` y acá no hay forma
+ *    honesta de calcularlo: un pipeline tarda 15–20 minutos y el que libera el
+ *    slot puede ser cualquiera de los diez. Queda reportado como decisión.
+ */
+function asApiRejection(
+  e: unknown,
+  request: ConsumeCreditsRequest,
+  balance: number,
+): unknown {
+  if (!isDomainError(e)) return e;
+
+  if (e.code === "content_quota_exceeded") {
+    const details: InsufficientCreditsDetails = {
+      balance,
+      required: AI_STUDIO_COST[request.operation] * (request.units ?? 1),
+    };
+    // Copy literal de FR-080 (PRD:1519) y de ERR-R08.
+    return new ApiRejection(
+      402,
+      "payment_required",
+      "Not enough credits. Top up or upgrade to continue.",
+      { ...details },
+    );
+  }
+
+  // `out_of_range` cubre dos casos en `startAiStudioGeneration`: el cap de
+  // concurrencia y un `units` no positivo. Sólo se traduce el primero, y la
+  // condición es la que hace verdadero el mensaje — traducir el otro diría
+  // "tenés 10 generaciones en vuelo" sobre una petición con `units: 0`.
+  if (
+    e.code === "out_of_range" &&
+    request.inFlightCount >= HARD_CAPS.inFlightGenerations
+  ) {
+    return new ApiRejection(
+      409,
+      "conflict",
+      // Copy literal de ERR-R07 (§19.8).
+      `You have ${String(HARD_CAPS.inFlightGenerations)} generations in flight. Wait for some to finish before starting another.`,
+      { cap: HARD_CAPS.inFlightGenerations, inFlight: request.inFlightCount },
+    );
+  }
+
+  return e;
+}

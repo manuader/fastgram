@@ -100,6 +100,51 @@ describe("POST /content sin cola", () => {
   });
 });
 
+describe("POST /influencers sin cola", () => {
+  const BODY = { name: "Ella", gender: "woman", age: 27, ethnicity: "latina" };
+
+  it("responde 503 y NO cobra los 250 créditos", async () => {
+    // Desde `P1-QUOTA-011` esta ruta cobra, así que el `503` tiene una segunda
+    // mitad que antes no existía: sin cola no hay pipeline, y cobrar por un
+    // pipeline que nunca se encoló es un cargo sin nada que lo devuelva. El
+    // chequeo de `deps.queue` está antes de abrir la transacción, y esto lo mide
+    // en vez de confiar en el orden de las líneas.
+    const res = await api.request({
+      method: "POST",
+      path: "/api/v1/influencers",
+      body: BODY,
+      idempotencyKey: "sin-cola-influ-1",
+    });
+    expect(res.status).toBe(503);
+    expect(errorOf(res).code).toBe("service_unavailable");
+
+    // El ledger del período no tiene que existir siquiera: `lockPeriod` lo crea,
+    // y no se llegó a llamar.
+    const filas = await api.handle.sql`
+      select ai_credits from quota_ledgers
+      where company_id = ${api.data.a.companyId}::uuid
+    `;
+    expect(filas.map((f) => (f as unknown as { ai_credits: number }).ai_credits)).toEqual(
+      [],
+    );
+  });
+
+  it("y NO deja el influencer creado", async () => {
+    const antes = await api.request({ method: "GET", path: "/api/v1/influencers" });
+    const cuantos = (antes.body?.["data"] as unknown[]).length;
+
+    await api.request({
+      method: "POST",
+      path: "/api/v1/influencers",
+      body: BODY,
+      idempotencyKey: "sin-cola-influ-2",
+    });
+
+    const despues = await api.request({ method: "GET", path: "/api/v1/influencers" });
+    expect((despues.body?.["data"] as unknown[]).length).toBe(cuantos);
+  });
+});
+
 describe("lo que no depende de la cola sigue andando", () => {
   it("`GET /content` responde 200", async () => {
     const res = await api.request({ method: "GET", path: "/api/v1/content" });

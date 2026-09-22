@@ -37,6 +37,7 @@
  */
 import type { FastifyInstance, InjectOptions } from "fastify";
 import { FixedClock, MemoryStorage } from "@fastgram/adapters";
+import { ALL_JOB_QUEUES } from "@fastgram/core";
 import { APP_ROLE, migrateWithUrl, type DbHandle } from "@fastgram/db";
 import type {
   EnqueuedJob,
@@ -74,6 +75,30 @@ export class RecordingQueue implements Queue {
     if (this.failNext) {
       this.failNext = false;
       throw new Error("la cola no responde");
+    }
+    // **Esto faltaba, y es lo que escondía un 500 en producción.**
+    //
+    // Esta clase aceptaba cualquier nombre de cola. `POST /content/:id/schedule`
+    // encolaba en `"publish-post"`, un literal escrito a mano en la ruta cuando
+    // no existía `JOB_QUEUES`; el registro nombró a esa cola `"publishing"`, y
+    // los dos nombres convivieron. `main.ts` registra `[...ALL_JOB_QUEUES]`, que
+    // no contiene `"publish-post"`, y pg-boss **se niega** a encolar en una cola
+    // no registrada dentro de una transacción:
+    //
+    //   Queue "publish-post" must be registered before enqueuing inside a
+    //   transaction
+    //
+    // O sea que programar un post devolvía 500 **siempre**, y los 82 tests de
+    // integración estaban verdes. Validar acá es lo que convierte a cada test de
+    // ruta que encola en una guarda contra la trampa 19, en vez de necesitar un
+    // test nuevo por cola.
+    if (!(ALL_JOB_QUEUES as readonly string[]).includes(job.queue)) {
+      throw new Error(
+        `la ruta encoló en "${job.queue}", que no está en JOB_QUEUES. ` +
+          "En producción pg-boss rechaza una cola no registrada dentro de una " +
+          "transacción, así que esto es un 500. El nombre tiene que salir de " +
+          "`JOB_QUEUES` (@fastgram/core), nunca de un literal.",
+      );
     }
     this.enqueued.push(job as JobSpec<unknown>);
     return { jobId: `job_${String(this.enqueued.length)}`, queue: job.queue };
@@ -174,7 +199,8 @@ export async function startApi(options: StartApiOptions = {}): Promise<ApiHarnes
       db: handle.db,
       clock,
       storage: new MemoryStorage(clock),
-      limiter: options.limiter ?? new TokenBucketLimiter(createMemoryBucketStore(), clock),
+      limiter:
+        options.limiter ?? new TokenBucketLimiter(createMemoryBucketStore(), clock),
       idempotency: new IdempotencyGuard(
         createDbIdempotencyStore({ db: handle.db, appRole: APP_ROLE }),
         clock,
@@ -240,16 +266,24 @@ function parse(raw: string): Record<string, unknown> | undefined {
 export function dataOf(res: Response): Record<string, unknown> {
   const value = res.body?.["data"];
   if (value === undefined) {
-    throw new Error(`La respuesta no trae \`data\`: ${res.status} ${res.raw.slice(0, 200)}`);
+    throw new Error(
+      `La respuesta no trae \`data\`: ${res.status} ${res.raw.slice(0, 200)}`,
+    );
   }
   return value as Record<string, unknown>;
 }
 
 /** Azúcar para el envelope de error. */
-export function errorOf(res: Response): { code: string; message: string; details?: unknown } {
+export function errorOf(res: Response): {
+  code: string;
+  message: string;
+  details?: unknown;
+} {
   const value = res.body?.["error"];
   if (value === undefined) {
-    throw new Error(`La respuesta no trae \`error\`: ${res.status} ${res.raw.slice(0, 200)}`);
+    throw new Error(
+      `La respuesta no trae \`error\`: ${res.status} ${res.raw.slice(0, 200)}`,
+    );
   }
   return value as { code: string; message: string; details?: unknown };
 }

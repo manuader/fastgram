@@ -34,6 +34,18 @@ function leer(rel) {
   }
 }
 
+/** Los `.ts` de un directorio, sin tests, como rutas relativas a la raíz. */
+function listar(rel) {
+  try {
+    return readdirSync(join(ROOT, rel))
+      .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
+      .map((f) => `${rel}/${f}`);
+  } catch {
+    problemas.push(`no existe el directorio ${rel}`);
+    return [];
+  }
+}
+
 /** Extrae `NOMBRE = 123` o `nombre: 123`. Falla si no lo encuentra. */
 function numero(rel, nombre) {
   const src = leer(rel);
@@ -235,6 +247,54 @@ mismoNumero("generaciones en vuelo (PRD FR-090)", [
         );
       }
     }
+  }
+}
+
+/**
+ * Ninguna ruta escribe un nombre de cola a mano.
+ *
+ * El invariante de arriba compara `JOB_QUEUES` con el catálogo del worker, y
+ * **estaba ciego a las rutas**, que son el otro productor. Dos las escribían a
+ * mano, y una de las dos no coincidía:
+ *
+ *   posts.ts:        PUBLISH_POST_QUEUE       = "publish-post"
+ *   JOB_QUEUES:      publishing               = "publishing"
+ *
+ * `main.ts` registra `[...ALL_JOB_QUEUES]`, que no contiene `"publish-post"`, y
+ * pg-boss se niega a encolar en una cola no registrada dentro de una
+ * transacción. Medido: `Queue "publish-post" must be registered before
+ * enqueuing inside a transaction`. O sea que `POST /content/:id/schedule`
+ * devolvía **500 siempre**, con 82 tests de integración en verde — porque el
+ * arnés aceptaba cualquier nombre y porque nadie ejercitaba esa ruta.
+ *
+ * Hay dos guardas más contra lo mismo (el arnés valida contra `ALL_JOB_QUEUES`
+ * y `schedule.int.test.ts` compara el nombre con `JOB_QUEUES`), pero las dos
+ * necesitan que alguien escriba el test. Ésta no: detecta el literal.
+ */
+{
+  const rutas = listar("apps/api/src/routes/v1");
+  const sospechosos = [];
+  for (const ruta of rutas) {
+    const texto = leer(ruta);
+    if (texto === null) continue;
+    // `queue: "algo"` en un `JobSpec`, o una constante `*_QUEUE = "algo"`.
+    for (const m of texto.matchAll(/(?:queue:|_QUEUE\s*=)\s*"([^"]+)"/g)) {
+      sospechosos.push(`${ruta}: "${m[1]}"`);
+    }
+  }
+  if (sospechosos.length > 0) {
+    problemas.push(
+      `${String(sospechosos.length)} ruta(s) escriben el nombre de la cola a mano ` +
+        `(${sospechosos.join(", ")}): tiene que salir de \`JOB_QUEUES\` de ` +
+        "`@fastgram/core`. Un literal que no coincide entra en una cola que nadie " +
+        "registra, y pg-boss lo rechaza dentro de la transacción: es un 500 que " +
+        "ningún test ve si el arnés no valida el nombre",
+    );
+  } else {
+    verificados.push(
+      `nombres de cola en las rutas (PRD §9.5) = ${String(rutas.length)} archivos, ` +
+        "ninguno con el literal escrito a mano",
+    );
   }
 }
 

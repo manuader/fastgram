@@ -47,6 +47,16 @@ export interface SeededWorkspace {
   readonly influencerId: string;
   readonly angleId: string;
   readonly postId: string;
+  /**
+   * La conexión OAuth del workspace.
+   *
+   * El fixture ya la creaba —un post necesita exactamente una cuenta, lo fuerza
+   * el CHECK `posts_account_exclusive`— pero no la exponía, y sin su id no se
+   * puede armar un `target` de `POST /content/:id/schedule`. Es lo que hizo que
+   * esa ruta no tuviera **ningún** test de integración, y por eso su cola
+   * equivocada (`"publish-post"`) sobrevivió a 82 tests verdes.
+   */
+  readonly connectionId: string;
 }
 
 export interface Seed {
@@ -69,10 +79,18 @@ export async function truncateAll(handle: DbHandle): Promise<void> {
   // `CASCADE` + `RESTART IDENTITY` sobre las tablas que tocamos. Se listan explícitas
   // en vez de barrer el schema entero: barrerlo borraría también la tabla de
   // migraciones de Drizzle y la siguiente corrida volvería a migrar desde cero.
+  //
+  // `quota_ledgers` está nombrada aunque ya se vaciaba sin nombrarla: tiene FK a
+  // `companies` y el `CASCADE` la arrastra —verificado contra la base, queda en 0
+  // filas tras una corrida completa—. Nombrarla no cambia nada hoy y es a propósito:
+  // la garantía de que la contabilidad no sobrevive entre corridas dependía de una
+  // FK que nadie está mirando, y un ledger con créditos de la corrida anterior es
+  // exactamente lo que hace pasar un test de "no alcanzan los créditos" sin que
+  // pruebe nada.
   await handle.sql`
     truncate table
       posts, contents, media, influencers, content_angles, connections,
-      api_keys, workspace_memberships, companies, users
+      api_keys, workspace_memberships, quota_ledgers, companies, users
     restart identity cascade
   `;
 }
@@ -201,6 +219,7 @@ async function seedWorkspace(
         influencerId: influencer.id,
         angleId: angle.id,
         postId: post.id,
+        connectionId: connection.id,
       },
     };
   });
