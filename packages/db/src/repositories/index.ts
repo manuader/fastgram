@@ -261,6 +261,15 @@ export const judgmentRecordRepository = createCompanyScopedRepository({
 export { resolveApiKeyByHash, type ApiKeyBootstrapRow } from "./api-key-bootstrap.js";
 export { contentBuildStore, lockContent, type ContentRow } from "./content-build.js";
 export {
+  countQueued,
+  discoveryQueueStore,
+  lockCompanyRefill,
+  refillLockKey,
+  refillQueue,
+  type QueuedSuggestionDraft,
+  type RefillResult,
+} from "./discovery-queue.js";
+export {
   claimCreditsRefund,
   influencerCreditsStore,
   lockInfluencer,

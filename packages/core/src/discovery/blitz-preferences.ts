@@ -84,6 +84,44 @@ export const DEFAULT_SMART_TEXT_POSITIONING = true;
 export const TARGET_QUEUED_ITEMS = 5;
 
 /**
+ * Defaults sintetizados — `DATA-006`: *"Sintetiza defaults si no existe fila"*.
+ *
+ * **Sólo dos de estos números están en el PRD**: `influencerChance` 50
+ * (`FR-055`) y `smartTextPositioning` true (`AI-014`). Los demás son asunciones
+ * documentadas:
+ *  - los cuatro pesos de formato van 25/25/25/25 porque la única restricción del
+ *    PRD es que sumen 100, y el reparto par es la única elección que no
+ *    privilegia un formato sin que nadie lo haya pedido;
+ *  - los tres porcentajes arrancan en 0 porque son opt-in: remixar contenido
+ *    ajeno o mencionar el negocio son decisiones del usuario, no defaults
+ *    razonables.
+ *
+ * **Están acá y no en la ruta porque hay dos consumidores, no uno.** La API los
+ * necesita para responder `GET /blitz/preferences` sin fila, y el worker para
+ * poder rellenar la cola de un workspace recién creado — que es justo el que
+ * todavía no tiene fila, y el que más necesita que la cola no esté vacía. Un
+ * proceso no puede importar del otro, así que el único sitio donde la lista
+ * existe una sola vez es `core`.
+ *
+ * `angleWeights` y `textStyleWeights` **no** están acá: el primero depende de
+ * los ángulos activos del workspace (se arma con `reconcileAngleWeights`) y el
+ * segundo vacío significa "mix desactivado", que es el default y ya lo dice el
+ * tipo.
+ */
+export const DEFAULT_BLITZ_PREFERENCES = {
+  slideshowWeight: 25,
+  wallOfTextWeight: 25,
+  greenScreenWeight: 25,
+  videoHookWeight: 25,
+  remixPercentage: 0,
+  ownMediaPercentage: 0,
+  mentionBusinessPercentage: 0,
+  influencerChance: DEFAULT_INFLUENCER_CHANCE,
+  smartTextPositioning: DEFAULT_SMART_TEXT_POSITIONING,
+  genderFilter: null,
+} as const satisfies Omit<BlitzPreferences, "angleWeights" | "textStyleWeights">;
+
+/**
  * Campos que **sólo** aparecen en la respuesta. Mandarlos en un PATCH es `400`.
  *
  * `FR-055` regla 7 lo dice de `settingsApplication`. Rechazarlo en vez de

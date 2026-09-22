@@ -40,6 +40,7 @@ import {
   openDb,
   seedCompany,
   seedPiece,
+  slideshowDe,
 } from "./helpers/fixtures.js";
 
 const NOW = new Date("2026-09-21T12:00:00.000Z");
@@ -74,7 +75,18 @@ class RendererConFallo implements MediaRenderer {
   duranteElRender: (() => Promise<void>) | null = null;
   calls = 0;
 
-  async render(job: RenderJob) {
+  /**
+   * **El gancho vive en `renderAll`, no en `render`.**
+   *
+   * El handler pasó a llamar `renderAll` (un slideshow de N slides son N
+   * artefactos y `render` transporta uno). Si los ganchos se hubieran quedado
+   * en `render`, `next` nunca se lanzaría y `duranteElRender` nunca correría:
+   * los tests de reintentos y de carrera con la edición dejarían de medir lo
+   * que dicen medir. Acá se habrían puesto rojos —no hay render que falle, así
+   * que la pieza saldría bien—, pero la clase de error es la misma que dejó
+   * cuatro tests de este repo pasando por la razón equivocada.
+   */
+  async renderAll(...args: Parameters<MediaRenderer["renderAll"]>) {
     this.calls += 1;
     if (this.duranteElRender !== null) {
       const fn = this.duranteElRender;
@@ -86,7 +98,11 @@ class RendererConFallo implements MediaRenderer {
       this.next = null;
       throw error;
     }
-    return this.#inner.render(job);
+    return this.#inner.renderAll(...args);
+  }
+
+  async render(...args: Parameters<MediaRenderer["render"]>) {
+    return this.#inner.render(...args);
   }
   fingerprint(job: RenderJob) {
     return this.#inner.fingerprint(job);
@@ -190,6 +206,41 @@ describe("el camino feliz", () => {
     // La URL guardada **no** puede llevar firma: §9.10 prohíbe persistir
     // capacidades bearer, y `canonicalObjectUrl` existe justamente para eso.
     expect(row.files[0]).not.toContain("?");
+  });
+
+  it("un slideshow de 5 slides deja 5 archivos, en orden", async () => {
+    // **Antes de `renderAll` esto no se podía construir en absoluto.** El
+    // handler llamaba a `render()`, que transporta un artefacto, y el adaptador
+    // lanzaba `provider_contract_violation` — correctamente: devolver el
+    // primero habría publicado una pieza de una sola imagen sin error en
+    // ningún log.
+    const contentId = await seedPiece(handle, companyId, {
+      type: "slideshow",
+      buildPayload: slideshowDe(5),
+    });
+
+    await handler()(ctx(jobFor(contentId)));
+
+    const row = await pieza(contentId);
+    expect(row.status).toBe("CREATED");
+    expect(row.files).toHaveLength(5);
+    // El orden es el del slideshow. `files` se publica tal cual, así que dos
+    // slides intercambiados son una pieza mal armada que un test de «terminó
+    // bien» no distingue de la correcta.
+    //
+    // Hay que **decodificar** antes de partir: `MemoryStorage` mete la clave
+    // entera en un solo segmento de ruta (`content%2F…%2F0`), así que buscar el
+    // último `/` sobre la URL cruda no encuentra separador. Esta forma sirve
+    // para las dos codificaciones, que es lo que importa: el adaptador S3 no
+    // tiene por qué escaparla igual, y el test no debería medir esa diferencia.
+    const indices = row.files.map((url: string) => {
+      const partes = decodeURIComponent(url).split("/");
+      return partes[partes.length - 1];
+    });
+    expect(indices).toEqual(["0", "1", "2", "3", "4"]);
+    // Y cada uno con bytes propios: si el handler subiera el primero cinco
+    // veces, las claves serían cinco y el contenido uno solo.
+    expect(new Set(row.files).size).toBe(5);
   });
 
   it("no toca el ledger: construir bien no devuelve nada", async () => {

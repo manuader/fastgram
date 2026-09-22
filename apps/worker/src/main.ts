@@ -28,6 +28,7 @@ import {
   MemoryMediaRenderer,
   S3Storage,
   systemClock,
+  systemRng,
 } from "@fastgram/adapters";
 import { ALL_JOB_QUEUES, JOB_QUEUES } from "@fastgram/core";
 import { createDb } from "@fastgram/db";
@@ -36,6 +37,7 @@ import pino from "pino";
 
 import { createContentBuildHandler } from "./content/build-handler.js";
 import { createInfluencerPipelineHandler } from "./influencers/pipeline-handler.js";
+import { createDiscoveryRefillHandler } from "./discovery/refill-handler.js";
 import { createPublishHandler } from "./publishing/publish-handler.js";
 import { loadWorkerEnv } from "./env.js";
 import { JOB_CATALOG, type JobPolicy } from "./jobs/catalog.js";
@@ -176,6 +178,29 @@ const HANDLERS: Readonly<Record<string, JobHandler<unknown>>> = {
   [JOB_QUEUES.influencerPipeline]: createInfluencerPipelineHandler({
     db: handle.db,
     clock,
+    appRole,
+    logger,
+  }),
+  /**
+   * **Montado sin productor, y conviene saberlo.**
+   *
+   * Nada en el repo encola `discovery-refill` todavía: el nombre sólo aparece
+   * en el catálogo y en `queues.ts`. O sea que registrar esto no llena ninguna
+   * cola por sí solo.
+   *
+   * Se monta igual por el mismo criterio que el de influencers: lo que el
+   * handler escribe **es verdad**. Rellena la cola con `planSuggestion`, que es
+   * la selección ponderada de `AI-002` completa y testeada, y la
+   * `aiExplanation` que persiste se deriva de la propia selección — no la
+   * inventa un modelo que no existe. Con productor, funciona; sin productor, no
+   * miente.
+   */
+  [JOB_QUEUES.discoveryRefill]: createDiscoveryRefillHandler({
+    db: handle.db,
+    // `systemRng` y no uno sembrado: la instancia se comparte entre entregas
+    // concurrentes, así que un `SeededRng` acá no daría el determinismo que
+    // promete — daría una secuencia compartida y entrelazada.
+    rng: systemRng,
     appRole,
     logger,
   }),

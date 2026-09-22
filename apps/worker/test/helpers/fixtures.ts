@@ -118,6 +118,24 @@ export const TEXTO = {
 /** El mismo payload que crea `POST /content` en su propia suite. Sin audio: FR-053.1. */
 export const WALL_OF_TEXT = { canvas: CANVAS, video: MEDIA, text: TEXTO };
 
+/**
+ * Un slideshow de N slides, cada uno con su propia imagen.
+ *
+ * Las URLs son distintas entre sí a propósito: con la misma imagen en los N
+ * slides, un bug que suba el primer artefacto N veces produciría exactamente el
+ * mismo resultado que el correcto.
+ */
+export function slideshowDe(slides: number): Record<string, unknown> {
+  return {
+    num_images: slides,
+    images: Array.from({ length: slides }, (_unused, i) => ({
+      canvas: { ...CANVAS, aspectRatio: "9:16" },
+      image: { ...MEDIA, url: `https://cdn.example.test/slide-${String(i)}.png` },
+      texts: [TEXTO],
+    })),
+  };
+}
+
 export interface SeededPiece {
   readonly companyId: string;
   readonly contentId: string;

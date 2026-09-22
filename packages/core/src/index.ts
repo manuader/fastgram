@@ -25,4 +25,5 @@ export * from "./brand/synthesis.js";
 export * from "./onboarding/onboarding.js";
 export * from "./discovery/blitz-preferences.js";
 export * from "./discovery/plan-suggestion.js";
+export * from "./discovery/refill-job.js";
 export * from "./scheduling/schedule-post.js";

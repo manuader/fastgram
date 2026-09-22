@@ -80,7 +80,7 @@ import {
   type JobContext,
   type JobHandler,
   type MediaRenderer,
-  type RenderResult,
+  type RenderedMedia,
   type Storage,
   type StorageKey,
 } from "@fastgram/ports";
@@ -315,7 +315,7 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
   /** Sube el artefacto y devuelve su URL canónica. */
   async function upload(
     job: ContentBuildJob,
-    result: RenderResult,
+    result: RenderedMedia,
     index: number,
   ): Promise<{ key: StorageKey; url: string }> {
     // La clave lleva la revisión: un rebuild de la misma pieza **no** puede
@@ -365,7 +365,7 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
 
     let failure: BuildFailure | null = outcome.kind === "fail" ? outcome.failure : null;
     const uploaded: StorageKey[] = [];
-    let files: string[] = [];
+    const files: string[] = [];
     let thumbnailUrl: string | undefined;
 
     if (outcome.kind === "build") {
@@ -386,10 +386,35 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
             urls: mediaUrlsOf(mapped.job),
           });
 
-          const result = await deps.renderer.render(mapped.job, auth);
-          const artifact = await upload(job, result, 0);
-          uploaded.push(artifact.key);
-          files = [artifact.url];
+          // **`renderAll` y no `render`.** Un slideshow de N slides son N
+          // imágenes y `RenderResult` transporta una: por `render()` un
+          // slideshow multi-slide no se podía construir en absoluto — el
+          // adaptador lanzaba `provider_contract_violation` en vez de devolver
+          // el primero, porque devolver el primero publica una pieza de una
+          // sola imagen sin error en ningún log.
+          const build = await deps.renderer.renderAll(mapped.job, auth);
+
+          // **El orden es el del slideshow, no el de llegada.** `files` se
+          // persiste tal cual y es lo que se publica: dos slides
+          // intercambiados son una pieza mal armada que ningún test de
+          // «el build terminó bien» detecta.
+          const enOrden = [...build.artifacts].sort((a, b) => a.index - b.index);
+
+          // De a uno, a propósito. Los artefactos son perezosos justamente
+          // para no tener veinte cuerpos HTTP en vuelo sostenidos hasta que
+          // termine de subirse el último (`NFR-013`).
+          for (const ref of enOrden) {
+            const media = await ref.open();
+            const artifact = await upload(job, media, ref.index);
+            uploaded.push(artifact.key);
+            files.push(artifact.url);
+          }
+
+          // Que la cuenta de artefactos coincida con la de slides lo verifica
+          // el adaptador al parsear la respuesta. No se repite acá: dos
+          // defensas para la misma regla hacen que ninguna de las dos se pueda
+          // testear por separado, y el test termina midiendo «que alguna
+          // funcione».
 
           // El thumbnail es IMPL §5 —«nunca servir el master para un
           // preview»— y **no** puede hundir el build: la pieza es utilizable
@@ -401,12 +426,17 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
             // `auth` acá lo haría rechazar con `url_no_listada_en_grant`,
             // dentro del `catch` que loguea y sigue — o sea, todas las piezas
             // sin miniatura y una línea de warning por build.
+            // La portada es el primer artefacto: en un slideshow, la
+            // miniatura de la pieza es la del slide 1, no la de uno cualquiera.
+            const portada = files[0];
+            if (portada === undefined) throw new Error("build sin artefactos");
+
             const thumb = await deps.renderer.thumbnail(
-              { url: artifact.url, maxWidth: 480 },
+              { url: portada, maxWidth: 480 },
               await workspaceMediaAuthorization(deps.storage, {
                 companyId: job.companyId,
                 objectPrefix: prefix,
-                urls: [artifact.url],
+                urls: [portada],
               }),
             );
             const key = `${prefix}/${job.companyId}/${job.contentId}/${String(job.revision)}/thumb`;
