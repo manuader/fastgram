@@ -191,10 +191,108 @@ export const webEn = {
   "library.detail.noFiles": "This piece has no files yet.", // nuevo
   "library.detail.revision": "Revision {revision}", // nuevo
   "library.detail.openFile": "Open file {index}", // nuevo
-  // Las dos tabs que esta tarea no cableó. Decirlo es mejor que una tab muerta.
+  // La tab que esta tanda no cableó. Decirlo es mejor que una tab muerta.
   "library.tab.notWired": "{tab} is not wired up yet", // nuevo
   "library.tab.notWiredDescription":
     "The route and the API endpoint exist; this tab lands with its own task.", // nuevo
+
+  /* ------------------------------------ Media Bank · FR-100 (PRD:1618-1626) */
+  "media.filter.typeLabel": "Type", // nuevo
+  "media.filter.allTypes": "All", // literal PRD:1623 (segmented `All · Images · Videos`)
+  "media.type.image": "Images", // literal PRD:1623
+  "media.type.video": "Videos", // literal PRD:1623
+  "media.itemCount": "{count} items", // literal PRD:1623 (`41 items`)
+  "media.itemCountOne": "1 item", // nuevo · el PRD sólo muestra el plural
+  // Mismo motivo que en `My Content`: `GET /media` no devuelve un total, sólo
+  // una página y `hasMore`. Decir `41 items` con más páginas por venir sería
+  // afirmar un número que nadie calculó.
+  "media.itemCountPartial": "{count} items loaded", // nuevo
+  "media.loadMore": "Load more", // nuevo
+  "media.loadingMore": "Loading more…", // nuevo
+  // ERR-E04 (PRD §19.1) — literal. El PRD dice `No images uploaded yet` aunque
+  // el bank acepte también video: es el copy observado y no se corrige.
+  "media.empty.title": "No images uploaded yet", // literal ERR-E04
+  "media.empty.description":
+    "Upload images or videos and they show up here, ready for Blitz and the Studio.", // nuevo
+  "media.empty.filteredDescription":
+    "No media matches this filter. Clear it to see everything.", // nuevo
+  "media.empty.clearFilters": "Clear filter", // nuevo
+  "media.uploadHint":
+    "Uploading happens from this screen in its own task; this one lists what's already there.", // nuevo
+  // PRD:1626 — el pie de cada tarjeta es `<size> MB · <fecha>`.
+  "media.card.meta": "{size} MB · {date}", // literal (forma)
+  "media.category.uncategorized": "Uncategorized", // literal PRD:1626
+  "media.category.slideshowImage": "slide", // literal PRD:1628 (badge de la grid)
+  "media.category.greenScreenBackground": "green screen bg", // nuevo
+  "media.category.backgroundVideo": "bg", // literal PRD:1626
+  "media.category.hookVideo": "hook", // literal PRD:1626
+  "media.category.greenScreenVideo": "green screen", // nuevo
+  // DATA-010 (PRD:2093) da el enum, no el texto de pantalla: los tres son `nuevo`.
+  "media.status.processing": "Processing", // nuevo
+  "media.status.failed": "Upload failed", // nuevo
+  "media.status.ready": "Ready", // nuevo
+  "media.videoNoPreview": "Video", // nuevo · el contrato no publica poster de video
+  "media.durationLabel": "Duration {duration}", // nuevo · sólo para lectores de pantalla
+
+  /* --------------------------------- Blitz Settings · FR-055 (PRD:1255-1300) */
+  "prefs.title": "Blitz Settings", // literal (label de la ruta, PRD:260)
+  // PRD:1265 — el banner persistente de auto-guardado, literal.
+  "prefs.saved": "All changes saved", // literal
+  "prefs.pending": "Unsaved changes", // nuevo
+  "prefs.pendingHint": "They'll be saved automatically in a moment.", // nuevo
+  "prefs.saving": "Saving…", // nuevo
+  "prefs.saveFailedHint": "Your change is still here — it just isn't saved yet.", // nuevo
+  "prefs.blocked":
+    "{group} doesn't add up to 100 yet, so it isn't being saved. Adjust it to continue.", // nuevo
+  "prefs.group.contentMix": "Content mix", // literal PRD:1263
+  "prefs.group.textStyleWeights": "Caption style mix", // literal PRD:1277
+
+  "prefs.section.contentMix": "Content mix", // literal PRD:1263
+  "prefs.section.contentMixHint":
+    "How often Blitz picks each format. The four always add up to 100 — moving one rebalances the rest.", // nuevo
+  "prefs.section.ratios": "Sources & tone", // nuevo
+  "prefs.section.influencers": "Influencers", // literal PRD:1259
+  "prefs.section.captions": "Captions", // nuevo
+  "prefs.section.captionsHint":
+    "A style mix fixes the look of every generated caption. Off means Blitz picks.", // nuevo
+
+  "prefs.mix.slideshow": "Slideshow", // literal PRD:1263
+  "prefs.mix.wallOfText": "Wall of text", // literal PRD:1263
+  "prefs.mix.greenScreen": "Green screen", // literal PRD:1263
+  "prefs.mix.videoHook": "Hook demo videos", // literal PRD:1263
+
+  "prefs.ratio.remix": "Remix ratio", // literal PRD:1270
+  "prefs.ratio.ownMedia": "Own media vs shared library", // literal PRD:1271
+  "prefs.ratio.mentionBusiness": "Mention business", // literal PRD:1272
+  "prefs.ratio.influencerChance": "Influencer frequency", // literal PRD:1260
+  "prefs.ratio.influencerChanceHint":
+    "What share of Blitz suggestions feature one of your trained influencers.", // literal PRD:1260
+
+  "prefs.smartText": "Smart text positioning", // literal PRD:1274
+  "prefs.smartTextHint":
+    "Let the renderer move captions away from faces and busy parts of the frame.", // nuevo
+  "prefs.gender.label": "Gender filter", // literal PRD:1275
+  "prefs.gender.any": "No filter", // nuevo · el `null` de FR-055
+  "prefs.gender.man": "Man", // literal PRD:1275
+  "prefs.gender.woman": "Woman", // literal PRD:1275
+
+  "prefs.styleMix.toggle": "Caption style mix", // literal PRD:1277
+  "prefs.styleMix.off": "Off — Blitz picks a style per generation.", // nuevo
+  "prefs.style.tiktokClassic": "TikTok classic", // literal PRD:1279 (id `tiktok-classic`)
+  "prefs.style.boldImpact": "Bold impact", // literal PRD:1279
+  "prefs.style.snapchat": "Snapchat", // literal PRD:1279
+  "prefs.style.whiteBox": "White box", // literal PRD:1279
+  "prefs.style.yellowPop": "Yellow pop", // literal PRD:1279
+  "prefs.style.cleanKaraoke": "Clean karaoke", // literal PRD:1279
+  "prefs.style.scriptPlayful": "Script playful", // literal PRD:1279
+
+  // FR-055 regla 1 (PRD:1283) — lo que el usuario necesita saber al guardar.
+  "prefs.application":
+    "Changes apply to future generations only. The {count} items already queued are kept.", // nuevo
+  // Los dos huecos declarados de esta pantalla.
+  "prefs.angleWeightsMissing":
+    "Angle weights are part of these settings but aren't edited here yet: they have to cover every active angle, and this screen has no way to list them.", // nuevo
+  "prefs.sum": "{sum} / 100", // nuevo
 } as const;
 
 export type WebMessageKey = keyof typeof webEn;

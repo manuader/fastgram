@@ -985,6 +985,223 @@ body {
   overflow-wrap: anywhere;
 }
 
+/* ------------------------------------------------- Media Bank · FR-100 */
+/* Mismo criterio de color que la Library: ningún texto sale de
+   `--fg-color-text-subtle`, por la deuda de contraste conocida. */
+
+.fgw-media-grid {
+  display: grid;
+  gap: var(--fg-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+}
+
+.fgw-media-card,
+.fgw-media-skeleton {
+  display: grid;
+  gap: var(--fg-space-2);
+}
+
+/* Un asset del bank no es 9:16 como una pieza renderizada: puede ser
+   cualquier cosa que el usuario suba. El cuadrado reserva la caja sin
+   prometer una proporción que el archivo no tiene. */
+.fgw-media-card__thumb {
+  position: relative;
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-lg);
+  background: var(--fg-color-surface-sunken);
+  aspect-ratio: 1 / 1;
+  place-items: center;
+}
+
+.fgw-media-card__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fgw-media-card__placeholder {
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+}
+
+.fgw-media-card__badge {
+  position: absolute;
+  top: var(--fg-space-1);
+  left: var(--fg-space-1);
+}
+
+.fgw-media-card__duration {
+  position: absolute;
+  right: var(--fg-space-1);
+  bottom: var(--fg-space-1);
+  padding: 0 var(--fg-space-1);
+  border-radius: var(--fg-radius-sm);
+  background: rgb(0 0 0 / 65%);
+  color: #fff;
+  font-size: var(--fg-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.fgw-media-card__foot {
+  display: grid;
+  gap: 2px;
+}
+
+/* El nombre de archivo se trunca (PRD:1626 lo dibuja truncado) y el completo
+   queda en el `title`: un nombre cortado sin forma de leerlo entero hace
+   indistinguibles dos tomas de la misma sesión. */
+.fgw-media-card__name {
+  overflow: hidden;
+  font-size: var(--fg-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fgw-media-card__meta {
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.fgw-media-card__status {
+  font-size: var(--fg-text-xs);
+  color: var(--fg-color-text-muted);
+}
+
+.fgw-media-card__status[data-status="failed"] {
+  color: var(--fg-color-danger-text);
+}
+
+/* ------------------------------------------ Blitz Settings · FR-055 */
+
+.fgw-prefs {
+  display: grid;
+  gap: var(--fg-space-5);
+  max-width: 720px;
+}
+
+.fgw-prefs__section {
+  display: grid;
+  gap: var(--fg-space-3);
+  padding: var(--fg-space-4);
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-xl);
+}
+
+.fgw-prefs__heading {
+  margin: 0;
+  font-size: var(--fg-text-sm);
+  font-weight: var(--fg-weight-semibold);
+}
+
+.fgw-prefs__hint,
+.fgw-prefs__note,
+.fgw-prefs__gap {
+  margin: 0;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+}
+
+.fgw-prefs__sum {
+  margin: 0;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+  font-variant-numeric: tabular-nums;
+  justify-self: end;
+}
+
+/* Un conjunto que no suma 100 no se está guardando: el número tiene que
+   verse distinto, no sólo el banner. */
+.fgw-prefs__sum:not([data-sum="100"]) {
+  color: var(--fg-color-danger-text);
+  font-weight: var(--fg-weight-semibold);
+}
+
+.fgw-prefs__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fg-space-3);
+}
+
+.fgw-prefs__label {
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-prefs-slider {
+  display: grid;
+  gap: var(--fg-space-1);
+}
+
+.fgw-prefs-slider__row {
+  display: grid;
+  align-items: center;
+  gap: var(--fg-space-3);
+  grid-template-columns: minmax(0, 12rem) minmax(0, 1fr) 3rem;
+}
+
+.fgw-prefs-slider__label {
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-prefs-slider__input {
+  width: 100%;
+  accent-color: var(--fg-color-accent);
+}
+
+.fgw-prefs-slider__value {
+  font-size: var(--fg-text-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.fgw-prefs-slider__hint {
+  margin: 0;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+}
+
+/* El banner de auto-guardado. El color acompaña al texto, nunca lo sustituye:
+   `data-status` no es legible y el copy sí. */
+.fgw-autosave {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  margin: 0;
+  padding: var(--fg-space-2) var(--fg-space-3);
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-lg);
+  background: var(--fg-color-surface-sunken);
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-autosave[data-status="saved"] {
+  color: var(--fg-color-success-text);
+}
+
+.fgw-autosave[data-status="blocked"] {
+  color: var(--fg-color-danger-text);
+}
+
+.fgw-autosave__hint {
+  margin: 0;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+}
+
+.fgw-autosave--error {
+  display: grid;
+  gap: var(--fg-space-2);
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
 /* ------------------------------------------------------------ responsive */
 /* NFR-019 · P1-UI-008. Tres cortes, los mismos que `useSidebarState`. */
 
@@ -1039,12 +1256,23 @@ body {
 
   /* Dos columnas a 375 px de ancho siguen dando una miniatura legible; tres
      dan 100 px y el badge de tipo ya no entra en su fila. */
-  .fgw-content-grid {
+  .fgw-content-grid,
+  .fgw-media-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .fgw-library-filters__count {
     margin-left: 0;
+  }
+
+  /* A 375 px las tres columnas del slider dejan la pista en 90 px, que no se
+     puede arrastrar con el pulgar. Se apilan label / pista+valor. */
+  .fgw-prefs-slider__row {
+    grid-template-columns: minmax(0, 1fr) 3rem;
+  }
+
+  .fgw-prefs-slider__label {
+    grid-column: 1 / -1;
   }
 }
 

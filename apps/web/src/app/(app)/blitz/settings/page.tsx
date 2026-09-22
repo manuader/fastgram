@@ -1,14 +1,22 @@
 import type { Metadata } from "next";
-import { RoutePlaceholder } from "@/components/placeholder/RoutePlaceholder";
+import { BlitzSettingsForm } from "@/components/blitz/BlitzSettingsForm";
+import { PageHeader } from "@/components/shell/PageHeader";
+import { tw } from "@/lib/i18n/t";
 
 export const metadata: Metadata = { title: "Blitz Settings · FastGram" };
 
-export default function Page() {
+/**
+ * `/blitz/settings` · FR-055 (PRD:1255-1300), §3.1 (PRD:260).
+ *
+ * Server component fino, igual que `/library`: el `<h1>` y el shell. Todo lo
+ * que habla con la API vive en `BlitzSettingsForm`, que es cliente — `apps/web`
+ * no hace fetch desde el servidor (ver `lib/api/client.ts`).
+ */
+export default function BlitzSettingsPage() {
   return (
-    <RoutePlaceholder
-      screen="Blitz Settings"
-      spec="PRD §3.1 · FR-055"
-      task="P2-PREFS-001"
-    />
+    <div className="fgw-page">
+      <PageHeader title={tw("prefs.title")} />
+      <BlitzSettingsForm />
+    </div>
   );
 }

@@ -13,6 +13,7 @@ export const queryKeys = {
   content: (filters?: QueryParams) => ["content", filters ?? {}] as const,
   contentItem: (contentId: string) => ["content", contentId] as const,
   media: (filters?: QueryParams) => ["media", filters ?? {}] as const,
+  blitzPreferences: () => ["blitz", "preferences"] as const,
   influencers: () => ["influencers"] as const,
   influencer: (influencerId: string) => ["influencers", influencerId] as const,
   connections: () => ["connections"] as const,
