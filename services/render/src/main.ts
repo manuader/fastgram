@@ -14,11 +14,20 @@ import {
   maxBytesFor,
   mediaPolicyFromEnv,
 } from "./config.js";
+import { codeVersion } from "./domain/codeVersion.js";
 import { FileCacheStore } from "./cache/store.js";
 import { createHttpMediaResolver } from "./media/httpResolver.js";
 import { buildServer } from "./http/server.js";
 
 const env = loadRenderEnv();
+
+// `P2-RENDER-016`: la versión del motor se deriva del árbol de código y entra en
+// todas las claves de cache. Se fuerza acá, al arrancar, para que una instalación
+// desde la que no se pueda leer el propio código sea un proceso que no levanta y
+// no un 500 en el primer render. No hay fallback: un valor inventado devolvería
+// artefactos viejos en silencio, que es justo lo que esto arregla.
+codeVersion();
+
 const cacheDir = cacheDirFromEnv(env);
 const downloadDir = path.join(tmpdir(), "fastgram-render-downloads");
 await mkdir(cacheDir, { recursive: true });

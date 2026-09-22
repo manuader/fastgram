@@ -11,7 +11,17 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { isRenderError, RenderError } from "../errors.js";
 import { probeCapabilities, TEXT_STRATEGY } from "../ffmpeg/capabilities.js";
 import { FONT_FAMILIES, FONT_REGISTRY, requiredFontFiles } from "../domain/fonts.js";
-import { renderBuild, type RenderEngineConfig } from "../render/engine.js";
+import {
+  renderBuild,
+  type ArtifactExtension,
+  type RenderEngineConfig,
+} from "../render/engine.js";
+import { engineVersionFrom } from "../render/engineVersion.js";
+import {
+  normalizeOperation,
+  probeOperation,
+  thumbnailOperation,
+} from "../render/mediaOps.js";
 import {
   ARTIFACT_PATH_PREFIX,
   artifactHref,
@@ -22,6 +32,20 @@ import {
 export interface ServerDeps {
   readonly engine: RenderEngineConfig;
   readonly logger: boolean;
+}
+
+/**
+ * Cambia la clave de cache por el `href` opaco y se queda con el resto.
+ *
+ * `cacheKey` y `extension` NO salen: son el esquema de claves, que
+ * `http/artifacts.ts` deja escrito que puede cambiar sin avisarle al cliente.
+ * Publicarlos convertiría un detalle interno en contrato de hecho.
+ */
+function withHref<T extends { cacheKey: string; extension: ArtifactExtension }>(
+  result: T,
+): Omit<T, "cacheKey" | "extension"> & { href: string } {
+  const { cacheKey, extension, ...rest } = result;
+  return { ...rest, href: artifactHref(cacheKey, extension) };
 }
 
 export function buildServer(deps: ServerDeps): FastifyInstance {
@@ -48,10 +72,27 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
    */
   app.get("/capabilities", async () => {
     const caps = await probeCapabilities();
+    const engine = engineVersionFrom(caps);
     return {
+      /**
+       * `P2-RENDER-016` — **Ésta es la etiqueta de motor para claves de cache.**
+       *
+       * `ffmpeg.version` no servía para eso por dos razones medidas: es la línea
+       * entera del banner (con espacios y un copyright adentro de la clave), y
+       * no cubre lo que de verdad decide el frame —un cambio nuestro en el
+       * filtergraph o en el overlay no la movía—.
+       *
+       * `engine.version` es un sha256 hex de `engine.components`. Los
+       * componentes viajan al lado para que se pueda contestar «¿por qué cambió?»
+       * sin adivinar; lo que se concatena a una clave es `version`.
+       */
+      engine,
       ffmpeg: {
         available: caps.available,
+        /** La línea del banner, tal cual. Diagnóstico humano, NO clave de cache. */
         version: caps.version,
+        /** El token solo (`9.0.1`). El mismo que entra en `engine.components`. */
+        versionTag: engine.components.ffmpeg,
         hasDrawtext: caps.hasDrawtext,
         hasChromakey: caps.hasChromakey,
         hasColorkey: caps.hasColorkey,
@@ -92,6 +133,49 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         href: artifactHref(artifact.cacheKey, artifact.extension),
       })),
     });
+  });
+
+  /**
+   * `POST /probe` — `ERR-P11`, metadatos antes de aceptar un upload.
+   *
+   * ── Por qué POST y no `GET /probe?url=…` ─────────────────────────────────
+   * La URL del medio es firmada y de vida corta (`NFR-008`): lleva el token en
+   * la query. Una query string va al access log del balanceador, al de Fastify,
+   * al del proxy y al historial de cualquier cliente. El cuerpo no. Es el mismo
+   * criterio con el que `POST /render` ya manda las URLs en el cuerpo, y la
+   * forma del puerto no pide otra cosa: `probe(url)` es una llamada, no un
+   * recurso direccionable.
+   *
+   * No devuelve bytes: el puerto devuelve `MediaProbe`, que es puro metadato.
+   */
+  app.post("/probe", async (request, reply) => {
+    const result = await probeOperation(request.body, deps.engine);
+    return reply.status(200).send(result);
+  });
+
+  /**
+   * `POST /normalize` — `NFR-014` / `P2-RENDER-013`: MOV→MP4, HDR→SDR,
+   * faststart.
+   *
+   * El artefacto NO viaja en esta respuesta: viaja su `href`, y los bytes se
+   * bajan con el `GET /artifact/…` que ya existe. Devolver el MP4 acá obligaría
+   * a elegir entre materializarlo en memoria —50 MB por worker, `NFR-013`— y
+   * duplicar la ruta que sirve bytes, que es la única con defensa contra path
+   * traversal. El resto de la respuesta es exactamente lo que
+   * `RenderedMedia` pide menos `body`.
+   */
+  app.post("/normalize", async (request, reply) => {
+    const result = await normalizeOperation(request.body, deps.engine);
+    return reply.status(200).send(withHref(result));
+  });
+
+  /**
+   * `POST /thumbnail` — IMPL §5: «nunca servir el master para un preview».
+   * Mismo trato que `/normalize`: metadatos acá, bytes por el `href`.
+   */
+  app.post("/thumbnail", async (request, reply) => {
+    const result = await thumbnailOperation(request.body, deps.engine);
+    return reply.status(200).send(withHref(result));
   });
 
   /**

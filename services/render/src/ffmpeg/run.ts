@@ -11,6 +11,7 @@
  */
 import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
+import { basename } from "node:path";
 import { RenderError, type RenderErrorCode } from "../errors.js";
 import { FFMPEG_BIN } from "./capabilities.js";
 
@@ -38,6 +39,18 @@ const STDERR_PATTERNS: readonly {
   readonly pattern: RegExp;
   readonly code: RenderErrorCode;
 }[] = [
+  /**
+   * `P2-RENDER-016` — geometría impar. Es la RED de seguridad, no la defensa:
+   * el canvas par se exige en el esquema (`domain/canvas.ts`), antes de gastar
+   * un byte de IO. Esto cubre cualquier otro camino que termine pidiéndole a
+   * libx264 una dimensión impar.
+   *
+   * Que caiga en `bad_request` y no en `render_failed` es el punto: el
+   * adaptador clasifica `render_failed` como reintentable, así que el mismo
+   * error de payload quemaba tres encodes completos antes de rendirse. Nada de
+   * lo que reintente va a volver par un número impar.
+   */
+  { pattern: /width not divisible by 2|height not divisible by 2/i, code: "bad_request" },
   {
     pattern: /No such filter|Filter not found|Unknown filter/i,
     code: "render_capability_missing",
@@ -165,14 +178,16 @@ export async function assertNonEmptyOutput(
     throw new RenderError(
       "render_empty_output",
       "el render terminó sin error pero no escribió el archivo de salida",
-      { details: { path }, cause: diagnostic || cause },
+      // Sólo el nombre del archivo: `details` viaja al cliente y la ruta
+      // completa es del directorio temporal del contenedor. Ver `probe.ts`.
+      { details: { file: basename(path) }, cause: diagnostic || cause },
     );
   }
   if (size <= 0) {
     throw new RenderError(
       "render_empty_output",
       "el render terminó sin error pero el archivo de salida está vacío",
-      { details: { path, bytes: size }, cause: diagnostic },
+      { details: { file: basename(path), bytes: size }, cause: diagnostic },
     );
   }
   return size;

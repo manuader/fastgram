@@ -38,6 +38,7 @@ import { normalizeMedia } from "../ffmpeg/normalize.js";
 import { runFfmpeg } from "../ffmpeg/run.js";
 import type { CacheStore } from "../cache/store.js";
 import type { FontLoaderOptions } from "./fontLoader.js";
+import { engineVersion } from "./engineVersion.js";
 import { renderTextOverlay } from "./textLayer.js";
 import { renderSlideBase, renderSlideWithText } from "./slideshow.js";
 import {
@@ -107,11 +108,21 @@ export const renderRequestSchema = z
 
 export type RenderRequestInput = z.input<typeof renderRequestSchema>;
 
-/** Pasos 1–3: todo lo que se puede rechazar sin gastar un byte de IO. */
+/**
+ * Pasos 1–3: todo lo que se puede rechazar sin gastar un byte de IO.
+ *
+ * **Ya no devuelve las claves de cache** (`P2-RENDER-016`). Las claves llevan
+ * adentro la versión del motor, y esa versión incluye la de ffmpeg, que se
+ * averigua sondeando el binario. Calcularlas acá obligaba a una de dos cosas
+ * malas: o sondear ffmpeg antes de validar —y romper la promesa de que un
+ * payload basura no toca el motor—, o dejar la versión de ffmpeg afuera de la
+ * clave, que es el bug que `P2-RENDER-016` viene a cerrar. Calcular la clave
+ * nunca fue parte de validar: sólo vivía acá.
+ */
 export function validateRequest(
   raw: unknown,
   policy: MediaPolicyConfig,
-): { payload: BuildPayload; grant: VerifiedGrant | null; keys: CacheKeys } {
+): { payload: BuildPayload; grant: VerifiedGrant | null } {
   const parsed = renderRequestSchema.safeParse(raw);
   if (!parsed.success) {
     throw new RenderError("bad_request", "el payload de build no es válido", {
@@ -127,7 +138,7 @@ export function validateRequest(
     parsed.data.grant === undefined ? null : verifyGrant(parsed.data.grant, policy);
   const payload = parsed.data.payload;
   assertAllMediaAllowed(collectMediaReferences(payload), policy, grant);
-  return { payload, grant, keys: computeCacheKeys(payload) };
+  return { payload, grant };
 }
 
 async function geometryOf(localPath: string): Promise<SourceGeometry> {
@@ -149,8 +160,12 @@ export async function renderBuild(
   raw: unknown,
   config: RenderEngineConfig,
 ): Promise<RenderOutput> {
-  const { payload, keys } = validateRequest(raw, config.policy);
+  const { payload } = validateRequest(raw, config.policy);
   const caps = config.capabilities ?? (await probeCapabilities());
+  // La versión del motor entra en las tres claves: si cambia el código, ffmpeg,
+  // sharp o el registro de fuentes, el artefacto viejo deja de ser válido y la
+  // cache lo tiene que saber (`P2-RENDER-016`).
+  const keys = computeCacheKeys(payload, (await engineVersion(caps)).version);
   const warnings: string[] = [];
 
   const workDir = await mkdtemp(path.join(tmpdir(), "fastgram-render-"));

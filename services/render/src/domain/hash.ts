@@ -21,15 +21,32 @@
  * `buildKey` combina las dos y es la clave del artefacto final.
  */
 import { createHash } from "node:crypto";
+import { codeVersion } from "./codeVersion.js";
 import { FONT_REGISTRY_VERSION } from "./fonts.js";
 import type { BuildPayload } from "./payload.js";
 
 /**
- * Versión del motor. Cualquier cambio en cómo se arma el filtergraph o el
- * overlay tiene que subirla: si no, un deploy nuevo devuelve artefactos viejos
- * desde la cache.
+ * Versión del motor que entra en las tres claves.
+ *
+ * **Antes era `"1"`**, con un comentario pidiendo que se subiera a mano en cada
+ * cambio del filtergraph o del overlay. Nunca se subió, y no se iba a subir: es
+ * el tipo de instrucción que funciona hasta el primer día apurado. Mientras
+ * tanto, un deploy que movía la tipografía servía los MP4 viejos desde la cache
+ * de este servicio, callado.
+ *
+ * Ahora sale del hash del código que este proceso corre (`codeVersion`): no hay
+ * nada que acordarse de subir. El razonamiento completo —y lo que cuesta— está
+ * en `codeVersion.ts`.
+ *
+ * Es el **piso**, no el techo: sólo cubre nuestro código. `computeCacheKeys`
+ * acepta la etiqueta completa (`render/engineVersion.ts`), que además incluye
+ * las versiones de ffmpeg, sharp/libvips/Pango/FreeType y el registro
+ * tipográfico. El motor le pasa esa; el default de acá existe para los tests y
+ * para cualquier uso puro, donde sondear ffmpeg no tendría sentido.
  */
-export const ENGINE_VERSION = "1";
+export function defaultEngineVersion(): string {
+  return codeVersion();
+}
 
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
 
@@ -121,16 +138,19 @@ export function overlayFingerprint(payload: BuildPayload): unknown {
   return { type: payload.type, canvases, texts, fonts: FONT_REGISTRY_VERSION };
 }
 
-export function computeCacheKeys(payload: BuildPayload): CacheKeys {
+export function computeCacheKeys(
+  payload: BuildPayload,
+  engineVersion: string = defaultEngineVersion(),
+): CacheKeys {
   const mediaKey = sha256Hex(
-    `${ENGINE_VERSION}|media|${canonicalJson(mediaFingerprint(payload))}`,
+    `${engineVersion}|media|${canonicalJson(mediaFingerprint(payload))}`,
   );
   const overlayKey = sha256Hex(
-    `${ENGINE_VERSION}|overlay|${canonicalJson(overlayFingerprint(payload))}`,
+    `${engineVersion}|overlay|${canonicalJson(overlayFingerprint(payload))}`,
   );
   return {
     mediaKey,
     overlayKey,
-    buildKey: sha256Hex(`${ENGINE_VERSION}|build|${mediaKey}|${overlayKey}`),
+    buildKey: sha256Hex(`${engineVersion}|build|${mediaKey}|${overlayKey}`),
   };
 }

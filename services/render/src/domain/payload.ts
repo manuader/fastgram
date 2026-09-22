@@ -18,7 +18,12 @@
  *    `Add Text`.
  */
 import { z } from "zod";
-import { aspectRatioSchema, canvasSchema, DEFAULT_SLIDESHOW_ASPECT } from "./canvas.js";
+import {
+  aspectRatioSchema,
+  canvasSchema,
+  DEFAULT_SLIDESHOW_ASPECT,
+  evenCanvasSchema,
+} from "./canvas.js";
 import { DEFAULT_FIT_MODE, fitModeSchema, focalPointSchema } from "./fit.js";
 import { textObjectListSchema } from "./text.js";
 
@@ -135,10 +140,15 @@ export const slideshowPayloadSchema = slideshowPayloadBaseSchema.superRefine(
   },
 );
 
+/**
+ * Los tres formatos de VIDEO llevan `evenCanvasSchema` y el slideshow no: la
+ * dimensión par la exige libx264, y el slideshow no pasa por libx264. El porqué
+ * de rechazar en vez de redondear está en `canvas.ts`.
+ */
 export const wallOfTextPayloadSchema = z
   .object({
     type: z.literal("wall-of-text"),
-    canvas: canvasSchema,
+    canvas: evenCanvasSchema,
     video: mediaRefSchema,
     /** `FR-053.1`: ausente = `No audio`. Ver `audioRefSchema`. */
     audio: audioRefSchema.optional(),
@@ -149,7 +159,7 @@ export const wallOfTextPayloadSchema = z
 export const greenScreenPayloadSchema = z
   .object({
     type: z.literal("green-screen"),
-    canvas: canvasSchema,
+    canvas: evenCanvasSchema,
     /** Fondo. El video con croma se compone ENCIMA (`FR-070`). */
     image: mediaRefSchema,
     video: mediaRefSchema,
@@ -165,7 +175,7 @@ export const greenScreenPayloadSchema = z
 export const videoHookPayloadSchema = z
   .object({
     type: z.literal("video-hook"),
-    canvas: canvasSchema,
+    canvas: evenCanvasSchema,
     hookVideo: mediaRefSchema,
     demoVideo: mediaRefSchema,
     /** `FR-053.1`: ausente = `No audio`. Ver `audioRefSchema`. */
