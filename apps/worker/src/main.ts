@@ -38,6 +38,7 @@ import pino from "pino";
 import { createContentBuildHandler } from "./content/build-handler.js";
 import { createInfluencerPipelineHandler } from "./influencers/pipeline-handler.js";
 import { createDiscoveryRefillHandler } from "./discovery/refill-handler.js";
+import { createBrandStalenessHandler } from "./brand/staleness-handler.js";
 import { createPublishHandler } from "./publishing/publish-handler.js";
 import { loadWorkerEnv } from "./env.js";
 import { JOB_CATALOG, type JobPolicy } from "./jobs/catalog.js";
@@ -204,6 +205,19 @@ const HANDLERS: Readonly<Record<string, JobHandler<unknown>>> = {
     appRole,
     logger,
   }),
+  /**
+   * **El primer trabajo programado que de verdad hace algo cada noche.**
+   *
+   * El dominio sabía decidir la staleness desde hace tandas y nadie la
+   * aplicaba: sin handler, el bloque de abajo no programaba su cron, así que
+   * ninguna fuente envejecía nunca. Montarlo es lo que enciende el cron.
+   */
+  [JOB_QUEUES.brandSourceStalenessSweep]: createBrandStalenessHandler({
+    db: handle.db,
+    clock,
+    appRole,
+    logger,
+  }),
   [JOB_QUEUES.quotaReset]: createQuotaResetHandler({
     db: handle.db,
     clock,
@@ -233,9 +247,8 @@ await queue.start();
  * Y **sólo los que tienen handler.** Programar el cron de una cola que nadie
  * consume es el peor modo de falla de este sistema —el que no falla—: los jobs
  * se acumulan, nadie los toma, y el log de arranque diría que el trabajo está
- * programado. `brand-source-staleness-sweep` y `snapshot-purge` tienen cron en
- * el catálogo y todavía no tienen handler, así que no se programan; la lista de
- * los que quedaron afuera va al log, igual que las colas sin consumidor.
+ * programado. Hoy el único en esa situación es `snapshot-purge`; la lista de los
+ * que quedaron afuera va al log, igual que las colas sin consumidor.
  *
  * El cron sale del catálogo y no de acá: es la política del consumidor y ya
  * está escrita con su razón. El adaptador lo registra **en UTC** (§16.2 fija

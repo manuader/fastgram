@@ -122,7 +122,14 @@ module.exports = {
   ],
   options: {
     doNotFollow: { path: "node_modules" },
-    exclude: { path: "(\\.test\\.ts$|\\.spec\\.ts$|/__tests__/|/dist/|\\.next/)" },
+    // `/coverage/` está acá y no sólo en `.gitignore`: dependency-cruiser no lee
+    // el gitignore, así que correr `vitest --coverage` una vez dejaba a
+    // `pnpm boundaries` escupiendo tres avisos de `no-orphans` sobre los .js del
+    // reporte HTML. Un aviso que aparece según lo que corriste antes es ruido, y
+    // el ruido es lo que hace que se dejen de leer los avisos de verdad.
+    exclude: {
+      path: "(\\.test\\.ts$|\\.spec\\.ts$|/__tests__/|/dist/|\\.next/|/coverage/)",
+    },
     tsPreCompilationDeps: true,
     // `tsconfig.base.json` existe SÓLO para esto: es de donde depcruise saca
     // los alias de módulo. Incluye `@/*` → `apps/web/src/*` porque esa app lo

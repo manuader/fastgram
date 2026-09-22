@@ -285,4 +285,5 @@ export {
   type InfluencerCreditsCharge,
   type InfluencerRow,
 } from "./influencer-credits.js";
+export { brandStalenessStore, sweepStaleBrandSources } from "./brand-staleness.js";
 export { lockPost, postPublishStore, type PostRow } from "./post-publish.js";

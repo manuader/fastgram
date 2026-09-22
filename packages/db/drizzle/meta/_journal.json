@@ -64,6 +64,13 @@
       "when": 1790008494030,
       "tag": "0008_post_external_id",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790008494031,
+      "tag": "0009_brand_staleness_sweep",
+      "breakpoints": true
     }
   ]
 }
