@@ -134,7 +134,11 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
   > El cobro va **antes** de crear y de encolar, y dentro de la misma transacción. `quotaLedgerStore.lockPeriod` usa `SELECT … FOR UPDATE`; sus dos tests de concurrencia se ponen rojos si se le quita.
 - [x] **P1-QUOTA-002** Swipes diarios con reset 00:00 UTC · `F-066`
 - [x] **P1-QUOTA-003** Créditos de AI Studio
-- [~] **P1-DATA-016** **Columnas del cargo de créditos en `influencers`** (`credits_period`, `credits_charged`, `credits_refunded_at` + CHECK) — hoy el cargo vive en un `jsonb` que un `update` reemplaza entero · agente E
+- [x] **P1-DATA-016** **Columnas del cargo de créditos en `influencers`** + `posts.external_post_id` · `FR-080`, `NFR-015`
+  > Tres CHECK, uno más de los dos pedidos: `credits_charged > 0`, porque un cargo de cero no es un cargo y uno negativo **le quita** créditos al cliente cuando se "devuelve".
+  > **`claimCreditsRefund` marca y devuelve el cargo en la misma sentencia**, que es una respuesta directa a la trampa 24: no hay "preguntar" antes de "devolver", así que no se puede escribir el camino en el orden equivocado. Verificado: reemplazándolo por `SELECT`+`UPDATE`, el test de concurrencia da `expected [Array(2)] to have a length of 1`.
+  > **Hallazgo grande: los tests de cross-tenant del paquete medían RLS, no el `WHERE`.** Corren como `fastgram_app` con el GUC puesto, así que la capa 1 tapa el agujero y la capa 2 nunca se mide. Confirmado sobre `lockContent`, que era mío: sin el `companyId`, los 146 tests siguieron verdes. Los tres repositorios nuevos y `content-build` ganan un test que corre **sin RLS de por medio**.
+  > `posts.external_post_id` sin índice a propósito: todo acceso entra por `company_id`, y un índice invitaría a buscar sin tenant.
 - [~] **P1-QUOTA-011** **Cablear el cobro de créditos a `POST /influencers`** (250, `AI_STUDIO_COST.influencer`) · `FR-080`, §9.4 · **parcial:** cobra, pero **nadie libera todavía** — el handler de `influencer-pipeline` no existe
   > **`ai_credits` cuenta consumidos, no saldo.** La fila del período la crea quien llega primero y dos de los tres caminos la crean con el default `0`; con semántica de saldo, un workspace Growth que guardó contenido antes arrancaría el período en 0 y **todo influencer daría 402**, sin poder distinguir "nunca se sembró" de "se gastó todo". Falta `ai_credits_purchased` para el `Buy more`.
   > **`inFlightCount` es parcial y está dicho como tal:** `NFR-025` acota imágenes + videos + influencers juntos y sólo se puede contar el tercero (no hay tabla de generaciones). Se cuenta la mitad que más cuesta; un `0` silencioso habría vuelto el cap decorativo.
@@ -183,7 +187,12 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P1-STORAGE-003** Límites y tipos: imagen 10 MB, video 50 MB, extensión coherente con content-type · `NFR-013`
 - [x] **P1-STORAGE-004** URLs firmadas de vida corta (1 h), **nunca logueadas ni persistidas** · `NFR-008`
 - [x] **P1-STORAGE-005** Errores de reserva: `409` no alcanzable, `410` expirada, `404` ajena · PRD §9.8
-- [~] **P1-STORAGE-007** **Montar `S3Storage` en las dos apps** — existe con 17 tests y nadie lo monta; hoy `POST /media` siempre da `409` · agente H (api) + coordinador (worker)
+- [x] **P1-STORAGE-007** **`S3Storage` montado en las dos apps** · `ADR-006`, §9.8
+  > Verificado contra MinIO con el **binario compilado**: reserva → `PUT` directo → finalización. `POST /media` pasa de `409` **siempre** a `201`. Y el PUT con el `Content-Type` cambiado da **403**: la firma cubre la cabecera, de punta a punta.
+  > **Las cinco `S3_*` son obligatorias, sin fallback.** El camino intermedio —caer a memoria si faltan— *es* el bug que esto cierra: responde 200 a la reserva y 409 para siempre, en silencio. Un interruptor para apagar el storage es uno que alguien deja apagado en producción.
+  > El worker también, por una razón propia: con la API sobre S3 y el worker sobre memoria, `contents.files` guardaría `memory://bucket/...`. Medido: `content/…/1/0` de 64 B en MinIO, puesto por el `put()` del worker.
+  > **Diferencia real entre los dos lados:** la API nunca hace `put()` —los bytes van directo al bucket— y el worker sí. Ahí entra la deuda del adaptador: sin `@aws-sdk/lib-storage` no hay multipart y `put` acumula en memoria hasta el tope.
+  > **Queda abierto el hueco del CDN:** `canonicalObjectUrl` firma y quita la query, así que con R2 detrás de un CDN las URLs persistidas apuntan al endpoint de firma. Hoy en desarrollo coinciden (MinIO firma y sirve por el mismo host) y el arranque avisa si divergen.
 - [~] **P1-STORAGE-006** Limpieza best-effort que **no bloquea** el borrado de la fila · `ERR-F05` · **parcial:** el puerto deja la política al llamador (correcto); falta el caso de uso que loguea y sigue
 
 ## P1-API — Contrato y API
@@ -281,7 +290,13 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P1-UI-006** Primitivas de estado: `empty`, `loading`, `error`, skeletons · PRD §19
 - [x] **P1-UI-007** TanStack Query + capa de cliente de API tipada
 - [ ] **P1-UI-008** Responsive: móvil y tablet · `NFR-019`
-- [~] **P1-UI-012** **Cablear las páginas al cliente tipado** — `lib/api/` está construido y **ninguna página lo usa**: 40 `page.tsx` de ~16 líneas · agente F
+- [~] **P1-UI-012** **Cablear las páginas al cliente tipado** · **parcial: una tajada vertical (Library → My Content) contra la API, con los cuatro estados de §19, cursor real y polling de 10 s** — quedan 39 páginas
+  > **Primera vez que alguien abre un navegador en el proyecto**, y lo primero que apareció es que nada había funcionado nunca: `pnpm dev` no arrancaba **ninguna pantalla** (`--turbopack` no lee el `extensionAlias` de webpack, y el `layout.tsx` raíz importa `@fastgram/ui`), y el `KpiRow` del Home venía recibiendo **401 desde siempre**.
+  > **La credencial**: el navegador no habla con `apps/api`. Habla con un route handler de la propia app que lee la key del entorno y reenvía — sólo `GET`, con la sesión exigida, headers de salida por lista blanca y el cuerpo tal cual **con su status**, porque reempaquetarlo haría que el `402` deje de distinguirse del `500`. **Provisorio**: una key por despliegue es un workspace para todo el que llegue. Lo que corresponde es P1-AUTH.
+  > **Sin verificar, y es lo que importa:** la Library se ejercitó contra un **stub**, no contra la API sirviendo datos — las 4 keys de desarrollo están hasheadas. Y **no hay ni un test de componente** en el proyecto: falta `jsdom` y `@testing-library/react`.
+- [x] **P1-UI-013** **`pnpm dev` arranca** — `packages/ui` dejó de escribir la extensión `.js` en sus imports internos
+  > El parche estaba del lado equivocado: `next.config.ts` le enseñaba la regla a **webpack**, y el script `dev` corre turbopack. `packages/ui` podía dejar de escribirla porque su `package.json` apunta `main` a `./src/index.ts` — **no tiene `dist` y nadie lo corre por Node**. `packages/contracts` sí las conserva y tiene que conservarlas.
+  > Medido antes (`HTTP 500`, `Can't resolve './cn.js'`) y después (`/library` → **200**, cero `Module not found`).
 - [x] **P1-UI-009** Home con KPIs, Tasks y Views History · `FR-030`
 - [x] **P1-UI-010** FAQ del Home: 5 categorías, 37 preguntas, copy literal · `FR-030`
 - [ ] **P1-UI-011** **`text-subtle` en modo oscuro no cumple AA para texto normal** · `NFR-019`
@@ -348,11 +363,16 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
   > Sin pista, **MP4 sin stream de audio** (`-an`), no pista de silencio. Lo que cerró el criterio no fue el PRD —que igual lo dice literal— sino la consistencia interna: `planGreenScreenBase` ya emitía `-an` desde `P2-RENDER-006`, y con silencio la misma elección del usuario daría contenedores distintos según el formato.
   > La defensa del endpoint contra path traversal **rechaza en vez de sanear**: sólo sha256 hex + índice + extensión de lista cerrada toca el disco. El shard de `FileCacheStore` no protege nada (`key.slice(0,2)` de `../../etc/passwd` es `..`). Sondeado con 16 formas: acepta 3, rechaza 13. Verificado rompiéndolo: sin el validador, el endpoint **sirve un archivo de fuera del root de la cache**.
   > **Restricción de despliegue:** la cache es local. Con varias réplicas y sin volumen compartido, el `GET` del href puede caer en una réplica sin el archivo — y ahí el 404 es *correcto*. Hay que bajar el artefacto en el mismo flujo, no guardarse el link.
-- [~] **P2-RENDER-016** **Los tres endpoints que faltan** (`normalize`, `probe`, `thumbnail`) + versión del motor en `/capabilities` + canvas impar como `bad_request` · agente G
+- [x] **P2-RENDER-016** **`POST /probe`, `/normalize`, `/thumbnail`** + versión del motor + canvas impar como `bad_request` · `NFR-014`, `ERR-P11`
+  > POST y no GET porque la URL del medio es firmada y lleva token en la query, y una query string va a **todos** los access logs. Los bytes salen por el `GET /artifact` que ya existía: una sola ruta que sirve bytes es una sola que auditar.
+  > **La versión del motor se deriva del hash del árbol de código** más ffmpeg, sharp, libvips, Pango, FreeType y el registro de fuentes. Era `ENGINE_VERSION = "1"`, o sea el número a mano. **Invalida la cache existente: el primer deploy re-encodea todo.**
+  > Canvas impar: **rechazar, no redondear.** El canvas es la forma declarada del artefacto y el adaptador devuelve sus dimensiones sin medir el archivo; redondear introduciría justo el sesgo de 1 px que el adaptador verificó que no existe.
 - [ ] **P2-RENDER-015** **Montar `HttpMediaRenderer` en `apps/worker`** — hoy monta el de memoria, y cambiarlo sin esto rompe **todos** los builds
   > Tres bloqueos, los tres medidos: (1) **las 42 fuentes no existen** y con `RENDER_FONT_STRICT=true` el default `inter` da `font_unavailable` → `bad_request` permanente → pieza fallada y reembolsada en cada build; (2) el servicio exige **grant firmado** por defecto y el puerto `MediaRenderer` **no tiene por dónde pasarlo** (inventar un grant estático sería per-workspace incorrecto, rompe `NFR-006`); (3) sin `RENDER_ALLOWED_MEDIA_PREFIXES` toda URL se rechaza con `media_url_not_allowed / sin_politica_configurada`.
   > Y un cuarto de diseño: **un slideshow de más de un slide no se puede construir por `render()`**. `RenderResult` transporta un artefacto; el adaptador lanza `provider_contract_violation` en vez de devolver el primero, porque devolver el primero publica una pieza de una sola imagen sin error en ningún log. Hay `renderAll()`, y el handler de build tiene que usarlo y subir N objetos.
-- [~] **P2-RENDER-013** Normalización de media: MOV→MP4, HDR→SDR, faststart · `NFR-014` · **parcial:** MOV→MP4 y faststart escritos pero **nunca corridos sobre un archivo real**; HDR→SDR **falla cerrado** porque este build de ffmpeg no trae `zscale` ni `libplacebo`
+- [~] **P2-RENDER-013** Normalización de media: MOV→MP4, HDR→SDR, faststart · `NFR-014` · **parcial: MOV→MP4 y faststart ahora sí corrieron sobre archivos reales y aparecieron dos bugs**; HDR→SDR sigue sin poder probarse
+  > **Los dos bugs se cancelaban entre sí.** `isMp4Compatible` daba `true` para un `.mov` —MOV y MP4 comparten demuxer: ffprobe emite `mov,mp4,m4a,3gp,3g2,mj2` para los dos y el discriminador real es `major_brand` (`qt ` vs `isom`)— y `needsRemux` daba `true` siempre. Uno decía "ya está bien" y el otro "hay que convertir", así que **en el único caso que alguien miró el resultado era correcto**. El test unitario pasaba fabricando `["mov","quicktime"]`, una lista que ffprobe **no emite jamás**.
+  > **HDR→SDR exitoso NUNCA corrió**: este ffmpeg no trae `zscale` ni `libplacebo`, así que la cadena de tonemapping sólo existe como string en un test de plan. Falla cerrado sobre un PQ real, que es lo único verificable en esta máquina.
 
 ## P2-CONTENT — Entidad Content
 

@@ -78,6 +78,38 @@ El detalle está en `docs/IMPLEMENTATION-PLAN.md` §2. No lo repito acá para qu
 
 ## 4. Qué cambió, sesión por sesión
 
+### Sesión 2026-09-22 (2) — Lo que nunca había funcionado
+
+Cuatro tandas más en paralelo. El hilo: **todo lo que apareció estaba roto desde
+el día que se escribió**, tapado por un test que medía otra cosa o por un camino
+que nadie recorría.
+
+- **Los tests de cross-tenant medían RLS, no el `WHERE` del repositorio.** Con el
+  GUC puesto, la capa 1 de IMPL §2.4 tapa el agujero y la 2 nunca se mide.
+  Confirmado sobre código mío: sin el `companyId`, 146 tests verdes.
+- **Dos bugs de `normalize` que se cancelaban entre sí.** MOV y MP4 comparten
+  demuxer; el test pasaba fabricando `["mov","quicktime"]`, una lista que ffprobe
+  **no emite jamás**.
+- **Ninguna pantalla había arrancado nunca en desarrollo.** `--turbopack` no lee
+  el `extensionAlias` de webpack y el `layout.tsx` raíz importa `@fastgram/ui`.
+  `next build` iba por webpack y estaba verde.
+- **CI llevaba tandas en rojo y yo reportaba verde**, porque `pnpm verify` no
+  incluía `format:check`. Al meterlo, lo primero que marcó fue que **el workflow
+  no parsea**: un `:` sin comillas en un nombre de paso, escrito por mí.
+- **La prueba del bucket no corría en ningún lado**: turbo no propaga variables y
+  la suite de MinIO se salteaba sola, también en CI.
+- **El contrato estaba mal y dos capas lo parcheaban** (`thumbnailUrl`
+  obligatorio contra un serializer que lo omite en toda pieza en `BUILDING`).
+
+Y entró lo que se pedía: `S3Storage` montado en las dos apps con `PUT` real
+verificado, los tres endpoints que le faltaban a `services/render`, las columnas
+del cargo de créditos, los handlers de `publishing` e `influencer-pipeline`, y
+**la primera pantalla que habla con la API** — con la primera vez que alguien
+abre un navegador en este proyecto.
+
+Detalle en `docs/SESSION-2026-09-22-segunda-tanda.md`.
+
+
 ### Sesión 2026-09-22 — Cuatro agentes en paralelo, y un 500 que nadie veía
 
 Cuatro tandas simultáneas en directorios disjuntos: `services/render` (audio
@@ -325,27 +357,28 @@ pnpm verify           # lint · typecheck · boundaries · consistency · test
 
 | Comando | Qué mide | Esperado hoy |
 |---|---|---|
+| `pnpm format:check` | prettier sobre el repo. **Entró en `verify` tarde**: CI lo corría solo y llevaba tandas en rojo sin que nadie lo viera | **limpio** |
 | `pnpm lint` | eslint una vez sobre todo el repo | **0 errores** |
 | `pnpm typecheck` | `tsc --noEmit` por paquete, 12 tareas | **12 successful** |
-| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 400 módulos · **1103 dependencias** |
+| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 424 módulos · **1215 dependencias** |
 | `pnpm consistency` | los números del PRD escritos en más de un paquete | **19 invariantes** |
-| `pnpm test` | unitarios | **1.556** |
+| `pnpm test` | unitarios | **1.670** |
 
 Desglose de `pnpm test`, por si uno solo se cae:
 
 | Paquete | Tests | | Paquete | Tests |
 |---|---|---|---|---|
-| `core` | 425 | | `adapters` | 348 |
+| `core` | 430 | | `adapters` | 348 |
 | `contracts` | 253 | | `ui` | 170 |
-| `render-service` | 138 | | `api` | 111 |
-| `db` | 52 | | `web` | 22 |
+| `render-service` | 207 | | `api` | 119 |
+| `db` | 52 | | `web` | 54 |
 | `worker` | 28 | | `config` | 9 |
 
 ### Lo que necesita servicios levantados
 
 ```bash
 docker compose up -d                       # Postgres con pgvector + MinIO con el bucket creado
-pnpm test:int                              # db 116 · api 91 · worker 34 → 241
+pnpm test:int                              # db 147 · api 137 · worker 62 · adapters 9 → 355
 pnpm --filter @fastgram/adapters test:int  # 9 — encolado dentro de la transacción de Drizzle
 pnpm build && pnpm smoke:binary           # el artefacto que se despliega, de verdad
 ```
@@ -380,8 +413,8 @@ motor ausente, todo análisis devuelve `partial`: es lo que manda `AI-016`.
 ### Estado del backlog
 
 ```bash
-grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 95
-grep -c '^- \[~\]' tasks.md     # en curso o parciales — hoy: 10
+grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 99
+grep -c '^- \[~\]' tasks.md     # en curso o parciales — hoy: 11
 grep -c '^- \[!\]' tasks.md     # bloqueadas — hoy: 1
 grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 276
 ```
@@ -599,6 +632,66 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 276
     timing, que es la peor forma de tenerlo. Se arregla **en el default** (la base
     se deriva del `DATABASE_URL` y el `globalSetup` la crea) o vuelve.
 
+26. **Una defensa en profundidad hace que cada capa sea imposible de testear por
+    separado — y entonces el test mide "que alguna funcione".** IMPL §2.4 pone
+    dos capas de aislamiento: RLS en Postgres y el `WHERE` del repositorio. Los
+    tests de cross-tenant corren con `withCompany(..., { role: APP_ROLE })`, o
+    sea con el GUC puesto, así que **RLS tapa el agujero y el `WHERE` nunca se
+    mide**. Quitándole el `eq(companyId)` a tres repositorios la suite siguió
+    verde; a `lockContent` también, con 146 tests en verde.
+
+    El arreglo es un caso por repositorio que corra **como superusuario, sin
+    `SET ROLE` y sin GUC**, donde lo único que aísla es el código. Los tests "las
+    dos capas juntas" se quedan: miden la redundancia, que también vale. Lo que
+    no puede faltar es el que mide **una sola**.
+
+27. **Un doble que devuelve algo que el sistema real no produce no prueba nada, y
+    es la forma más cara de tener un bug.** El test de `isMp4Compatible`
+    fabricaba `format_name = ["mov","quicktime"]`. ffprobe **no emite esa lista
+    jamás**: para un `.mov` y para un `.mp4` emite la misma
+    (`mov,mp4,m4a,3gp,3g2,mj2`), porque comparten demuxer, y el discriminador
+    real es `format.tags.major_brand`. El test no medía el mundo: medía la idea
+    que el autor tenía del mundo.
+
+    Peor todavía: había **dos** bugs en ese camino y se cancelaban entre sí, así
+    que en el único caso que alguien miró el resultado era correcto. Regla: si un
+    módulo habla con una herramienta externa, el doble tiene que construirse con
+    **una salida real capturada**, no escrita a mano.
+
+28. **Un chequeo que sólo corre en CI se descubre roto tarde y de a muchos
+    archivos.** `pnpm format:check` llevaba tandas fallando sobre 14 archivos y
+    nadie lo vio, porque `pnpm verify` no lo incluía. Al meterlo, lo primero que
+    encontró fue **que el workflow de CI no parsea**: un `:` sin comillas en un
+    nombre de paso parte la clave del YAML y el archivo entero deja de ser
+    válido. O sea que CI no estaba "rojo por formato" — no era un workflow.
+
+    Corolario del mismo día: **turbo no propaga variables de entorno a las
+    tareas**, así que la suite de MinIO se salteaba sola en `pnpm test:int` y por
+    lo tanto también en CI. `DATABASE_URL` parecía funcionar y funcionaba por
+    casualidad: los fixtures tienen un default hardcodeado. Se arregla con
+    `passThroughEnv`.
+
+29. **Cuando tengas que parchear algo porque el arreglo está en otro paquete, el
+    parche viene con un test que avisa cuándo sacarlo.** `contentSchema.thumbnailUrl`
+    era obligatorio y el serializer lo omite en toda pieza en `BUILDING`, así que
+    `apps/api` puso un `Omit<>` y `apps/web` un schema local: dos parches del
+    mismo lado equivocado, y el problema sobreviviendo a los dos.
+
+    Lo que lo cerró fue un test que decía *"el día que el contrato se corrija,
+    esto se pone rojo y el `extend` se borra"*. Se puso rojo en el minuto en que
+    se tocó el contrato. Sin él, el parche habría sobrevivido al problema.
+
+30. **Entre no registrar un handler y registrarlo sin proveedor, gana
+    registrarlo — si lo que escribe es verdad.** No registrarlo deja la fila
+    esperando para siempre **sin que nada falle**. Registrarlo con un doble que
+    miente es peor: un post marcado `POSTED` con un permalink inventado no se
+    distingue de uno real hasta que alguien lo busca. Registrarlo con el
+    proveedor ausente y fallar con un motivo honesto le dice al usuario que eso
+    no está disponible **y le devuelve lo que se le cobró**.
+
+    Por eso el renderer de memoria sí se monta —un artefacto sintético se nota—
+    y el publicador de memoria no.
+
 ## 8. Qué falta
 
 El backlog real es `tasks.md`. El estado de hoy está en §6.
@@ -627,21 +720,30 @@ archivo distribuible que se pueda nombrar sin inventarlo** — es una decisión 
 | Qué | Por qué urge | Tarea |
 |---|---|---|
 | **El adaptador de `MediaRenderer` existe, rinde video real y NO está montado** | montarlo hoy rompe **todos** los builds: sin fuentes da `font_unavailable` permanente —pieza fallada y save reembolsado en cada build—, el servicio exige grant firmado y el puerto no tiene por dónde pasarlo, y un slideshow multi-slide no entra en `RenderResult` | `P2-RENDER-015` |
-| **`POST /influencers` cobra 250 créditos y nadie los libera** | mismo agujero que tuvieron los content saves: un cargo sin quien lo devuelva no vuelve nunca. Y el registro del cargo está en un `jsonb` que un `update` reemplaza entero | `P1-QUOTA-011` |
-| **`S3Storage` existe y no está montado**: las dos apps montan `MemoryStorage` | `POST /media` siempre da `409`, y las URLs que el worker guarda en `contents.files` apuntan a `memory://bucket` | `P1-STORAGE-*` |
-| **20 de las 21 colas siguen sin consumidor** | la API ya encola en varias; un job sin handler no falla, se queda esperando para siempre | `P1-QUEUE-*` |
+| **La UI nunca se probó contra la API sirviendo datos** | la Library se ejercitó contra un stub; las 4 keys de desarrollo están hasheadas y no se pudo crear una. Hay 20 filas en `contents` esperando | `P1-UI-012` |
+| **No hay ni un test de componente en el proyecto** | falta `jsdom` y `@testing-library/react` en `apps/web`; los 54 tests de web son de lógica pura | `P1-UI-*` |
+| **18 de las 21 colas siguen sin consumidor** | la API ya encola en varias; un job sin handler no falla, se queda esperando para siempre | `P1-QUEUE-*` |
+| **No hay adaptador de identidad**: la API sólo acepta API key | el proxy de `apps/web` usa **una key por despliegue**, o sea un workspace para todo el que llegue a la app. Es provisorio y está escrito como tal | `P1-AUTH-*` |
 | `text-subtle` en modo oscuro no llega a AA para texto normal (3,65:1 y 3,16:1) | accesibilidad, y hoy está sin restricción de uso | `P1-UI-011` |
 
-Los dos bloqueantes que estaban acá —`P0-REPO-013` (los paquetes exportaban `.ts` crudo) y
-`P1-DATA-014` (los repositorios no tenían escritura)— están cerrados, junto con `P1-DATA-015`.
+Salieron de acá, cerrados: `P0-REPO-013`, `P1-DATA-014`, `P1-DATA-015`,
+`P1-STORAGE-007` (S3 montado en las dos apps, con `PUT` real verificado contra MinIO)
+y `P1-QUOTA-011` (cobra, y el handler del pipeline ya devuelve los 250).
 
 ### Lo que nadie miró todavía
 
-- **Nadie abrió un navegador.** Ni una pantalla se vio renderizada, ni con estilos aplicados.
+- ~~**Nadie abrió un navegador.**~~ **Ya no**: en la segunda tanda del 22 alguien
+  abrió uno y vio `/library` con sus cuatro estados, el `Load more` del cursor y
+  una pieza pasando sola de `BUILDING` a `CREATED` — con la cadencia medida en
+  10,1 s, no supuesta. Lo que **sigue sin verse**: esa pantalla contra la API
+  sirviendo datos de verdad (se ejercitó contra un stub), y las otras 39 páginas.
 - **Ningún frame renderizado se miró.** Los hashes son estables, la geometría está testeada;
   "determinista" no es "se ve bien".
-- **MOV→MP4, faststart y HDR→SDR** nunca corrieron sobre un archivo real. HDR→SDR además **falla
-  cerrado** porque este build de ffmpeg no trae `zscale` ni `libplacebo`.
+- **MOV→MP4 y faststart ya corrieron sobre archivos reales**, y aparecieron dos bugs que se
+  cancelaban entre sí (trampa 27). **HDR→SDR exitoso sigue sin correr nunca**: este build de
+  ffmpeg no trae `zscale` ni `libplacebo`, así que la cadena de tonemapping **jamás fue
+  ejecutada por ffmpeg** — sólo existe como string en un test de plan. Falla cerrado sobre un
+  PQ real, que es lo único verificable en esta máquina.
 - **Las 82 aserciones de contrato de puerto** existen desde que se escribieron los puertos; sólo
   corrieron las de `Storage` (contra `MemoryStorage`) — y **encontraron dos bugs reales en su
   primera ejecución**. Esperá más de lo mismo con cada adaptador nuevo: un fallo de contrato es
@@ -660,6 +762,7 @@ Los dos bloqueantes que estaban acá —`P0-REPO-013` (los paquetes exportaban `
 | [`SESSION-2026-09-21-plan-implementacion.md`](SESSION-2026-09-21-plan-implementacion.md) | cómo se llegó del PRD al plan, y qué se descartó |
 | [`SESSION-2026-09-21-implementacion.md`](SESSION-2026-09-21-implementacion.md) | cómo se organizó el trabajo en paralelo, y las trampas que costaron tiempo |
 | [`SESSION-2026-09-21-escritura-y-endpoints.md`](SESSION-2026-09-21-escritura-y-endpoints.md) | la escritura en los repositorios y los 16 endpoints, con cuatro agentes en paralelo |
+| [`SESSION-2026-09-22-segunda-tanda.md`](SESSION-2026-09-22-segunda-tanda.md) | la segunda tanda de cuatro: seis cosas que nunca habían funcionado y ningún síntoma las delataba |
 | [`SESSION-2026-09-22-cuatro-agentes.md`](SESSION-2026-09-22-cuatro-agentes.md) | cuatro tandas en paralelo: el contrato entre agentes, el 500 que nadie veía, y las dos trampas de coordinar |
 | [`SESSION-2026-09-21-worker-content-build.md`](SESSION-2026-09-21-worker-content-build.md) | el handler que cierra el círculo, y dónde va lo que dos apps comparten |
 | [`../CLAUDE.md`](../CLAUDE.md) | instrucciones de arranque para agentes |
