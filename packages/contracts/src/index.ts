@@ -36,6 +36,7 @@ export * from "./resources/warmed-accounts.js";
 export * from "./resources/audio.js";
 export * from "./resources/tiktok-sounds.js";
 export * from "./resources/brand.js";
+export * from "./resources/onboarding.js";
 
 // OpenAPI
 export * from "./openapi.js";

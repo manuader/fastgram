@@ -37,6 +37,7 @@ import * as warmed from "./resources/warmed-accounts.js";
 import * as audio from "./resources/audio.js";
 import * as sounds from "./resources/tiktok-sounds.js";
 import * as brand from "./resources/brand.js";
+import * as onboarding from "./resources/onboarding.js";
 import {
   imageUploadReservationRequestSchema,
   mediaUploadReservationRequestSchema,
@@ -1012,6 +1013,77 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           responses: {
             "200": ok("OK", dataOf(toJsonSchema(brand.companyProfileSchema))),
             "400": errorResponse("bad_request — body vacío"),
+          },
+        },
+      },
+      /**
+       * Onboarding — `FR-010`.
+       *
+       * **La superficie v1 de §9.3 no los enumera**, y no es un descuido del
+       * PRD: `FR-010` especifica el wizard entero sin decir por qué cable
+       * viaja. Se documentan igual porque `apps/api` los registra, y
+       * `apps/api/test/openapi-routes.test.ts` compara el documento contra las
+       * rutas que Fastify monta en los dos sentidos: una ruta viva sin
+       * documentar es superficie pública que nadie revisó.
+       *
+       * Son **tres**, no los cinco pasos del wizard: el paso 1 ya tiene
+       * `POST /brand/sources` y el paso 2 (`Company Name`, `Company
+       * Description`, `Company Logo`) no tiene endpoint porque `packages/db`
+       * no expone escritura sobre `companies`. Está en el reporte.
+       */
+      "/onboarding": {
+        get: {
+          operationId: "getOnboarding",
+          summary:
+            "Dónde retomar el wizard de alta (FR-010 criterio 3: recargar conserva el progreso)",
+          responses: {
+            // Nunca 404, por el mismo motivo que `/brand/profile`: el
+            // onboarding es un estado del workspace, no un recurso aparte.
+            "200": ok("OK", dataOf(toJsonSchema(onboarding.onboardingStateSchema))),
+          },
+        },
+      },
+      "/onboarding/profiling": {
+        post: {
+          operationId: "submitOnboardingProfiling",
+          summary:
+            "Cuestionario de perfilado (F-006). Las seis claves son obligatorias; los valores los valida el dominio",
+          requestBody: {
+            required: true,
+            content: json(
+              toJsonSchema(onboarding.submitOnboardingProfilingRequestSchema),
+            ),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(onboarding.onboardingStateSchema))),
+            "400": errorResponse(
+              "bad_request — copy literal de FR-010 por campo, con details.field",
+            ),
+            "429": errorResponse("rate_limited"),
+          },
+        },
+      },
+      "/onboarding/complete": {
+        post: {
+          operationId: "completeOnboarding",
+          summary:
+            "Cierra el wizard y arranca el relleno de la discovery queue (FR-010 System behavior, PRD:759)",
+          // Encola trabajo, así que lleva key: la misma regla de §9.3 que
+          // `POST /brand/sources`.
+          parameters: [idempotencyParam],
+          responses: {
+            "202": ok(
+              "Aceptado",
+              dataOf(toJsonSchema(onboarding.onboardingCompletionSchema)),
+            ),
+            "400": errorResponse("bad_request — falta un paso del wizard"),
+            "409": errorResponse(
+              "conflict — el onboarding ya está terminado, o la key se reusó con otro cuerpo",
+            ),
+            "429": errorResponse("rate_limited"),
+            "503": errorResponse(
+              "service_unavailable — sin cola no se puede arrancar el relleno",
+            ),
           },
         },
       },

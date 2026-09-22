@@ -16,6 +16,7 @@ import { registerCatalogRoutes } from "./catalog.js";
 import { registerContentRoutes } from "./content.js";
 import { registerInfluencerRoutes } from "./influencers.js";
 import { registerMediaRoutes } from "./media.js";
+import { registerOnboardingRoutes } from "./onboarding.js";
 import { registerPostRoutes } from "./posts.js";
 
 export async function registerV1Routes(app: ZodApp): Promise<void> {
@@ -30,5 +31,11 @@ export async function registerV1Routes(app: ZodApp): Promise<void> {
   // sola ruta: dominio inalcanzable y un contrato que publicaba cinco paths
   // inexistentes. `test/openapi-routes.test.ts` impide que vuelva a pasar.
   registerBrandRoutes(app);
+  // `FR-010`. Mismo diagnóstico que `/brand`: la máquina de cinco pasos estaba
+  // entera en `packages/core` y no tenía una sola ruta. Y arrastraba algo
+  // concreto — el PRD dice tres veces (759, 1890, 2006) que al cerrar el alta
+  // hay que arrancar el relleno de la discovery queue, y ése era el disparador
+  // que faltaba.
+  registerOnboardingRoutes(app);
   await Promise.resolve();
 }
