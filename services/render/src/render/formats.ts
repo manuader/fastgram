@@ -123,12 +123,62 @@ function colorSource(canvas: Canvas, label: string): string {
   return `color=c=black:s=${canvas.width}x${canvas.height}:r=${OUTPUT_FPS}[${label}]`;
 }
 
+/**
+ * ── `No audio`: por qué la salida NO lleva pista de silencio (`P2-RENDER-014`) ─
+ *
+ * `FR-053.1` (PRD:1234) hace opcional el bloque `audio` en `wall-of-text` y
+ * `video-hook`. Hay dos formas de honrarlo y no son equivalentes:
+ *
+ *   (a) MP4 sin stream de audio  → `-an`
+ *   (b) MP4 con un stream de silencio → `-f lavfi -i anullsrc=…` + `-map`
+ *
+ * Se eligió (a). Los tres criterios, en orden de peso:
+ *
+ *  1. **El PRD lo dice literalmente**: "producir una pieza **sin pista de
+ *     audio**". (b) produce una pieza *con* pista de audio, sólo que callada.
+ *  2. **Consistencia interna, que es lo que de verdad cierra la decisión**:
+ *     `green-screen` YA emite `-an` desde `P2-RENDER-006` cuando el video de
+ *     croma no trae audio (ver `planGreenScreenBase`). Con (b) la misma
+ *     elección del usuario —`No audio`— daría un contenedor distinto según el
+ *     formato, y el primer bug de "en Green Screen anda y en Wall of Text no"
+ *     costaría una tarde en encontrarse acá.
+ *  3. **Costo**: un AAC de silencio agrega bytes y una pasada de encode para
+ *     transportar cero información.
+ *
+ * ── Lo que NO se sabe, y no se inventó ──────────────────────────────────────
+ * Si la API de subida de alguna plataforma de destino rechaza un MP4 sin stream
+ * de audio. No hay fuente citable en el repo ni en el PRD, así que no se
+ * modeló sobre una suposición: se siguió el PRD y la consistencia. Queda como
+ * duda reportada.
+ *
+ * Si algún día hay que dar marcha atrás, el cambio es local y ya está medido:
+ * este ffmpeg (9.0.1, Homebrew) **sí** trae `anullsrc` (verificado con
+ * `ffmpeg -filters | grep anullsrc`), así que (b) es agregar
+ * `-f lavfi -i anullsrc=r=48000:cl=stereo` como input extra y mapearlo, en los
+ * mismos dos `if (inputs.audioPath === null)` de este archivo. No hace falta
+ * volver a derivarlo.
+ *
+ * `planTextOverlayPass` no necesitó nada: su rama `-an` ya existía para
+ * `green-screen`, y recibe el `hasAudio` del plan de la base.
+ */
+const AUDIO_BITRATE = "128k";
+
+/**
+ * Cola de argumentos de audio de la salida: mapear la pista del input `index`,
+ * o `-an`. `null` = sin pista, la decisión de arriba.
+ */
+function audioOutputArgs(audioInputIndex: number | null): string[] {
+  if (audioInputIndex === null) return ["-an"];
+  return ["-map", `${audioInputIndex}:a`, "-c:a", "aac", "-b:a", AUDIO_BITRATE];
+}
+
 // ── wall-of-text (`P2-RENDER-005`) ───────────────────────────────────────────
 // `FR-070`: `{canvas, video{url,draw…}, audio{url}, text}`.
 
 export interface WallOfTextInputs {
   readonly videoPath: string;
-  readonly audioPath: string;
+  /** `null` = `No audio` (`FR-053.1`). No es lo mismo que "el video no trae audio". */
+  readonly audioPath: string | null;
   readonly outputPath: string;
   readonly video: SourceGeometry;
 }
@@ -147,27 +197,19 @@ export function planWallOfTextBase(
     `[bg][src]overlay=${placement.draw.x}:${placement.draw.y}:shortest=1[v]`,
   ].join(";");
 
-  const args = [
-    ...baseArgs(),
-    "-i",
-    inputs.videoPath,
-    "-i",
-    inputs.audioPath,
-    "-filter_complex",
-    graph,
-    "-map",
-    "[v]",
-    "-map",
-    "1:a",
-    "-c:a",
-    "aac",
-    "-b:a",
-    "128k",
-    "-shortest",
-    ...encodeArgs(),
-    inputs.outputPath,
-  ];
-  return { args, filterGraph: graph, placements: { video: placement }, hasAudio: true };
+  // `[0:v]` es el video; el audio, cuando viene, entra como input 1.
+  const args = [...baseArgs(), "-i", inputs.videoPath];
+  if (inputs.audioPath !== null) args.push("-i", inputs.audioPath);
+  args.push("-filter_complex", graph, "-map", "[v]");
+  args.push(...audioOutputArgs(inputs.audioPath === null ? null : 1));
+  args.push("-shortest", ...encodeArgs(), inputs.outputPath);
+
+  return {
+    args,
+    filterGraph: graph,
+    placements: { video: placement },
+    hasAudio: inputs.audioPath !== null,
+  };
 }
 
 // ── green-screen (`P2-RENDER-006`) ───────────────────────────────────────────
@@ -218,8 +260,10 @@ export function planGreenScreenBase(
     "-map",
     "[v]",
   ];
-  if (inputs.video.hasAudio) args.push("-map", "1:a", "-c:a", "aac", "-b:a", "128k");
-  else args.push("-an");
+  // `green-screen` no tiene bloque `audio` en `FR-070`: el sonido, si hay, sale
+  // del propio video de croma (input 1). Es la rama que fijó la decisión de
+  // `No audio` para los otros dos formatos: acá el `-an` ya existía.
+  args.push(...audioOutputArgs(inputs.video.hasAudio ? 1 : null));
   args.push("-shortest", ...encodeArgs(), inputs.outputPath);
 
   return {
@@ -236,7 +280,8 @@ export function planGreenScreenBase(
 export interface VideoHookInputs {
   readonly hookPath: string;
   readonly demoPath: string;
-  readonly audioPath: string;
+  /** `null` = `No audio` (`FR-053.1`). */
+  readonly audioPath: string | null;
   readonly outputPath: string;
   readonly hook: SourceGeometry;
   readonly demo: SourceGeometry;
@@ -278,34 +323,19 @@ export function planVideoHookBase(
     `[withHook][demo]overlay=${demoPlacement.draw.x}:${demoPlacement.draw.y}:shortest=1[v]`,
   ].join(";");
 
-  const args = [
-    ...baseArgs(),
-    "-i",
-    inputs.hookPath,
-    "-i",
-    inputs.demoPath,
-    "-i",
-    inputs.audioPath,
-    "-filter_complex",
-    graph,
-    "-map",
-    "[v]",
-    "-map",
-    "2:a",
-    "-c:a",
-    "aac",
-    "-b:a",
-    "128k",
-    "-shortest",
-    ...encodeArgs(),
-    inputs.outputPath,
-  ];
+  // `[0:v]` hook y `[1:v]` demo son fijos; el audio, cuando viene, es input 2.
+  // El grafo no cambia por el audio, así que los índices del video no se mueven.
+  const args = [...baseArgs(), "-i", inputs.hookPath, "-i", inputs.demoPath];
+  if (inputs.audioPath !== null) args.push("-i", inputs.audioPath);
+  args.push("-filter_complex", graph, "-map", "[v]");
+  args.push(...audioOutputArgs(inputs.audioPath === null ? null : 2));
+  args.push("-shortest", ...encodeArgs(), inputs.outputPath);
 
   return {
     args,
     filterGraph: graph,
     placements: { hook: hookPlacement, demo: demoPlacement },
-    hasAudio: true,
+    hasAudio: inputs.audioPath !== null,
   };
 }
 

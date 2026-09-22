@@ -47,7 +47,17 @@ export const mediaRefSchema = z
 
 export type MediaRef = z.infer<typeof mediaRefSchema>;
 
-/** `FR-070`: "El audio sólo puede venir de la librería compartida". */
+/**
+ * `FR-070`: "El audio sólo puede venir de la librería compartida".
+ *
+ * Es OPCIONAL en `wall-of-text` y `video-hook`: `FR-053.1` (PRD:1234) dice que
+ * la primera opción del modal `Select Audio` es `No audio` y que elegirla
+ * "omite el bloque `audio`". El contrato público
+ * (`@fastgram/contracts`, `contentBuildPayloadSchema`) ya lo tenía `.optional()`,
+ * así que exigirlo acá hacía irrenderizable el payload más común del producto:
+ * `POST /content` lo aceptaba, lo cobraba y lo encolaba, y este servicio lo
+ * rechazaba con `bad_request`.
+ */
 export const audioRefSchema = z.object({ url: z.string().url() }).strict();
 
 /**
@@ -130,7 +140,8 @@ export const wallOfTextPayloadSchema = z
     type: z.literal("wall-of-text"),
     canvas: canvasSchema,
     video: mediaRefSchema,
-    audio: audioRefSchema,
+    /** `FR-053.1`: ausente = `No audio`. Ver `audioRefSchema`. */
+    audio: audioRefSchema.optional(),
     texts: textObjectListSchema,
   })
   .strict();
@@ -157,7 +168,8 @@ export const videoHookPayloadSchema = z
     canvas: canvasSchema,
     hookVideo: mediaRefSchema,
     demoVideo: mediaRefSchema,
-    audio: audioRefSchema,
+    /** `FR-053.1`: ausente = `No audio`. Ver `audioRefSchema`. */
+    audio: audioRefSchema.optional(),
     texts: textObjectListSchema,
     /**
      * Proporción vertical del hook sobre el canvas. El PRD sólo dice "hook
@@ -196,6 +208,20 @@ export interface MediaReference {
   readonly path: readonly (string | number)[];
 }
 
+/**
+ * La referencia de audio, o nada si el payload eligió `No audio` (`FR-053.1`).
+ *
+ * Existe como helper y no inline porque es la lista que consume `urlPolicy`: si
+ * la ausencia se colara como `{url: undefined}`, `new URL(undefined)` tiraría
+ * `url_invalida` y el rechazo diría exactamente lo contrario de lo que pasó.
+ */
+function audioReference(
+  audio: { readonly url: string } | undefined,
+): readonly MediaReference[] {
+  if (audio === undefined) return [];
+  return [{ url: audio.url, role: "audio", path: ["audio"] }];
+}
+
 export function collectMediaReferences(payload: BuildPayload): readonly MediaReference[] {
   switch (payload.type) {
     case "slideshow":
@@ -207,7 +233,7 @@ export function collectMediaReferences(payload: BuildPayload): readonly MediaRef
     case "wall-of-text":
       return [
         { url: payload.video.url, role: "video", path: ["video"] },
-        { url: payload.audio.url, role: "audio", path: ["audio"] },
+        ...audioReference(payload.audio),
       ];
     case "green-screen":
       return [
@@ -218,7 +244,7 @@ export function collectMediaReferences(payload: BuildPayload): readonly MediaRef
       return [
         { url: payload.hookVideo.url, role: "video", path: ["hookVideo"] },
         { url: payload.demoVideo.url, role: "video", path: ["demoVideo"] },
-        { url: payload.audio.url, role: "audio", path: ["audio"] },
+        ...audioReference(payload.audio),
       ];
   }
 }

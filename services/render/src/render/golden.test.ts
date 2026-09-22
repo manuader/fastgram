@@ -28,7 +28,11 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { buildPayloadSchema } from "../domain/payload.js";
+import {
+  buildPayloadSchema,
+  videoHookPayloadSchema,
+  wallOfTextPayloadSchema,
+} from "../domain/payload.js";
 import type { FfmpegCapabilities } from "../ffmpeg/capabilities.js";
 import {
   planGreenScreenBase,
@@ -109,6 +113,20 @@ describe("golden de plan — portable entre máquinas", () => {
     texts: [TEXT],
   });
 
+  const wallOfTextNoAudio = wallOfTextPayloadSchema.parse({
+    type: "wall-of-text",
+    canvas: CANVAS,
+    video: { url: "https://cdn.example.com/media/ws-1/v.mp4" },
+    texts: [TEXT],
+  });
+  const videoHookNoAudio = videoHookPayloadSchema.parse({
+    type: "video-hook",
+    canvas: CANVAS,
+    hookVideo: { url: "https://cdn.example.com/media/ws-1/hook.mp4" },
+    demoVideo: { url: "https://cdn.example.com/media/ws-1/demo.mp4" },
+    texts: [TEXT],
+  });
+
   function buildPlans(): Record<string, unknown> {
     if (wallOfText.type !== "wall-of-text") throw new Error("payload inesperado");
     if (greenScreen.type !== "green-screen") throw new Error("payload inesperado");
@@ -147,11 +165,43 @@ describe("golden de plan — portable entre máquinas", () => {
         },
         CAPS,
       ),
+      // `FR-053.1` / `P2-RENDER-014`: el mismo payload sin bloque `audio`. Va al
+      // golden porque el riesgo real no es que rompa hoy, es que alguien
+      // "arregle" el grafo y le meta una pista de silencio sin notarlo.
+      "wall-of-text-no-audio": planWallOfTextBase(
+        wallOfTextNoAudio,
+        {
+          videoPath: "/in/video.mp4",
+          audioPath: null,
+          outputPath: "/out/base.mp4",
+          video: SOURCE,
+        },
+        CAPS,
+      ),
+      "video-hook-no-audio": planVideoHookBase(
+        videoHookNoAudio,
+        {
+          hookPath: "/in/hook.mp4",
+          demoPath: "/in/demo.mp4",
+          audioPath: null,
+          outputPath: "/out/base.mp4",
+          hook: SOURCE,
+          demo: { width: 1080, height: 1920, durationSeconds: 12, hasAudio: false },
+        },
+        CAPS,
+      ),
       "overlay-pass": planTextOverlayPass(
         "/out/base.mp4",
         "/out/overlay.png",
         "/out/final.mp4",
         true,
+        CAPS,
+      ),
+      "overlay-pass-no-audio": planTextOverlayPass(
+        "/out/base.mp4",
+        "/out/overlay.png",
+        "/out/final.mp4",
+        false,
         CAPS,
       ),
     };
@@ -183,6 +233,46 @@ describe("golden de plan — portable entre máquinas", () => {
     // La base de wall-of-text tiene 2 entradas (video + audio), no 3.
     const inputs = plans["wall-of-text"]?.args.filter((arg) => arg === "-i").length;
     expect(inputs).toBe(2);
+  });
+
+  /**
+   * `P2-RENDER-014`. Lo que se mide es la decisión, no el formato: sin bloque
+   * `audio` la salida NO lleva stream de audio (`-an`) y NO lleva una pista de
+   * silencio. Si alguien agrega un `anullsrc`, esto se pone rojo.
+   */
+  it("sin bloque `audio` el plan pierde el input y sale con `-an`", () => {
+    const plans = buildPlans() as Record<
+      string,
+      { args: string[]; hasAudio: boolean; filterGraph: string }
+    >;
+    const countInputs = (key: string): number =>
+      plans[key]?.args.filter((arg) => arg === "-i").length ?? -1;
+
+    expect(countInputs("wall-of-text")).toBe(2);
+    expect(countInputs("wall-of-text-no-audio")).toBe(1);
+    expect(countInputs("video-hook")).toBe(3);
+    expect(countInputs("video-hook-no-audio")).toBe(2);
+
+    for (const key of ["wall-of-text-no-audio", "video-hook-no-audio"]) {
+      const plan = plans[key];
+      expect(plan).toBeDefined();
+      if (plan === undefined) continue;
+      expect(plan.hasAudio).toBe(false);
+      expect(plan.args).toContain("-an");
+      // Nada de pista de silencio, y nada de encoder de audio.
+      expect(plan.args).not.toContain("-c:a");
+      expect(plan.args.join(" ")).not.toContain("anullsrc");
+      expect(plan.args.join(" ")).not.toContain("aevalsrc");
+      expect(plan.filterGraph).not.toContain("anullsrc");
+    }
+
+    // El grafo de video es idéntico con y sin audio: los índices no se mueven.
+    expect(plans["wall-of-text-no-audio"]?.filterGraph).toBe(
+      plans["wall-of-text"]?.filterGraph,
+    );
+    expect(plans["video-hook-no-audio"]?.filterGraph).toBe(
+      plans["video-hook"]?.filterGraph,
+    );
   });
 });
 

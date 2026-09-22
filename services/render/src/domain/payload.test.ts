@@ -1,6 +1,7 @@
 /** Números de `FR-070`: 20 slides, 4 aspect ratios, numImages == images.length. */
 import { describe, expect, it } from "vitest";
 import { ASPECT_RATIOS, canvasForAspect, DEFAULT_SLIDESHOW_ASPECT } from "./canvas.js";
+import { computeCacheKeys } from "./hash.js";
 import {
   buildPayloadSchema,
   collectMediaReferences,
@@ -154,6 +155,97 @@ describe("los otros tres formatos", () => {
     expect(refs).toHaveLength(3);
     expect(refs.filter((r) => r.role === "audio")).toHaveLength(1);
     expect(refs.find((r) => r.role === "audio")?.url).toBe(audio.url);
+  });
+
+  /**
+   * `P2-RENDER-014` / `FR-053.1` (PRD:1234). Antes de esto el payload más común
+   * del producto —`No audio`— se rechazaba con `bad_request` después de que
+   * `POST /content` ya lo había cobrado y encolado.
+   */
+  describe("`No audio` — FR-053.1", () => {
+    it("wall-of-text parsea sin bloque audio", () => {
+      const parsed = buildPayloadSchema.safeParse({
+        type: "wall-of-text",
+        canvas,
+        video,
+        texts: [text],
+      });
+      expect(parsed.success).toBe(true);
+      if (!parsed.success || parsed.data.type !== "wall-of-text") return;
+      expect(parsed.data.audio).toBeUndefined();
+    });
+
+    it("video-hook parsea sin bloque audio", () => {
+      const parsed = buildPayloadSchema.safeParse({
+        type: "video-hook",
+        canvas,
+        hookVideo: video,
+        demoVideo: { url: "https://cdn.example.com/media/ws-1/demo.mp4" },
+        texts: [text],
+      });
+      expect(parsed.success).toBe(true);
+      if (!parsed.success || parsed.data.type !== "video-hook") return;
+      expect(parsed.data.audio).toBeUndefined();
+    });
+
+    it("sin audio no hay referencia de audio que validar", () => {
+      const wall = buildPayloadSchema.parse({
+        type: "wall-of-text",
+        canvas,
+        video,
+        texts: [text],
+      });
+      const refs = collectMediaReferences(wall);
+      expect(refs).toHaveLength(1);
+      expect(refs.every((r) => r.role !== "audio")).toBe(true);
+      // Y ninguna referencia con `url` vacía: `urlPolicy` haría `new URL(undefined)`
+      // y el rechazo diría `url_invalida`, que es el diagnóstico equivocado.
+      expect(refs.every((r) => typeof r.url === "string" && r.url.length > 0)).toBe(true);
+
+      const hook = buildPayloadSchema.parse({
+        type: "video-hook",
+        canvas,
+        hookVideo: video,
+        demoVideo: { url: "https://cdn.example.com/media/ws-1/demo.mp4" },
+        texts: [text],
+      });
+      const hookRefs = collectMediaReferences(hook);
+      expect(hookRefs).toHaveLength(2);
+      expect(hookRefs.every((r) => r.role === "video")).toBe(true);
+    });
+
+    it("`audio: null` no es `No audio`: se rechaza", () => {
+      // `No audio` omite el bloque (`FR-053.1`). Un `null` explícito es un
+      // cliente confundido, y aceptarlo escondería el bug del cliente.
+      expect(
+        buildPayloadSchema.safeParse({
+          type: "wall-of-text",
+          canvas,
+          video,
+          audio: null,
+          texts: [text],
+        }).success,
+      ).toBe(false);
+    });
+
+    it("el audio sigue cambiando la mediaKey: con y sin audio no comparten cache", () => {
+      const withAudio = buildPayloadSchema.parse({
+        type: "wall-of-text",
+        canvas,
+        video,
+        audio,
+        texts: [text],
+      });
+      const without = buildPayloadSchema.parse({
+        type: "wall-of-text",
+        canvas,
+        video,
+        texts: [text],
+      });
+      expect(computeCacheKeys(without).mediaKey).not.toBe(
+        computeCacheKeys(withAudio).mediaKey,
+      );
+    });
   });
 
   it("rechaza campos desconocidos en el payload", () => {

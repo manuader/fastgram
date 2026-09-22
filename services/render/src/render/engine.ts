@@ -69,11 +69,24 @@ export interface RenderEngineConfig {
 
 export type CacheState = "hit" | "miss";
 
+/**
+ * Extensión con la que el artefacto quedó guardado en la cache. Vive acá y no
+ * en `http/` porque es una propiedad del artefacto, no del transporte: la capa
+ * HTTP la traduce a `content-type`, en esa dirección y no en la otra.
+ */
+export type ArtifactExtension = "mp4" | "jpg";
+
 export interface RenderArtifact {
   readonly kind: "video" | "image";
   readonly path: string;
   readonly bytes: number;
   readonly index: number;
+  /**
+   * La clave de cache con la que se recupera el archivo (`P2-RENDER-015`). Es
+   * lo que la capa HTTP convierte en `href`; el motor no conoce URLs.
+   */
+  readonly cacheKey: string;
+  readonly extension: ArtifactExtension;
 }
 
 export interface RenderOutput {
@@ -170,6 +183,8 @@ async function renderSlideshowBuild(
         path: cachedFinal.path,
         bytes: cachedFinal.bytes,
         index,
+        cacheKey: cachedFinal.key,
+        extension: "jpg",
       });
       continue;
     }
@@ -192,7 +207,14 @@ async function renderSlideshowBuild(
       warnings.push(`slide ${index}: se renderizó con una fuente no verificada`);
     }
     const entry = await config.cache.putBuffer(finalKey, "jpg", rendered.jpeg);
-    artifacts.push({ kind: "image", path: entry.path, bytes: entry.bytes, index });
+    artifacts.push({
+      kind: "image",
+      path: entry.path,
+      bytes: entry.bytes,
+      index,
+      cacheKey: entry.key,
+      extension: "jpg",
+    });
   }
 
   return {
@@ -218,7 +240,14 @@ async function renderVideoBuild(
       type: payload.type,
       keys,
       artifacts: [
-        { kind: "video", path: cachedFinal.path, bytes: cachedFinal.bytes, index: 0 },
+        {
+          kind: "video",
+          path: cachedFinal.path,
+          bytes: cachedFinal.bytes,
+          index: 0,
+          cacheKey: cachedFinal.key,
+          extension: "mp4",
+        },
       ],
       cache: { base: "hit", build: "hit" },
       warnings,
@@ -264,7 +293,14 @@ async function renderVideoBuild(
     type: payload.type,
     keys,
     artifacts: [
-      { kind: "video", path: adoptedFinal.path, bytes: adoptedFinal.bytes, index: 0 },
+      {
+        kind: "video",
+        path: adoptedFinal.path,
+        bytes: adoptedFinal.bytes,
+        index: 0,
+        cacheKey: adoptedFinal.key,
+        extension: "mp4",
+      },
     ],
     cache: { base: baseState, build: "miss" },
     warnings,
@@ -293,6 +329,19 @@ async function prepareVideo(
   return normalizedPath;
 }
 
+/**
+ * Resuelve la pista de audio, o `null` si el payload eligió `No audio`
+ * (`FR-053.1`). El `null` viaja hasta el plan de ffmpeg, que decide ahí qué
+ * hacer con la ausencia; la razón de esa decisión está en `formats.ts`.
+ */
+async function resolveAudio(
+  audio: { readonly url: string } | undefined,
+  config: RenderEngineConfig,
+): Promise<string | null> {
+  if (audio === undefined) return null;
+  return await config.resolveMedia(audio.url, "audio");
+}
+
 async function buildBase(
   payload: Exclude<BuildPayload, { type: "slideshow" }>,
   config: RenderEngineConfig,
@@ -311,7 +360,7 @@ async function buildBase(
       "video",
       warnings,
     );
-    const audioPath = await config.resolveMedia(payload.audio.url, "audio");
+    const audioPath = await resolveAudio(payload.audio, config);
     const plan = planWallOfTextBase(
       payload,
       { videoPath, audioPath, outputPath, video: await geometryOf(videoPath) },
@@ -369,7 +418,7 @@ async function buildBase(
     "demo",
     warnings,
   );
-  const audioPath = await config.resolveMedia(payload.audio.url, "audio");
+  const audioPath = await resolveAudio(payload.audio, config);
   const plan = planVideoHookBase(
     payload,
     {

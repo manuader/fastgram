@@ -12,6 +12,16 @@ export const RENDER_ERROR_STATUS = {
   bad_request: 400,
   /** `P2-RENDER-009`: la URL no pertenece al workspace ni a la librería compartida. */
   media_url_not_allowed: 400,
+  /**
+   * `GET /artifact/…`: la clave no está en la cache de ESTA réplica, o no es una
+   * clave que este servicio pueda haber emitido. Es el mismo código para los dos
+   * casos a propósito: ver `http/artifacts.ts`.
+   *
+   * Que sea un 404 y no un 5xx importa: con la cache local y varias réplicas
+   * detrás de un balanceador, un 404 acá puede ser correcto y transitorio. Ver
+   * la nota de despliegue en `http/server.ts`.
+   */
+  artifact_not_found: 404,
   /** El grant firmado falta, está vencido o la firma no verifica. */
   media_grant_invalid: 400,
   /** Falta un input obligatorio del formato (p. ej. `video-hook` sin demo). */

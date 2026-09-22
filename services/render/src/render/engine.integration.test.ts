@@ -20,6 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FileCacheStore } from "../cache/store.js";
 import { probeCapabilities, FFMPEG_BIN } from "../ffmpeg/capabilities.js";
 import { probeMedia } from "../ffmpeg/probe.js";
+import { buildServer } from "../http/server.js";
 import { parsePrefixList, type MediaPolicyConfig } from "../media/urlPolicy.js";
 import { renderBuild, type RenderEngineConfig } from "./engine.js";
 
@@ -308,6 +309,210 @@ suite("motor de render contra ffmpeg real", () => {
       config,
     );
     expect(third.cache).toEqual({ base: "hit", build: "hit" });
+  }, 180_000);
+
+  /**
+   * `P2-RENDER-014` / `FR-053.1`. El schema solo no alcanza: lo que hay que
+   * probar es que el grafo sin pista de audio produce un archivo que `ffprobe`
+   * acepta. La aserción que vale es `hasAudio: false` CON `hasVideo: true` y
+   * dimensiones leídas: un archivo corrupto no daría ninguna de las tres.
+   */
+  it("wall-of-text SIN audio produce un MP4 válido y sin pista de audio", async () => {
+    const cacheDir = path.join(workDir, "cache-wot-noaudio");
+    const result = await renderBuild(
+      {
+        payload: {
+          type: "wall-of-text",
+          canvas: CANVAS,
+          video: { url: `${MEDIA_PREFIX}video.mp4` },
+          texts: [textBox("Sin audio")],
+        },
+      },
+      engineConfig(cacheDir),
+    );
+
+    const artifact = result.artifacts[0];
+    expect(artifact).toBeDefined();
+    if (artifact === undefined) return;
+    expect(artifact.bytes).toBeGreaterThan(0);
+
+    const info = await probeMedia(artifact.path);
+    expect(info.hasVideo).toBe(true);
+    expect(info.hasAudio).toBe(false);
+    expect(info.width).toBe(CANVAS.width);
+    expect(info.height).toBe(CANVAS.height);
+    expect(info.formatNames).toContain("mp4");
+    // El video fuente SÍ trae audio (sine 440): la ausencia es la decisión del
+    // payload, no un accidente del input.
+    expect((await probeMedia(files.get(`${MEDIA_PREFIX}video.mp4`) ?? "")).hasAudio).toBe(
+      true,
+    );
+  }, 120_000);
+
+  it("video-hook SIN audio produce un MP4 válido y sin pista de audio", async () => {
+    const cacheDir = path.join(workDir, "cache-vh-noaudio");
+    const result = await renderBuild(
+      {
+        payload: {
+          type: "video-hook",
+          canvas: CANVAS,
+          hookVideo: { url: `${MEDIA_PREFIX}video.mp4` },
+          demoVideo: { url: `${MEDIA_PREFIX}demo.mp4` },
+          texts: [textBox("Hook sin audio")],
+        },
+      },
+      engineConfig(cacheDir),
+    );
+
+    const artifact = result.artifacts[0];
+    expect(artifact).toBeDefined();
+    if (artifact === undefined) return;
+    expect(artifact.bytes).toBeGreaterThan(0);
+
+    const info = await probeMedia(artifact.path);
+    expect(info.hasVideo).toBe(true);
+    expect(info.hasAudio).toBe(false);
+    expect(info.height).toBe(CANVAS.height);
+    expect(info.formatNames).toContain("mp4");
+  }, 120_000);
+
+  it("con y sin audio no comparten la base cacheada", async () => {
+    // Si compartieran `mediaKey`, el segundo render devolvería el artefacto del
+    // primero y `No audio` entregaría una pieza con música.
+    const cacheDir = path.join(workDir, "cache-audio-split");
+    const config = engineConfig(cacheDir);
+    const withAudio = await renderBuild(
+      {
+        payload: {
+          type: "wall-of-text",
+          canvas: CANVAS,
+          video: { url: `${MEDIA_PREFIX}video.mp4` },
+          audio: { url: `${LIBRARY_PREFIX}track.m4a` },
+          texts: [textBox("mismo texto")],
+        },
+      },
+      config,
+    );
+    const without = await renderBuild(
+      {
+        payload: {
+          type: "wall-of-text",
+          canvas: CANVAS,
+          video: { url: `${MEDIA_PREFIX}video.mp4` },
+          texts: [textBox("mismo texto")],
+        },
+      },
+      config,
+    );
+    expect(without.keys.mediaKey).not.toBe(withAudio.keys.mediaKey);
+    expect(without.cache).toEqual({ base: "miss", build: "miss" });
+
+    const a = without.artifacts[0];
+    const b = withAudio.artifacts[0];
+    if (a === undefined || b === undefined) throw new Error("faltan artefactos");
+    expect((await probeMedia(a.path)).hasAudio).toBe(false);
+    expect((await probeMedia(b.path)).hasAudio).toBe(true);
+  }, 180_000);
+
+  /**
+   * `P2-RENDER-015` — el círculo completo, que es lo único que prueba que el
+   * pipeline cierra: render real → `href` → `GET` → bytes que `ffprobe` acepta.
+   * Los tests de `server.test.ts` siembran la cache a mano; éste no sabe nada de
+   * claves, usa el `href` tal cual viene, como hace el adaptador.
+   */
+  it("POST /render devuelve un href y GET href devuelve el archivo que ffprobe acepta", async () => {
+    const cacheDir = path.join(workDir, "cache-href");
+    const app = buildServer({ logger: false, engine: engineConfig(cacheDir) });
+
+    const rendered = await app.inject({
+      method: "POST",
+      url: "/render",
+      payload: {
+        payload: {
+          type: "wall-of-text",
+          canvas: CANVAS,
+          video: { url: `${MEDIA_PREFIX}video.mp4` },
+          audio: { url: `${LIBRARY_PREFIX}track.m4a` },
+          texts: [textBox("href")],
+        },
+      },
+    });
+    expect(rendered.statusCode).toBe(200);
+    const body = rendered.json() as {
+      type: string;
+      keys: { mediaKey: string; overlayKey: string; buildKey: string };
+      cache: { base: string; build: string };
+      warnings: string[];
+      artifacts: { kind: string; index: number; bytes: number; href: string }[];
+    };
+
+    // Los campos que ya existían no cambiaron de nombre ni de forma.
+    expect(body.type).toBe("wall-of-text");
+    expect(Object.keys(body.keys).sort()).toEqual(["buildKey", "mediaKey", "overlayKey"]);
+    expect(body.cache).toEqual({ base: "miss", build: "miss" });
+    expect(Array.isArray(body.warnings)).toBe(true);
+
+    const artifact = body.artifacts[0];
+    expect(artifact).toBeDefined();
+    if (artifact === undefined) return;
+    expect(Object.keys(artifact).sort()).toEqual(["bytes", "href", "index", "kind"]);
+    expect(artifact.href.startsWith("/artifact/")).toBe(true);
+    // El `path` local NO sale hacia afuera.
+    expect(rendered.body).not.toContain(workDir);
+
+    const fetched = await app.inject({ method: "GET", url: artifact.href });
+    expect(fetched.statusCode).toBe(200);
+    expect(fetched.headers["content-type"]).toBe("video/mp4");
+    expect(fetched.headers["content-length"]).toBe(String(artifact.bytes));
+    expect(fetched.rawPayload.byteLength).toBe(artifact.bytes);
+
+    // Lo que bajó por HTTP es un MP4 de verdad, no los metadatos de uno.
+    const downloaded = path.join(workDir, "downloaded.mp4");
+    await writeFile(downloaded, fetched.rawPayload);
+    const info = await probeMedia(downloaded);
+    expect(info.hasVideo).toBe(true);
+    expect(info.width).toBe(CANVAS.width);
+    expect(info.height).toBe(CANVAS.height);
+    expect(info.formatNames).toContain("mp4");
+
+    await app.close();
+  }, 180_000);
+
+  it("los tres slides del slideshow salen por hrefs distintos", async () => {
+    const cacheDir = path.join(workDir, "cache-href-ss");
+    const app = buildServer({ logger: false, engine: engineConfig(cacheDir) });
+    const rendered = await app.inject({
+      method: "POST",
+      url: "/render",
+      payload: {
+        payload: {
+          type: "slideshow",
+          numImages: 3,
+          slides: [0, 1, 2].map((index) => ({
+            canvas: { width: 540, height: 675, aspectRatio: "4:5" },
+            image: { url: `${MEDIA_PREFIX}bg.png` },
+            texts: [{ ...textBox(`Slide ${index}`), id: `t${index}` }],
+          })),
+        },
+      },
+    });
+    expect(rendered.statusCode).toBe(200);
+    const body = rendered.json() as {
+      artifacts: { index: number; bytes: number; href: string }[];
+    };
+    expect(body.artifacts).toHaveLength(3);
+    expect(new Set(body.artifacts.map((a) => a.href)).size).toBe(3);
+
+    for (const artifact of body.artifacts) {
+      const fetched = await app.inject({ method: "GET", url: artifact.href });
+      expect(fetched.statusCode).toBe(200);
+      expect(fetched.headers["content-type"]).toBe("image/jpeg");
+      expect(fetched.rawPayload.byteLength).toBe(artifact.bytes);
+      const meta = await sharp(fetched.rawPayload).metadata();
+      expect(meta.format).toBe("jpeg");
+      expect(meta.width).toBe(540);
+    }
+    await app.close();
   }, 180_000);
 
   it("una URL ajena al workspace se rechaza ANTES de tocar ffmpeg", async () => {
