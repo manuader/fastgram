@@ -97,3 +97,71 @@ export async function refundContentSave(
     overageUnits: despues.overageUsed,
   });
 }
+
+/**
+ * Devuelve los créditos de AI Studio de un pipeline que falló — `FR-080`, §9.4.
+ *
+ * ## Por qué NO usa `releaseAiStudioGeneration` de `core`
+ *
+ * Porque devuelve **lo que se cobró**, no lo que costaría hoy. `core` trabaja
+ * sobre un `CreditsLedger` con saldo *restante* (`remaining`), y la columna
+ * `quota_ledgers.ai_credits` cuenta *consumidos* — la decisión está argumentada
+ * en `apps/api/src/support/quota.ts` y se resume en que la fila del período la
+ * crea quien llega primero, así que un `0` tiene que significar lo mismo por los
+ * tres caminos que la crean.
+ *
+ * Con esa forma, llamar a `releaseAiStudioGeneration` obligaría a inventar un
+ * `remaining` a partir del plan, sumarle el costo y volver a convertir. Ese ida
+ * y vuelta sólo puede introducir error, y además usaría `AI_STUDIO_COST` de
+ * **hoy**: si la tarifa cambia entre el cobro y el fallo —`OQ-21` está abierta
+ * justamente sobre eso— el cliente recibiría de vuelta un número distinto del
+ * que se le sacó.
+ *
+ * Por eso el monto llega como parámetro y sale de `influencers.credits_charged`,
+ * que es lo que de verdad se descontó. Es la misma razón por la que
+ * `contents.save_bucket` se persiste en vez de recalcularse.
+ *
+ * **Sin `Clock`**, al revés que `refundContentSave`. Ése lo necesita para
+ * calcular el `resetAt` que `refundSave` le pide; acá el período llega como
+ * parámetro y la aritmética es una resta, así que un reloj sería un argumento
+ * que nadie lee. El compilador me lo marcó después de copiar la firma.
+ *
+ * ## La guarda contra el doble reembolso NO está acá
+ *
+ * Está en `influencerCreditsStore.claimCreditsRefund`, que marca y devuelve el
+ * cargo **en una sola sentencia**: quien recibe un objeto es el único que lo va
+ * a recibir. Esta función asume que ya ganó ese derecho, y llamarla sin haberlo
+ * ganado regala créditos. Se separa así porque la atomicidad la da el `UPDATE …
+ * RETURNING`, no esta aritmética.
+ */
+export async function refundAiCredits(
+  tx: Transaction,
+  scope: TenantScope,
+  period: string,
+  charged: number,
+): Promise<void> {
+  const company = await companyRepository.billing(tx, scope);
+  if (company === null) {
+    throw new Error(
+      `No se pudo leer el workspace ${scope.companyId} para devolver créditos. ` +
+        "Casi siempre es que `app.current_company` no coincide con el scope.",
+    );
+  }
+
+  const plan = parsePlanId(company.planId);
+  const fila = await quotaLedgerStore.lockPeriod(tx, scope, period, {
+    contentSavesIncluded: PLANS[plan].contentSaves ?? 0,
+  });
+
+  // `Math.max(0, …)` y no una resta pelada: el CHECK de la base prohíbe
+  // contadores negativos, así que un cargo mayor que lo consumido —una fila
+  // editada a mano, un período reescrito— haría fallar la transacción entera y
+  // el pipeline se quedaría sin cerrar. Devolver de menos es recuperable;
+  // dejar el influencer colgado, no.
+  await quotaLedgerStore.writeAiCredits(
+    tx,
+    scope,
+    period,
+    Math.max(0, fila.aiCredits - charged),
+  );
+}

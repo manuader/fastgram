@@ -414,3 +414,70 @@ export async function readPost(
   `;
   return filas[0] as never;
 }
+
+/* ------------------------------------------------------------------------ *
+ * Influencers — `FR-080`
+ * ------------------------------------------------------------------------ */
+
+export interface SeedInfluencerOptions {
+  readonly status?:
+    "generating_variations" | "training" | "ready" | "failed" | "inactive";
+  /** `null` = nunca se cobró. Default: 250, el cargo de `FR-080`. */
+  readonly creditsCharged?: number | null;
+  readonly creditsRefundedAt?: Date;
+  /** Créditos de AI Studio ya consumidos en el período. */
+  readonly aiCreditsUsed?: number;
+}
+
+/**
+ * Un influencer con su cargo hecho y el ledger del período movido.
+ *
+ * El `ai_credits` del ledger arranca **al menos en lo cobrado** porque el
+ * reembolso tiene que poder **restar** algo: contra un contador en cero, el
+ * `Math.max(0, …)` lo dejaría igual y el test pasaría sin medir nada. Es la
+ * misma trampa que ya se pagó con los content saves.
+ */
+export async function seedInfluencer(
+  handle: DbHandle,
+  companyId: string,
+  options: SeedInfluencerOptions = {},
+): Promise<string> {
+  const cobrado = options.creditsCharged === undefined ? 250 : options.creditsCharged;
+  const usados = options.aiCreditsUsed ?? Math.max(250, cobrado ?? 0);
+
+  await handle.sql`
+    insert into quota_ledgers (company_id, period, content_saves_included, ai_credits)
+    values (${companyId}::uuid, ${PERIOD}, 500, ${usados})
+    on conflict (company_id, period) do update set ai_credits = ${usados}
+  `;
+
+  const filas = await handle.sql`
+    insert into influencers
+      (company_id, name, gender, age, ethnicity, status,
+       credits_period, credits_charged, credits_refunded_at)
+    values (
+      ${companyId}::uuid, ${`inf-${randomUUID().slice(0, 8)}`}, 'woman', 27, 'latina',
+      ${options.status ?? "generating_variations"}::influencer_status,
+      ${cobrado === null ? null : PERIOD},
+      ${cobrado},
+      ${options.creditsRefundedAt === undefined ? null : options.creditsRefundedAt.toISOString()}::timestamptz
+    )
+    returning id
+  `;
+  return (filas[0] as unknown as { id: string }).id;
+}
+
+/** Estado del influencer y del contador de créditos, leídos directo. */
+export async function readInfluencer(
+  handle: DbHandle,
+  influencerId: string,
+): Promise<{ status: string; credits_refunded_at: unknown; ai_credits: number }> {
+  const filas = await handle.sql`
+    select i.status, i.credits_refunded_at, l.ai_credits
+    from influencers i
+    join quota_ledgers l
+      on l.company_id = i.company_id and l.period = ${PERIOD}
+    where i.id = ${influencerId}::uuid
+  `;
+  return filas[0] as never;
+}

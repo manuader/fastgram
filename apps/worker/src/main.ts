@@ -35,6 +35,7 @@ import type { JobHandler, SocialPublisher } from "@fastgram/ports";
 import pino from "pino";
 
 import { createContentBuildHandler } from "./content/build-handler.js";
+import { createInfluencerPipelineHandler } from "./influencers/pipeline-handler.js";
 import { createPublishHandler } from "./publishing/publish-handler.js";
 import { loadWorkerEnv } from "./env.js";
 import { JOB_CATALOG, type JobPolicy } from "./jobs/catalog.js";
@@ -125,6 +126,23 @@ const HANDLERS: Readonly<Record<string, JobHandler<unknown>>> = {
   [JOB_QUEUES.publishing]: createPublishHandler({
     db: handle.db,
     publishers: PUBLISHERS,
+    clock,
+    appRole,
+    logger,
+  }),
+  /**
+   * **Sin generador, y por eso mismo hay que montarlo.**
+   *
+   * No hay adaptador de `MediaGeneration`: el pipeline de `FR-080` son 15–20
+   * minutos de GPU contra un proveedor que todavía no se eligió. Pero
+   * `POST /influencers` **ya cobra 250 créditos**, así que no registrar el
+   * handler deja al personaje en `generating_variations` para siempre y al
+   * cargo sin devolver — el mismo agujero que el content save tuvo hasta hace
+   * dos tandas. Con el handler montado y sin generador, el personaje se cierra
+   * como `failed` y los 250 vuelven.
+   */
+  [JOB_QUEUES.influencerPipeline]: createInfluencerPipelineHandler({
+    db: handle.db,
     clock,
     appRole,
     logger,
