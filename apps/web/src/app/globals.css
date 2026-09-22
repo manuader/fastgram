@@ -1374,6 +1374,112 @@ body {
   background: none;
 }
 
+/* ------------------------------ Content Studio · custom upload · F-083 */
+
+.fgw-upload {
+  display: grid;
+  max-width: 44rem;
+  gap: var(--fg-space-4);
+}
+
+.fgw-upload__picker {
+  display: grid;
+  gap: var(--fg-space-2);
+}
+
+.fgw-upload__label {
+  font-size: var(--fg-text-sm);
+  font-weight: var(--fg-weight-medium);
+}
+
+.fgw-upload__hint {
+  margin: 0;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+}
+
+/* El rechazo local es texto de aviso, no un `ErrorState`: no falló nada del
+   servidor y ofrecer `Try again` sobre un archivo de 300 MB sería ofrecer
+   repetir lo que acaba de no caber. */
+.fgw-upload__rejected {
+  margin: 0;
+  color: var(--fg-color-danger-text);
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-upload__step {
+  margin: 0;
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-upload__progress {
+  display: grid;
+  gap: var(--fg-space-2);
+  justify-items: start;
+}
+
+/* `appearance: none` quita el estilo nativo, que en Safari es una cápsula gris
+   ilegible sobre fondo oscuro. Los dos pseudo-elementos son los dos motores:
+   sin el `-moz-`, Firefox pinta la barra del sistema. */
+.fgw-upload__bar {
+  width: 100%;
+  height: 8px;
+  border: 0;
+  border-radius: var(--fg-radius-full);
+  background: var(--fg-color-surface-sunken);
+  appearance: none;
+}
+
+.fgw-upload__bar::-webkit-progress-bar {
+  border-radius: var(--fg-radius-full);
+  background: var(--fg-color-surface-sunken);
+}
+
+.fgw-upload__bar::-webkit-progress-value {
+  border-radius: var(--fg-radius-full);
+  background: var(--fg-color-accent);
+}
+
+.fgw-upload__bar::-moz-progress-bar {
+  border-radius: var(--fg-radius-full);
+  background: var(--fg-color-accent);
+}
+
+.fgw-upload__failed,
+.fgw-upload__done {
+  display: grid;
+  gap: var(--fg-space-2);
+  padding: var(--fg-space-4);
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-lg);
+  justify-items: start;
+}
+
+.fgw-upload__failed-title,
+.fgw-upload__done-title {
+  margin: 0;
+  font-weight: var(--fg-weight-semibold);
+}
+
+.fgw-upload__failed-hint,
+.fgw-upload__done-hint {
+  margin: 0;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-upload__done-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--fg-space-3);
+}
+
+.fgw-upload__link {
+  color: var(--fg-color-accent);
+  font-size: var(--fg-text-sm);
+}
+
 /* ------------------------------------------------------------ responsive */
 /* NFR-019 · P1-UI-008. Tres cortes, los mismos que `useSidebarState`. */
 

@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { RoutePlaceholder } from "@/components/placeholder/RoutePlaceholder";
+import { PageHeader } from "@/components/shell/PageHeader";
+import { CustomVideoUpload } from "@/components/studio/CustomVideoUpload";
 import { CONTENT_FORMATS, findContentFormat } from "@/lib/content/formats";
+import { CUSTOM_FORMAT_ID } from "@/lib/studio/custom-video";
 
 interface PageProps {
   params: Promise<{ format: string }>;
@@ -35,6 +38,22 @@ export default async function ContentFormatPage({ params }: PageProps) {
   const { format } = await params;
   const found = findContentFormat(format);
   if (found === undefined) notFound();
+
+  /**
+   * `custom` es el único de los 22 que tiene pantalla · `P2-STUDIO-009`,
+   * `F-083`. No es un privilegio: es el único cuyo backend existe entero
+   * (`/content/custom/video/upload-url` + `/content/custom/video`). Los otros
+   * 21 necesitan el wizard de `P2-STUDIO-002`, que no está, y un placeholder
+   * honesto es mejor que un formulario que no puede generar nada.
+   */
+  if (found.id === CUSTOM_FORMAT_ID) {
+    return (
+      <div className="fgw-page">
+        <PageHeader title={found.label} description={found.description} />
+        <CustomVideoUpload />
+      </div>
+    );
+  }
 
   return (
     <RoutePlaceholder

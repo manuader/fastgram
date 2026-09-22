@@ -374,6 +374,57 @@ export const webEn = {
   "prefs.angleWeightsMissing":
     "Angle weights are part of these settings but aren't edited here yet: they have to cover every active angle, and this screen has no way to list them.", // nuevo
   "prefs.sum": "{sum} / 100", // nuevo
+
+  /* ------------------- Content Studio · custom upload · F-083 (PRD:525) ---- */
+  // El PRD describe la capacidad ("Subir video propio como contenido") y los
+  // límites de §9.8, pero **no da copy de pantalla** para ninguno de los pasos:
+  // todo lo de este bloque es `nuevo`. Lo único literal es el `50` del tope, y
+  // ni siquiera se escribe acá — se interpola desde `@fastgram/contracts`.
+  "studio.custom.fileLabel": "Video file", // nuevo
+  "studio.custom.limitHint": "MP4 or MOV, up to {max} MB.", // nuevo · {max} sale de NFR-013
+  // La tarjeta del formato dice "video or image" (PRD:536) y la API no tiene
+  // por dónde recibir una imagen como contenido. Se dice en vez de dejar que
+  // alguien elija un PNG y descubra el motivo en un error.
+  "studio.custom.videoOnly":
+    "Images aren't accepted here yet — custom content is video only. Images go to the Media Bank.", // nuevo
+
+  "studio.custom.reject.empty": "That file is empty, so there's nothing to upload.", // nuevo
+  "studio.custom.reject.tooLarge":
+    "{name} is {size} MB and the limit is {max} MB, so it wasn't uploaded.", // nuevo
+  "studio.custom.reject.unsupportedType": "Only MP4 and MOV videos are accepted.", // nuevo
+  "studio.custom.reject.extensionMismatch":
+    "The extension of {name} doesn't match what's inside it. Export it again as MP4 or MOV.", // nuevo
+
+  "studio.custom.step.reserving": "Getting the upload ready…", // nuevo
+  "studio.custom.step.uploading": "Uploading {name} — {percent}%", // nuevo
+  "studio.custom.step.uploadingUnknown": "Uploading {name}…", // nuevo
+  "studio.custom.step.finalizing": "Almost there — creating the piece…", // nuevo
+  "studio.custom.progressLabel": "Upload progress", // nuevo
+  "studio.custom.cancel": "Cancel upload", // nuevo
+
+  "studio.custom.transferFailed.title": "The video didn't reach storage", // nuevo
+  "studio.custom.transferFailed.description":
+    "Nothing was created and nothing was charged. Trying again starts the upload over.", // nuevo
+  // El caso que justifica que haya dos mensajes de fallo: acá el archivo YA
+  // está subido y reintentar no vuelve a mandarlo.
+  "studio.custom.finalizeFailed.title":
+    "The video is uploaded, but the piece isn't created yet", // nuevo
+  "studio.custom.finalizeFailed.description":
+    "Only the last step failed. Finishing doesn't upload the file again, and it won't be charged twice.", // nuevo
+  "studio.custom.finishUpload": "Finish upload", // nuevo
+  // §9.8: la reserva vive lo que su URL firmada (1 h). Caducada, el paso 3
+  // devuelve `410` para siempre y lo único que queda es subir otra vez.
+  "studio.custom.expired.title": "The upload window expired", // nuevo
+  "studio.custom.expired.description":
+    "Reservations last an hour. Nothing was created — uploading again starts a fresh one.", // nuevo
+
+  "studio.custom.done.title": "Video uploaded", // nuevo
+  // FR-070 (PRD:1463): MOV→MP4 y el thumbnail los hace el servidor, así que la
+  // pieza nace en `BUILDING`. Decir "listo" mandaría a ver algo que no está.
+  "studio.custom.done.description":
+    "It's building now — the server normalizes the video and makes the thumbnail. It shows up in your Library when that finishes.", // nuevo
+  "studio.custom.done.goToLibrary": "Go to Library", // nuevo
+  "studio.custom.uploadAnother": "Upload another", // nuevo
 } as const;
 
 export type WebMessageKey = keyof typeof webEn;
