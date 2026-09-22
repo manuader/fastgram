@@ -16,6 +16,7 @@ import {
   companies,
   contents,
   createDb,
+  migrateWithUrl,
   users,
   withoutCompany,
   type DbHandle,
@@ -23,30 +24,70 @@ import {
 import { randomUUID } from "node:crypto";
 
 /**
- * La base de los tests de integración del worker.
+ * La base de los tests de integración del worker — **propia, y se crea sola**.
  *
- * El default sigue siendo `fastgram`, el del `docker-compose.yml`, y es una
- * decisión y no una omisión: es la única base que existe en un clone limpio, así
- * que apuntar el default a otra convierte un `test:int` recién clonado en un
- * *"database … does not exist"*.
+ * No puede ser la misma que la de `apps/api`: sus fixtures arrancan con un
+ * `truncate … restart identity cascade` sobre `companies` y `contents`, que son
+ * justo las tablas que siembra esta suite. Con las dos apuntando a `fastgram`,
+ * `pnpm test:int` (que las corre por turbo) le borra las filas a esta **en medio
+ * de un test**, y el fallo se ve como un bug propio: piezas que desaparecen,
+ * ledgers en cero. La primera corrida pasó igual, por timing, que es la peor
+ * forma de tenerlo.
  *
- * **Pero no conviene correr esta suite a la vez que la de `apps/api`.** Sus
- * fixtures arrancan con un `truncate … restart identity cascade` sobre
- * `companies` y `contents`, así que una corrida concurrente le borra las filas a
- * la otra **en medio de un test**, y los fallos se ven como bugs propios:
- * piezas que desaparecen, ledgers en cero. Si hace falta correr las dos a la
- * vez, se usa una base aparte:
+ * El nombre se **deriva** del `DATABASE_URL` compartido en vez de ser un literal
+ * aparte: así un `DATABASE_URL` distinto —CI usa `fastgram_test`— arrastra su
+ * propia base de worker sin que haya que acordarse de pasar dos variables.
  *
- * ```
- * DATABASE_URL="postgres://fastgram:fastgram@localhost:5432/fastgram_worker" \
- *   pnpm --filter @fastgram/worker test:int
- * ```
- *
- * Esa base hay que crearla y migrarla antes (`pnpm --filter @fastgram/db
- * db:migrate` con ese `DATABASE_URL`); no la crea el `docker-compose`.
+ * Y la crea `ensureDatabase()` desde el `globalSetup`, en vez de pedirla en el
+ * `docker-compose`: un `initdb` sólo corre con el volumen vacío, así que a quien
+ * ya tiene el contenedor levantado no le llegaría nunca y su `test:int` fallaría
+ * con un *"database … does not exist"* que no dice qué hacer.
  */
-export const DATABASE_URL =
-  process.env["DATABASE_URL"] ?? "postgres://fastgram:fastgram@localhost:5432/fastgram";
+export const DATABASE_URL = workerDatabaseUrl(
+  process.env["DATABASE_URL"] ?? "postgres://fastgram:fastgram@localhost:5432/fastgram",
+);
+
+/** `…/fastgram` → `…/fastgram_worker`. Respeta el resto de la URL tal cual. */
+export function workerDatabaseUrl(shared: string): string {
+  const url = new URL(shared);
+  const nombre = url.pathname.replace(/^\//, "");
+  if (nombre === "" || nombre.endsWith("_worker")) return shared;
+  url.pathname = `/${nombre}_worker`;
+  return url.toString();
+}
+
+/**
+ * Crea la base del worker si falta y le aplica las migraciones.
+ *
+ * `CREATE DATABASE` no admite `IF NOT EXISTS` en Postgres, así que se pregunta
+ * primero. Se conecta a `postgres`, la base de mantenimiento, porque no se puede
+ * crear una base desde dentro de sí misma.
+ */
+export async function ensureDatabase(): Promise<void> {
+  const nombre = new URL(DATABASE_URL).pathname.replace(/^\//, "");
+
+  const mantenimiento = new URL(DATABASE_URL);
+  mantenimiento.pathname = "/postgres";
+  // Por `createDb` y no por `postgres` directo: `postgres` no es dependencia de
+  // `apps/worker` y agregarla para esto sería sumar un paquete al `package.json`
+  // por cuatro líneas de fixture. `handle.sql` **es** el cliente crudo.
+  const admin = createDb({ url: mantenimiento.toString(), max: 1, onnotice: () => {} });
+  try {
+    const filas = await admin.sql`select 1 from pg_database where datname = ${nombre}`;
+    if (filas.length === 0) {
+      // `unsafe` porque un identificador no se puede parametrizar. El nombre sale
+      // de nuestro propio `DATABASE_URL`, no de la red, y se acota igual.
+      if (!/^[a-z_][a-z0-9_]*$/.test(nombre)) {
+        throw new Error(`nombre de base inválido: ${JSON.stringify(nombre)}`);
+      }
+      await admin.sql.unsafe(`create database ${nombre}`);
+    }
+  } finally {
+    await admin.close();
+  }
+
+  await migrateWithUrl(DATABASE_URL);
+}
 
 export function openDb(): DbHandle {
   return createDb({ url: DATABASE_URL, max: 4, onnotice: () => {} });
