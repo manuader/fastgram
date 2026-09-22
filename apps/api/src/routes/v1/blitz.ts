@@ -52,9 +52,11 @@ import {
 } from "@fastgram/contracts";
 import {
   DomainError,
+  JOB_QUEUES,
   assertValidBlitzRequest,
   assertValidPreferencesPatch,
   type AngleWeights,
+  type DiscoveryRefillJob,
 } from "@fastgram/core";
 import {
   blitzPreferencesRepository,
@@ -207,7 +209,63 @@ function assertStorableInfluencerChance(value: number | undefined): void {
 }
 
 export function registerBlitzRoutes(app: ZodApp): void {
-  const { limiter, queue } = app.deps;
+  const { limiter, queue, clock } = app.deps;
+
+  /**
+   * Pide que se rellene la cola de descubrimiento de este workspace.
+   *
+   * ## Por qué desde acá, y no desde un cron
+   *
+   * El catálogo declara con `scheduled` los trabajos que dispara un reloj, y
+   * `discoveryRefill` **no lo tiene**: es por evento. El PRD nombra el evento
+   * tres veces —al terminar el onboarding «arrancar el relleno de la discovery
+   * queue» (PRD:759, 1890, 2006)— pero el onboarding todavía no tiene rutas.
+   *
+   * El otro momento en que el PRD promete el relleno es **éste**: con la cola
+   * vacía, `FR-050` manda responder *«the queue replenishes in the
+   * background»*. Hasta hoy esa frase era falsa — nada en todo el repo
+   * insertaba una fila en `suggestions`. Encolar acá es lo que la vuelve
+   * cierta.
+   *
+   * ## La clave rota, y por qué no es fija
+   *
+   * `singletonKey` acota cuántos jobs se crean: sin ella, un workspace cuyo
+   * relleno falla encola uno por cada petición, y `POST /blitz` es una ruta
+   * caliente. Pero el adaptador deriva de la clave un **id determinista y
+   * permanente**, así que una clave fija por workspace haría que el refill se
+   * encolara **una sola vez en la vida** y nunca más.
+   *
+   * Por eso lleva un cubo de tiempo: **un relleno por workspace por minuto**.
+   * El número sale de `FR-050`/PRD:783, que promete ≥1 sugerencia lista en ≤5
+   * min; un minuto deja cinco intentos dentro de esa promesa.
+   *
+   * ## No puede hundir la respuesta
+   *
+   * Si encolar falla, el usuario tiene que seguir recibiendo su 404 con el
+   * mensaje de espera. Un error de la cola **no cambia lo que es cierto**: la
+   * cola está vacía. Se loguea y sigue.
+   */
+  async function pedirRelleno(
+    request: { log: { warn: (obj: object, msg: string) => void } },
+    companyId: string,
+  ): Promise<void> {
+    if (queue === undefined) return;
+    const minuto = Math.floor(clock.nowMs() / 60_000);
+    try {
+      await queue.enqueue<DiscoveryRefillJob>({
+        queue: JOB_QUEUES.discoveryRefill,
+        payload: { companyId },
+        options: {
+          singletonKey: `${JOB_QUEUES.discoveryRefill}:${companyId}:${String(minuto)}`,
+        },
+      });
+    } catch (error: unknown) {
+      request.log.warn(
+        { companyId, error, queue: JOB_QUEUES.discoveryRefill },
+        "no se pudo pedir el relleno de la discovery queue",
+      );
+    }
+  }
 
   // ── GET /blitz/preferences ──
   app.get("/blitz/preferences", async (request) => {
@@ -421,6 +479,11 @@ export function registerBlitzRoutes(app: ZodApp): void {
       }
 
       if (outcome.kind === "empty_queue") {
+        // **Lo que hace cierto al mensaje de abajo.** Ver `pedirRelleno`: hasta
+        // esta línea, «the queue replenishes in the background» era una promesa
+        // que nada cumplía.
+        await pedirRelleno(request, companyId);
+
         // Mensaje literal de FR-050 (estado `empty`). La UI lo usa para mostrar el
         // estado de espera y reintentar sin recargar.
         return reply.status(404).send({

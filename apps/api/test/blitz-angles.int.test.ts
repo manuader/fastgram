@@ -96,11 +96,17 @@ const bearer = (token: string): Record<string, string> => ({
  * Cola presente pero inservible.
  *
  * `POST /blitz` exige la dependencia **antes** de tocar nada, porque crear un
- * `Content` en `BUILDING` sin encolar el build lo deja colgado para siempre. Con la
- * cuota todavía sin poder evaluarse (ver la cabecera de `routes/v1/blitz.ts`) la ruta
- * nunca llega a encolar, así que cada método grita si alguien lo llama: el día que el
- * gate de facturación exista, este doble va a fallar ruidoso y habrá que darle uno de
- * verdad en vez de descubrirlo en producción.
+ * `Content` en `BUILDING` sin encolar el build lo deja colgado para siempre.
+ *
+ * Cada método grita si alguien lo llama, y eso sigue siendo correcto para **esta**
+ * suite: sus dos casos de `POST /blitz` cortan en 409 (sin perfil) y en 400
+ * (`aspectRatio` fuera de slideshow), así que no llegan a mirar la cola.
+ *
+ * **Pero la ruta ya sí encola**, y conviene saberlo antes de agregar un caso acá: con
+ * perfil listo y la cola de sugerencias vacía pide un `discovery-refill` (ver
+ * `test/discovery-refill.int.test.ts`). Un caso nuevo que llegue a ese punto va a
+ * hacer gritar a este doble — y el grito estaría bien, porque significa que hace falta
+ * una cola de verdad y no que el doble sobre.
  */
 const unusedQueue: Queue = {
   enqueue: async () => {
