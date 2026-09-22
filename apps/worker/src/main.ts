@@ -6,10 +6,10 @@
  * la pieza, **cobraba el content save** y encolaba el build, y la pieza se
  * quedaba en `BUILDING` para siempre con el save cobrado y sin devolver.
  *
- * Ahora consume `content-build`. Los otros 20 trabajos de §9.5 siguen sin
- * handler, y eso se dice en el log al arrancar en vez de quedar implícito: una
- * cola con productor y sin consumidor es el peor modo de falla que tiene este
- * sistema, porque no falla nada.
+ * Ahora consume `content-build` y `quota-reset`. Los otros 19 trabajos de §9.5
+ * siguen sin handler, y eso se dice en el log al arrancar en vez de quedar
+ * implícito: una cola con productor y sin consumidor es el peor modo de falla
+ * que tiene este sistema, porque no falla nada.
  *
  * Orden de arranque, y por qué ése:
  *  1. **Validar el entorno.** Si falta algo, el proceso muere acá con el nombre
@@ -17,7 +17,10 @@
  *  2. Abrir la base y construir los adaptadores.
  *  3. Registrar los handlers — antes de `start()`, porque el adaptador los
  *     encola y los registra al arrancar.
- *  4. Arrancar la cola, y recién entonces el apagado limpio.
+ *  4. Arrancar la cola.
+ *  5. **Programar los recurrentes**, que va después de `start()` porque crean
+ *     la cola si falta y pg-boss rechaza el DDL con el boss parado.
+ *  6. Y recién entonces el apagado limpio.
  */
 import {
   createPgBossQueue,
@@ -33,7 +36,8 @@ import pino from "pino";
 
 import { createContentBuildHandler } from "./content/build-handler.js";
 import { loadWorkerEnv } from "./env.js";
-import { JOB_CATALOG } from "./jobs/catalog.js";
+import { JOB_CATALOG, type JobPolicy } from "./jobs/catalog.js";
+import { createQuotaResetHandler } from "./jobs/quota-reset-handler.js";
 
 const env = loadWorkerEnv();
 const logger = pino({ level: env.LOG_LEVEL });
@@ -98,6 +102,12 @@ const HANDLERS: Readonly<Record<string, JobHandler<unknown>>> = {
     appRole,
     logger,
   }),
+  [JOB_QUEUES.quotaReset]: createQuotaResetHandler({
+    db: handle.db,
+    clock,
+    appRole,
+    logger,
+  }),
 };
 
 for (const [name, handler] of Object.entries(HANDLERS)) {
@@ -111,14 +121,66 @@ const sinHandler = Object.values(JOB_CATALOG)
 
 await queue.start();
 
+/**
+ * Los trabajos programados de §9.5.
+ *
+ * **Después de `start()`**, no antes: `scheduleRecurring` crea la cola si falta
+ * y pg-boss rechaza el DDL con el boss parado. Es el mismo orden que la trampa
+ * 21 deja escrito para `work()`.
+ *
+ * Y **sólo los que tienen handler.** Programar el cron de una cola que nadie
+ * consume es el peor modo de falla de este sistema —el que no falla—: los jobs
+ * se acumulan, nadie los toma, y el log de arranque diría que el trabajo está
+ * programado. `brand-source-staleness-sweep` y `snapshot-purge` tienen cron en
+ * el catálogo y todavía no tienen handler, así que no se programan; la lista de
+ * los que quedaron afuera va al log, igual que las colas sin consumidor.
+ *
+ * El cron sale del catálogo y no de acá: es la política del consumidor y ya
+ * está escrita con su razón. El adaptador lo registra **en UTC** (§16.2 fija
+ * los resets a 00:00 UTC y una zona local los movería con el horario de verano).
+ */
+const programados: string[] = [];
+const programablesSinHandler: string[] = [];
+// Se ensancha a `JobPolicy` a propósito: `JOB_CATALOG` es `as const`, así que
+// las entradas sin cron **no tienen** la propiedad `scheduled` en su tipo
+// literal y la unión no la deja leer. El `satisfies` del catálogo garantiza que
+// este ensanchamiento es correcto.
+const policies: readonly JobPolicy[] = Object.values(JOB_CATALOG);
+for (const policy of policies) {
+  if (policy.scheduled === undefined) continue;
+  if (!(policy.name in HANDLERS)) {
+    programablesSinHandler.push(policy.name);
+    continue;
+  }
+  await queue.scheduleRecurring({
+    // `RecurringSpec.name` tiene que ser único y el adaptador lo indexa por
+    // cola (una programación por cola, ver su cabecera), así que el nombre de
+    // la cola es el nombre natural de la programación.
+    name: policy.name,
+    queue: policy.name,
+    cron: policy.scheduled.cron,
+    // Vacío a propósito: un barrido no se apunta a nadie. Ver el handler.
+    payload: {},
+  });
+  programados.push(`${policy.name} (${policy.scheduled.cron} UTC)`);
+}
+
 logger.info(
   {
     colas: conHandler,
     sinHandler: sinHandler.length,
+    programados,
     concurrency: env.WORKER_CONCURRENCY,
   },
   "worker arriba",
 );
+if (programablesSinHandler.length > 0) {
+  logger.warn(
+    { colas: programablesSinHandler },
+    "trabajos con cron en el catálogo y sin handler: NO se programaron, " +
+      "porque encolar contra una cola que nadie consume no falla nunca",
+  );
+}
 // A nivel `warn` y con la lista entera: son 20 colas en las que la API ya
 // encola y que nadie lee. Verlo cada vez que arranca el proceso es el punto.
 logger.warn(

@@ -22,6 +22,29 @@ import {
 } from "@fastgram/db";
 import { randomUUID } from "node:crypto";
 
+/**
+ * La base de los tests de integración del worker.
+ *
+ * El default sigue siendo `fastgram`, el del `docker-compose.yml`, y es una
+ * decisión y no una omisión: es la única base que existe en un clone limpio, así
+ * que apuntar el default a otra convierte un `test:int` recién clonado en un
+ * *"database … does not exist"*.
+ *
+ * **Pero no conviene correr esta suite a la vez que la de `apps/api`.** Sus
+ * fixtures arrancan con un `truncate … restart identity cascade` sobre
+ * `companies` y `contents`, así que una corrida concurrente le borra las filas a
+ * la otra **en medio de un test**, y los fallos se ven como bugs propios:
+ * piezas que desaparecen, ledgers en cero. Si hace falta correr las dos a la
+ * vez, se usa una base aparte:
+ *
+ * ```
+ * DATABASE_URL="postgres://fastgram:fastgram@localhost:5432/fastgram_worker" \
+ *   pnpm --filter @fastgram/worker test:int
+ * ```
+ *
+ * Esa base hay que crearla y migrarla antes (`pnpm --filter @fastgram/db
+ * db:migrate` con ese `DATABASE_URL`); no la crea el `docker-compose`.
+ */
 export const DATABASE_URL =
   process.env["DATABASE_URL"] ?? "postgres://fastgram:fastgram@localhost:5432/fastgram";
 
@@ -147,4 +170,98 @@ export async function seedPiece(
     if (row === undefined) throw new Error("no se creó el content");
     return row.id;
   });
+}
+
+export interface SeedSwipesOptions {
+  readonly period?: string;
+  readonly used: number;
+  /** `null` = ese workspace nunca hizo un swipe, así que no tiene reloj diario. */
+  readonly resetAt: Date | null;
+  /** Para comprobar que el barrido no los toca. */
+  readonly contentSavesUsed?: number;
+  readonly contentSavesPurchased?: number;
+}
+
+/**
+ * Un ledger con el contador de swipes diarios en un estado concreto.
+ *
+ * Va por `handle.sql` y no por `writeDailySwipes` porque el barrido tiene que
+ * encontrarse con filas que **ya estaban** vencidas, incluido el caso de
+ * `daily_swipe_reset_at` nulo, que el repositorio no puede escribir. Es
+ * provisión, no camino de aplicación.
+ *
+ * El instante viaja como **texto ISO** con `::timestamptz` y no como `Date`:
+ * `handle.sql` es el mismo cliente postgres.js que `drizzle()` recibió, y
+ * drizzle le cambia los serializadores (trampa 18), así que un `Date` puesto
+ * como parámetro llega crudo al protocolo y postgres.js muere con *"The
+ * \"string\" argument must be … Received an instance of Date"*. Medido: los 12
+ * tests de esta suite fallaban en el bind, no en la lógica.
+ */
+export async function seedSwipes(
+  handle: DbHandle,
+  companyId: string,
+  options: SeedSwipesOptions,
+): Promise<string> {
+  const period = options.period ?? PERIOD;
+  const reset = options.resetAt === null ? null : options.resetAt.toISOString();
+  await handle.sql`
+    insert into quota_ledgers (
+      company_id, period, content_saves_included, content_saves_used,
+      content_saves_purchased, daily_swipes_used, daily_swipe_reset_at
+    ) values (
+      ${companyId}::uuid, ${period}, 500, ${options.contentSavesUsed ?? 0},
+      ${options.contentSavesPurchased ?? 0}, ${options.used},
+      ${reset}::timestamptz
+    )
+    on conflict (company_id, period) do update
+      set daily_swipes_used = ${options.used},
+          daily_swipe_reset_at = ${reset}::timestamptz,
+          content_saves_used = ${options.contentSavesUsed ?? 0},
+          content_saves_purchased = ${options.contentSavesPurchased ?? 0}
+  `;
+  return period;
+}
+
+export interface LedgerState {
+  readonly dailySwipesUsed: number;
+  readonly dailySwipeResetAt: Date | null;
+  readonly contentSavesUsed: number;
+  readonly contentSavesPurchased: number;
+  readonly contentSavesIncluded: number;
+}
+
+/** El ledger tal como está en la base. Sin scope: es provisión, no request. */
+export async function readLedger(
+  handle: DbHandle,
+  companyId: string,
+  period: string = PERIOD,
+): Promise<LedgerState> {
+  const filas = await handle.sql`
+    select daily_swipes_used, daily_swipe_reset_at, content_saves_used,
+           content_saves_purchased, content_saves_included
+      from quota_ledgers
+     where company_id = ${companyId}::uuid and period = ${period}
+  `;
+  const fila = filas[0] as unknown as {
+    daily_swipes_used: number;
+    // Por `handle.sql` la marca de tiempo llega **como venga** (string u
+    // objeto) y no como el `Date` que devolvería Drizzle: mismo motivo que la
+    // nota de `build.int.test.ts`. Se tipa `unknown` y se normaliza acá, una
+    // vez, en vez de en cada aserción.
+    daily_swipe_reset_at: unknown;
+    content_saves_used: number;
+    content_saves_purchased: number;
+    content_saves_included: number;
+  };
+  if (fila === undefined) throw new Error(`no hay ledger de ${period}`);
+  return {
+    dailySwipesUsed: fila.daily_swipes_used,
+    dailySwipeResetAt:
+      fila.daily_swipe_reset_at === null || fila.daily_swipe_reset_at === undefined
+        ? null
+        : new Date(fila.daily_swipe_reset_at as string),
+    contentSavesUsed: fila.content_saves_used,
+    contentSavesPurchased: fila.content_saves_purchased,
+    contentSavesIncluded: fila.content_saves_included,
+  };
 }
