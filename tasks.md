@@ -257,7 +257,9 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [ ] **P1-BRAND-018** Protección SSRF en **todos** los orígenes, incluido el seguimiento de link-in-bio · `NFR-017`
 - [ ] **P1-BRAND-019** **Suite de regresión con bios adversariales** (prompt injection) · `FR-011.9` · ⚠️ exigida por el PRD
 - [ ] **P1-BRAND-020** Unicidad `(sourceType, handle)` global · `FR-011.7`
-- [ ] **P1-BRAND-021** Retención del snapshot + purga por `rawRetentionExpiresAt`; binarios de terceros **no se persisten** · `DATA-032`
+- [x] **P1-BRAND-021** Retención del snapshot + purga por `rawRetentionExpiresAt`; binarios de terceros **no se persisten** · `DATA-032`
+  > El circuito de la omisión: sin handler, `main.ts` **no programa el cron** —a propósito, porque un cron sin consumidor acumula jobs mientras el log dice que está programado—, así que ninguna fuente envejecía nunca.
+  > `SECURITY DEFINER` medido: sin él, con `fastgram_app` y sin GUC el `UPDATE` afecta **cero filas y sin error** (`expected 0 to be greater than or equal to 1`). Un test que corra como superusuario no puede ver la diferencia.
 - [ ] **P1-BRAND-022** Estados y errores completos de `FR-011.8` / `FR-011.9` (14 mensajes) · `ERR-B01`…`ERR-B14`
 - [ ] **P1-BRAND-023** Semilla de content angles desde los temas con mejor engagement · `AI-016`
 - [ ] **P1-BRAND-024** **Iniciar la revisión legal `OQ-16`** · ⚠️ bloquea el tier C, no es tarea de ingeniería
@@ -283,7 +285,8 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [ ] **P1-BRANDPG-003** Badges de origen y confianza por campo · `F-025`
 - [ ] **P1-BRANDPG-004** `brandRevision` + `expectedBrandRevision` en las escrituras · `F-022`
 - [ ] **P1-BRANDPG-005** Re-análisis respeta `editedByUser`: propone, no pisa · `FR-020`
-- [ ] **P1-BRANDPG-006** `stale` a los 90 días + oferta de refrescar · `F-026`
+- [~] **P1-BRANDPG-006** `stale` a los 90 días + oferta de refrescar · `F-026`
+  > **El barrido está**: marca `stale` a los 90 días, con el mismo borde que el dominio («89 no, 90 sí»). Falta la **oferta de refrescar**, que es UI y necesita las rutas de brand.
 
 ## P1-UI — Shell de aplicación
 
@@ -320,6 +323,8 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [ ] **P1-OBS-002** OpenTelemetry: trazas y métricas
 - [ ] **P1-OBS-003** Sentry (errores) + PostHog (producto) · `INT-010`
 - [~] **P1-OBS-004** Health checks y status page · `F-255`
+  > **Cerradas las dos mitades que se podían:** `/health` de la API comprueba Postgres, storage y cola de verdad (y `degraded` devuelve 200 a propósito), y la status page de `F-255` existe y redacta **en el servidor** — no renderizar no es no publicar.
+  > Falta: **`apps/worker` no expone ninguna sonda.** Un worker con la base caída no lo dice en ningún lado.
 - [ ] **P1-OBS-005** Alertas: cola atascada, tasa de fallo de build, saturación de rate limit
 
 ---
@@ -452,7 +457,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P2-LIB — Library
 
-- [ ] **P2-LIB-001** Tab `My Posts` con estado, tipo y métricas · `F-120`
+- [x] **P2-LIB-001** Tab `My Posts` con estado, tipo y métricas · `F-120`
 - [x] **P2-LIB-002** Tab `My Content` · `F-124`
 - [x] **P2-LIB-003** Tab `My Media Bank` · `F-125`
   > Se construyó pidiendo `P2-MEDIA-006` por error del coordinador: esa tarea es el modo `CREATING SET`, que **no** está. Lo que se hizo es esta tab — lista, los cuatro estados de §19 y filtro por `type`, que es el único filtro que `GET /media` tiene hoy.
