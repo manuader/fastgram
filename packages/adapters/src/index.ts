@@ -79,6 +79,31 @@ export {
   type MemoryMediaSource,
 } from "./media-renderer/memory-media-renderer.js";
 
+/**
+ * El adaptador real de `MediaRenderer` (`P2-RENDER-002`): habla con
+ * `services/render` por HTTP interno. `fetchRenderEngineVersion` se llama una
+ * vez al arrancar y su resultado se inyecta como `engineVersion`, porque el
+ * puerto exige que `fingerprint` sea puro.
+ */
+export {
+  fetchRenderEngineVersion,
+  HttpMediaRenderer,
+  MAPPING_VERSION as RENDER_MAPPING_VERSION,
+  type ArtifactKind,
+  type EngineVersionQuery,
+  type HttpMediaRendererConfig,
+  type HttpRenderArtifactRef,
+  type HttpRenderBuild,
+  type RenderFetch,
+  type WarningContext,
+} from "./media-renderer/http-media-renderer.js";
+export {
+  DEFAULT_MAPPING as DEFAULT_RENDER_MAPPING,
+  type RenderMappingConfig,
+  type TextBackgroundStyle,
+  type WirePayload,
+} from "./media-renderer/render-wire.js";
+
 export {
   MemoryPayments,
   type MemoryPaymentsOptions,

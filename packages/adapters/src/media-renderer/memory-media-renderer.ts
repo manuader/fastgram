@@ -26,9 +26,11 @@
  * no tiene motor.
  *
  * La validación de `FR-070` también es real: `num_images` contra
- * `images.length`, el tope de {@link MAX_SLIDES}, y `fontSize` dentro de
- * `[MIN_FONT_SIZE, MAX_FONT_SIZE]`. Es la parte del puerto que no depende del
- * motor, así que conviene que sea idéntica en los dos adaptadores.
+ * `images.length`, el tope de slides, y `fontSize` dentro de su rango. Es la
+ * parte del puerto que no depende del motor, así que conviene que sea idéntica
+ * en los dos adaptadores — y por eso vive en `job-rules.ts`, compartida con
+ * `HttpMediaRenderer`, en vez de copiada acá. Lo mismo la serialización
+ * canónica del fingerprint.
  *
  * **Lo que NO hay acá, y hay que buscarlo en el adaptador real:** `contentType`
  * de salida por formato, duración del video producido, y todo lo que `probe`
@@ -39,12 +41,7 @@
 
 import { createHash } from "node:crypto";
 import {
-  MAX_FONT_SIZE,
-  MAX_SLIDES,
-  MIN_FONT_SIZE,
   PortError,
-  SLIDE_ASPECT_RATIOS,
-  type Canvas,
   type Clock,
   type MediaProbe,
   type MediaRenderer,
@@ -52,10 +49,10 @@ import {
   type RenderedMedia,
   type RenderJob,
   type RenderResult,
-  type RenderText,
   type ThumbnailRequest,
 } from "@fastgram/ports";
 import { systemClock } from "../clock/index.js";
+import { assertJobIsValid, canonicalize, canvasOf } from "./job-rules.js";
 
 const SOURCE = "MediaRenderer/memory";
 
@@ -116,9 +113,9 @@ export class MemoryMediaRenderer implements MediaRenderer {
 
   async render(job: RenderJob): Promise<RenderResult> {
     const startedAt = this.#clock.nowMs();
-    assertJobIsValid(job);
+    assertJobIsValid(job, SOURCE);
 
-    const canvas = canvasOf(job);
+    const canvas = canvasOf(job, SOURCE);
     const fingerprint = this.fingerprint(job);
     // El artefacto es el propio fingerprint en bytes: determinista, no vacío,
     // y obvio al mirarlo en un test que no salió de ningún encoder.
@@ -218,93 +215,6 @@ export class MemoryMediaRenderer implements MediaRenderer {
     }
     return source;
   }
-}
-
-/* ------------------------------------------------------------------------ *
- * Validación del payload normativo de `FR-070`
- * ------------------------------------------------------------------------ */
-
-function assertJobIsValid(job: RenderJob): void {
-  if (job.format === "slideshow") {
-    if (job.num_images !== job.images.length) {
-      // El error que el contrato público menciona explícitamente. Dejarlo
-      // pasar produce un slideshow corto sin avisar.
-      throw new PortError(
-        "bad_request",
-        "num_images does not match the number of images",
-        { source: SOURCE },
-      );
-    }
-    if (job.images.length === 0 || job.images.length > MAX_SLIDES) {
-      throw new PortError(
-        "bad_request",
-        `a slideshow needs between 1 and ${String(MAX_SLIDES)} slides`,
-        { source: SOURCE },
-      );
-    }
-    for (const slide of job.images) {
-      assertCanvas(slide.canvas);
-      if (!SLIDE_ASPECT_RATIOS.includes(slide.canvas.aspectRatio)) {
-        throw new PortError("bad_request", "unknown aspect ratio", { source: SOURCE });
-      }
-      for (const text of slide.texts) assertText(text);
-    }
-    return;
-  }
-
-  assertCanvas(job.canvas);
-  assertText(job.text);
-}
-
-function assertCanvas(canvas: Canvas): void {
-  if (canvas.width <= 0 || canvas.height <= 0) {
-    throw new PortError("bad_request", "canvas without dimensions", { source: SOURCE });
-  }
-}
-
-function assertText(text: RenderText): void {
-  if (text.fontSize < MIN_FONT_SIZE || text.fontSize > MAX_FONT_SIZE) {
-    throw new PortError(
-      "bad_request",
-      `fontSize must be between ${String(MIN_FONT_SIZE)} and ${String(MAX_FONT_SIZE)}`,
-      { source: SOURCE },
-    );
-  }
-}
-
-function canvasOf(job: RenderJob): Canvas {
-  if (job.format !== "slideshow") return job.canvas;
-  const first = job.images[0];
-  if (first === undefined) {
-    throw new PortError("bad_request", "a slideshow needs at least one slide", {
-      source: SOURCE,
-    });
-  }
-  return first.canvas;
-}
-
-/* ------------------------------------------------------------------------ *
- * Serialización canónica
- * ------------------------------------------------------------------------ */
-
-/**
- * `JSON.stringify` con las claves ordenadas en todos los niveles.
- *
- * Es lo que hace que el fingerprint no dependa del orden en que `core` haya
- * armado el objeto. El tipo de entrada es `unknown` y el recorrido es
- * defensivo a propósito: el job es un tipo cerrado hoy, pero el hash tiene que
- * seguir siendo estable si mañana le agregan un campo opcional.
- */
-function canonicalize(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
-  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
-
-  const entries = Object.entries(value)
-    .filter(([, v]) => v !== undefined)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return `{${entries
-    .map(([k, v]) => `${JSON.stringify(k)}:${canonicalize(v)}`)
-    .join(",")}}`;
 }
 
 function once(body: Uint8Array): AsyncIterable<Uint8Array> {
