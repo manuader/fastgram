@@ -11,6 +11,15 @@ catalog:
   vitest: ^2.1.8
   zod: ^3.24.1
   "@vitest/coverage-v8": ^2.1.8
+  # Test de componentes. Van al catálogo porque `apps/web` y `packages/ui` van a
+  # renderizar los mismos componentes: dos versiones distintas de RTL o de jsdom
+  # harían que un test pase en un paquete y falle en el otro por el entorno, no
+  # por el componente. `@testing-library/react` 16 es la primera con React 19.
+  jsdom: ^25.0.1
+  "@testing-library/react": ^16.1.0
+  "@testing-library/jest-dom": ^6.6.3
+  "@testing-library/user-event": ^14.5.2
+  "@vitejs/plugin-react": ^4.3.4
   # Drizzle y su driver cruzan `packages/db` y los tests de `packages/adapters`
   # que prueban el encolado transaccional (ADR-005). Dos versiones distintas del
   # mismo cliente harian que ese test midiera otra cosa que la que corre en prod.
