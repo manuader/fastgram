@@ -71,7 +71,7 @@ export function acquisitionPlan(context: AcquisitionContext): readonly Acquisiti
   if (context.hasConnection) plan.push("A_oauth");
 
   plan.push("B_public_api");
-  if (context.renderedFetchEnabled) plan.push("C_rendered_fetch");
+  if (context.renderedFetchEnabled) plan.push("C_page_fetch");
 
   // La oferta de conectar, cuando todavía no hay credencial.
   if (!context.hasConnection) plan.push("A_oauth");

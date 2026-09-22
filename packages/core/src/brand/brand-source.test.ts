@@ -62,7 +62,7 @@ describe("orden de adquisición B → C → A → D (FR-011.4, D-01)", () => {
       }),
     ).toEqual<AcquisitionTier[]>([
       "B_public_api",
-      "C_rendered_fetch",
+      "C_page_fetch",
       "A_oauth",
       "D_assisted",
     ]);
@@ -135,7 +135,7 @@ describe("interpretar la escalada (FR-011.4)", () => {
   it("cuenta privada tras B y C: degrada a asistido, no falla", () => {
     const v = interpretAcquisition([
       step("B_public_api", "private"),
-      step("C_rendered_fetch", "private"),
+      step("C_page_fetch", "private"),
     ]);
     expect(v.resolvedTier).toBeNull();
     expect(v.degradedToAssisted).toBe(true);
@@ -145,9 +145,9 @@ describe("interpretar la escalada (FR-011.4)", () => {
   it("el primer ok corta la escalada", () => {
     const v = interpretAcquisition([
       step("B_public_api", "unavailable"),
-      step("C_rendered_fetch", "ok"),
+      step("C_page_fetch", "ok"),
     ]);
-    expect(v.resolvedTier).toBe("C_rendered_fetch");
+    expect(v.resolvedTier).toBe("C_page_fetch");
   });
 });
 

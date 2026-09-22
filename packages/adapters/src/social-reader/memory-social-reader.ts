@@ -191,7 +191,7 @@ export class MemorySocialReader implements SocialReader {
    */
   #usableTiers(accessToken: string | undefined): readonly AcquisitionTier[] {
     return this.#capabilities.tiers.filter((tier) => {
-      if (tier === "C_rendered_fetch") return this.#capabilities.renderedFetchEnabled;
+      if (tier === "C_page_fetch") return this.#capabilities.renderedFetchEnabled;
       if (tier === "A_oauth") return accessToken !== undefined;
       return true;
     });

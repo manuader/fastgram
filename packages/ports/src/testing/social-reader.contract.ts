@@ -78,7 +78,7 @@ export function describeSocialReaderContract(
       // podía declarar el tier C jamás, y la bandera quedaba como duplicado
       // de la lista. "Sé hacerlo, está apagado" es el estado normal.
       check(
-        !caps.renderedFetchEnabled || caps.tiers.includes("C_rendered_fetch"),
+        !caps.renderedFetchEnabled || caps.tiers.includes("C_page_fetch"),
         "prende el tier C sin declararlo entre los que sabe usar",
       );
       check(

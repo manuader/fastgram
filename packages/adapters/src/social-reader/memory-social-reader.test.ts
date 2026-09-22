@@ -223,7 +223,7 @@ describe("MemorySocialReader — comportamiento propio del adaptador", () => {
     const reader = new MemorySocialReader({
       capabilities: {
         ...CAPS,
-        tiers: ["C_rendered_fetch", "B_public_api"],
+        tiers: ["C_page_fetch", "B_public_api"],
         renderedFetchEnabled: false,
       },
       profiles: [PUBLICA],

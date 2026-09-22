@@ -127,8 +127,6 @@ import type { ZodApp } from "../../server/types.js";
 
 type BrandSourceRow = (typeof brandSources)["$inferSelect"];
 type CompanyProfileRow = (typeof companyProfiles)["$inferSelect"];
-/** El enum que acepta la columna. Ver {@link persistableTier}. */
-type PersistedTier = BrandSourceRow["acquisitionTier"];
 
 const brandSourceParams = z.object({ id: z.string().min(1) });
 
@@ -154,24 +152,6 @@ const CONNECTION_PLATFORM: Partial<Record<CoreBrandSourceType, ConnectionPlatfor
   youtube: "youtube",
   linkedin: "linkedin",
 };
-
-/**
- * `AcquisitionTier` de `@fastgram/ports` → el valor que la columna acepta.
- *
- * **Los dos enums no coinciden y es un bug latente que no es de esta tarea.**
- * `packages/ports` y `packages/core` llaman al tier C `C_rendered_fetch`;
- * `packages/db` y `packages/contracts` lo llaman `C_page_fetch`. O sea que
- * `acquisitionPlan()` puede devolver un valor que **Postgres rechaza**. Hoy no
- * explota porque el tier C está apagado hasta `OQ-16` y el plan no lo incluye,
- * así que esta función nunca toma esa rama; el día que el flag se encienda, sí.
- *
- * Se traduce acá, en un solo sitio y con el nombre a la vista, en vez de
- * castear en silencio. Queda en el reporte: los dos enums tienen que unificarse
- * en `ports` + `db`, que no son directorios de este agente.
- */
-export function persistableTier(tier: AcquisitionTier): PersistedTier {
-  return tier === "C_rendered_fetch" ? "C_page_fetch" : tier;
-}
 
 /**
  * La violación de unicidad de Postgres, reconocida sin importar el driver.
@@ -446,7 +426,7 @@ async function initialTier(
   tx: Transaction,
   companyId: string,
   sourceType: CoreBrandSourceType,
-): Promise<PersistedTier> {
+): Promise<AcquisitionTier> {
   const platform = CONNECTION_PLATFORM[sourceType];
   let hasConnection = false;
   if (platform !== undefined) {
@@ -466,7 +446,13 @@ async function initialTier(
   });
   // `acquisitionPlan` nunca devuelve una lista vacía: `D_assisted` siempre la
   // cierra. El `?? "D_assisted"` es por el tipo, no por el caso.
-  return persistableTier(plan[0] ?? "D_assisted");
+  //
+  // Acá vivía `persistableTier`, que traducía el `C_rendered_fetch` de `ports`
+  // al `C_page_fetch` de la columna. Los dos enums se unificaron
+  // (`P1-BRAND-013`), así que la traducción dejó de tapar nada — y el
+  // compilador lo dijo: `This comparison appears to be unintentional because
+  // the types … have no overlap`.
+  return plan[0] ?? "D_assisted";
 }
 
 /** El perfil del workspace, o `null` si nunca se escribió. */

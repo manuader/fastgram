@@ -119,6 +119,25 @@ mismaLista("estados de Content (PRD DATA-008)", [
   ["packages/contracts/src/primitives/enums.ts", "contentStatusSchema"],
 ]);
 
+// El tier C se llamó `C_rendered_fetch` en `ports`/`core` y `C_page_fetch` en
+// `db`/`contracts` durante cuatro tandas. `acquisitionPlan()` podía devolver un
+// valor que Postgres rechaza; no explotaba sólo porque el tier está apagado
+// hasta `OQ-16`.
+//
+// Nadie lo vio, y la razón vale más que el bug: `ports` **no puede** importar
+// `db` —es la regla de la arquitectura— y una unión de literales de TypeScript
+// **no se puede leer desde fuera de TypeScript**. O sea que no había ningún
+// punto del árbol de dependencias desde el que se vieran las cuatro listas a la
+// vez. Este script es ese punto, porque lee texto y no importa nada.
+//
+// Por eso `ports` ahora expone `ACQUISITION_TIERS` como lista en runtime y no
+// sólo como tipo: un tipo solo habría sido invisible para esto también.
+mismaLista("tiers de adquisición (PRD FR-011.4) · 3 paquetes", [
+  ["packages/ports/src/social-reader.ts", "ACQUISITION_TIERS"],
+  ["packages/db/src/schema/enums.ts", "ACQUISITION_TIER"],
+  ["packages/contracts/src/resources/brand.ts", "acquisitionTierSchema"],
+]);
+
 mismoNumero("content angles por workspace (PRD FR-056)", [
   ["packages/core/src/quota/plans.ts", "contentAngles"],
 ]);

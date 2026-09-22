@@ -51,19 +51,51 @@ export type BrandSourceType =
   "instagram" | "tiktok" | "x" | "youtube" | "linkedin" | "website" | "other_url";
 
 /**
- * Niveles de `FR-011.4`. Sólo `A_oauth` aparece literal en el PRD (diagrama de
- * relaciones de §8); los otros tres nombres son de este puerto y sólo el
- * prefijo A/B/C/D es normativo.
+ * Niveles de `FR-011.4`, en runtime y como fuente única del tipo.
+ *
+ * **Los cuatro nombres son literales del PRD** (tabla de `acquisitionTier` en
+ * `DATA-031`, y el evento `brand_source_analysis_completed` de §20), y además
+ * son los valores del enum `acquisition_tier` de Postgres
+ * (`packages/db/drizzle/0000_initial_schema.sql`). No son nombres de este
+ * puerto: renombrar cualquiera de los cuatro exige una migración de la base,
+ * así que acá no se tocan.
+ *
+ * Esto es una lista y no una unión suelta por dos razones concretas, las dos
+ * aprendidas del bug de `P1-BRAND-013`:
+ *
+ *  1. El comentario que estaba acá afirmaba que «sólo `A_oauth` aparece
+ *     literal en el PRD» y que «sólo el prefijo A/B/C/D es normativo». Era
+ *     falso, y de esa creencia salió la divergencia: este puerto llamó
+ *     `C_rendered_fetch` a lo que la base llama `C_page_fetch`, y
+ *     `acquisitionPlan()` de `@fastgram/core` quedó pudiendo devolver un
+ *     valor que Postgres rechaza con
+ *     `invalid input value for enum acquisition_tier`. No explotaba sólo
+ *     porque el tier C está apagado hasta `OQ-16`.
+ *  2. Una unión de literales no se puede leer desde fuera de TypeScript. Con
+ *     la lista, `scripts/check-consistency.mjs` y el test de paridad de
+ *     `@fastgram/core` pueden compararla contra `packages/db` y
+ *     `packages/contracts` sin importarlos —que es justo lo que `ports` no
+ *     puede hacer, y por eso el bug vivió sin que nada lo viera.
+ *
+ * El orden es el de la escalera B → C → A → D leído como A/B/C/D, y coincide
+ * con el orden del `CREATE TYPE` de la migración.
  */
-export type AcquisitionTier =
+export const ACQUISITION_TIERS = [
   /** API oficial con el OAuth del propio usuario. La mejor señal. */
-  | "A_oauth"
+  "A_oauth",
   /** API pública oficial / oEmbed / OpenGraph. El punto de partida (`D-01`). */
-  | "B_public_api"
+  "B_public_api",
   /** Fetch de la página pública renderizada. Apagado hasta `OQ-16`. */
-  | "C_rendered_fetch"
+  "C_page_fetch",
   /** Asistido: el usuario pega su bio o sube capturas. No pasa por este puerto. */
-  | "D_assisted";
+  "D_assisted",
+] as const;
+
+/**
+ * Derivado de {@link ACQUISITION_TIERS} a propósito: si el tipo se escribiera
+ * aparte, volvería a poder divergir de la lista sin que nada se queje.
+ */
+export type AcquisitionTier = (typeof ACQUISITION_TIERS)[number];
 
 /** §9.14 y `FR-011.3`: 24 ítems por análisis, configurable. */
 export const DEFAULT_CONTENT_ITEMS = 24;
