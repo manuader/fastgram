@@ -109,19 +109,19 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P1-AUTH — Identidad
 
-- [ ] **P1-AUTH-001** Puerto `Identity` + adaptador Better Auth · `ADR-008`
+- [~] **P1-AUTH-001** Puerto `Identity` + adaptador Better Auth · `ADR-008`
 - [ ] **P1-AUTH-002** Signup / login / logout · `F-001`…`F-003`
 - [ ] **P1-AUTH-003** SSO + callback `/auth/sso-callback` · `F-002`
-- [ ] **P1-AUTH-004** Sesiones, refresh, revocación
+- [~] **P1-AUTH-004** Sesiones, refresh, revocación
 - [ ] **P1-AUTH-005** Recuperación de contraseña · `§15.3`
-- [ ] **P1-AUTH-006** Borrado de cuenta con confirmación por email y sus estados · `F-011`, `FR-160`
+- [~] **P1-AUTH-006** Borrado de cuenta con confirmación por email y sus estados · `F-011`, `FR-160`
 
 ## P1-TENANT — Workspaces
 
-- [ ] **P1-TENANT-001** Creación de workspace + límite por usuario · `F-008`
+- [~] **P1-TENANT-001** Creación de workspace + límite por usuario · `F-008`
 - [ ] **P1-TENANT-002** Cambio de workspace y contexto activo · `F-009`
-- [ ] **P1-TENANT-003** Roles `owner` / `member`, comprobados **en el servidor** · PRD §4, `FR-002`
-- [ ] **P1-TENANT-004** Test de contrato: acceso cruzado devuelve **404**, no 403 · `NFR-006`
+- [~] **P1-TENANT-003** Roles `owner` / `member`, comprobados **en el servidor** · PRD §4, `FR-002`
+- [x] **P1-TENANT-004** Test de contrato: acceso cruzado devuelve **404**, no 403 · `NFR-006`
 - [ ] **P1-TENANT-005** Borrado de workspace con sus advertencias · `FR-160`
 
 ## P1-QUOTA — Cuotas y rate limiting
@@ -139,7 +139,9 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
   > **`claimCreditsRefund` marca y devuelve el cargo en la misma sentencia**, que es una respuesta directa a la trampa 24: no hay "preguntar" antes de "devolver", así que no se puede escribir el camino en el orden equivocado. Verificado: reemplazándolo por `SELECT`+`UPDATE`, el test de concurrencia da `expected [Array(2)] to have a length of 1`.
   > **Hallazgo grande: los tests de cross-tenant del paquete medían RLS, no el `WHERE`.** Corren como `fastgram_app` con el GUC puesto, así que la capa 1 tapa el agujero y la capa 2 nunca se mide. Confirmado sobre `lockContent`, que era mío: sin el `companyId`, los 146 tests siguieron verdes. Los tres repositorios nuevos y `content-build` ganan un test que corre **sin RLS de por medio**.
   > `posts.external_post_id` sin índice a propósito: todo acceso entra por `company_id`, y un índice invitaría a buscar sin tenant.
-- [~] **P1-QUOTA-011** **Cablear el cobro de créditos a `POST /influencers`** (250, `AI_STUDIO_COST.influencer`) · `FR-080`, §9.4 · **parcial:** cobra, pero **nadie libera todavía** — el handler de `influencer-pipeline` no existe
+- [~] **P1-QUOTA-011** **Cablear el cobro de créditos a `POST /influencers`** (250, `AI_STUDIO_COST.influencer`) · `FR-080`, §9.4 · **parcial:** cobra y libera; lo que falta es el saldo
+  > **Dos afirmaciones de esta nota murieron y conviene saber cuáles.** Decía que «nadie libera todavía — el handler de `influencer-pipeline` no existe»: existe desde `058668e`, devuelve los 250 con `claimCreditsRefund` y tiene test de integración. Y decía que el cargo vivía en `internal_refs` de forma interina: la migración `0007` le puso columnas tipadas con tres CHECKs.
+  > **Lo que sigue en pie:** `ai_credits` cuenta consumidos y no saldo, falta `ai_credits_purchased`, y `inFlightCount` cuenta sólo influencers.
   > **`ai_credits` cuenta consumidos, no saldo.** La fila del período la crea quien llega primero y dos de los tres caminos la crean con el default `0`; con semántica de saldo, un workspace Growth que guardó contenido antes arrancaría el período en 0 y **todo influencer daría 402**, sin poder distinguir "nunca se sembró" de "se gastó todo". Falta `ai_credits_purchased` para el `Buy more`.
   > **`inFlightCount` es parcial y está dicho como tal:** `NFR-025` acota imágenes + videos + influencers juntos y sólo se puede contar el tercero (no hay tabla de generaciones). Se cuenta la mitad que más cuesta; un `0` silencioso habría vuelto el cap decorativo.
   > El cargo se anota en `internal_refs` (jsonb) y **es interino**: faltan columnas tipadas con CHECK en `influencers`. Riesgo concreto: `update(..., {internalRefs})` **reemplaza** el jsonb entero, así que el worker que escriba `soulId` ahí borra el registro del cargo sin que nada falle.
@@ -174,7 +176,8 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
   > Arreglado en la migración `0004_queue_grants.sql`, con `ALTER DEFAULT PRIVILEGES` y no `GRANT ON ALL TABLES`: pg-boss crea sus tablas después y en otro proceso, así que un grant sobre "todas" no encontraría ninguna y **no fallaría**. 4 tests, verificados rompiendo el `ALTER`.
 - [x] **P1-QUEUE-003** Estado de job consultable + contrato de polling de ~10 s · `NFR-002`, `ADR-014`
 - [x] **P1-QUEUE-004** Reintentos con backoff y dead-letter queue
-- [~] **P1-QUEUE-005** Idempotencia: `Idempotency-Key`, replay de respuesta, `409` con body distinto, liberación al fallar · `NFR-004` · **parcial:** cableada a las cuatro rutas que §9.3 exige (`POST /content`, `PATCH /content/:id`, `POST /content/:id/regenerate`, `POST /influencers`); **el replay nunca se ejerció de punta a punta** — no hay test que haga dos peticiones con la misma key contra la base
+- [x] **P1-QUEUE-005** Idempotencia: `Idempotency-Key`, replay de respuesta, `409` con body distinto, liberación al fallar · `NFR-004` · cableada a las cuatro rutas que §9.3 exige (`POST /content`, `PATCH /content/:id`, `POST /content/:id/regenerate`, `POST /influencers`)
+  > La nota que vivía acá decía que «el replay nunca se ejerció de punta a punta». **Era falsa** (auditoría del 2026-09-22): `apps/api/test/write-routes.int.test.ts:111` hace exactamente eso, y cubre además el 409 con body distinto (`:136`) y la liberación de la key al fallar (`:155`). Se suman `quota.int.test.ts:117` e `influencer-credits.int.test.ts:184`.
 - [x] **P1-QUEUE-006** Scaffold del `apps/worker`
 - [~] **P1-QUEUE-008** Handler de `content-build` en `apps/worker`: construye, sube y cierra `BUILDING → CREATED|FAILED` **con reembolso del save** · `FR-050`, IMPL §2.3 · **parcial:** el pipeline corre de punta a punta contra los binarios compilados, pero **con `MemoryMediaRenderer`**: el artefacto son bytes sintéticos. El render real es `services/render` y sigue sin adaptador (`P2-RENDER-002`). Tampoco construye `custom` —la fila no guarda la clave del objeto subido— ni aplica `prompt`/`mentionBusiness` de `AI-004`.
   > **El círculo cierra.** `POST /content` cobraba el save y encolaba, y del otro lado no había nadie: la pieza quedaba en `BUILDING` para siempre y el save cobrado no se devolvía nunca. `pnpm smoke:binary` levanta ahora los **dos** procesos y espera a que la pieza llegue a `CREATED`.
@@ -193,7 +196,9 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
   > El worker también, por una razón propia: con la API sobre S3 y el worker sobre memoria, `contents.files` guardaría `memory://bucket/...`. Medido: `content/…/1/0` de 64 B en MinIO, puesto por el `put()` del worker.
   > **Diferencia real entre los dos lados:** la API nunca hace `put()` —los bytes van directo al bucket— y el worker sí. Ahí entra la deuda del adaptador: sin `@aws-sdk/lib-storage` no hay multipart y `put` acumula en memoria hasta el tope.
   > **Queda abierto el hueco del CDN:** `canonicalObjectUrl` firma y quita la query, así que con R2 detrás de un CDN las URLs persistidas apuntan al endpoint de firma. Hoy en desarrollo coinciden (MinIO firma y sirve por el mismo host) y el arranque avisa si divergen.
-- [~] **P1-STORAGE-006** Limpieza best-effort que **no bloquea** el borrado de la fila · `ERR-F05` · **parcial:** el puerto deja la política al llamador (correcto); falta el caso de uso que loguea y sigue
+- [~] **P1-STORAGE-006** Limpieza best-effort que **no bloquea** el borrado de la fila · `ERR-F05` · **parcial:** el caso de uso existe en el worker; falta en la API y falta el test
+  > La nota decía que «falta el caso de uso que loguea y sigue». Existe: `apps/worker/src/content/build-handler.ts:332-341` descarta los objetos ya subidos cuando el build falla, best-effort como pide §9.11.
+  > **Lo que de verdad falta:** ese camino **no tiene test**, y `DELETE /media/:id` no borra el objeto — `apps/api/src/routes/v1/media.ts:322-341` sólo hace soft-delete de la fila, así que cada borrado deja un objeto huérfano en el bucket.
 
 ## P1-API — Contrato y API
 
@@ -215,8 +220,8 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P1-JUDGE-002** `LlmJudgmentAdapter` con decodificación restringida por JSON-schema · `ADR-009`
 - [x] **P1-JUDGE-003** `StubJudgmentAdapter` para tests deterministas
 - [ ] **P1-JUDGE-004** Selección de adaptador **por punto de decisión**, no global · PRD §9.15.2
-- [ ] **P1-JUDGE-005** Persistencia de `JudgmentRecord` con `latencyMs` e `inputTokens` · `DATA-033`
-- [ ] **P1-JUDGE-006** **Evaluación de modelos y precios**, con resultado fechado en `HANDOFF.md` · `ADR-009` · ⚠️ nada de precios de memoria
+- [~] **P1-JUDGE-005** Persistencia de `JudgmentRecord` con `latencyMs` e `inputTokens` · `DATA-033`
+- [x] **P1-JUDGE-006** **Evaluación de modelos y precios**, con resultado fechado en `HANDOFF.md` · `ADR-009` · ⚠️ nada de precios de memoria
 - [x] **P1-JUDGE-007** Sanitización obligatoria del estado antes del puerto · PRD §9.15.3
 - [x] **P1-JUDGE-008** Suite de contrato única que corre contra **todos** los adaptadores · IMPL §4
   > Las 37 aserciones de `asr`, `media-renderer`, `payments`, `social-publisher` y `social-reader` **nunca se habían ejecutado** porque no existía ningún adaptador de esos puertos. Ahora corren contra implementaciones en memoria: 37 de 37 verdes, y la corrida encontró **cuatro aserciones que no medían lo que prometían** (ver el commit `308e30d`). Cinco de las 37 no pueden fallar contra un adaptador en memoria y están anotadas como tales.
@@ -234,7 +239,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 - [ ] **P1-BRAND-001** Puerto `SocialReader` con una implementación por plataforma
 - [ ] **P1-BRAND-002** **Spike de cobertura pública por plataforma (las 5)** · `OQ-19` · ⚠️ **hacer ANTES de escribir los extractores**; puede reabrir `D-02`
-- [ ] **P1-BRAND-003** Resolución y normalización de entrada: URL, `@handle`, limpieza de tracking, `x.com`≡`twitter.com` · `FR-011.1`
+- [x] **P1-BRAND-003** Resolución y normalización de entrada: URL, `@handle`, limpieza de tracking, `x.com`≡`twitter.com` · `FR-011.1`
 - [ ] **P1-BRAND-004** Desambiguador de plataforma, con preselección de la cuenta ya conectada · `FR-011.1`
 - [ ] **P1-BRAND-005** Link a post concreto → resuelve al perfil del autor + aviso · `FR-011.1`
 - [ ] **P1-BRAND-006** Extractor `website` / `other_url` (OpenGraph + contenido) · `AI-001`
@@ -243,12 +248,12 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [ ] **P1-BRAND-009** Extractor X · `D-02`
 - [ ] **P1-BRAND-010** Extractor YouTube · `D-02`
 - [ ] **P1-BRAND-011** Extractor LinkedIn · `D-02`
-- [ ] **P1-BRAND-012** Orden de tiers **B → C → A → D**; el signup **no pide OAuth** · `D-01`, `FR-011.4`
+- [x] **P1-BRAND-012** Orden de tiers **B → C → A → D**; el signup **no pide OAuth** · `D-01`, `FR-011.4`
 - [ ] **P1-BRAND-013** Tier C **detrás de bandera apagada** hasta `OQ-16` · `FR-011.4`
 - [ ] **P1-BRAND-014** Tier D asistido: pegar bio, subir capturas · `FR-011.4`
 - [ ] **P1-BRAND-015** Resolución de link-in-bio: 1 nivel, máx. 5 destinos, sin recursión · `INT-018`
 - [ ] **P1-BRAND-016** `AI-016`: síntesis con `fieldMeta` (confianza + origen + extracto)
-- [ ] **P1-BRAND-017** Preguntas de cierre de huecos · `FR-011.3` · ⚠️ **nunca inventar** un campo sin señal
+- [x] **P1-BRAND-017** Preguntas de cierre de huecos · `FR-011.3` · ⚠️ **nunca inventar** un campo sin señal
 - [ ] **P1-BRAND-018** Protección SSRF en **todos** los orígenes, incluido el seguimiento de link-in-bio · `NFR-017`
 - [ ] **P1-BRAND-019** **Suite de regresión con bios adversariales** (prompt injection) · `FR-011.9` · ⚠️ exigida por el PRD
 - [ ] **P1-BRAND-020** Unicidad `(sourceType, handle)` global · `FR-011.7`
@@ -268,7 +273,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [ ] **P1-ONB-007** Oferta post-análisis de conectar + importar media, **después** del análisis · `D-04`, `FR-011.5.1`
 - [ ] **P1-ONB-008** Importación opt-in de posts propios al Media Bank, checkbox desmarcado · `FR-011.5.1`
 - [ ] **P1-ONB-009** Todas las validaciones literales de `FR-010`
-- [ ] **P1-ONB-010** Rama `Use description instead` → `BrandSource` tipo `manual`
+- [x] **P1-ONB-010** Rama `Use description instead` → `BrandSource` tipo `manual`
 - [ ] **P1-ONB-011** **E2E: alta completa con sólo un perfil de Instagram, sin un solo consentimiento OAuth** · `FR-011.12` crit. 11 · ⚠️ criterio de salida de la fase
 
 ## P1-BRANDPG — Página Brand
@@ -289,11 +294,17 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P1-UI-005** Sistema de toasts con enlace de acción · PRD §3.5
 - [x] **P1-UI-006** Primitivas de estado: `empty`, `loading`, `error`, skeletons · PRD §19
 - [x] **P1-UI-007** TanStack Query + capa de cliente de API tipada
-- [ ] **P1-UI-008** Responsive: móvil y tablet · `NFR-019`
+- [x] **P1-UI-008** Responsive: móvil y tablet · `NFR-019`
 - [~] **P1-UI-012** **Cablear las páginas al cliente tipado** · **parcial: una tajada vertical (Library → My Content) contra la API, con los cuatro estados de §19, cursor real y polling de 10 s** — quedan 39 páginas
   > **Primera vez que alguien abre un navegador en el proyecto**, y lo primero que apareció es que nada había funcionado nunca: `pnpm dev` no arrancaba **ninguna pantalla** (`--turbopack` no lee el `extensionAlias` de webpack, y el `layout.tsx` raíz importa `@fastgram/ui`), y el `KpiRow` del Home venía recibiendo **401 desde siempre**.
   > **La credencial**: el navegador no habla con `apps/api`. Habla con un route handler de la propia app que lee la key del entorno y reenvía — sólo `GET`, con la sesión exigida, headers de salida por lista blanca y el cuerpo tal cual **con su status**, porque reempaquetarlo haría que el `402` deje de distinguirse del `500`. **Provisorio**: una key por despliegue es un workspace para todo el que llegue. Lo que corresponde es P1-AUTH.
-  > **Sin verificar, y es lo que importa:** la Library se ejercitó contra un **stub**, no contra la API sirviendo datos — las 4 keys de desarrollo están hasheadas. Y **no hay ni un test de componente** en el proyecto: falta `jsdom` y `@testing-library/react`.
+  > **Sin verificar, y es lo que importa:** la Library se ejercitó contra un **stub**, no contra la API sirviendo datos — las 4 keys de desarrollo están hasheadas. Sigue pendiente y necesita una key de desarrollo, que la da una persona.
+  > La segunda mitad de esta nota decía que no había ni un test de componente por falta de `jsdom` y `@testing-library/react`. **Caducó el 2026-09-22**: `e8b59d2` los instaló y `f5f25cf` escribió los primeros 19. Ver `P1-UI-014`.
+- [x] **P1-UI-014** **Arnés de test de componentes** (vitest + jsdom + Testing Library) y los primeros 19 · `f5f25cf`
+  > jsdom va **sólo** para `src/components/**` y `src/app/**`. Ponerlo para todo apagaba en silencio la rama `typeof window === "undefined"` de `client.ts`: los tests seguían verdes midiendo la otra mitad.
+  > `@fastgram/contracts` queda sin alias a propósito — resuelve a su `dist`, que es lo que `next build` empaqueta; aliasearlo a `src` haría validar contra un contrato distinto del que corre.
+  > **Trampa cara:** `waitFor` de Testing Library no sabe avanzar los fake timers de vitest (detecta `typeof jest`), así que espera con el reloj parado y muere por timeout. Y `advanceTimersByTimeAsync(0)` no alcanza: TanStack Query agenda la notificación con `setTimeout(cb, 0)` en el mismo tick. Con 1 ms sale.
+  > **Sin verificar:** `--coverage` no corre en `apps/web` — falta `@vitest/coverage-v8` en sus devDependencies, y `packages/ui` tiene el mismo agujero.
 - [x] **P1-UI-013** **`pnpm dev` arranca** — `packages/ui` dejó de escribir la extensión `.js` en sus imports internos
   > El parche estaba del lado equivocado: `next.config.ts` le enseñaba la regla a **webpack**, y el script `dev` corre turbopack. `packages/ui` podía dejar de escribirla porque su `package.json` apunta `main` a `./src/index.ts` — **no tiene `dist` y nadie lo corre por Node**. `packages/contracts` sí las conserva y tiene que conservarlas.
   > Medido antes (`HTTP 500`, `Can't resolve './cn.js'`) y después (`/library` → **200**, cero `Module not found`).
@@ -308,7 +319,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P1-OBS-001** Logs estructurados con `companyId` y `requestId` en todo
 - [ ] **P1-OBS-002** OpenTelemetry: trazas y métricas
 - [ ] **P1-OBS-003** Sentry (errores) + PostHog (producto) · `INT-010`
-- [ ] **P1-OBS-004** Health checks y status page · `F-255`
+- [~] **P1-OBS-004** Health checks y status page · `F-255`
 - [ ] **P1-OBS-005** Alertas: cola atascada, tasa de fallo de build, saturación de rate limit
 
 ---
@@ -319,43 +330,45 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P2-ANGLE — Content Angles
 
-- [ ] **P2-ANGLE-001** `DATA-005` + CRUD · `FR-056`
-- [ ] **P2-ANGLE-002** Caps: 100 por workspace, 10 por influencer, con sus códigos de error · `FR-056`
-- [ ] **P2-ANGLE-003** **Auto-reconcile de `angleWeights` en la MISMA transacción** que la mutación · `FR-055` · ⚠️ test de integración obligatorio
-- [ ] **P2-ANGLE-004** Soft-delete reversible; desactivar limpia links y reactivar **no** los restaura · `FR-056`
-- [ ] **P2-ANGLE-005** Generador de ángulos (no persiste) + límite 5/min + liberación de reserva al fallar · `AI-005`
+- [x] **P2-ANGLE-001** `DATA-005` + CRUD · `FR-056`
+- [x] **P2-ANGLE-002** Caps: 100 por workspace, 10 por influencer, con sus códigos de error · `FR-056`
+- [x] **P2-ANGLE-003** **Auto-reconcile de `angleWeights` en la MISMA transacción** que la mutación · `FR-055` · ⚠️ test de integración obligatorio
+- [x] **P2-ANGLE-004** Soft-delete reversible; desactivar limpia links y reactivar **no** los restaura · `FR-056`
+- [~] **P2-ANGLE-005** Generador de ángulos (no persiste) + límite 5/min + liberación de reserva al fallar · `AI-005`
 
 ## P2-PREFS — Blitz Settings
 
-- [ ] **P2-PREFS-001** `DATA-006` con defaults sintetizados · `FR-055`
-- [ ] **P2-PREFS-002** Validación: los 4 pesos como unidad, suma exacta 100 · `FR-055`
-- [ ] **P2-PREFS-003** `angleWeights` y `textStyleWeights` con sus reglas de suma y pertenencia · `FR-055`
-- [ ] **P2-PREFS-004** 7 presets de estilo de caption · `FR-055`
-- [ ] **P2-PREFS-005** **Los cambios aplican sólo a generaciones futuras; la cola no se vacía** · `FR-055` · ⚠️ regla explícita
-- [ ] **P2-PREFS-006** Rate limit dedicado de 3/min
+- [x] **P2-PREFS-001** `DATA-006` con defaults sintetizados · `FR-055`
+- [x] **P2-PREFS-002** Validación: los 4 pesos como unidad, suma exacta 100 · `FR-055`
+- [x] **P2-PREFS-003** `angleWeights` y `textStyleWeights` con sus reglas de suma y pertenencia · `FR-055`
+- [x] **P2-PREFS-004** 7 presets de estilo de caption · `FR-055`
+- [x] **P2-PREFS-005** **Los cambios aplican sólo a generaciones futuras; la cola no se vacía** · `FR-055` · ⚠️ regla explícita
+- [x] **P2-PREFS-006** Rate limit dedicado de 3/min
 - [ ] **P2-PREFS-007** UI `/blitz/settings` con auto-guardado y banner `All changes saved` · `FR-055`
 
 ## P2-DISC — Discovery queue
 
-- [ ] **P2-DISC-001** `DATA-007` + relleno en background, objetivo ~5 · `F-050`
-- [ ] **P2-DISC-002** Selección ponderada: tipo, ángulo, remix/original, own-media, estilo · `AI-002`
-- [ ] **P2-DISC-003** `influencerChance` como **tirada independiente**, no ratio de lote · `FR-055`
-- [ ] **P2-DISC-004** Fallback a contenido regular si no hay influencer elegible; `green-screen` nunca usa influencer · `FR-055`
-- [ ] **P2-DISC-005** `aiExplanation` **persistida con la sugerencia**, no regenerada al abrir · `AI-002`
-- [ ] **P2-DISC-006** Generación on-demand por `contentType` forzado · `F-067`
+- [~] **P2-DISC-001** `DATA-007` + relleno en background, objetivo ~5 · `F-050`
+- [x] **P2-DISC-002** Selección ponderada: tipo, ángulo, remix/original, own-media, estilo · `AI-002`
+- [x] **P2-DISC-003** `influencerChance` como **tirada independiente**, no ratio de lote · `FR-055`
+- [x] **P2-DISC-004** Fallback a contenido regular si no hay influencer elegible; `green-screen` nunca usa influencer · `FR-055`
+- [~] **P2-DISC-005** `aiExplanation` **persistida con la sugerencia**, no regenerada al abrir · `AI-002`
+- [~] **P2-DISC-006** Generación on-demand por `contentType` forzado · `F-067`
 
 ## P2-RENDER — Motor de render
 
 - [x] **P2-RENDER-001** Scaffold `services/render` (FFmpeg + sharp, sin estado) · `ADR-007`
 - [~] **P2-RENDER-002** Puerto `MediaRenderer` + adaptador HTTP contra `services/render` · **parcial: el adaptador existe y rinde video real, pero NO está montado** — montarlo hoy rompería todos los builds; ver `P2-RENDER-015`.
-  > Al escribir el handler apareció que `audio` era **obligatorio** en `WallOfTextJob` y `VideoHookJob`, y `FR-053.1` (PRD:1234) dice que *No audio* omite el bloque. El contrato público ya lo tenía opcional: una pieza válida de `POST /content` no se podía ni escribir como `RenderJob`. Corregido en el puerto. **`services/render` todavía lo exige** (`payload.ts`), así que el adaptador real se va a topar con eso.
+  > Al escribir el handler apareció que `audio` era **obligatorio** en `WallOfTextJob` y `VideoHookJob`, y `FR-053.1` (PRD:1234) dice que *No audio* omite el bloque. El contrato público ya lo tenía opcional: una pieza válida de `POST /content` no se podía ni escribir como `RenderJob`. Corregido en el puerto.
+  > La nota decía que «`services/render` todavía lo exige (`payload.ts`)». **Era falsa las dos veces**: ese archivo es `src/domain/payload.ts` —el `render/payload.ts` que citaba no existe— y ahí `audio` es opcional desde `P2-RENDER-014`, tres líneas más abajo en este mismo documento. Sirve de recordatorio de que una nota envejece peor que una casilla.
+  > **Cerrado en `7cb8dd9`:** el puerto lleva `MediaAuthorization` (obligatoria), tiene `renderAll` para los N artefactos de un slideshow, y `probe`/`normalize`/`thumbnail` llaman a los endpoints reales en vez de lanzar. Falta montarlo: ver `P2-RENDER-015`.
 - [x] **P2-RENDER-003** Esquema de text-object compartido por los 4 formatos · `FR-070`
 - [x] **P2-RENDER-004** Render `slideshow` (hasta 20 slides, 4 aspect ratios) · `FR-070`
 - [x] **P2-RENDER-005** Render `wall-of-text` · `FR-070`
 - [x] **P2-RENDER-006** Render `green-screen` (chromakey sobre fondo) · `FR-070`
 - [x] **P2-RENDER-007** Render `video-hook` (hook + demo apilados + audio) · `FR-070`
 - [~] **P2-RENDER-008** 12 familias tipográficas con sus pesos permitidos · `FR-051` · **parcial:** el registro de las 12 familias con sus pesos está y tiene test; faltan los **42 archivos de fuente** (ninguno en la máquina) y **`tiktok`/`snapchat` no tienen archivo distribuible** — decisión de licencia, de una persona
-- [x] **P2-RENDER-009** **Validación de que toda URL de media pertenece al workspace o a la librería compartida** · `FR-070` · ⚠️ se rechaza antes de iniciar el build
+- [~] **P2-RENDER-009** **Validación de que toda URL de media pertenece al workspace o a la librería compartida** · `FR-070` · ⚠️ se rechaza antes de iniciar el build
 - [x] **P2-RENDER-010** **Cache por hash del payload**: no re-encodear si sólo cambió el texto · IMPL §5
 - [x] **P2-RENDER-011** Golden-file tests por formato · IMPL §4
 - [x] **P2-RENDER-012** Recorte inteligente en vez de `stretch-to-canvas` · `EXT-006`
@@ -368,8 +381,14 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
   > **La versión del motor se deriva del hash del árbol de código** más ffmpeg, sharp, libvips, Pango, FreeType y el registro de fuentes. Era `ENGINE_VERSION = "1"`, o sea el número a mano. **Invalida la cache existente: el primer deploy re-encodea todo.**
   > Canvas impar: **rechazar, no redondear.** El canvas es la forma declarada del artefacto y el adaptador devuelve sus dimensiones sin medir el archivo; redondear introduciría justo el sesgo de 1 px que el adaptador verificó que no existe.
 - [ ] **P2-RENDER-015** **Montar `HttpMediaRenderer` en `apps/worker`** — hoy monta el de memoria, y cambiarlo sin esto rompe **todos** los builds
-  > Tres bloqueos, los tres medidos: (1) **las 42 fuentes no existen** y con `RENDER_FONT_STRICT=true` el default `inter` da `font_unavailable` → `bad_request` permanente → pieza fallada y reembolsada en cada build; (2) el servicio exige **grant firmado** por defecto y el puerto `MediaRenderer` **no tiene por dónde pasarlo** (inventar un grant estático sería per-workspace incorrecto, rompe `NFR-006`); (3) sin `RENDER_ALLOWED_MEDIA_PREFIXES` toda URL se rechaza con `media_url_not_allowed / sin_politica_configurada`.
-  > Y un cuarto de diseño: **un slideshow de más de un slide no se puede construir por `render()`**. `RenderResult` transporta un artefacto; el adaptador lanza `provider_contract_violation` en vez de devolver el primero, porque devolver el primero publica una pieza de una sola imagen sin error en ningún log. Hay `renderAll()`, y el handler de build tiene que usarlo y subir N objetos.
+  > **Estado al 2026-09-22, tras `7cb8dd9`.** Eran cuatro bloqueos y quedan dos, con una corrección de bulto sobre cómo estaban contados.
+  > **(1) Las 42 fuentes — VIGENTE, y es el único que necesita a una persona.** Archivos de fuente en la máquina: **cero**. El `fontLoader` los busca en `RENDER_FONT_DIR` con el nombre exacto `${family}-${weight}.ttf`, y esa variable **no está en `.env.example`, ni en `docker-compose.yml` —que ni define el servicio de render—, ni en ningún script**. Sin directorio, `available === false` → `strict` (default `true`) → `font_unavailable`.
+  > Corrección: **no es «el default `inter`»**. `family` no tiene default; fallan las 12 familias igual, porque el fallo es por directorio ausente y no por familia. Y el tamaño real del problema es menor de lo que decía: **32 de los 42 archivos son de 10 familias con licencia OFL** y se bajan. Sólo los 10 de `tiktok`/`snapchat` (5 pesos × 2) esperan una decisión de licencia.
+  > **(2) El grant firmado — CERRADO.** El puerto lleva `MediaAuthorization` obligatoria y el adaptador la firma. Verificado contra el servicio real: el grant se acepta, la firma manipulada y el vencido dan `media_grant_invalid`, y una URL de otro workspace da `media_url_not_allowed`.
+  > **(3) `RENDER_ALLOWED_MEDIA_PREFIXES` — nunca fue un bloqueo independiente.** El rechazo pide que falten **las dos** cosas: `if (!hasConfig && grant === null)`. Un grant válido alcanza solo; la config es un piso opcional que, si está, se aplica como intersección. Cerrando (2) se cerró esto.
+  > **(4) El slideshow multi-slide — CERRADO a medias.** `renderAll` subió al puerto con artefactos perezosos. Falta que `build-handler` lo use y suba los N objetos; hoy sigue llamando a `render()`, que acepta uno solo.
+  > **(5) Un quinto que no estaba listado — CERRADO.** `build-handler` llama a `thumbnail()` en **cada** build, dentro de un `try/catch` que loguea y sigue. Con el adaptador de antes eso era un stub que lanzaba: montarlo habría dejado **todas** las piezas sin miniatura, con una línea de warning por build y nada más.
+  > **(6) Nuevo, abierto: el audio no tiene origen.** `FR-070` exige que venga de la librería compartida y **en todo el repo no hay una sola pista de dónde vive** — ni clave, ni variable, ni endpoint. `workspaceMediaAuthorization` deja `sharedPrefixes` vacío en vez de inventar un prefijo. Consecuencia: con el adaptador montado, un `wall-of-text` o un `video-hook` **con** audio se rechaza con `audio_fuera_de_libreria`.
 - [~] **P2-RENDER-013** Normalización de media: MOV→MP4, HDR→SDR, faststart · `NFR-014` · **parcial: MOV→MP4 y faststart ahora sí corrieron sobre archivos reales y aparecieron dos bugs**; HDR→SDR sigue sin poder probarse
   > **Los dos bugs se cancelaban entre sí.** `isMp4Compatible` daba `true` para un `.mov` —MOV y MP4 comparten demuxer: ffprobe emite `mov,mp4,m4a,3gp,3g2,mj2` para los dos y el discriminador real es `major_brand` (`qt ` vs `isom`)— y `needsRemux` daba `true` siempre. Uno decía "ya está bien" y el otro "hay que convertir", así que **en el único caso que alguien miró el resultado era correcto**. El test unitario pasaba fabricando `["mov","quicktime"]`, una lista que ffprobe **no emite jamás**.
   > **HDR→SDR exitoso NUNCA corrió**: este ffmpeg no trae `zscale` ni `libplacebo`, así que la cadena de tonemapping sólo existe como string en un test de plan. Falla cerrado sobre un PQ real, que es lo único verificable en esta máquina.
@@ -395,17 +414,17 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [ ] **P2-BLITZ-005** Panel `Remixed From` con likes y views · `F-056`
 - [ ] **P2-BLITZ-006** Mute/unmute con indicador sobre la tarjeta · `F-057`
 - [ ] **P2-BLITZ-007** Editor inline: panel ASSETS + inspector de texto · `FR-051`
-- [ ] **P2-BLITZ-008** `Regenerate Text` con prompt opcional (≤500) · `F-059`
+- [~] **P2-BLITZ-008** `Regenerate Text` con prompt opcional (≤500) · `F-059`
 - [ ] **P2-BLITZ-009** Swap de video/audio/imagen con sus modales · `F-061`
 - [ ] **P2-BLITZ-010** Modal `Select Video` con filtros, tags y paginación · `FR-052`
 - [ ] **P2-BLITZ-011** Modal `Select Audio` con opción `No audio` y catálogos por tipo · `FR-053`
 - [ ] **P2-BLITZ-012** Flujo de aceptación: `What would you like to do?` · `F-064`, `F-065`
 - [ ] **P2-BLITZ-013** Estados: cola vacía, cuota agotada, perfil no listo, view-only · `FR-050`
-- [ ] **P2-BLITZ-014** Aceptar descuenta **1 swipe + 1 save**; fallo de build reembolsa · `FR-050`
+- [~] **P2-BLITZ-014** Aceptar descuenta **1 swipe + 1 save**; fallo de build reembolsa · `FR-050`
 
 ## P2-STUDIO — Content Studio
 
-- [ ] **P2-STUDIO-001** Hub `/content` con las 22 tarjetas de formato · `F-070`
+- [~] **P2-STUDIO-001** Hub `/content` con las 22 tarjetas de formato · `F-070`
 - [ ] **P2-STUDIO-002** Wizard con pasos, checks y `Generate` deshabilitado hasta completar · `F-073`
 - [ ] **P2-STUDIO-003** Modos Remix y Create New · `F-071`, `F-072`
 - [ ] **P2-STUDIO-004** Picker de trending con carrusel paginado y chips de nicho · `F-074`
@@ -413,27 +432,27 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [ ] **P2-STUDIO-006** Modal `Swap image for slide N` · `FR-071`
 - [ ] **P2-STUDIO-007** Estilos de wall-of-text · `F-078` · ⚠️ catálogo completo en `OQ-08`
 - [ ] **P2-STUDIO-008** Demo video + enlace a la guía de grabación · `F-079`
-- [ ] **P2-STUDIO-009** Subida de video custom (MP4/MOV ≤50 MB) · `F-083`
-- [ ] **P2-STUDIO-010** `Save` / `Schedule` / `Clear` · `F-081`, `F-082`
+- [~] **P2-STUDIO-009** Subida de video custom (MP4/MOV ≤50 MB) · `F-083`
+- [~] **P2-STUDIO-010** `Save` / `Schedule` / `Clear` · `F-081`, `F-082`
 
 ## P2-MEDIA — Media Bank
 
-- [ ] **P2-MEDIA-001** `DATA-010` + subida y finalización · `FR-100`
-- [ ] **P2-MEDIA-002** Categorías válidas por tipo de media · `F-129`
-- [ ] **P2-MEDIA-003** PATCH de categorías = reemplazo total; lista vacía saca del pool · `FR-100`
-- [ ] **P2-MEDIA-004** Borrado idempotente + `409 media_in_use` · `FR-100`
-- [ ] **P2-MEDIA-005** `DATA-011` Media Sets con **mínimo 5 assets** · `F-127`
+- [x] **P2-MEDIA-001** `DATA-010` + subida y finalización · `FR-100`
+- [x] **P2-MEDIA-002** Categorías válidas por tipo de media · `F-129`
+- [x] **P2-MEDIA-003** PATCH de categorías = reemplazo total; lista vacía saca del pool · `FR-100`
+- [~] **P2-MEDIA-004** Borrado idempotente + `409 media_in_use` · `FR-100`
+- [~] **P2-MEDIA-005** `DATA-011` Media Sets con **mínimo 5 assets** · `F-127`
 - [ ] **P2-MEDIA-006** Modo `CREATING SET` con contador y validación · `FR-100`
-- [ ] **P2-MEDIA-007** Filtros: tipo, categoría, influencer + búsqueda · PRD §12
+- [~] **P2-MEDIA-007** Filtros: tipo, categoría, influencer + búsqueda · PRD §12
 - [ ] **P2-MEDIA-008** Deep-linking con `from` y `focus` · `FR-100.1`
-- [ ] **P2-MEDIA-009** Assets generados, demo e internos **nunca** se listan · `FR-100`
+- [~] **P2-MEDIA-009** Assets generados, demo e internos **nunca** se listan · `FR-100`
 
 ## P2-LIB — Library
 
 - [ ] **P2-LIB-001** Tab `My Posts` con estado, tipo y métricas · `F-120`
-- [ ] **P2-LIB-002** Tab `My Content` · `F-124`
+- [x] **P2-LIB-002** Tab `My Content` · `F-124`
 - [ ] **P2-LIB-003** Tab `My Media Bank` · `F-125`
-- [ ] **P2-LIB-004** `Refresh Metrics` · `F-121`
+- [~] **P2-LIB-004** `Refresh Metrics` · `F-121`
 - [ ] **P2-LIB-005** Modo `Select` y acciones masivas · `F-122` · ⚠️ alcance exacto en `OQ-04`
 
 ## P2-CAL — Calendar
@@ -445,17 +464,17 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 ## P2-TREND — Catálogo de tendencias
 
 - [ ] **P2-TREND-001** **Decisión de derechos y estrategia de adquisición del catálogo** · `F-041`, `OQ-13` · ⚠️ **bloquea el resto de la épica; no es tarea de ingeniería**
-- [ ] **P2-TREND-002** `DATA-023` + pipeline de ingesta · `F-041`
-- [ ] **P2-TREND-003** Extracción a texto: caption, hashtags, OCR, métricas · `JV-1` dep
+- [~] **P2-TREND-002** `DATA-023` + pipeline de ingesta · `F-041`
+- [~] **P2-TREND-003** Extracción a texto: caption, hashtags, OCR, métricas · `JV-1` dep
 - [ ] **P2-TREND-004** `/inspiration`: búsqueda, filtro por nicho, `Remix this` · `FR-040`
 - [ ] **P2-TREND-005** Estados: `No results`, `Inspiration is being set up`, error · `FR-040`
 
 ## P2-JV — Judgment features
 
-- [ ] **P2-JV-001** **`JV-1`** clasificador del catálogo: 5 preguntas, umbrales, cuarentena · PRD §25.3 · dep: P2-TREND-003
+- [~] **P2-JV-001** **`JV-1`** clasificador del catálogo: 5 preguntas, umbrales, cuarentena · PRD §25.3 · dep: P2-TREND-003
 - [ ] **P2-JV-002** Dataset de 250 items etiquetados a mano (**50 en español**) · PRD §25.4
 - [ ] **P2-JV-003** **Experimento de validación `DP-001`**: acierto, **calibración**, costo, latencia, es↔en · `OQ-20` · ⚠️ la calibración es el criterio de corte
-- [ ] **P2-JV-004** **`JV-4`** verificador de campos de marca → `fieldMeta.confidence` · PRD §25.3
+- [~] **P2-JV-004** **`JV-4`** verificador de campos de marca → `fieldMeta.confidence` · PRD §25.3
 
 ---
 
@@ -465,7 +484,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P3-OAUTH — Conexiones sociales
 
-- [ ] **P3-OAUTH-001** Puerto `SocialPublisher` + `DATA-016`
+- [x] **P3-OAUTH-001** Puerto `SocialPublisher` + `DATA-016`
 - [ ] **P3-OAUTH-002** OAuth TikTok (Business/Creator) · `INT-001`
 - [ ] **P3-OAUTH-003** OAuth Instagram (nativo + Ayrshare) · `INT-002`, `INT-006`
 - [ ] **P3-OAUTH-004** OAuth YouTube · `INT-003`
@@ -473,39 +492,39 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [ ] **P3-OAUTH-006** OAuth Reddit · `INT-005`
 - [ ] **P3-OAUTH-007** Tokens cifrados en reposo, **nunca** devueltos por la API · `NFR-007`
 - [ ] **P3-OAUTH-008** Estados de conexión y flujo de reconexión · PRD §19.5
-- [ ] **P3-OAUTH-009** Multi-cuenta por plataforma + `400 connection_ambiguous` · `FR-060`
+- [x] **P3-OAUTH-009** Multi-cuenta por plataforma + `400 connection_ambiguous` · `FR-060`
 - [ ] **P3-OAUTH-010** **Separar permiso de lectura (marca) del de publicación** · §10 regla 7, `EXT-001`
 - [ ] **P3-OAUTH-011** Los 16 estados de error de integración de PRD §19.5
 
 ## P3-SCHED — Scheduling
 
-- [ ] **P3-SCHED-001** `DATA-020` con la máquina de estados completa (10 estados) · `FR-060`
+- [x] **P3-SCHED-001** `DATA-020` con la máquina de estados completa (10 estados) · `FR-060`
 - [ ] **P3-SCHED-002** Paso `Select Platforms` con opciones por plataforma · `F-150`
 - [ ] **P3-SCHED-003** Paso `Content Details` multi-plataforma con contadores · `F-153`
 - [ ] **P3-SCHED-004** `Improve` / `Regenerate` por campo · `F-154`, `AI-006`
 - [ ] **P3-SCHED-005** Paso `Schedule` con time + date picker y disclaimers · `F-156`
-- [ ] **P3-SCHED-006** TikTok: `posting_mode` + `privacy_level` + entitlement `tiktokDirect` · `F-151`, `F-152`
+- [x] **P3-SCHED-006** TikTok: `posting_mode` + `privacy_level` + entitlement `tiktokDirect` · `F-151`, `F-152`
 - [ ] **P3-SCHED-007** `Auto-Add Music` · `F-155`
 - [ ] **P3-SCHED-008** Instagram slideshow `carousel` / `reel` · `F-158`
 - [ ] **P3-SCHED-009** AI content label y paid partnership disclosure · `F-160`, `F-161`
 - [ ] **P3-SCHED-010** Post now · `F-157`
-- [ ] **P3-SCHED-011** Cancel / delete por lote, **atómicos**, máx. 100 ids · `F-162`, `ERR-F01`
+- [x] **P3-SCHED-011** Cancel / delete por lote, **atómicos**, máx. 100 ids · `F-162`, `ERR-F01`
 
 ## P3-PUB — Publicación
 
-- [ ] **P3-PUB-001** Worker de publicación en la hora programada
+- [x] **P3-PUB-001** Worker de publicación en la hora programada
 - [ ] **P3-PUB-002** `AWAITING_RECONNECT` con reanudación automática · `FR-060`
-- [ ] **P3-PUB-003** `IN_USER_INBOX` como estado normal, **no error** · `FR-060`
+- [x] **P3-PUB-003** `IN_USER_INBOX` como estado normal, **no error** · `FR-060`
 - [ ] **P3-PUB-004** **Watcher de carril lento de TikTok hasta 72 h; nunca duplicar** · `NFR-015` · ⚠️ regla explícita
-- [ ] **P3-PUB-005** `publishedCaption` + `captionAdjustmentReason` · `FR-060`
+- [x] **P3-PUB-005** `publishedCaption` + `captionAdjustmentReason` · `FR-060`
 - [ ] **P3-PUB-006** Traducción a `errorCode` estable y neutral · `DP-006` · tabla determinística primero
-- [ ] **P3-PUB-007** Límites de plataforma diferenciados · `FR-060`
+- [x] **P3-PUB-007** Límites de plataforma diferenciados · `FR-060`
 
 ## P3-METRIC — Métricas
 
 - [ ] **P3-METRIC-001** Job de sync de views/likes/comments
-- [ ] **P3-METRIC-002** Batch analytics ≤100 ids con éxito parcial · `ERR-F02`
-- [ ] **P3-METRIC-003** **Distinguir cero real de pre-sync con `postedAt`** · `NFR-016`
+- [x] **P3-METRIC-002** Batch analytics ≤100 ids con éxito parcial · `ERR-F02`
+- [x] **P3-METRIC-003** **Distinguir cero real de pre-sync con `postedAt`** · `NFR-016`
 
 ## P3-ANALYT — Analytics
 
@@ -516,11 +535,11 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P3-WARM — Warmed Accounts
 
-- [ ] **P3-WARM-001** `DATA-017`…`DATA-019` · `FR-130`
+- [x] **P3-WARM-001** `DATA-017`…`DATA-019` · `FR-130`
 - [ ] **P3-WARM-002** Compra y configuración (plataforma, país, nicho) · `F-181`
 - [ ] **P3-WARM-003** Flujo de aprobación por el owner · `F-183`
 - [ ] **P3-WARM-004** `postingAvailability` y `postable` · `F-186`
-- [ ] **P3-WARM-005** Lead time **por cuenta** + techo de 30 días · `F-185`
+- [x] **P3-WARM-005** Lead time **por cuenta** + techo de 30 días · `F-185`
 - [ ] **P3-WARM-006** Slot balance + `402` al agotarse · `F-184`
 - [ ] **P3-WARM-007** Replacement decisions · `F-187`
 - [ ] **P3-WARM-008** TikTok commercial sounds · `F-159`
@@ -549,14 +568,14 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P4-INFL — Influencers
 
-- [ ] **P4-INFL-001** `DATA-013`…`DATA-015` · `FR-080`
+- [x] **P4-INFL-001** `DATA-013`…`DATA-015` · `FR-080`
 - [ ] **P4-INFL-002** Wizard de 3 pasos con costos visibles · `F-091`
 - [ ] **P4-INFL-003** Generación de imagen base con **FLUX.1 [schnell]** · `ADR-010`
-- [ ] **P4-INFL-004** Subida de imagen base propia · `F-092`
+- [x] **P4-INFL-004** Subida de imagen base propia · `F-092`
 - [ ] **P4-INFL-005** **Pipeline de entrenamiento LoRA** (el "training" de 15–20 min del PRD) · `ADR-010`, `AI-007`
 - [ ] **P4-INFL-006** Regenerar = **persona nueva**, no edición · `F-093` · ⚠️ regla de producto
 - [ ] **P4-INFL-007** Estados y `progress` 0–100 · `F-094`
-- [ ] **P4-INFL-008** Cap de 50 activos + idempotencia obligatoria · `FR-080`
+- [x] **P4-INFL-008** Cap de 50 activos + idempotencia obligatoria · `FR-080`
 - [ ] **P4-INFL-009** Galería de imágenes + barra de generación con templates · `FR-081`
 - [ ] **P4-INFL-010** Galería de videos + selección de modelo y duración · `FR-082`
 - [ ] **P4-INFL-011** Talking Head UGC con validación de longitud de script · `AI-010`
@@ -566,7 +585,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 ## P4-AISTUDIO — AI Studio
 
 - [ ] **P4-AISTUDIO-001** `/ai-studio` con prompt, referencias y contador · `FR-090`
-- [ ] **P4-AISTUDIO-002** Cap de **10 generaciones en vuelo** · `F-112`
+- [x] **P4-AISTUDIO-002** Cap de **10 generaciones en vuelo** · `F-112`
 - [ ] **P4-AISTUDIO-003** Filtro de contenido con mensajes diferenciados · `F-113`
 - [ ] **P4-AISTUDIO-004** Gating por plan · `F-115`
 
@@ -600,7 +619,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 ## P4-BILL — Billing
 
 - [ ] **P4-BILL-001** Puerto `Payments` + adaptador · `INT-008`
-- [ ] **P4-BILL-002** Los 4 planes con sus límites · PRD §16.1
+- [x] **P4-BILL-002** Los 4 planes con sus límites · PRD §16.1
 - [ ] **P4-BILL-003** Upgrade prorrateado / downgrade programable · PRD §16.3
 - [ ] **P4-BILL-004** Compra de créditos, saves y post slots · `F-237`, `F-238`
 - [ ] **P4-BILL-005** Cancelación con feedback · PRD §16.5
