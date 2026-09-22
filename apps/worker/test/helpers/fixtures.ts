@@ -14,9 +14,11 @@
  */
 import {
   companies,
+  connections,
   contents,
   createDb,
   migrateWithUrl,
+  posts,
   users,
   withoutCompany,
   type DbHandle,
@@ -305,4 +307,110 @@ export async function readLedger(
     contentSavesPurchased: fila.content_saves_purchased,
     contentSavesIncluded: fila.content_saves_included,
   };
+}
+
+/* ------------------------------------------------------------------------ *
+ * Publicación — `FR-060`
+ * ------------------------------------------------------------------------ */
+
+export interface SeedPostOptions {
+  readonly status?: string;
+  readonly cancellationPending?: boolean;
+  /** Estado de la pieza. `CREATED` con archivos es lo único publicable. */
+  readonly contentStatus?: "BUILDING" | "CREATED" | "FAILED";
+  readonly files?: readonly string[];
+  readonly contentType?: "wall-of-text" | "slideshow";
+  readonly caption?: string;
+  readonly platform?: "tiktok" | "instagram" | "youtube" | "reddit";
+}
+
+export interface SeededPost {
+  readonly postId: string;
+  readonly contentId: string;
+  readonly connectionId: string;
+}
+
+/**
+ * Un post programado, con su conexión y su contenido.
+ *
+ * Las tres filas son obligatorias y no es ceremonia: el CHECK
+ * `posts_account_exclusive` exige **exactamente una** cuenta no nula y
+ * `posts_account_type_matches` que sea la que `accountType` nombra, así que un
+ * post huérfano no es un caso que la base permita — y por lo tanto tampoco
+ * sirve para probar nada.
+ *
+ * El contenido nace en `CREATED` **con archivos** porque es lo único
+ * publicable: el handler rechaza una pieza sin `files`, que es el caso de un
+ * build que nunca terminó.
+ */
+export async function seedPost(
+  handle: DbHandle,
+  companyId: string,
+  options: SeedPostOptions = {},
+): Promise<SeededPost> {
+  const sufijo = randomUUID().slice(0, 8);
+  return withoutCompany(handle.db, async (tx) => {
+    const [content] = await tx
+      .insert(contents)
+      .values({
+        companyId,
+        type: options.contentType ?? "wall-of-text",
+        status: options.contentStatus ?? "CREATED",
+        files: [...(options.files ?? ["https://cdn.example.test/listo.mp4"])],
+      })
+      .returning({ id: contents.id });
+    if (content === undefined) throw new Error("no se creó el content");
+
+    const [connection] = await tx
+      .insert(connections)
+      .values({
+        companyId,
+        platform: options.platform ?? "tiktok",
+        platformUserId: `tt-${sufijo}`,
+        platformUsername: `cuenta-${sufijo}`,
+        scopes: ["video.publish"],
+        publishable: true,
+      })
+      .returning({ id: connections.id });
+    if (connection === undefined) throw new Error("no se creó la connection");
+
+    const [post] = await tx
+      .insert(posts)
+      .values({
+        companyId,
+        contentId: content.id,
+        platform: options.platform ?? "tiktok",
+        accountType: "oauth",
+        connectionId: connection.id,
+        scheduledAtUtc: new Date("2026-09-21T10:00:00.000Z"),
+        caption: options.caption ?? "hola",
+        status: (options.status ?? "SCHEDULED") as never,
+        cancellationPending: options.cancellationPending ?? false,
+      })
+      .returning({ id: posts.id });
+    if (post === undefined) throw new Error("no se creó el post");
+
+    return { postId: post.id, contentId: content.id, connectionId: connection.id };
+  });
+}
+
+/** La fila del post tal como quedó. Lectura cruda: el test mira el estado real. */
+export async function readPost(
+  handle: DbHandle,
+  postId: string,
+): Promise<{
+  status: string;
+  post_url: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  published_caption: string | null;
+  tiktok_processing_delayed: boolean;
+  posted_at: unknown;
+}> {
+  const filas = await handle.sql`
+    select status, post_url, error_code, error_message, published_caption,
+           tiktok_processing_delayed, posted_at
+    from posts where id = ${postId}::uuid
+  `;
+  return filas[0] as never;
 }

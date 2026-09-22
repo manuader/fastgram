@@ -31,10 +31,11 @@ import {
 } from "@fastgram/adapters";
 import { ALL_JOB_QUEUES, JOB_QUEUES } from "@fastgram/core";
 import { createDb } from "@fastgram/db";
-import type { JobHandler } from "@fastgram/ports";
+import type { JobHandler, SocialPublisher } from "@fastgram/ports";
 import pino from "pino";
 
 import { createContentBuildHandler } from "./content/build-handler.js";
+import { createPublishHandler } from "./publishing/publish-handler.js";
 import { loadWorkerEnv } from "./env.js";
 import { JOB_CATALOG, type JobPolicy } from "./jobs/catalog.js";
 import { createQuotaResetHandler } from "./jobs/quota-reset-handler.js";
@@ -93,11 +94,37 @@ const storage = new MemoryStorage(clock, env.S3_PUBLIC_URL ?? "memory://bucket")
  * que miente sobre esto es peor que no tenerlo, porque es exactamente donde uno
  * va a mirar cuando una pieza se quede en `BUILDING`.
  */
+/**
+ * Publicadores por plataforma — **vacío, y a propósito**.
+ *
+ * No hay ni un adaptador real de `SocialPublisher`: `MemorySocialPublisher`
+ * existe para los tests de contrato y montarlo acá marcaría posts como `POSTED`
+ * con un permalink inventado. Eso es **mentir en los datos del usuario**, que es
+ * peor que no publicar: el de memoria es un artefacto sintético aceptable para
+ * un render —se ve que no es un video— pero un post "publicado" que no existe en
+ * ninguna cuenta no se distingue de uno real hasta que alguien lo busca.
+ *
+ * Con el mapa vacío, el handler falla la fila con `provider_unavailable` y un
+ * mensaje seguro de mostrar. **Eso sí es honesto**: el usuario programó algo,
+ * llegó la hora, y se le dice que publicar no está disponible. La alternativa
+ * —no registrar el handler— deja el post en `SCHEDULED` para siempre sin que
+ * nada falle, que es exactamente el modo de falla que este worker existe para
+ * cerrar.
+ */
+const PUBLISHERS: Readonly<Record<string, SocialPublisher>> = {};
+
 const HANDLERS: Readonly<Record<string, JobHandler<unknown>>> = {
   [JOB_QUEUES.contentBuild]: createContentBuildHandler({
     db: handle.db,
     renderer,
     storage,
+    clock,
+    appRole,
+    logger,
+  }),
+  [JOB_QUEUES.publishing]: createPublishHandler({
+    db: handle.db,
+    publishers: PUBLISHERS,
     clock,
     appRole,
     logger,
