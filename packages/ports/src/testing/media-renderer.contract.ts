@@ -15,7 +15,12 @@
  * corto sin avisar.
  */
 
-import type { MediaRenderer, RenderJob, SlideshowJob } from "../media-renderer.js";
+import type {
+  MediaAuthorization,
+  MediaRenderer,
+  RenderJob,
+  SlideshowJob,
+} from "../media-renderer.js";
 import { MAX_SLIDES } from "../media-renderer.js";
 import {
   check,
@@ -34,6 +39,14 @@ export interface MediaRendererContractSetup {
    * renderer no se puede verificar.
    */
   readonly sampleJobs: readonly RenderJob[];
+  /**
+   * Autorización que cubre la media de {@link sampleJobs}.
+   *
+   * No tiene default a propósito: un default permisivo haría que esta suite
+   * pase sin que nadie haya pensado en el scope, y el aislamiento por workspace
+   * de `NFR-006` es justo lo que el grant sostiene.
+   */
+  readonly auth: MediaAuthorization;
   /** URL de un video normalizable (MOV/HDR). Omitirla saltea `NFR-014`. */
   readonly videoToNormalize?: string;
 }
@@ -118,7 +131,7 @@ export function describeMediaRendererContract(
     it("render devuelve un artefacto con dimensiones y tamaño reales", async () => {
       const renderer = await setup.makeAdapter();
       for (const job of setup.sampleJobs) {
-        const result = await renderer.render(job);
+        const result = await renderer.render(job, setup.auth);
 
         checkNonEmpty(result.contentType, `contentType de ${job.format}`);
         check(result.sizeBytes > 0, `${job.format} produjo 0 bytes`);
@@ -140,7 +153,11 @@ export function describeMediaRendererContract(
       if (slideshow === undefined) return;
 
       await checkRejectsWithCode(
-        () => renderer.render({ ...slideshow, num_images: slideshow.images.length + 1 }),
+        () =>
+          renderer.render(
+            { ...slideshow, num_images: slideshow.images.length + 1 },
+            setup.auth,
+          ),
         ["bad_request"],
         "num_images distinto de images.length",
       );
@@ -157,7 +174,11 @@ export function describeMediaRendererContract(
 
       const images = Array.from({ length: MAX_SLIDES + 1 }, () => firstSlide);
       await checkRejectsWithCode(
-        () => renderer.render({ ...slideshow, num_images: images.length, images }),
+        () =>
+          renderer.render(
+            { ...slideshow, num_images: images.length, images },
+            setup.auth,
+          ),
         ["bad_request"],
         `slideshow de ${String(MAX_SLIDES + 1)} slides`,
       );
@@ -168,7 +189,7 @@ export function describeMediaRendererContract(
       const url = setup.videoToNormalize;
       if (url === undefined) return;
 
-      const probe = await renderer.probe(url);
+      const probe = await renderer.probe(url, setup.auth);
       checkNonEmpty(probe.contentType, "contentType del probe");
       check(probe.width > 0 && probe.height > 0, "probe sin dimensiones");
       check(
@@ -180,7 +201,7 @@ export function describeMediaRendererContract(
     it("probe de una URL inalcanzable es not_found o bad_request (ERR-P11)", async () => {
       const renderer = await setup.makeAdapter();
       await checkRejectsWithCode(
-        () => renderer.probe("https://example.invalid/no-existe.mp4"),
+        () => renderer.probe("https://example.invalid/no-existe.mp4", setup.auth),
         ["not_found", "bad_request", "provider_unavailable"],
         "probe de una URL inalcanzable",
       );
@@ -191,10 +212,10 @@ export function describeMediaRendererContract(
       const url = setup.videoToNormalize;
       if (url === undefined) return;
 
-      const normalized = await renderer.normalize({
-        url,
-        targetContentType: "video/mp4",
-      });
+      const normalized = await renderer.normalize(
+        { url, targetContentType: "video/mp4" },
+        setup.auth,
+      );
       check(
         normalized.contentType.startsWith("video/mp4"),
         `normalize devolvió ${normalized.contentType}`,
@@ -208,7 +229,10 @@ export function describeMediaRendererContract(
       if (url === undefined) return;
 
       const maxWidth = 320;
-      const thumbnail = await renderer.thumbnail({ url, maxWidth, atSeconds: 0 });
+      const thumbnail = await renderer.thumbnail(
+        { url, maxWidth, atSeconds: 0 },
+        setup.auth,
+      );
       check(
         thumbnail.width <= maxWidth,
         `thumbnail de ${String(thumbnail.width)} px con maxWidth ${String(maxWidth)}`,

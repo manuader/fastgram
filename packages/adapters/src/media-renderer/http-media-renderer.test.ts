@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   describeMediaRendererContract,
   isPortError,
+  type Clock,
+  type MediaAuthorization,
   type RenderJob,
   type RenderText,
   type SlideshowJob,
@@ -12,6 +14,7 @@ import {
   HttpMediaRenderer,
   type RenderFetch,
 } from "./http-media-renderer.js";
+import { FixedClock } from "../clock/index.js";
 import {
   ALL_JOBS,
   GREEN_SCREEN,
@@ -21,6 +24,20 @@ import {
   VIDEO_HOOK,
   WALL_OF_TEXT,
 } from "./__tests__/jobs.js";
+
+/**
+ * Autorización que cubre la media de los jobs de `__tests__/jobs.ts`.
+ *
+ * Los prefijos son los de esas URLs a propósito: el grant que el adaptador
+ * firma con esto es el que un servicio real verificaría, así que si alguien
+ * cambia una URL de los jobs sin tocar esto, lo correcto es que el test de
+ * integración contra `services/render` se ponga rojo.
+ */
+const AUTH: MediaAuthorization = {
+  companyId: "com_prueba",
+  mediaPrefixes: ["https://media.test/"],
+  sharedPrefixes: ["https://library.test/"],
+};
 
 /**
  * `HttpMediaRenderer` — `P2-RENDER-002`.
@@ -44,9 +61,10 @@ import {
  *     verificar, y por eso la suite prefiere saltearse a mentir.
  *   RENDER_ALLOWED_MEDIA_PREFIXES + RENDER_SHARED_LIBRARY_PREFIXES del lado del
  *     servicio, cubriendo esas URLs (el audio **sólo** desde los compartidos).
- *   RENDER_REQUIRE_GRANT=false — y esto es un problema abierto, no una
- *     comodidad de test: el puerto `MediaRenderer` no tiene por dónde pasar un
- *     grant firmado y el servicio lo exige por defecto. Está en el reporte.
+ *   Ya no hace falta RENDER_REQUIRE_GRANT=false. El puerto transporta una
+ *     `MediaAuthorization` y el adaptador la firma (`media-grant.ts`), así que
+ *     el servicio puede quedarse con su postura por defecto —sin grant no se
+ *     renderiza—, que es la que sostiene el aislamiento de `NFR-006`.
  */
 
 /* ------------------------------------------------------------------------ *
@@ -95,8 +113,35 @@ function artifactResponse(
   return new Response(bytes, { status: 200, headers });
 }
 
+/** Lo que `POST /probe` devuelve para un MOV vertical sano. */
+const PROBE_OK = {
+  contentType: "video/quicktime",
+  width: 1080,
+  height: 1920,
+  durationSeconds: 12.5,
+  hasAudio: true,
+  isHdr: false,
+  isFastStart: false,
+};
+
+/**
+ * Lo que `/normalize` y `/thumbnail` devuelven. El campo del tamaño es
+ * `sizeBytes` —**no** `bytes`, como en los artefactos de `/render`—; son dos
+ * formas distintas del mismo servicio, y confundirlas es un bug silencioso.
+ */
+const DESCRIBED_OK = {
+  contentType: "video/mp4",
+  sizeBytes: BODY.byteLength,
+  width: 1080,
+  height: 1920,
+  durationSeconds: 12.5,
+  href: HREF,
+};
+
 interface FakeOptions {
   readonly warnings?: readonly string[];
+  readonly probe?: unknown;
+  readonly described?: unknown;
   readonly artifacts?: readonly unknown[];
   readonly artifact?: () => Response;
   readonly type?: string;
@@ -142,6 +187,13 @@ function fakeService(options: FakeOptions = {}): {
         artifacts,
       });
     }
+    if (call.url.endsWith("/probe")) {
+      return json(200, options.probe ?? PROBE_OK);
+    }
+    if (call.url.endsWith("/normalize") || call.url.endsWith("/thumbnail")) {
+      servedKind = call.url.endsWith("/thumbnail") ? "image" : "video";
+      return json(200, options.described ?? DESCRIBED_OK);
+    }
     if (call.url.includes("/artifact/")) {
       return options.artifact === undefined
         ? artifactResponse(BODY, servedKind === "image" ? "image/jpeg" : "video/mp4")
@@ -153,7 +205,13 @@ function fakeService(options: FakeOptions = {}): {
 
 function makeRenderer(
   fetchLike: RenderFetch,
-  overrides: { timeoutMs?: number; idleTimeoutMs?: number } = {},
+  overrides: {
+    timeoutMs?: number;
+    idleTimeoutMs?: number;
+    grantSecret?: string;
+    grantTtlMs?: number;
+    clock?: Clock;
+  } = {},
 ): HttpMediaRenderer {
   return new HttpMediaRenderer({
     baseUrl: "http://render.internal:3002",
@@ -185,7 +243,7 @@ async function thrownBy(body: () => Promise<unknown>): Promise<unknown> {
 describe("HttpMediaRenderer — el build completo contra un servicio falso", () => {
   it("POST /render lleva el payload envuelto en `payload`", async () => {
     const service = fakeService();
-    await makeRenderer(service.fetch).render(WALL_OF_TEXT);
+    await makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH);
 
     const post = service.calls[0];
     expect(post?.url).toBe("http://render.internal:3002/render");
@@ -200,7 +258,7 @@ describe("HttpMediaRenderer — el build completo contra un servicio falso", () 
 
   it("devuelve el artefacto con su content type, tamaño y dimensiones", async () => {
     const renderer = makeRenderer(fakeService().fetch);
-    const result = await renderer.render(WALL_OF_TEXT);
+    const result = await renderer.render(WALL_OF_TEXT, AUTH);
 
     expect(result.contentType).toBe("video/mp4");
     expect(result.sizeBytes).toBe(BODY.byteLength);
@@ -212,7 +270,7 @@ describe("HttpMediaRenderer — el build completo contra un servicio falso", () 
   });
 
   it("el body se consume en streaming y entrega lo que declaró", async () => {
-    const result = await makeRenderer(fakeService().fetch).render(WALL_OF_TEXT);
+    const result = await makeRenderer(fakeService().fetch).render(WALL_OF_TEXT, AUTH);
 
     expect(await drain(result.body)).toBe(result.sizeBytes);
   });
@@ -226,7 +284,7 @@ describe("HttpMediaRenderer — el build completo contra un servicio falso", () 
       artifacts: [{ kind: "video", index: 0, bytes: BODY.byteLength, href: raro }],
     });
 
-    await makeRenderer(service.fetch).render(WALL_OF_TEXT);
+    await makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH);
 
     expect(service.calls[1]?.url).toBe(`http://render.internal:3002${raro}`);
     expect(service.calls[1]?.method).toBe("GET");
@@ -246,13 +304,13 @@ describe("HttpMediaRenderer — el build completo contra un servicio falso", () 
       },
     });
 
-    await renderer.render(WALL_OF_TEXT);
+    await renderer.render(WALL_OF_TEXT, AUTH);
 
     expect(vistos).toEqual([["slide 0: fuente no verificada"]]);
   });
 
   it("renderAll expone las claves de cache del servicio como diagnóstico", async () => {
-    const build = await makeRenderer(fakeService().fetch).renderAll(WALL_OF_TEXT);
+    const build = await makeRenderer(fakeService().fetch).renderAll(WALL_OF_TEXT, AUTH);
 
     expect(build.keys).toEqual({ mediaKey: "m1", overlayKey: "o1", buildKey: "b1" });
     expect(build.cache).toEqual({ base: "miss", build: "miss" });
@@ -282,7 +340,7 @@ describe("HttpMediaRenderer — el build completo contra un servicio falso", () 
       ).fetch,
     });
 
-    const build = await renderer.renderAll(WALL_OF_TEXT);
+    const build = await renderer.renderAll(WALL_OF_TEXT, AUTH);
 
     expect(build.keys).toEqual({});
     expect(build.warnings).toEqual([]);
@@ -296,7 +354,7 @@ describe("HttpMediaRenderer — el build completo contra un servicio falso", () 
 
 describe("HttpMediaRenderer — el slideshow no entra en RenderResult", () => {
   it("renderAll devuelve los N artefactos", async () => {
-    const build = await makeRenderer(fakeService().fetch).renderAll(SLIDESHOW);
+    const build = await makeRenderer(fakeService().fetch).renderAll(SLIDESHOW, AUTH);
 
     expect(build.artifacts.map((a) => a.href)).toEqual([`${HREF}-0`, `${HREF}-1`]);
     expect(build.artifacts.every((a) => a.kind === "image")).toBe(true);
@@ -307,7 +365,7 @@ describe("HttpMediaRenderer — el slideshow no entra en RenderResult", () => {
     // ningún error en ningún log: es el «slideshow corto sin avisar» de
     // `FR-070` con otro disfraz.
     const error = await thrownBy(() =>
-      makeRenderer(fakeService().fetch).render(SLIDESHOW),
+      makeRenderer(fakeService().fetch).render(SLIDESHOW, AUTH),
     );
 
     expect(error).toMatchObject({
@@ -322,7 +380,9 @@ describe("HttpMediaRenderer — el slideshow no entra en RenderResult", () => {
       artifacts: [{ kind: "image", index: 0, bytes: BODY.byteLength, href: HREF }],
     });
 
-    const error = await thrownBy(() => makeRenderer(service.fetch).renderAll(SLIDESHOW));
+    const error = await thrownBy(() =>
+      makeRenderer(service.fetch).renderAll(SLIDESHOW, AUTH),
+    );
 
     expect(error).toMatchObject({
       name: "PortError",
@@ -332,7 +392,7 @@ describe("HttpMediaRenderer — el slideshow no entra en RenderResult", () => {
   });
 
   it("un slideshow de un slide sí pasa por render", async () => {
-    const result = await makeRenderer(fakeService().fetch).render(SLIDESHOW_ONE);
+    const result = await makeRenderer(fakeService().fetch).render(SLIDESHOW_ONE, AUTH);
 
     expect(result.contentType).toBe("image/jpeg");
     expect(result.width).toBe(1080);
@@ -422,7 +482,7 @@ describe("HttpMediaRenderer — ningún error crudo sale hacia afuera", () => {
       );
 
       const error = await thrownBy(() =>
-        makeRenderer(service.fetch).render(WALL_OF_TEXT),
+        makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH),
       );
 
       expect(isPortError(error)).toBe(true);
@@ -444,7 +504,9 @@ describe("HttpMediaRenderer — ningún error crudo sale hacia afuera", () => {
       json(503, { error: { code: "codigo_del_futuro", message: "?", details: {} } }),
     );
 
-    const error = await thrownBy(() => makeRenderer(service.fetch).render(WALL_OF_TEXT));
+    const error = await thrownBy(() =>
+      makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH),
+    );
 
     expect(error).toMatchObject({ code: "provider_unavailable" });
   });
@@ -454,7 +516,9 @@ describe("HttpMediaRenderer — ningún error crudo sale hacia afuera", () => {
       () => new Response("{}", { status: 429, headers: { "retry-after": "12" } }),
     );
 
-    const error = await thrownBy(() => makeRenderer(service.fetch).render(WALL_OF_TEXT));
+    const error = await thrownBy(() =>
+      makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH),
+    );
 
     expect(error).toMatchObject({ code: "rate_limited", retryAfterSeconds: 12 });
   });
@@ -470,7 +534,9 @@ describe("HttpMediaRenderer — ningún error crudo sale hacia afuera", () => {
       }),
     );
 
-    const error = await thrownBy(() => makeRenderer(service.fetch).render(WALL_OF_TEXT));
+    const error = await thrownBy(() =>
+      makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH),
+    );
 
     expect(error).toMatchObject({ code: "provider_contract_violation" });
     expect(String(error)).toMatch(/does not expose this route/);
@@ -496,7 +562,9 @@ describe("HttpMediaRenderer — ningún error crudo sale hacia afuera", () => {
         }),
     });
 
-    const error = await thrownBy(() => makeRenderer(service.fetch).render(WALL_OF_TEXT));
+    const error = await thrownBy(() =>
+      makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH),
+    );
 
     expect(error).toMatchObject({ name: "PortError", code: "not_found" });
     expect(isPortError(error) && error.isRetryable).toBe(false);
@@ -508,7 +576,9 @@ describe("HttpMediaRenderer — ningún error crudo sale hacia afuera", () => {
   it("un 404 de artefacto sin el código en el cuerpo llega al mismo not_found", async () => {
     const service = fakeService({ artifact: () => new Response("", { status: 404 }) });
 
-    const error = await thrownBy(() => makeRenderer(service.fetch).render(WALL_OF_TEXT));
+    const error = await thrownBy(() =>
+      makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH),
+    );
 
     expect(error).toMatchObject({ code: "not_found" });
     expect(isPortError(error) && error.isRetryable).toBe(false);
@@ -519,7 +589,9 @@ describe("HttpMediaRenderer — ningún error crudo sale hacia afuera", () => {
       throw new TypeError("fetch failed: ECONNREFUSED");
     });
 
-    const error = await thrownBy(() => makeRenderer(service.fetch).render(WALL_OF_TEXT));
+    const error = await thrownBy(() =>
+      makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH),
+    );
 
     expect(error).toMatchObject({ name: "PortError", code: "provider_unavailable" });
   });
@@ -533,7 +605,9 @@ describe("HttpMediaRenderer — ningún error crudo sale hacia afuera", () => {
         }),
     );
 
-    const error = await thrownBy(() => makeRenderer(service.fetch).render(WALL_OF_TEXT));
+    const error = await thrownBy(() =>
+      makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH),
+    );
 
     expect(error).toMatchObject({ code: "provider_contract_violation" });
   });
@@ -546,7 +620,9 @@ describe("HttpMediaRenderer — ningún error crudo sale hacia afuera", () => {
       artifacts: [{ kind: "video", index: 0, bytes: 10 }],
     });
 
-    const error = await thrownBy(() => makeRenderer(service.fetch).render(WALL_OF_TEXT));
+    const error = await thrownBy(() =>
+      makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH),
+    );
 
     expect(error).toMatchObject({ code: "provider_contract_violation" });
     expect(String(error)).toMatch(/does not serve artifact bytes yet/);
@@ -557,7 +633,9 @@ describe("HttpMediaRenderer — ningún error crudo sale hacia afuera", () => {
       artifacts: [{ kind: "video", index: 0, bytes: 0, href: HREF }],
     });
 
-    const error = await thrownBy(() => makeRenderer(service.fetch).render(WALL_OF_TEXT));
+    const error = await thrownBy(() =>
+      makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH),
+    );
 
     expect(error).toMatchObject({ code: "provider_contract_violation" });
   });
@@ -567,7 +645,9 @@ describe("HttpMediaRenderer — ningún error crudo sale hacia afuera", () => {
     // `format` y `type` se separan, esto lo dice antes de subir la pieza.
     const service = fakeService({ type: "green-screen" });
 
-    const error = await thrownBy(() => makeRenderer(service.fetch).render(WALL_OF_TEXT));
+    const error = await thrownBy(() =>
+      makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH),
+    );
 
     expect(error).toMatchObject({ code: "provider_contract_violation" });
     expect(String(error)).toMatch(/asked for a wall-of-text build/);
@@ -580,7 +660,9 @@ describe("HttpMediaRenderer — ningún error crudo sale hacia afuera", () => {
       ],
     });
 
-    const error = await thrownBy(() => makeRenderer(service.fetch).render(WALL_OF_TEXT));
+    const error = await thrownBy(() =>
+      makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH),
+    );
 
     expect(error).toMatchObject({ code: "provider_contract_violation" });
     expect(service.calls).toHaveLength(1);
@@ -603,7 +685,9 @@ describe("HttpMediaRenderer — qué content type se le declara a Storage", () =
         }),
     });
 
-    const error = await thrownBy(() => makeRenderer(service.fetch).render(WALL_OF_TEXT));
+    const error = await thrownBy(() =>
+      makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH),
+    );
 
     expect(error).toMatchObject({ code: "provider_contract_violation" });
   });
@@ -613,7 +697,7 @@ describe("HttpMediaRenderer — qué content type se le declara a Storage", () =
       artifact: () => artifactResponse(BODY, "application/octet-stream"),
     });
 
-    const result = await makeRenderer(service.fetch).render(WALL_OF_TEXT);
+    const result = await makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH);
 
     expect(result.contentType).toBe("video/mp4");
   });
@@ -621,7 +705,7 @@ describe("HttpMediaRenderer — qué content type se le declara a Storage", () =
   it("sin content-type también cae al respaldo", async () => {
     const service = fakeService({ artifact: () => artifactResponse(BODY, null) });
 
-    const result = await makeRenderer(service.fetch).render(WALL_OF_TEXT);
+    const result = await makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH);
 
     expect(result.contentType).toBe("video/mp4");
   });
@@ -629,7 +713,9 @@ describe("HttpMediaRenderer — qué content type se le declara a Storage", () =
   it("un video que vuelve como imagen es una violación de contrato", async () => {
     const service = fakeService({ artifact: () => artifactResponse(BODY, "image/jpeg") });
 
-    const error = await thrownBy(() => makeRenderer(service.fetch).render(WALL_OF_TEXT));
+    const error = await thrownBy(() =>
+      makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH),
+    );
 
     expect(error).toMatchObject({ code: "provider_contract_violation" });
   });
@@ -639,7 +725,9 @@ describe("HttpMediaRenderer — qué content type se le declara a Storage", () =
       artifact: () => artifactResponse(BODY, "video/mp4", 999),
     });
 
-    const error = await thrownBy(() => makeRenderer(service.fetch).render(WALL_OF_TEXT));
+    const error = await thrownBy(() =>
+      makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH),
+    );
 
     expect(error).toMatchObject({ code: "provider_contract_violation" });
     expect(String(error)).toMatch(/announces 999/);
@@ -668,7 +756,7 @@ describe("HttpMediaRenderer — un fetch sin timeout cuelga un slot del worker",
         }),
     });
 
-    const error = await thrownBy(() => renderer.render(WALL_OF_TEXT));
+    const error = await thrownBy(() => renderer.render(WALL_OF_TEXT, AUTH));
 
     expect(error).toMatchObject({ name: "PortError", code: "timeout" });
     expect(isPortError(error) && error.isRetryable).toBe(true);
@@ -692,7 +780,7 @@ describe("HttpMediaRenderer — un fetch sin timeout cuelga un slot del worker",
     });
 
     const renderer = makeRenderer(service.fetch, { idleTimeoutMs: 25 });
-    const result = await renderer.render(WALL_OF_TEXT);
+    const result = await renderer.render(WALL_OF_TEXT, AUTH);
     const error = await thrownBy(() => drain(result.body));
 
     expect(error).toMatchObject({ name: "PortError", code: "timeout" });
@@ -707,7 +795,7 @@ describe("HttpMediaRenderer — un fetch sin timeout cuelga un slot del worker",
         artifactResponse(new TextEncoder().encode("corto"), "video/mp4", 30),
     });
 
-    const result = await makeRenderer(service.fetch).render(WALL_OF_TEXT);
+    const result = await makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH);
     const error = await thrownBy(() => drain(result.body));
 
     expect(error).toMatchObject({ code: "provider_contract_violation" });
@@ -833,7 +921,7 @@ describe("HttpMediaRenderer — lo que se rechaza sin gastar una petición", () 
     const service = fakeService();
     const roto: SlideshowJob = { ...SLIDESHOW, num_images: 3 };
 
-    const error = await thrownBy(() => makeRenderer(service.fetch).render(roto));
+    const error = await thrownBy(() => makeRenderer(service.fetch).render(roto, AUTH));
 
     expect(error).toMatchObject({ name: "PortError", code: "bad_request" });
     expect(service.calls).toHaveLength(0);
@@ -843,7 +931,7 @@ describe("HttpMediaRenderer — lo que se rechaza sin gastar una petición", () 
     const service = fakeService();
     const roto: WallOfTextJob = { ...WALL_OF_TEXT, text: { ...TEXT, fontSize: 120 } };
 
-    const error = await thrownBy(() => makeRenderer(service.fetch).render(roto));
+    const error = await thrownBy(() => makeRenderer(service.fetch).render(roto, AUTH));
 
     expect(error).toMatchObject({ code: "bad_request" });
     expect(service.calls).toHaveLength(0);
@@ -868,46 +956,197 @@ describe("HttpMediaRenderer — lo que se rechaza sin gastar una petición", () 
       fetch: service.fetch,
     });
 
-    await renderer.render(WALL_OF_TEXT);
+    await renderer.render(WALL_OF_TEXT, AUTH);
 
     expect(service.calls[0]?.url).toBe("http://render.internal:3002/render");
   });
 });
 
-describe("HttpMediaRenderer — los tres métodos sin endpoint del otro lado", () => {
-  // No se inventa el endpoint: `services/render` expone `/health`,
-  // `/capabilities` y `/render`, y nada más. Un método que fingiera —por
-  // ejemplo devolviendo el `probe` que el llamador declaró— haría creer que
-  // `NFR-014` está cubierto.
-  it("normalize dice qué falta del lado del servicio", async () => {
-    const error = await thrownBy(() =>
-      makeRenderer(fakeService().fetch).normalize({
-        url: "https://media.test/x.mov",
-        targetContentType: "video/mp4",
-      }),
+describe("HttpMediaRenderer — probe, normalize y thumbnail", () => {
+  // `P2-RENDER-016` agregó los tres endpoints del lado del servicio y el
+  // adaptador se quedó tirando `provider_unavailable` («falta POST /probe»)
+  // para los tres. O sea: existían y no se llamaban. Es el punto de
+  // integración que no verifica ninguno de los dos lados.
+
+  it("probe devuelve las banderas que gobiernan la normalización", async () => {
+    const service = fakeService();
+    const probe = await makeRenderer(service.fetch).probe(
+      "https://media.test/x.mov",
+      AUTH,
     );
 
-    expect(error).toMatchObject({ code: "provider_unavailable" });
-    expect(String(error)).toMatch(/POST \/normalize/);
+    expect(probe).toMatchObject({
+      contentType: "video/quicktime",
+      width: 1080,
+      height: 1920,
+      isHdr: false,
+      isFastStart: false,
+      hasAudio: true,
+    });
+    expect(service.calls[0]?.url).toBe("http://render.internal:3002/probe");
   });
 
-  it("probe dice qué falta del lado del servicio", async () => {
+  it("probe rechaza una respuesta sin `isHdr` en vez de asumir que no lo es", async () => {
+    // **Es el caso que más caro sale de este archivo.** Un default `false`
+    // hace que `NFR-014` no tone-mapee un PQ real: la pieza sale lavada, se
+    // publica, y no hay un solo error en ningún log. Un incumplimiento de
+    // contrato ruidoso es infinitamente mejor que un color equivocado callado.
+    const { isHdr: _omitida, ...sinBandera } = PROBE_OK;
     const error = await thrownBy(() =>
-      makeRenderer(fakeService().fetch).probe("https://media.test/x.mov"),
+      makeRenderer(fakeService({ probe: sinBandera }).fetch).probe(
+        "https://media.test/x.mov",
+        AUTH,
+      ),
     );
 
-    expect(String(error)).toMatch(/POST \/probe/);
+    expect(error).toMatchObject({ code: "provider_contract_violation" });
   });
 
-  it("thumbnail dice qué falta del lado del servicio", async () => {
-    const error = await thrownBy(() =>
-      makeRenderer(fakeService().fetch).thumbnail({
-        url: "https://media.test/x.mov",
-        maxWidth: 320,
-      }),
+  it("normalize manda el content type pedido y baja los bytes por el href", async () => {
+    const service = fakeService();
+    const media = await makeRenderer(service.fetch).normalize(
+      { url: "https://media.test/x.mov", targetContentType: "video/mp4" },
+      AUTH,
     );
 
-    expect(String(error)).toMatch(/POST \/thumbnail/);
+    const pedido = JSON.parse(service.calls[0]?.body ?? "{}") as {
+      targetContentType?: string;
+    };
+    expect(pedido.targetContentType).toBe("video/mp4");
+    // Los bytes NO vienen en la respuesta JSON: viene el href, y hay que ir a
+    // buscarlos. Si el adaptador se quedara con el metadato, esto daría 0.
+    expect(await drain(media.body)).toBe(BODY.byteLength);
+    expect(service.calls[1]?.url).toContain("/artifact/");
+  });
+
+  it("thumbnail reporta lo que MIDIÓ el servicio, no el maxWidth pedido", async () => {
+    // Un thumbnail con `maxWidth: 320` sobre un 9:16 no mide 320 de ancho.
+    // Devolver el pedido en vez de lo medido haría que la comprobación de
+    // «nunca servir el master» de IMPL §5 pase siempre, midiendo el pedido
+    // contra sí mismo.
+    const service = fakeService({
+      described: { ...DESCRIBED_OK, contentType: "image/jpeg", width: 180, height: 320 },
+    });
+    const thumb = await makeRenderer(service.fetch).thumbnail(
+      { url: "https://media.test/x.mov", maxWidth: 320, atSeconds: 2 },
+      AUTH,
+    );
+
+    expect(thumb.width).toBe(180);
+    expect(thumb.height).toBe(320);
+    expect(thumb.contentType).toBe("image/jpeg");
+  });
+
+  it("thumbnail omite `atSeconds` cuando no se pidió", async () => {
+    const service = fakeService();
+    await makeRenderer(service.fetch).thumbnail(
+      { url: "https://media.test/x.mov", maxWidth: 320 },
+      AUTH,
+    );
+
+    // El schema del servicio es `.strict()`: mandar `atSeconds: undefined`
+    // serializa la clave y el pedido se rechaza con 400.
+    expect(service.calls[0]?.body ?? "").not.toContain("atSeconds");
+  });
+});
+
+describe("HttpMediaRenderer — el grant firmado (NFR-006)", () => {
+  const RELOJ: Clock = new FixedClock(new Date(1_700_000_000_000));
+  // No es un secreto de verdad: es una cadena de prueba. El secreto real vive
+  // en el entorno y nunca en el repo.
+  const SECRETO = "secreto-de-prueba";
+
+  it("sin secreto configurado no manda grant", async () => {
+    // Es una topología válida —un entorno con un solo bucket y prefijos
+    // globales—, así que no puede fallar. Lo que no puede es mandar un grant
+    // sin firma, que el servicio rechazaría con `media_grant_invalid`.
+    const service = fakeService();
+    await makeRenderer(service.fetch).render(WALL_OF_TEXT, AUTH);
+
+    expect(service.calls[0]?.body ?? "").not.toContain("grant");
+  });
+
+  it("con secreto manda el companyId y los prefijos de la autorización", async () => {
+    const service = fakeService();
+    await makeRenderer(service.fetch, {
+      grantSecret: SECRETO,
+      clock: RELOJ,
+    }).render(WALL_OF_TEXT, AUTH);
+
+    const enviado = JSON.parse(service.calls[0]?.body ?? "{}") as {
+      grant?: { body?: Record<string, unknown>; signature?: string };
+    };
+    expect(enviado.grant?.body).toMatchObject({
+      companyId: "com_prueba",
+      mediaPrefixes: ["https://media.test/"],
+      sharedPrefixes: ["https://library.test/"],
+      issuedAt: 1_700_000_000_000,
+    });
+    expect(enviado.grant?.signature).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("el grant se acuña por pedido, no por instancia", async () => {
+    // Un worker vive días. Un grant acuñado al construir el adaptador mandaría
+    // `expiresAt` vencidos para siempre después de la primera hora, y el
+    // síntoma sería `media_grant_invalid` en **todos** los builds.
+    let ahora = 1_700_000_000_000;
+    const service = fakeService();
+    const renderer = makeRenderer(service.fetch, {
+      grantSecret: SECRETO,
+      clock: { nowMs: () => ahora, now: () => new Date(ahora) },
+    });
+
+    await renderer.render(WALL_OF_TEXT, AUTH);
+    ahora += 3_600_000;
+    await renderer.render(WALL_OF_TEXT, AUTH);
+
+    const emitidos = service.calls
+      .filter((call) => call.url.endsWith("/render"))
+      .map((call) => {
+        const cuerpo = JSON.parse(call.body ?? "{}") as {
+          grant?: { body?: { issuedAt?: number } };
+        };
+        return cuerpo.grant?.body?.issuedAt;
+      });
+    expect(emitidos).toEqual([1_700_000_000_000, 1_700_003_600_000]);
+  });
+
+  it("dos workspaces con la misma media producen firmas distintas", async () => {
+    // Es la propiedad que sostiene `NFR-006`. Si el `companyId` no entrara a la
+    // firma, un grant del workspace 42 serviría para el 43 y el aislamiento
+    // sería decorativo.
+    const firmar = async (companyId: string): Promise<string> => {
+      const service = fakeService();
+      await makeRenderer(service.fetch, { grantSecret: SECRETO, clock: RELOJ }).render(
+        WALL_OF_TEXT,
+        { ...AUTH, companyId },
+      );
+      const cuerpo = JSON.parse(service.calls[0]?.body ?? "{}") as {
+        grant?: { signature?: string };
+      };
+      return cuerpo.grant?.signature ?? "";
+    };
+
+    expect(await firmar("com_42")).not.toBe(await firmar("com_43"));
+  });
+
+  it("las tres operaciones de media también lo llevan", async () => {
+    // Sin esto, `probe` sobre una URL ajena pasaría el filtro de prefijos
+    // globales: son los mismos para todos los workspaces.
+    const service = fakeService();
+    const renderer = makeRenderer(service.fetch, { grantSecret: SECRETO, clock: RELOJ });
+
+    await renderer.probe("https://media.test/x.mov", AUTH);
+    await renderer.normalize(
+      { url: "https://media.test/x.mov", targetContentType: "video/mp4" },
+      AUTH,
+    );
+    await renderer.thumbnail({ url: "https://media.test/x.mov", maxWidth: 320 }, AUTH);
+
+    const conGrant = service.calls
+      .filter((call) => call.method === "POST")
+      .map((call) => (call.body ?? "").includes('"grant"'));
+    expect(conGrant).toEqual([true, true, true]);
   });
 });
 
@@ -1072,5 +1311,6 @@ describeMediaRendererContract(
     // igual; el `sampleJobs` vacío no puede hacer pasar nada por accidente
     // porque el primer caso de la suite afirma que no esté vacía.
     sampleJobs: liveJobs,
+    auth: AUTH,
   },
 );

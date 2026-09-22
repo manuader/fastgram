@@ -230,12 +230,112 @@ export interface ThumbnailRequest {
   readonly maxWidth: number;
 }
 
+/* ------------------------------------------------------------------------ *
+ * Autorización
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Quién pide el render y qué media tiene permitido leer.
+ *
+ * ── Por qué viaja AL LADO del job y no adentro ──────────────────────────────
+ *
+ * `services/render` es sin estado: no tiene base y no puede preguntar si el
+ * asset `abc` es del workspace 42. La autoridad vive afuera y llega en el
+ * pedido. Pero meterla dentro de {@link RenderJob} rompería dos cosas:
+ *
+ *  1. **El cache.** {@link MediaRenderer.fingerprint} hashea el job, y toda
+ *     autorización lleva vencimiento. Un `expiresAt` adentro del job haría que
+ *     dos builds idénticos con diez minutos de diferencia tengan fingerprints
+ *     distintos: el cache de IMPL §5 dejaría de acertar **nunca**, y el
+ *     síntoma sería una factura de CPU, no un error.
+ *  2. **El significado.** Un `RenderJob` describe qué dibujar. Quién puede
+ *     leer los bytes es otra pregunta, y mezclarlas hace que la respuesta a la
+ *     segunda entre en el hash de la primera.
+ *
+ * Dos workspaces que rindan el mismo job **comparten el artefacto** cacheado, y
+ * está bien: si las URLs de media difieren, el job difiere y el fingerprint
+ * también. Lo que se comparte es un artefacto idéntico byte a byte.
+ *
+ * ── Por qué no es opcional ──────────────────────────────────────────────────
+ *
+ * Todo acceso a datos lleva scope de `companyId`, y un render lee media del
+ * workspace. Si esto fuera opcional, olvidarlo compilaría y fallaría en
+ * producción con un error de proveedor opaco en cada build. Siendo obligatorio,
+ * el compilador obliga a cada llamada a decir de quién es la media.
+ *
+ * El puerto transporta **intención**, no mecanismo: acá no hay firma, ni
+ * secreto, ni vencimiento. El adaptador es el que sabe cómo su servicio quiere
+ * que se demuestre esto (hoy, un grant HMAC con TTL propio).
+ */
+export interface MediaAuthorization {
+  readonly companyId: string;
+  /** Prefijos del Media Bank del workspace (origen + comienzo de ruta). */
+  readonly mediaPrefixes: readonly string[];
+  /** Prefijos de la librería compartida. Único origen válido para audio. */
+  readonly sharedPrefixes: readonly string[];
+  /**
+   * Si viene, la URL además tiene que estar textualmente en esta lista.
+   * Es el cierre más estrecho: autoriza estas URLs y ninguna otra.
+   */
+  readonly urls?: readonly string[] | undefined;
+}
+
+/**
+ * Un build con **N** artefactos.
+ *
+ * Existe porque un slideshow de N slides son N imágenes y {@link RenderResult}
+ * transporta una. Mientras el puerto no supo expresarlo, el adaptador HTTP
+ * tenía que elegir entre devolver el primero —publicando una pieza de una sola
+ * imagen, sin error en ningún log— y fallar. Fallaba, que era lo correcto y
+ * dejaba el formato sin construir.
+ */
+export type RenderArtifactKind = "video" | "image";
+
+/**
+ * Un artefacto del build, **sin bajar**.
+ *
+ * Es perezoso y no una {@link RenderedMedia} ya abierta porque un slideshow
+ * llega a 20 slides: devolverlos abiertos serían 20 cuerpos HTTP en vuelo a la
+ * vez, sostenidos hasta que quien llama termine de subir el último. Quien
+ * consume esto los abre y los sube de a uno.
+ */
+export interface RenderArtifactRef {
+  readonly kind: RenderArtifactKind;
+  /** Posición dentro del build. Un slideshow los entrega en orden de slide. */
+  readonly index: number;
+  /** Lo que el motor dice que pesa. Se verifica al abrir. */
+  readonly sizeBytes: number;
+  /**
+   * Baja el artefacto. **Una sola vez por referencia** y **en el mismo flujo**
+   * que el build: devuelve un stream, no un buffer, y del otro lado la cache
+   * puede ser local a una réplica. Guardar la referencia para después es un
+   * bug con demora.
+   */
+  readonly open: () => Promise<RenderedMedia>;
+}
+
+export interface RenderBuild {
+  readonly artifacts: readonly RenderArtifactRef[];
+  /** El mismo que devolvería {@link MediaRenderer.fingerprint} para este job. */
+  readonly fingerprint: string;
+  readonly renderMs: number;
+}
+
 export interface MediaRenderer {
   /**
    * Un build. Síncrono desde el punto de vista del worker; quien lo invoca ya
    * está en background (`NFR-001`: la UI nunca espera un render).
    */
-  render(job: RenderJob): Promise<RenderResult>;
+  render(job: RenderJob, auth: MediaAuthorization): Promise<RenderResult>;
+
+  /**
+   * El mismo build, con todos sus artefactos.
+   *
+   * `render` es el caso de uno y falla si el motor devuelve más; esto es el
+   * caso general. Un slideshow de más de un slide **sólo** se puede construir
+   * por acá: quien llama sube los N objetos.
+   */
+  renderAll(job: RenderJob, auth: MediaAuthorization): Promise<RenderBuild>;
 
   /**
    * Hash estable del job **más la versión del motor**.
@@ -250,11 +350,11 @@ export interface MediaRenderer {
   fingerprint(job: RenderJob): string;
 
   /** `NFR-014` / `P2-RENDER-013`. */
-  normalize(request: NormalizeRequest): Promise<RenderedMedia>;
+  normalize(request: NormalizeRequest, auth: MediaAuthorization): Promise<RenderedMedia>;
 
   /** Metadatos antes de aceptar un upload. `ERR-P11` sale de acá. */
-  probe(url: string): Promise<MediaProbe>;
+  probe(url: string, auth: MediaAuthorization): Promise<MediaProbe>;
 
   /** IMPL §5: «Nunca servir el master para un preview». */
-  thumbnail(request: ThumbnailRequest): Promise<RenderedMedia>;
+  thumbnail(request: ThumbnailRequest, auth: MediaAuthorization): Promise<RenderedMedia>;
 }

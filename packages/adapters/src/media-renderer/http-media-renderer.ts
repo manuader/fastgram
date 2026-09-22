@@ -82,6 +82,7 @@ import { createHash } from "node:crypto";
 import {
   PortError,
   type Clock,
+  type MediaAuthorization,
   type MediaProbe,
   type MediaRenderer,
   type NormalizeRequest,
@@ -92,6 +93,7 @@ import {
   type ThumbnailRequest,
 } from "@fastgram/ports";
 import { systemClock } from "../clock/index.js";
+import { signMediaGrant, type SignedMediaGrant } from "./media-grant.js";
 import { assertJobIsValid, canonicalize, canvasOf } from "./job-rules.js";
 import {
   DEFAULT_MAPPING,
@@ -114,6 +116,16 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 
 /** Inactividad tolerada entre chunks del cuerpo del artefacto. */
 const DEFAULT_IDLE_TIMEOUT_MS = 30_000;
+
+/**
+ * Vida del grant firmado.
+ *
+ * Tiene que cubrir el build más lento —`DEFAULT_TIMEOUT_MS` son 2 min— más la
+ * bajada de los N artefactos, porque el mismo grant se usa para el `POST` y
+ * para cada `GET /artifact`. Un grant que vence entre el render y la bajada del
+ * slide 14 produce un build a medias que ya se pagó en CPU.
+ */
+const DEFAULT_GRANT_TTL_MS = 600_000;
 
 /**
  * Lo que el servicio escribe hoy, según `render/engine.ts`: los videos van a
@@ -177,6 +189,25 @@ export interface HttpMediaRendererConfig {
    * fuente correcta?».
    */
   readonly onWarnings?: (warnings: readonly string[], context: WarningContext) => void;
+  /**
+   * Secreto HMAC con el que se firma el grant de media (`NFR-006`).
+   *
+   * **Sin esto, el aislamiento por workspace no existe.** El servicio puede
+   * seguir aplicando `RENDER_ALLOWED_MEDIA_PREFIXES`, que es global: acepta o
+   * rechaza igual para el workspace 42 y para el 43. El grant es lo único que
+   * dice *de quién* es la media.
+   *
+   * Es opcional en el tipo y no en el despliegue: un servicio configurado sólo
+   * con prefijos globales es una topología válida (un entorno de desarrollo con
+   * un bucket), y obligarlo acá haría inventar un secreto para arrancarlo. Lo
+   * que no puede pasar es llegar a producción sin él, y eso lo comprueba
+   * `assertRendererIsolation` del lado del worker.
+   *
+   * Viene del entorno. Nunca del repo.
+   */
+  readonly grantSecret?: string;
+  /** Vida del grant firmado. Default {@link DEFAULT_GRANT_TTL_MS}. */
+  readonly grantTtlMs?: number;
 }
 
 export interface WarningContext {
@@ -239,6 +270,8 @@ export class HttpMediaRenderer implements MediaRenderer {
   readonly #clock: Clock;
   readonly #mapping: RenderMappingConfig;
   readonly #onWarnings: ((w: readonly string[], c: WarningContext) => void) | undefined;
+  readonly #grantSecret: string | undefined;
+  readonly #grantTtlMs: number;
 
   constructor(config: HttpMediaRendererConfig) {
     if (config.baseUrl.length === 0) {
@@ -261,6 +294,26 @@ export class HttpMediaRenderer implements MediaRenderer {
     this.#clock = config.clock ?? systemClock;
     this.#mapping = { ...DEFAULT_MAPPING, ...config.mapping };
     this.#onWarnings = config.onWarnings;
+    this.#grantSecret = config.grantSecret;
+    this.#grantTtlMs = config.grantTtlMs ?? DEFAULT_GRANT_TTL_MS;
+  }
+
+  /**
+   * Acuña el grant que acompaña a cada pedido, o `undefined` si no hay secreto.
+   *
+   * Se acuña **por pedido** y no por instancia: el `expiresAt` tiene que
+   * medirse desde el pedido, no desde el arranque del worker. Un worker que
+   * vive días con un grant acuñado al iniciar mandaría grants vencidos para
+   * siempre, y el síntoma sería `media_grant_invalid` en todos los builds
+   * después de la primera hora.
+   */
+  #grant(auth: MediaAuthorization): SignedMediaGrant | undefined {
+    if (this.#grantSecret === undefined) return undefined;
+    return signMediaGrant(auth, {
+      secret: this.#grantSecret,
+      nowMs: this.#clock.nowMs(),
+      ttlMs: this.#grantTtlMs,
+    });
   }
 
   /**
@@ -293,9 +346,9 @@ export class HttpMediaRenderer implements MediaRenderer {
    * mientras siga así, un slideshow multi-slide se construye con
    * {@link renderAll}, que sí los devuelve todos. Está reportado.
    */
-  async render(job: RenderJob): Promise<RenderResult> {
+  async render(job: RenderJob, auth: MediaAuthorization): Promise<RenderResult> {
     const startedAt = this.#clock.nowMs();
-    const build = await this.renderAll(job);
+    const build = await this.renderAll(job, auth);
     const [artifact, ...rest] = build.artifacts;
 
     if (artifact === undefined) {
@@ -333,7 +386,7 @@ export class HttpMediaRenderer implements MediaRenderer {
    * No es parte del puerto. Existe para lo que el puerto no expresa (N
    * artefactos) y para lo que tiraría a la basura (los `warnings`).
    */
-  async renderAll(job: RenderJob): Promise<HttpRenderBuild> {
+  async renderAll(job: RenderJob, auth: MediaAuthorization): Promise<HttpRenderBuild> {
     const startedAt = this.#clock.nowMs();
     // Las reglas de `FR-070` que no dependen del motor se verifican acá para
     // que los dos adaptadores den el mismo `bad_request` con o sin servicio
@@ -342,8 +395,10 @@ export class HttpMediaRenderer implements MediaRenderer {
     assertJobIsValid(job, SOURCE);
 
     const payload: WirePayload = toWirePayload(job, this.#mapping, SOURCE);
+    const grant = this.#grant(auth);
     const response = await this.#request("POST", "/render", {
       payload,
+      ...(grant === undefined ? {} : { grant }),
     });
 
     if (!response.ok) throw await translateHttp(response, "render");
@@ -374,27 +429,90 @@ export class HttpMediaRenderer implements MediaRenderer {
    * de encodear, pero no lo expone por HTTP: su superficie es `/health`,
    * `/capabilities` y `/render`. Falta `POST /normalize`.
    */
-  async normalize(request: NormalizeRequest): Promise<RenderedMedia> {
-    void request;
-    throw missingEndpoint("POST /normalize", "normalize");
+  async normalize(
+    request: NormalizeRequest,
+    auth: MediaAuthorization,
+  ): Promise<RenderedMedia> {
+    const grant = this.#grant(auth);
+    const response = await this.#request("POST", "/normalize", {
+      url: request.url,
+      targetContentType: request.targetContentType,
+      ...(grant === undefined ? {} : { grant }),
+    });
+    if (!response.ok) throw await translateHttp(response, "normalize");
+    return await this.#openDescribedMedia(await readJson(response), "normalize");
   }
 
   /**
    * `ERR-P11`. **Sin endpoint del lado del servicio.** Existe
    * `ffmpeg/probe.ts` (ffprobe) y no hay ruta HTTP. Falta `POST /probe`.
    */
-  async probe(url: string): Promise<MediaProbe> {
-    void url;
-    throw missingEndpoint("POST /probe", "probe");
+  async probe(url: string, auth: MediaAuthorization): Promise<MediaProbe> {
+    const grant = this.#grant(auth);
+    const response = await this.#request("POST", "/probe", {
+      url,
+      ...(grant === undefined ? {} : { grant }),
+    });
+    if (!response.ok) throw await translateHttp(response, "probe");
+    return parseProbeResponse(await readJson(response));
   }
 
   /**
    * IMPL §5: «Nunca servir el master para un preview». **Sin endpoint del lado
    * del servicio.** Falta `POST /thumbnail`.
    */
-  async thumbnail(request: ThumbnailRequest): Promise<RenderedMedia> {
-    void request;
-    throw missingEndpoint("POST /thumbnail", "thumbnail");
+  async thumbnail(
+    request: ThumbnailRequest,
+    auth: MediaAuthorization,
+  ): Promise<RenderedMedia> {
+    const grant = this.#grant(auth);
+    const response = await this.#request("POST", "/thumbnail", {
+      url: request.url,
+      maxWidth: request.maxWidth,
+      ...(request.atSeconds === undefined ? {} : { atSeconds: request.atSeconds }),
+      ...(grant === undefined ? {} : { grant }),
+    });
+    if (!response.ok) throw await translateHttp(response, "thumbnail");
+    return await this.#openDescribedMedia(await readJson(response), "thumbnail");
+  }
+
+  /**
+   * Abre los bytes de un artefacto que el servicio **describió** en su
+   * respuesta (`/normalize`, `/thumbnail`).
+   *
+   * Es distinto de {@link HttpMediaRenderer.#openArtifact}, que sirve a
+   * `/render`: allá las dimensiones salen del canvas pedido porque el servicio
+   * no las reporta. Acá sí las reporta —el archivo es el resultado de medirlo,
+   * no de dibujarlo— y usarlas es lo único correcto: un thumbnail con
+   * `maxWidth: 320` sobre un video 9:16 no mide 320 de ancho, mide lo que el
+   * escalado le dio, y el contrato del puerto exige que `width` sea real para
+   * poder comprobar que no se está sirviendo el master.
+   */
+  async #openDescribedMedia(raw: unknown, method: string): Promise<RenderedMedia> {
+    const described = parseDescribedMedia(raw, method);
+    const response = await this.#request("GET", described.href);
+    if (!response.ok) throw await translateHttp(response, "artifact");
+
+    const body = response.body;
+    if (body === null) {
+      throw new PortError(
+        "provider_contract_violation",
+        "the artifact response had no body",
+        { source: SOURCE },
+      );
+    }
+    assertDeclaredLength(response, described.sizeBytes);
+
+    return {
+      body: streamBody(body, described.sizeBytes, this.#idleTimeoutMs),
+      contentType: described.contentType,
+      sizeBytes: described.sizeBytes,
+      width: described.width,
+      height: described.height,
+      ...(described.durationSeconds === undefined
+        ? {}
+        : { durationSeconds: described.durationSeconds }),
+    };
   }
 
   /** `GET /capabilities`: qué trae el FFmpeg de esa máquina y qué fuentes faltan. */
@@ -720,6 +838,110 @@ function parseArtifact(
   };
 }
 
+/**
+ * `POST /probe` → {@link MediaProbe}.
+ *
+ * Las tres banderas se exigen presentes y booleanas en vez de caer a `false`.
+ * Un default acá sería el peor error posible de este archivo: `isHdr: false`
+ * por omisión hace que `NFR-014` no tone-mapee un PQ real y la pieza salga
+ * lavada, sin un solo error en ningún log. Si el servicio no las manda, esto
+ * es un incumplimiento de contrato y se dice.
+ */
+function parseProbeResponse(raw: unknown): MediaProbe {
+  const body = asRecord(raw);
+  const contentType = body?.["contentType"];
+  const width = body?.["width"];
+  const height = body?.["height"];
+  const hasAudio = body?.["hasAudio"];
+  const isHdr = body?.["isHdr"];
+  const isFastStart = body?.["isFastStart"];
+  const duration = body?.["durationSeconds"];
+
+  if (typeof contentType !== "string" || contentType.length === 0) {
+    throw contractViolation("probe response has no contentType");
+  }
+  if (!isPositive(width) || !isPositive(height)) {
+    throw contractViolation("probe response has no usable dimensions");
+  }
+  if (
+    typeof hasAudio !== "boolean" ||
+    typeof isHdr !== "boolean" ||
+    typeof isFastStart !== "boolean"
+  ) {
+    throw contractViolation(
+      "probe response is missing the flags that govern normalization",
+    );
+  }
+
+  return {
+    contentType,
+    width,
+    height,
+    hasAudio,
+    isHdr,
+    isFastStart,
+    ...(isPositive(duration) ? { durationSeconds: duration } : {}),
+  };
+}
+
+interface DescribedMedia {
+  readonly href: string;
+  readonly contentType: string;
+  readonly sizeBytes: number;
+  readonly width: number;
+  readonly height: number;
+  readonly durationSeconds: number | undefined;
+}
+
+/**
+ * Lo que `/normalize` y `/thumbnail` devuelven: los metadatos del artefacto
+ * más el `href` por donde bajarlo.
+ *
+ * El campo del tamaño es `sizeBytes`, **no** `bytes` como en los artefactos de
+ * `/render`. Son dos formas distintas del mismo servicio.
+ */
+function parseDescribedMedia(raw: unknown, method: string): DescribedMedia {
+  const body = asRecord(raw);
+  const href = body?.["href"];
+  const contentType = body?.["contentType"];
+  const sizeBytes = body?.["sizeBytes"];
+  const width = body?.["width"];
+  const height = body?.["height"];
+  const duration = body?.["durationSeconds"];
+
+  if (typeof href !== "string" || href.length === 0) {
+    throw contractViolation(`${method} response has no href`);
+  }
+  assertOpaqueHref(href);
+  if (typeof contentType !== "string" || contentType.length === 0) {
+    throw contractViolation(`${method} response has no contentType`);
+  }
+  if (!isPositive(sizeBytes)) {
+    // 0 bytes con 200 es la misma trampa que `render_empty_output`.
+    throw contractViolation(`${method} response declares no bytes`);
+  }
+  if (!isPositive(width) || !isPositive(height)) {
+    throw contractViolation(`${method} response has no usable dimensions`);
+  }
+
+  return {
+    href,
+    contentType,
+    sizeBytes,
+    width,
+    height,
+    durationSeconds: isPositive(duration) ? duration : undefined,
+  };
+}
+
+function isPositive(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function contractViolation(message: string): PortError {
+  return new PortError("provider_contract_violation", message, { source: SOURCE });
+}
+
 function expectedArtifactCount(job: RenderJob): number {
   return job.format === "slideshow" ? job.images.length : 1;
 }
@@ -997,7 +1219,8 @@ const SERVICE_CODE_TO_PORT: Readonly<Record<string, PortErrorCode>> = {
   artifact_not_found: "not_found",
 };
 
-type Operation = "render" | "artifact" | "capabilities";
+type Operation =
+  "render" | "artifact" | "capabilities" | "probe" | "normalize" | "thumbnail";
 
 /**
  * Los mensajes de acá pueden cruzar hacia el cliente (`PortError.toPublic`),
@@ -1101,7 +1324,12 @@ async function translateHttp(
 function messageFor(code: PortErrorCode, operation: Operation): string {
   switch (code) {
     case "bad_request":
-      return "the render service rejected the build payload";
+      // Un `bad_request` de las tres operaciones de media no es un payload de
+      // build mal armado: es la URL, el grant o un parámetro fuera de rango.
+      // Decir «build payload» ahí mandaría a mirar el lugar equivocado.
+      return operation === "render"
+        ? "the render service rejected the build payload"
+        : `the render service rejected the ${operation} request`;
     case "not_found":
       // Los dos `not_found` del servicio no son lo mismo y el mensaje es lo
       // único que los distingue en el log: uno es una URL del payload que no
@@ -1129,27 +1357,6 @@ function translateTransport(cause: unknown, aborted: boolean): PortError {
     source: SOURCE,
     cause,
   });
-}
-
-/**
- * Los tres métodos que el servicio no expone.
- *
- * `provider_unavailable` y no `provider_contract_violation` por una razón
- * concreta: la suite de contrato del puerto acepta
- * `not_found | bad_request | provider_unavailable` para un `probe` que no se
- * puede satisfacer, y ése es el código que describe mejor el estado real —el
- * proveedor no ofrece la operación—. Tiene un costo conocido: es
- * **reintentable**, y el reintento no va a hacer aparecer un endpoint. Hoy no
- * cuesta nada porque ninguno de los tres se llama desde el pipeline de build
- * (`P2-RENDER-013` está abierta); el día que se llamen, o el servicio ya los
- * expone o esto hay que revisarlo.
- */
-function missingEndpoint(endpoint: string, method: string): PortError {
-  return new PortError(
-    "provider_unavailable",
-    `services/render does not expose ${endpoint}, so ${method} is unavailable`,
-    { source: SOURCE },
-  );
 }
 
 /* ------------------------------------------------------------------------ *

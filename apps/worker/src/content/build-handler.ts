@@ -85,6 +85,7 @@ import {
   type StorageKey,
 } from "@fastgram/ports";
 import { canonicalObjectUrl } from "@fastgram/adapters";
+import { mediaUrlsOf, workspaceMediaAuthorization } from "./media-authorization.js";
 
 import { refundContentSave } from "../support/quota.js";
 import { toRenderJob } from "./render-job.js";
@@ -376,7 +377,16 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
         failure = permanent(mapped.reason);
       } else {
         try {
-          const result = await deps.renderer.render(mapped.job);
+          // El grant se acuña **por build** y autoriza exactamente la media de
+          // este job: sin él, `services/render` no puede distinguir el
+          // workspace 42 del 43 (`NFR-006`). Ver `media-authorization.ts`.
+          const auth = await workspaceMediaAuthorization(deps.storage, {
+            companyId: job.companyId,
+            objectPrefix: prefix,
+            urls: mediaUrlsOf(mapped.job),
+          });
+
+          const result = await deps.renderer.render(mapped.job, auth);
           const artifact = await upload(job, result, 0);
           uploaded.push(artifact.key);
           files = [artifact.url];
@@ -386,10 +396,19 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
           // sin miniatura, y fallarla por eso reembolsaría un save por un
           // preview. Se loguea y sigue.
           try {
-            const thumb = await deps.renderer.thumbnail({
-              url: artifact.url,
-              maxWidth: 480,
-            });
+            // La autorización del thumbnail NO es la del render: su fuente
+            // es el artefacto **recién subido**, no la media de entrada. Pasar
+            // `auth` acá lo haría rechazar con `url_no_listada_en_grant`,
+            // dentro del `catch` que loguea y sigue — o sea, todas las piezas
+            // sin miniatura y una línea de warning por build.
+            const thumb = await deps.renderer.thumbnail(
+              { url: artifact.url, maxWidth: 480 },
+              await workspaceMediaAuthorization(deps.storage, {
+                companyId: job.companyId,
+                objectPrefix: prefix,
+                urls: [artifact.url],
+              }),
+            );
             const key = `${prefix}/${job.companyId}/${job.contentId}/${String(job.revision)}/thumb`;
             const stored = await deps.storage.put({
               key,

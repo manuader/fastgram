@@ -43,9 +43,12 @@ import { createHash } from "node:crypto";
 import {
   PortError,
   type Clock,
+  type MediaAuthorization,
   type MediaProbe,
   type MediaRenderer,
   type NormalizeRequest,
+  type RenderArtifactRef,
+  type RenderBuild,
   type RenderedMedia,
   type RenderJob,
   type RenderResult,
@@ -111,9 +114,10 @@ export class MemoryMediaRenderer implements MediaRenderer {
     return createHash("sha256").update(canonical).digest("hex");
   }
 
-  async render(job: RenderJob): Promise<RenderResult> {
+  async render(job: RenderJob, auth: MediaAuthorization): Promise<RenderResult> {
     const startedAt = this.#clock.nowMs();
     assertJobIsValid(job, SOURCE);
+    void auth;
 
     const canvas = canvasOf(job, SOURCE);
     const fingerprint = this.fingerprint(job);
@@ -132,7 +136,51 @@ export class MemoryMediaRenderer implements MediaRenderer {
     };
   }
 
-  async probe(url: string): Promise<MediaProbe> {
+  /**
+   * El build completo. Un slideshow de N slides da **N** artefactos, igual que
+   * el adaptador HTTP.
+   *
+   * Esto no es decorado: si el de memoria devolviera uno solo, el handler de
+   * build pasaría verde en los tests y subiría una pieza de una sola imagen
+   * contra el servicio real. El adaptador falso tiene que fallar donde falla el
+   * verdadero, o no sirve para probar a quien lo usa.
+   */
+  async renderAll(job: RenderJob, auth: MediaAuthorization): Promise<RenderBuild> {
+    const startedAt = this.#clock.nowMs();
+    assertJobIsValid(job, SOURCE);
+    void auth;
+
+    const fingerprint = this.fingerprint(job);
+    const cuantos = job.format === "slideshow" ? job.images.length : 1;
+    const kind = job.format === "slideshow" ? "image" : "video";
+
+    const artifacts: RenderArtifactRef[] = Array.from(
+      { length: cuantos },
+      (_unused, index): RenderArtifactRef => {
+        const canvas = canvasOf(job, SOURCE, index);
+        // Un artefacto por slide, distinto de los demás: si dos slides dieran
+        // los mismos bytes, un bug que suba N veces el primero no se vería.
+        const body = new TextEncoder().encode(`${fingerprint}:${String(index)}`);
+        return {
+          kind,
+          index,
+          sizeBytes: body.byteLength,
+          open: async () => ({
+            body: once(body),
+            contentType: this.#contentType,
+            sizeBytes: body.byteLength,
+            width: canvas.width,
+            height: canvas.height,
+          }),
+        };
+      },
+    );
+
+    return { artifacts, fingerprint, renderMs: this.#clock.nowMs() - startedAt };
+  }
+
+  async probe(url: string, auth: MediaAuthorization): Promise<MediaProbe> {
+    void auth;
     const source = this.#require(url);
     return {
       contentType: source.contentType,
@@ -147,7 +195,11 @@ export class MemoryMediaRenderer implements MediaRenderer {
     };
   }
 
-  async normalize(request: NormalizeRequest): Promise<RenderedMedia> {
+  async normalize(
+    request: NormalizeRequest,
+    auth: MediaAuthorization,
+  ): Promise<RenderedMedia> {
+    void auth;
     const source = this.#require(request.url);
     if (request.targetContentType.length === 0) {
       throw new PortError("bad_request", "targetContentType is required", {
@@ -172,7 +224,11 @@ export class MemoryMediaRenderer implements MediaRenderer {
     };
   }
 
-  async thumbnail(request: ThumbnailRequest): Promise<RenderedMedia> {
+  async thumbnail(
+    request: ThumbnailRequest,
+    auth: MediaAuthorization,
+  ): Promise<RenderedMedia> {
+    void auth;
     const source = this.#require(request.url);
     if (!Number.isFinite(request.maxWidth) || request.maxWidth <= 0) {
       throw new PortError("bad_request", "maxWidth must be positive", { source: SOURCE });

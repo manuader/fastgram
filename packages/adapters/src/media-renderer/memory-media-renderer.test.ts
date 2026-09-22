@@ -3,6 +3,7 @@ import {
   describeMediaRendererContract,
   MAX_SLIDES,
   type GreenScreenJob,
+  type MediaAuthorization,
   type RenderJob,
   type RenderText,
   type SlideshowJob,
@@ -10,6 +11,17 @@ import {
   type WallOfTextJob,
 } from "@fastgram/ports";
 import { MemoryMediaRenderer } from "./memory-media-renderer.js";
+
+/**
+ * El adaptador de memoria no verifica el grant —no hay servicio del otro lado—
+ * pero el puerto exige la autorización, y eso es deliberado: la firma obliga a
+ * cada llamada a decir de quién es la media aunque este adaptador la ignore.
+ */
+const AUTH: MediaAuthorization = {
+  companyId: "com_prueba",
+  mediaPrefixes: ["memory://media/"],
+  sharedPrefixes: ["memory://library/"],
+};
 
 /**
  * Primera ejecución de las diez aserciones de contrato de `MediaRenderer`.
@@ -130,6 +142,7 @@ function makeRenderer(): MemoryMediaRenderer {
 describeMediaRendererContract({ describe, it }, "memory", {
   makeAdapter: makeRenderer,
   sampleJobs: SAMPLE_JOBS,
+  auth: AUTH,
   videoToNormalize: SOURCE_VIDEO,
 });
 
@@ -173,7 +186,7 @@ describe("MemoryMediaRenderer — comportamiento propio del adaptador", () => {
     const renderer = makeRenderer();
 
     await expect(
-      renderer.render({ ...WALL_OF_TEXT, text: { ...TEXT, fontSize: 120 } }),
+      renderer.render({ ...WALL_OF_TEXT, text: { ...TEXT, fontSize: 120 } }, AUTH),
     ).rejects.toMatchObject({ name: "PortError", code: "bad_request" });
   });
 
@@ -181,7 +194,7 @@ describe("MemoryMediaRenderer — comportamiento propio del adaptador", () => {
     const renderer = makeRenderer();
 
     await expect(
-      renderer.render({ format: "slideshow", num_images: 0, images: [] }),
+      renderer.render({ format: "slideshow", num_images: 0, images: [] }, AUTH),
     ).rejects.toMatchObject({ name: "PortError", code: "bad_request" });
   });
 
@@ -193,13 +206,16 @@ describe("MemoryMediaRenderer — comportamiento propio del adaptador", () => {
 
     const enElTope = Array.from({ length: MAX_SLIDES }, () => slide);
     await expect(
-      renderer.render({ format: "slideshow", num_images: MAX_SLIDES, images: enElTope }),
+      renderer.render(
+        { format: "slideshow", num_images: MAX_SLIDES, images: enElTope },
+        AUTH,
+      ),
     ).resolves.toMatchObject({ width: 1080 });
   });
 
   it("el body del artefacto se puede consumir y tiene el tamaño declarado", async () => {
     const renderer = makeRenderer();
-    const result = await renderer.render(WALL_OF_TEXT);
+    const result = await renderer.render(WALL_OF_TEXT, AUTH);
 
     let bytes = 0;
     for await (const chunk of result.body) bytes += chunk.byteLength;
@@ -209,11 +225,14 @@ describe("MemoryMediaRenderer — comportamiento propio del adaptador", () => {
   it("thumbnail achica pero nunca agranda", async () => {
     const renderer = makeRenderer();
 
-    const chico = await renderer.thumbnail({ url: SOURCE_VIDEO, maxWidth: 320 });
+    const chico = await renderer.thumbnail({ url: SOURCE_VIDEO, maxWidth: 320 }, AUTH);
     expect(chico.width).toBe(320);
     expect(chico.height).toBe(180); // 1920×1080 mantiene el aspecto
 
-    const gigante = await renderer.thumbnail({ url: SOURCE_VIDEO, maxWidth: 10_000 });
+    const gigante = await renderer.thumbnail(
+      { url: SOURCE_VIDEO, maxWidth: 10_000 },
+      AUTH,
+    );
     expect(gigante.width).toBe(1920);
   });
 
@@ -221,13 +240,13 @@ describe("MemoryMediaRenderer — comportamiento propio del adaptador", () => {
     const renderer = makeRenderer();
 
     await expect(
-      renderer.thumbnail({ url: SOURCE_VIDEO, maxWidth: 320, atSeconds: 99 }),
+      renderer.thumbnail({ url: SOURCE_VIDEO, maxWidth: 320, atSeconds: 99 }, AUTH),
     ).rejects.toMatchObject({ name: "PortError", code: "bad_request" });
   });
 
   it("probe devuelve las banderas que gobiernan la normalización de NFR-014", async () => {
     const renderer = makeRenderer();
-    const probe = await renderer.probe(SOURCE_VIDEO);
+    const probe = await renderer.probe(SOURCE_VIDEO, AUTH);
 
     expect(probe.isHdr).toBe(true);
     expect(probe.isFastStart).toBe(false);
@@ -238,10 +257,13 @@ describe("MemoryMediaRenderer — comportamiento propio del adaptador", () => {
     const renderer = makeRenderer();
 
     await expect(
-      renderer.normalize({
-        url: "memory://media/fantasma.mp4",
-        targetContentType: "video/mp4",
-      }),
+      renderer.normalize(
+        {
+          url: "memory://media/fantasma.mp4",
+          targetContentType: "video/mp4",
+        },
+        AUTH,
+      ),
     ).rejects.toMatchObject({ name: "PortError", code: "not_found" });
   });
 });
