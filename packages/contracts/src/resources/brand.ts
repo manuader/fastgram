@@ -119,6 +119,21 @@ export const resolveBrandSourceResponseSchema = z
     displayName: z.string().nullable(),
     avatarUrl: z.string().url().nullable(),
     available: z.boolean(),
+    /**
+     * **Campo añadido sobre la forma literal del PRD**, y la razón es que sin él
+     * `ERR-B12` no se puede implementar.
+     *
+     * `FR-011.1` dice que un enlace a un post se resuelve al perfil de su autor
+     * y que **hay que avisarlo**: *"We'll analyse the whole @{handle} profile,
+     * not just that post."* El aviso es de la resolución, no del alta — ocurre
+     * mientras el usuario escribe—, así que el único sitio donde cabe es esta
+     * respuesta. La lista de campos de PRD:2368 no lo trae, pero tampoco trae
+     * ningún otro canal para el aviso, y `ERR-B12` está en §19.5.1 como copy.
+     *
+     * Es **opcional** a propósito: un cliente que no lo mire sigue leyendo
+     * exactamente la forma del PRD.
+     */
+    resolvedFromPost: z.boolean().optional(),
   })
   .strict();
 export type ResolveBrandSourceResponse = z.infer<typeof resolveBrandSourceResponseSchema>;
@@ -149,11 +164,25 @@ export type UpdateBrandSourceRequest = z.infer<typeof updateBrandSourceRequestSc
 export const fieldConfidenceSchema = z.enum(["high", "medium", "low"]);
 export type FieldConfidence = z.infer<typeof fieldConfidenceSchema>;
 
+/**
+ * `sourceId` y `excerptRef` son **nullable**, y ése es justamente el caso que
+ * `PATCH /brand/profile` produce.
+ *
+ * La forma original los exigía, y con eso un campo **editado a mano** no tenía
+ * `fieldMeta` posible: una edición manual no sale de ninguna `BrandSource` y no
+ * cita ningún extracto, así que no hay `sourceId` ni `excerptRef` que escribir.
+ * El efecto no era cosmético: `FR-011.6` dice que un campo con
+ * `editedByUser: true` **no se pisa** en la siguiente fusión, y sin poder
+ * escribir la marca para un campo que nunca tuvo fuente, la siguiente síntesis
+ * borraría lo que el usuario acababa de escribir. Nullable es lo mínimo que
+ * cierra eso; la alternativa —inventar un `sourceId`— haría que la fusión
+ * creyera que hay evidencia donde no la hay, que es lo que `AI-016` prohíbe.
+ */
 export const fieldMetaSchema = z
   .object({
     confidence: fieldConfidenceSchema,
-    sourceId: brandSourceIdSchema,
-    excerptRef: z.string(),
+    sourceId: brandSourceIdSchema.nullable(),
+    excerptRef: z.string().nullable(),
     editedByUser: z.boolean(),
     conflictsWith: z.array(brandSourceIdSchema).optional(),
   })

@@ -18,7 +18,11 @@ import { z } from "zod";
 
 import { errorEnvelopeSchema } from "./primitives/errors.js";
 import { paginationSchema } from "./primitives/envelope.js";
-import { cursorQuerySchema } from "./primitives/pagination.js";
+import {
+  cursorQuerySchema,
+  numberedPageQuerySchema,
+  numberedPaginationSchema,
+} from "./primitives/pagination.js";
 import { IDEMPOTENCY_KEY_HEADER } from "./primitives/idempotency.js";
 import { uploadReservationSchema } from "./primitives/uploads.js";
 import * as blitz from "./resources/blitz.js";
@@ -244,6 +248,22 @@ const pageOf = (item: JsonSchema): JsonSchema => ({
   additionalProperties: false,
 });
 
+/**
+ * Envelope de la paginación **numerada** (`GET /blitz/angles/page`, §9.10).
+ *
+ * `pagination` es otro objeto que el del cursor: sin `cursor` y con
+ * `page`/`totalPages`. Ver `numberedPaginationSchema`.
+ */
+const numberedPageOf = (item: JsonSchema): JsonSchema => ({
+  type: "object",
+  properties: {
+    data: { type: "array", items: item },
+    pagination: toJsonSchema(numberedPaginationSchema),
+  },
+  required: ["data", "pagination"],
+  additionalProperties: false,
+});
+
 const errorResponse = (description: string) => ({
   description,
   content: json(toJsonSchema(errorEnvelopeSchema)),
@@ -402,6 +422,26 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
             "400": errorResponse(
               "bad_request — MAX_ANGLES_EXCEEDED / MAX_ANGLES_PER_INFLUENCER_EXCEEDED",
             ),
+          },
+        },
+      },
+      /**
+       * **Este path faltaba**, y lo encontró `apps/api/test/openapi-routes.test.ts`
+       * en su primera corrida: la ruta existe desde que se escribieron los
+       * ángulos, §9.3 la lista, y el documento no la nombraba. El test anterior
+       * sólo comprobaba que estuvieran 27 paths de una lista escrita a mano, así
+       * que un path **de menos** era invisible — igual que los cinco de `/brand`
+       * eran invisibles de más.
+       *
+       * Es la única ruta con paginación **numerada** (§9.10, `Page X of Y`).
+       */
+      "/blitz/angles/page": {
+        get: {
+          operationId: "listBlitzAnglesByPage",
+          summary: "Content angles por página numerada (Page X of Y) · §9.10",
+          parameters: queryParams(numberedPageQuerySchema),
+          responses: {
+            "200": ok("OK", numberedPageOf(angleJs)),
           },
         },
       },
@@ -590,13 +630,31 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
             "404": errorResponse("not_found"),
           },
         },
+        /**
+         * **Acá había un `409 media_in_use` documentado que la ruta no devuelve
+         * nunca**, y se quita en vez de dejarlo.
+         *
+         * `apps/api/src/routes/v1/media.ts` responde `204` siempre — es
+         * deliberado (§9.2: *"los borrados idempotentes de media tratan ids
+         * ajenos/desconocidos como no-ops seguros que no revelan si el registro
+         * existe"*)—, y el `409` de `FR-100` no está implementado porque
+         * comprobar que el asset sigue referenciado exige preguntar por
+         * pertenencia a un array en `contents`, `influencer_configs` y
+         * `media_sets`, y el filtro declarativo de los repositorios no tiene un
+         * operador de "contiene" (nota en `media.ts:48-51`).
+         *
+         * Se quita del documento y no se deja "por si acaso" porque esto **es**
+         * el contrato que lee un integrador: un `409` documentado hace que
+         * alguien escriba la rama que lo maneja, y esa rama es código muerto.
+         * Lo que hace falta para devolverlo está en el reporte; el día que
+         * exista, vuelve acá **con** la ruta, no antes.
+         */
         delete: {
           operationId: "deleteMedia",
-          summary: "Borrado idempotente; rechazado si el asset sigue referenciado",
+          summary: "Borrado idempotente: 204 también para un id ajeno o inexistente",
           parameters: [pathParam("id")],
           responses: {
             "204": { description: "Borrado" },
-            "409": errorResponse("media_in_use"),
           },
         },
       },
@@ -800,6 +858,27 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           },
         },
       },
+      /**
+       * ── Brand Sources · EXTENSION EXT-001 ────────────────────────────────
+       *
+       * Estos cinco paths estaban acá **describiendo rutas que no existían**:
+       * `apps/api` no tenía una sola ruta `/brand`, y el test de este archivo
+       * fijaba un número de paths en vez de compararlos contra nada, así que la
+       * mentira podía durar indefinidamente. Ahora las rutas existen
+       * (`apps/api/src/routes/v1/brand.ts`) y `apps/api/test/openapi-routes.test.ts`
+       * compara **este documento contra las rutas que Fastify registra de
+       * verdad**, en los dos sentidos.
+       *
+       * Lo que cambió respecto de lo que estaba escrito, y por qué:
+       *  - `GET /brand/sources` pasa a envelope **paginado**. §9.14 dice
+       *    "misma convención de envelope, **cursor** e idempotencia que el
+       *    resto", y un `{data: [...]}` suelto era la única lista de la v1 sin
+       *    `pagination`. Con el cap de 5 fuentes `hasMore` siempre es `false`,
+       *    pero la forma es la misma que las otras seis listas.
+       *  - Se documentan los errores que las rutas **devuelven**, no los que
+       *    parecían razonables: el `409` de alta (unicidad global) y el `503`
+       *    de cola ausente no estaban, y sí estaban.
+       */
       "/brand/sources/resolve": {
         post: {
           operationId: "resolveBrandSource",
@@ -810,6 +889,15 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           },
           responses: {
             "200": ok("OK", dataOf(toJsonSchema(brand.resolveBrandSourceResponseSchema))),
+            "400": errorResponse(
+              "bad_request — no se reconoce (ERR-B02), es un @handle sin plataforma " +
+                "(ERR-B03, details.candidates) o la URL cayó en la protección SSRF",
+            ),
+            "503": errorResponse(
+              "service_unavailable — un enlace a un post de Instagram, YouTube o " +
+                "LinkedIn no lleva el handle del autor y resolverlo exige consultar " +
+                "la plataforma; no hay adaptador `SocialReader` montado",
+            ),
           },
         },
       },
@@ -825,17 +913,26 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           },
           responses: {
             "202": ok("Análisis encolado", dataOf(toJsonSchema(brand.brandSourceSchema))),
-            "400": errorResponse("bad_request — máx. 5 fuentes por workspace"),
+            "400": errorResponse(
+              "bad_request — máx. 5 fuentes por workspace (ERR-B10), entrada no " +
+                "reconocida (ERR-B02) o ambigua (ERR-B03)",
+            ),
+            "409": errorResponse(
+              "conflict — esa fuente ya está registrada (ERR-B06). La unicidad de " +
+                "`(sourceType, handle)` es GLOBAL, y la respuesta es idéntica tanto " +
+                "si el choque es con este workspace como si es con otro",
+            ),
+            "503": errorResponse(
+              "service_unavailable — sin cola no se encola el análisis",
+            ),
           },
         },
         get: {
           operationId: "listBrandSources",
           summary: "EXTENSION · fuentes del workspace",
+          parameters: queryParams(cursorQuerySchema),
           responses: {
-            "200": ok(
-              "OK",
-              dataOf({ type: "array", items: toJsonSchema(brand.brandSourceSchema) }),
-            ),
+            "200": ok("OK", pageOf(toJsonSchema(brand.brandSourceSchema))),
           },
         },
       },
@@ -851,13 +948,20 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
         },
         patch: {
           operationId: "updateBrandSource",
-          summary: "EXTENSION · sólo isPrimary",
+          summary: "EXTENSION · sólo isPrimary, y sólo para promover",
           parameters: [pathParam("id")],
           requestBody: {
             required: true,
             content: json(toJsonSchema(brand.updateBrandSourceRequestSchema)),
           },
-          responses: { "200": ok("OK", dataOf(toJsonSchema(brand.brandSourceSchema))) },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(brand.brandSourceSchema))),
+            "400": errorResponse(
+              "bad_request — `isPrimary: false` no se acepta: FR-011.6 exige " +
+                "exactamente una primaria, así que se promueve otra, no se degrada ésta",
+            ),
+            "404": errorResponse("not_found"),
+          },
         },
         delete: {
           operationId: "deleteBrandSource",
@@ -865,6 +969,7 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           parameters: [pathParam("id")],
           responses: {
             "204": { description: "Borrada" },
+            "404": errorResponse("not_found"),
             "409": errorResponse("conflict — el perfil quedaría sin origen"),
           },
         },
@@ -876,7 +981,14 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           parameters: [pathParam("id")],
           responses: {
             "202": ok("Análisis encolado", dataOf(toJsonSchema(brand.brandSourceSchema))),
-            "429": errorResponse("rate_limited"),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — ya se está analizando"),
+            "429": errorResponse(
+              "rate_limited — ERR-B11, con `Retry-After` y `details.retryAfterMs`",
+            ),
+            "503": errorResponse(
+              "service_unavailable — sin cola no se encola el análisis",
+            ),
           },
         },
       },
@@ -885,6 +997,8 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           operationId: "getCompanyProfile",
           summary: "EXTENSION · perfil con fieldMeta (confianza, origen, extracto)",
           responses: {
+            // Nunca 404: el perfil es una propiedad del workspace, no un recurso
+            // aparte. Un workspace sin fila devuelve el perfil vacío en `pending`.
             "200": ok("OK", dataOf(toJsonSchema(brand.companyProfileSchema))),
           },
         },

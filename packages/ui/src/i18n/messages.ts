@@ -129,8 +129,22 @@ export const en = {
     "We couldn't find @{handle} on {platform}. Check the spelling.", // ERR-B04
   "error.brand.privateProfile.title":
     "@{handle} is private, so we can't read it. Connect the account or paste your bio instead.", // ERR-B05
-  "error.brand.alreadyConnected.title":
-    "This profile is already connected to another workspace.", // ERR-B06
+  // **El literal del PRD para ERR-B06 nombra el otro workspace, y acá no.**
+  //
+  // «This profile is already connected to another workspace» convierte el alta
+  // en un buscador de clientes: probás `@nike`, leés «otro workspace», sabés
+  // que Nike es cliente. La API ya devuelve la forma neutra —la misma que el
+  // propio PRD eligió para el caso equivalente de la rama web (`FR-010`,
+  // PRD:767)— y su cuerpo es byte a byte idéntico choques con una fuente tuya
+  // o con la de otro.
+  //
+  // Si este copy siguiera nombrando el otro workspace, el filtrado volvería por
+  // acá en cuanto la UI renderice por código de error, y la neutralidad de la
+  // API no habría servido de nada.
+  //
+  // El usuario que choca consigo mismo lo resuelve mirando su propio listado,
+  // que ya ve.
+  "error.brand.alreadyConnected.title": "This profile is already registered.", // ERR-B06
   "error.brand.platformDown.title":
     "{platform} isn't responding right now. Try again in a few minutes or add a different source.", // ERR-B07
   "error.brand.backlogged.title":

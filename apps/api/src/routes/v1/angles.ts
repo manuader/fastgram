@@ -31,11 +31,12 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
-  PAGINATION_LIMIT_DEFAULT,
-  PAGINATION_LIMIT_MAX,
-  PAGINATION_LIMIT_MIN,
   createContentAngleRequestSchema,
   cursorQuerySchema,
+  // §9.10, paginación **numerada**. Vivía escrito a mano acá con una nota que
+  // decía que debía estar en el contrato; ahora está, y el coste de que no
+  // estuviera se vio: `GET /blitz/angles/page` no aparecía en el OpenAPI.
+  numberedPageQuerySchema,
   updateContentAngleRequestSchema,
 } from "@fastgram/contracts";
 import {
@@ -72,25 +73,6 @@ import { data, notFound, page } from "./shared.js";
 import type { ZodApp } from "../../server/types.js";
 
 const angleParams = z.object({ id: z.string().min(1) });
-
-/**
- * Query de `GET /blitz/angles/page` — §9.10, paginación **numerada**.
- *
- * No sale de `@fastgram/contracts` porque ahí no existe: el paquete sólo define
- * `cursorQuerySchema`. Los dos números que sí son del PRD —el rango 1–100 y el
- * default 20— se reusan de ahí en vez de reescribirlos, para que sigan teniendo un
- * solo sitio donde cambiar. Queda reportado que el schema debería vivir en el
- * contrato.
- */
-const numberedPageQuery = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce
-    .number()
-    .int()
-    .min(PAGINATION_LIMIT_MIN)
-    .max(PAGINATION_LIMIT_MAX)
-    .default(PAGINATION_LIMIT_DEFAULT),
-});
 
 /** Lo que devuelve `listByPage`. `OffsetPage` no se exporta del índice de `@fastgram/db`. */
 interface NumberedPage<T> {
@@ -263,7 +245,7 @@ export function registerAngleRoutes(app: ZodApp): void {
   // prefiere el segmento estático al paramétrico, así que `page` nunca cae en `:id`.
   app.get(
     "/blitz/angles/page",
-    { schema: { querystring: numberedPageQuery } },
+    { schema: { querystring: numberedPageQuerySchema } },
     async (request) => {
       const q = request.query;
       const result = await request.tx((tx) =>

@@ -11,6 +11,7 @@ import type { ZodApp } from "../../server/types.js";
 
 import { registerAngleRoutes } from "./angles.js";
 import { registerBlitzRoutes } from "./blitz.js";
+import { registerBrandRoutes } from "./brand.js";
 import { registerCatalogRoutes } from "./catalog.js";
 import { registerContentRoutes } from "./content.js";
 import { registerInfluencerRoutes } from "./influencers.js";
@@ -25,5 +26,9 @@ export async function registerV1Routes(app: ZodApp): Promise<void> {
   registerInfluencerRoutes(app);
   registerCatalogRoutes(app);
   registerPostRoutes(app);
+  // EXT-001. Estaba entero en `packages/core` y en el OpenAPI, y no tenía una
+  // sola ruta: dominio inalcanzable y un contrato que publicaba cinco paths
+  // inexistentes. `test/openapi-routes.test.ts` impide que vuelva a pasar.
+  registerBrandRoutes(app);
   await Promise.resolve();
 }

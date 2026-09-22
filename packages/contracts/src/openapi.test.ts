@@ -101,11 +101,28 @@ describe("documento OpenAPI · ADR-015", () => {
     expect(doc.servers[0]?.url).toBe("/api/v1");
   });
 
+  /**
+   * **Esta lista NO es la guarda contra la deriva del contrato**, y conviene
+   * decirlo acá porque durante un tiempo se creyó que lo era.
+   *
+   * Comprueba que los paths que el PRD §9.3 enumera estén en el documento, o
+   * sea una sola dirección y contra una lista escrita a mano. Así convivieron
+   * dos mentiras: cinco paths `/brand/*` documentados sin ruta detrás, y
+   * `/blitz/angles/page` implementado sin documentar. Ninguna de las dos la
+   * podía ver una lista de nombres.
+   *
+   * La comparación real —documento **contra las rutas que Fastify registra**,
+   * en los dos sentidos— está en `apps/api/test/openapi-routes.test.ts`, que es
+   * donde puede estar: este paquete es standalone y no puede importar la app.
+   * Lo de acá sigue valiendo por lo que sí prueba: que la superficie que el PRD
+   * enumera no desaparezca del documento de un borrado.
+   */
   it("cubre las rutas de la superficie v1 del PRD §9.3", () => {
     for (const path of [
       "/blitz",
       "/blitz/preferences",
       "/blitz/angles",
+      "/blitz/angles/page",
       "/blitz/angles/{id}",
       "/blitz/angles/generate",
       "/influencers",
@@ -130,9 +147,46 @@ describe("documento OpenAPI · ADR-015", () => {
       "/posts/cancel",
       "/posts/delete",
       "/analytics/posts",
+      // EXTENSION · EXT-001, §9.14. Estaban en el documento desde antes de que
+      // existiera una sola ruta `/brand`; ahora existen las siete operaciones.
+      "/brand/sources",
+      "/brand/sources/resolve",
+      "/brand/sources/{id}",
+      "/brand/sources/{id}/reanalyse",
+      "/brand/profile",
     ]) {
       expect(doc.paths[path], `falta ${path}`).toBeDefined();
     }
+  });
+
+  it("el listado de brand sources usa el envelope paginado, como las otras seis listas", () => {
+    // §9.14: *"misma convención de envelope, cursor e idempotencia que el
+    // resto"*. Estaba documentado como `{data: [...]}` suelto, que era la única
+    // lista de la v1 sin `pagination`.
+    const schema =
+      doc.paths["/brand/sources"]?.get?.responses["200"]?.content?.["application/json"]
+        ?.schema;
+    expect(schema?.required).toEqual(["data", "pagination"]);
+    const params = doc.paths["/brand/sources"]?.get?.parameters ?? [];
+    expect(params.some((p) => p.name === "cursor")).toBe(true);
+    expect(params.find((p) => p.name === "limit")?.schema.maximum).toBe(100);
+  });
+
+  it("el alta de brand source exige Idempotency-Key · §9.14 PRD:2370", () => {
+    const header = doc.paths["/brand/sources"]?.post?.parameters?.find(
+      (p) => p.name === "idempotency-key",
+    );
+    expect(header?.required).toBe(true);
+  });
+
+  it("DELETE /media/{id} ya no documenta un 409 que la ruta nunca devuelve", () => {
+    // La ruta responde 204 siempre (§9.2: el borrado de media no revela
+    // existencia). El `409 media_in_use` de FR-100 no está implementado — hace
+    // falta un operador "contiene" en los filtros de `packages/db`— y un código
+    // documentado que no ocurre hace que alguien escriba una rama muerta.
+    expect(Object.keys(doc.paths["/media/{id}"]?.delete?.responses ?? {})).toEqual([
+      "204",
+    ]);
   });
 
   it("todas las respuestas de error usan el sobre {error:{code,message}}", () => {

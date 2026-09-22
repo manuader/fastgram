@@ -31,9 +31,12 @@
 import type {
   AudioTrack,
   BlitzPreferences,
+  BrandSource,
+  CompanyProfile,
   Connection,
   Content,
   ContentAngle,
+  FieldMeta,
   Influencer,
   Media,
   Post,
@@ -41,6 +44,8 @@ import type {
 import type {
   audioTracks,
   blitzPreferences,
+  brandSources,
+  companyProfiles,
   connections,
   contentAngles,
   contents,
@@ -254,4 +259,97 @@ export function toPost(row: Row<typeof posts>): Post {
   }
 
   return out as unknown as Post;
+}
+
+// ──────────────────────────── Brand sources ────────────────────────────
+
+/**
+ * `BrandSource` del contrato — DATA-031.
+ *
+ * Dos campos de la fila **no salen**, y el tipo de retorno lo convierte en un
+ * error de compilación si alguien los agrega:
+ *
+ *  - `companyId`, como en todo el archivo.
+ *  - `connectionId`, que es el id interno de la `Connection` OAuth que el tier A
+ *    usó para leer. `FR-011.4` pide que *"la UI nunca exponga en qué nivel se
+ *    resolvió"* salvo la degradación a D, y devolver el id de la conexión es
+ *    contar el tier por la puerta de atrás.
+ *
+ * `acquisitionTier` **sí** sale, porque `brandSourceSchema` lo declara
+ * obligatorio; queda anotado en el reporte como una contradicción del contrato
+ * con `FR-011.4` que no es de esta capa resolver.
+ */
+export function toBrandSource(row: Row<typeof brandSources>): BrandSource {
+  return {
+    _id: row.id as BrandSource["_id"],
+    sourceType: row.sourceType,
+    handle: row.handle,
+    canonicalUrl: row.canonicalUrl,
+    displayName: row.displayName,
+    avatarUrl: row.avatarUrl,
+    isPrimary: row.isPrimary,
+    acquisitionTier: row.acquisitionTier,
+    status: row.status,
+    failureReason: row.failureReason,
+    lastAnalysedAt: row.lastAnalysedAt === null ? null : ms(row.lastAnalysedAt),
+    analysisCount: row.analysisCount,
+    createdAt: ms(row.createdAt),
+    updatedAt: ms(row.updatedAt),
+  };
+}
+
+// ──────────────────────────── Company profile ────────────────────────────
+
+/**
+ * `CompanyProfile` del contrato — DATA-004.
+ *
+ * Los cinco campos de `AI-001` son obligatorios en el contrato y **nullables en
+ * la columna**: un workspace que todavía no analizó nada los tiene en `null`.
+ * Se emiten como `""` —el mismo criterio que `toContentAngle`— y no se omiten,
+ * porque un campo ausente y un campo vacío significan lo mismo acá y el
+ * contrato ya eligió cuál es: vacío. Es además lo que `AI-016` exige leer como
+ * "hueco": *"un campo sin señal suficiente queda vacío"*.
+ */
+export function toCompanyProfile(row: Row<typeof companyProfiles>): CompanyProfile {
+  return {
+    coreIdentity: row.coreIdentity ?? "",
+    productOffering: row.productOffering ?? "",
+    uniqueBenefits: row.uniqueBenefits ?? "",
+    problemSolution: row.problemSolution ?? "",
+    marketAndCompetition: row.marketAndCompetition ?? "",
+    ...opt("toneOfVoice", row.toneOfVoice),
+    ...opt("targetAudience", row.targetAudience),
+    ...opt("businessModel", row.businessModel),
+    businessCategories: row.businessCategories,
+    ...opt("monthlyRevenueBand", row.monthlyRevenueBand),
+    ...opt("teamSize", row.teamSize),
+    ...opt("ownerRole", row.ownerRole),
+    expectations: row.expectations,
+    brandRevision: row.brandRevision,
+    status: row.status,
+    fieldMeta: row.fieldMeta as Record<string, FieldMeta>,
+  } as CompanyProfile;
+}
+
+/**
+ * El perfil de un workspace que todavía no tiene fila.
+ *
+ * `GET /brand/profile` **no devuelve 404** cuando falta: el perfil es una
+ * propiedad del workspace, no un recurso con vida propia, y un 404 obligaría a
+ * cada cliente a tratar "workspace nuevo" como un error. Los cinco campos salen
+ * vacíos, que es exactamente lo que `AI-016` quiere que se lea como hueco.
+ */
+export function emptyCompanyProfile(): CompanyProfile {
+  return {
+    coreIdentity: "",
+    productOffering: "",
+    uniqueBenefits: "",
+    problemSolution: "",
+    marketAndCompetition: "",
+    businessCategories: [],
+    expectations: [],
+    brandRevision: 0,
+    status: "pending",
+    fieldMeta: {},
+  };
 }
