@@ -39,6 +39,7 @@ import { createContentBuildHandler } from "./content/build-handler.js";
 import { createInfluencerPipelineHandler } from "./influencers/pipeline-handler.js";
 import { createDiscoveryRefillHandler } from "./discovery/refill-handler.js";
 import { createBrandStalenessHandler } from "./brand/staleness-handler.js";
+import { createHealthServer, createWorkerHealth } from "./health/server.js";
 import { createPublishHandler } from "./publishing/publish-handler.js";
 import { loadWorkerEnv } from "./env.js";
 import { JOB_CATALOG, type JobPolicy } from "./jobs/catalog.js";
@@ -310,6 +311,33 @@ logger.warn(
  * activos**. Importa: un build a mitad de camino puede estar en la transacción
  * que reembolsa un save. La base se cierra después, no antes, por eso mismo.
  */
+/**
+ * La sonda de salud, **después** de `queue.start()`.
+ *
+ * `queueRunning` es una función y no un booleano capturado: tiene que reflejar
+ * el apagado. Un worker que ya recibió SIGTERM y dejó de consumir debe decir
+ * `unavailable` mientras termina, no `ok` hasta el último milisegundo.
+ */
+let queueRunning = true;
+const healthServer =
+  env.WORKER_HEALTH_PORT === 0
+    ? null
+    : createHealthServer(
+        createWorkerHealth({
+          db: handle.db,
+          appRole,
+          logger,
+          queueRunning: () => queueRunning,
+        }),
+        logger,
+      );
+
+if (healthServer !== null) {
+  healthServer.listen(env.WORKER_HEALTH_PORT, () => {
+    logger.info({ port: env.WORKER_HEALTH_PORT }, "sonda de salud escuchando");
+  });
+}
+
 let shuttingDown = false;
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.once(signal, () => {
@@ -318,6 +346,10 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
     logger.info({ signal }, "apagando");
     void (async () => {
       try {
+        // Antes de nada: el worker deja de estar listo **en cuanto** empieza a
+        // apagarse, no cuando termina.
+        queueRunning = false;
+        healthServer?.close();
         await queue.stop();
         await handle.close();
         process.exit(0);

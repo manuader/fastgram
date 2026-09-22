@@ -49,6 +49,16 @@ export const workerEnvSchema = baseEnvSchema
     WORKER_CONCURRENCY: z.coerce.number().int().positive().default(1),
 
     /**
+     * Puerto de la sonda de salud.
+     *
+     * **`0` la apaga**, y el default es `0` a propósito: el worker no servía
+     * ningún puerto hasta ahora, y abrir uno donde nadie lo espera cambia el
+     * despliegue —firewalls, `EADDRINUSE` con varios workers en la misma
+     * máquina— sin que nadie lo haya pedido. Quien la quiera, la enciende.
+     */
+    WORKER_HEALTH_PORT: z.coerce.number().int().min(0).max(65_535).default(0),
+
+    /**
      * MinIO lo exige y el endpoint de cuenta de R2 también lleva el bucket en la
      * ruta; el único caso que quiere `false` es AWS S3 con el bucket en el host,
      * que `ADR-006` no elige. Default escrito, no adivinado por el adaptador.
