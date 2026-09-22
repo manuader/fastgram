@@ -439,9 +439,10 @@ describe(`PgBossQueue dentro de una transacción de Drizzle (ADR-005)${suffix}`,
     expect(await countMarker(outside, markerId)).toBe(1);
     // El payload leído desde el worker tiene que ser el objeto, no un string
     // JSON: es lo que delataría un doble encodeo del `data` jsonb.
-    const status = await queue.getJob<{ contentId: string; nested: { revision: number } }>(
-      jobId,
-    );
+    const status = await queue.getJob<{
+      contentId: string;
+      nested: { revision: number };
+    }>(jobId);
     expect(status?.payload).toEqual({ contentId: markerId, nested: { revision: 3 } });
     expect(status?.state).toBe("queued");
   });
@@ -540,9 +541,10 @@ describe(`PgBossQueue — bridge por defecto sobre postgres.js${suffix}`, () => 
 
     expect(typeof jobId).toBe("string");
     expect(await countJob(readerOf(vanilla), jobId as string)).toBe(1);
-    const status = await plainQueue.getJob<{ contentId: string; nested: { ok: boolean } }>(
-      jobId as string,
-    );
+    const status = await plainQueue.getJob<{
+      contentId: string;
+      nested: { ok: boolean };
+    }>(jobId as string);
     expect(status?.payload).toEqual({
       contentId: "postgres-js-commit",
       nested: { ok: true },

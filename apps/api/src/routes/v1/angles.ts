@@ -62,7 +62,12 @@ import {
 
 import { consumeOnSuccess } from "../../plugins/rate-limit.js";
 import { toContentAngle } from "../../support/serializers.js";
-import { activeAngleIdsOf, listAllAngles, persistAngleWeights, type AngleRow } from "./blitz.js";
+import {
+  activeAngleIdsOf,
+  listAllAngles,
+  persistAngleWeights,
+  type AngleRow,
+} from "./blitz.js";
 import { data, notFound, page } from "./shared.js";
 import type { ZodApp } from "../../server/types.js";
 

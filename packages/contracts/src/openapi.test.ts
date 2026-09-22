@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { UnsupportedZodNodeError, buildOpenApiDocument, toJsonSchema } from "./openapi.js";
+import {
+  UnsupportedZodNodeError,
+  buildOpenApiDocument,
+  toJsonSchema,
+} from "./openapi.js";
 import { contentTextBoxSchema } from "./resources/content.js";
 import { errorEnvelopeSchema } from "./primitives/errors.js";
 import { cursorQuerySchema } from "./primitives/pagination.js";

@@ -17,7 +17,6 @@ import {
   createPgBossQueue,
   drizzleTransactionToExecutor,
   systemClock,
-  MemoryStorage,
 } from "@fastgram/adapters";
 import { ALL_JOB_QUEUES } from "@fastgram/core";
 import { createDb, grantQueueSchemaAccess } from "@fastgram/db";
@@ -28,6 +27,7 @@ import { IdempotencyGuard } from "./http/idempotency.js";
 import { TokenBucketLimiter } from "./http/rate-limit.js";
 import { createDbIdempotencyStore } from "./support/idempotency-store.js";
 import { createMemoryBucketStore } from "./support/bucket-store.js";
+import { checkCanonicalUrlBase, createStorage } from "./support/storage.js";
 
 const env = loadApiEnv();
 
@@ -38,6 +38,22 @@ const handle = createDb({
 
 const clock = systemClock;
 const appRole = env.DATABASE_APP_ROLE === "" ? undefined : env.DATABASE_APP_ROLE;
+
+/**
+ * El storage — `P1-STORAGE-007`, `ADR-006`, §9.8.
+ *
+ * Acá estaba `MemoryStorage`, con un comentario que se llamaba a sí mismo *"un
+ * puesto de guardia"*. La consecuencia no era teórica: la `uploadUrl` de la
+ * reserva era sintética, el PUT del cliente no iba a ningún lado y el `head()`
+ * de la finalización devolvía `null`, así que **`POST /media` respondía `409`
+ * siempre** y el Media Bank entero no funcionaba.
+ *
+ * Construirlo no abre ninguna conexión: el cliente de S3 es perezoso y firmar
+ * es CPU local. O sea que un endpoint inalcanzable **no** se ve acá — se ve en
+ * la primera petición que firma. Es lo correcto: lo que el arranque puede
+ * comprobar es que la configuración existe, no que el bucket responda.
+ */
+const storage = createStorage(env);
 
 /**
  * La cola — `ADR-005`.
@@ -102,16 +118,7 @@ const app = await buildServer({
   deps: {
     db: handle.db,
     clock,
-    /**
-     * `MemoryStorage` es un puesto de guardia, no la solución.
-     *
-     * El adaptador S3/MinIO (`P1-STORAGE-*`) todavía no existe: `packages/adapters`
-     * sólo trae la implementación en memoria. Con esto, los tres endpoints de reserva
-     * responden con la forma correcta de §9.8 pero la `uploadUrl` es sintética y el
-     * PUT del cliente no va a ningún lado. Es explícito a propósito: montar un stub
-     * silencioso que "parece" firmar sería peor que un puerto declarado sin adaptador.
-     */
-    storage: new MemoryStorage(clock, env.S3_PUBLIC_URL ?? "memory://bucket"),
+    storage,
     limiter: new TokenBucketLimiter(createMemoryBucketStore(), clock),
     idempotency: new IdempotencyGuard(
       createDbIdempotencyStore({ db: handle.db, appRole }),
@@ -123,6 +130,36 @@ const app = await buildServer({
   corsOrigins: parseCorsOrigins(env.API_CORS_ORIGINS),
   logLevel: env.LOG_LEVEL,
 });
+
+/**
+ * El hueco del CDN, dicho en voz alta.
+ *
+ * `canonicalObjectUrl` arma la dirección que se **persiste** (`Media.r2Url`,
+ * `Content.files`) firmando una descarga y tirándole la query, así que apunta
+ * al endpoint de firma. Con MinIO en desarrollo eso coincide con
+ * `S3_PUBLIC_URL`; con R2 detrás de un CDN, no, y lo guardado queda apuntando
+ * al endpoint de la API de R2 —que no sirve nada públicamente— sin ningún
+ * síntoma hasta que alguien abre un video.
+ *
+ * Cerrarlo de verdad es un cambio en `@fastgram/adapters` (ver el reporte de
+ * `P1-STORAGE-007`); lo que se puede hacer desde acá es que no sea silencioso.
+ * No aborta el arranque: la configuración es válida, sólo produce URLs que no
+ * son las del CDN, y matar el proceso por eso dejaría sin API a quien todavía
+ * no tiene CDN.
+ */
+const urlCheck = await checkCanonicalUrlBase(storage, env.S3_PUBLIC_URL);
+if (urlCheck.kind === "diverged") {
+  app.log.warn(
+    { canonicalBase: urlCheck.canonicalBase, publicBase: urlCheck.publicBase },
+    "las URLs que se persisten apuntan al endpoint de firma, no a S3_PUBLIC_URL: " +
+      "`Media.r2Url` y `Content.files` van a guardar direcciones que el CDN no sirve",
+  );
+} else if (urlCheck.kind === "unknown") {
+  app.log.warn(
+    { reason: urlCheck.reason },
+    "no se pudo comprobar la base de las URLs canónicas",
+  );
+}
 
 try {
   await app.listen({ port: env.API_PORT, host: env.API_HOST });

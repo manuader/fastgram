@@ -139,7 +139,10 @@ export function describePaymentsContract<TAdapter extends Payments = Payments>(
         // El total se lee del **mismo** adaptador que facturó: `makeAdapter`
         // construye uno nuevo por caso, así que el ledger es de esta
         // instancia y no de ninguna otra.
-        const antes = readTotal === undefined ? 0 : await readTotal(payments, setup.customerRef, meter);
+        const antes =
+          readTotal === undefined
+            ? 0
+            : await readTotal(payments, setup.customerRef, meter);
 
         await payments.recordUsage(request);
         // La segunda no puede lanzar: un reintento de red es normal.

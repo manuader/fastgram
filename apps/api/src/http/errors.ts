@@ -135,7 +135,8 @@ export function translateError(e: unknown): TranslatedError {
   }
 
   if (isDomainError(e)) {
-    const publica = DOMAIN_CODES_WITH_PUBLIC_DETAILS.has(e.code) && e.details !== undefined;
+    const publica =
+      DOMAIN_CODES_WITH_PUBLIC_DETAILS.has(e.code) && e.details !== undefined;
     return {
       status: DOMAIN_STATUS[e.code],
       body: {

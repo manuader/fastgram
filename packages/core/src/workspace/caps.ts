@@ -125,10 +125,7 @@ export function assertCanStartGeneration(
  * agujero: un `POST /posts/delete` con 40 000 ids es un `DELETE ... IN (...)`
  * que bloquea la tabla. Va acá porque es un conteo, no una cuota.
  */
-export function assertBatchSize(
-  ids: readonly string[],
-  caps: CapsFor = HARD_CAPS,
-): void {
+export function assertBatchSize(ids: readonly string[], caps: CapsFor = HARD_CAPS): void {
   if (ids.length === 0) {
     throw new DomainError("out_of_range", "Send at least one id.", { count: 0 });
   }

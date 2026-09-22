@@ -163,12 +163,9 @@ export async function persistAngleWeights(
   companyId: string,
   weights: AngleWeights,
 ): Promise<void> {
-  const updated = await blitzPreferencesRepository.update(
-    tx,
-    { companyId },
-    companyId,
-    { angleWeights: weights },
-  );
+  const updated = await blitzPreferencesRepository.update(tx, { companyId }, companyId, {
+    angleWeights: weights,
+  });
   if (updated !== null) return;
 
   const created = await blitzPreferencesRepository.upsert(
@@ -378,9 +375,13 @@ export function registerBlitzRoutes(app: ZodApp): void {
         // `partial` (AI-016, análisis sin OCR) se trata como no listo. El PRD no
         // distingue "incompleto por el usuario" de "parcial por un motor ausente";
         // queda anotado como abierto en el reporte.
-        const profiles = await companyProfileRepository.list(tx, { companyId }, {
-          limit: 1,
-        });
+        const profiles = await companyProfileRepository.list(
+          tx,
+          { companyId },
+          {
+            limit: 1,
+          },
+        );
         const profile = profiles.items[0];
         if (profile === undefined || profile.status !== "ready") {
           return { kind: "profile_not_ready" as const };

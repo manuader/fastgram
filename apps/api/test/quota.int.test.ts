@@ -20,7 +20,13 @@ let api: ApiHarness;
 
 const WALL_OF_TEXT = {
   canvas: { width: 1080, height: 1920 },
-  video: { url: "https://cdn.example.test/a.mp4", drawX: 0, drawY: 0, drawW: 1080, drawH: 1920 },
+  video: {
+    url: "https://cdn.example.test/a.mp4",
+    drawX: 0,
+    drawY: 0,
+    drawW: 1080,
+    drawH: 1920,
+  },
   text: {
     content: "Cuota",
     x: 50,
@@ -199,7 +205,9 @@ describe("cuando no queda cuota", () => {
     const filas = await api.handle.sql`
       select save_bucket from contents where id = ${String(dataOf(res)["_id"])}::uuid
     `;
-    expect((filas[0] as unknown as { save_bucket: string }).save_bucket).toBe("purchased");
+    expect((filas[0] as unknown as { save_bucket: string }).save_bucket).toBe(
+      "purchased",
+    );
     expect((await ledger())?.content_saves_purchased).toBe(1);
   });
 });

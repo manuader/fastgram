@@ -147,19 +147,23 @@ export function registerCatalogRoutes(app: ZodApp): void {
   // PRD lo cierra con *"curado por tipo de contenido"*. Sin `for`, la respuesta sería
   // una mezcla que ninguna pantalla del producto muestra: el modal `Select Audio` se
   // abre siempre desde un formato concreto.
-  app.get("/audio", { schema: { querystring: listAudioQuerySchema } }, async (request) => {
-    const q = request.query;
+  app.get(
+    "/audio",
+    { schema: { querystring: listAudioQuerySchema } },
+    async (request) => {
+      const q = request.query;
 
-    // Sin `TenantScope`: ver la cabecera. `request.tx` se usa igual porque es el único
-    // camino soportado para hablar con la base desde una ruta, y porque deja la lectura
-    // del catálogo en la misma transacción que cualquier otra del request.
-    const result = await request.tx((tx) =>
-      audioTrackRepository.list(tx, {
-        library: q.for,
-        limit: q.limit,
-        ...(q.cursor === undefined ? {} : { cursor: q.cursor }),
-      }),
-    );
-    return page(result, toAudioTrack);
-  });
+      // Sin `TenantScope`: ver la cabecera. `request.tx` se usa igual porque es el único
+      // camino soportado para hablar con la base desde una ruta, y porque deja la lectura
+      // del catálogo en la misma transacción que cualquier otra del request.
+      const result = await request.tx((tx) =>
+        audioTrackRepository.list(tx, {
+          library: q.for,
+          limit: q.limit,
+          ...(q.cursor === undefined ? {} : { cursor: q.cursor }),
+        }),
+      );
+      return page(result, toAudioTrack);
+    },
+  );
 }

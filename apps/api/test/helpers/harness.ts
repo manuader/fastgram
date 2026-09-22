@@ -45,13 +45,13 @@ import type {
   JobStatus,
   Queue,
   RecurringSpec,
+  Storage,
 } from "@fastgram/ports";
 
 import { buildServer } from "../../src/server/app.js";
 import { IdempotencyGuard } from "../../src/http/idempotency.js";
 import { TokenBucketLimiter } from "../../src/http/rate-limit.js";
 import { createDbIdempotencyStore } from "../../src/support/idempotency-store.js";
-import { createMemoryBucketStore } from "../../src/support/bucket-store.js";
 import { DATABASE_URL, bearer, openDb, seed, type Seed } from "./fixtures.js";
 
 /**
@@ -181,9 +181,69 @@ export interface StartApiOptions {
    * responden `503` sin escribir — que es un camino a probar, no un accidente.
    */
   readonly withQueue?: boolean;
-  /** Default alto: la mayoría de las suites no miden rate limiting. */
+  /**
+   * El limitador. Default: **uno que nunca limita** (ver {@link openLimiter}).
+   *
+   * Decía *"default alto: la mayoría de las suites no miden rate limiting"* y
+   * era falso — el default eran los límites **reales** con un `FixedClock`
+   * detrás, y un bucket que no avanza **no rellena nunca**. `contentBuilds` es
+   * 10/min (§9.6), así que el onceavo request de un archivo que crea, edita o
+   * regenera contenido recibía un `429` que no tenía nada que ver con lo que el
+   * test medía. Se manifiesta como un fallo desconcertante en el test que
+   * alguien acaba de agregar, y encima depende del **orden** de los casos.
+   *
+   * Una suite que sí quiera medir los límites construye el suyo:
+   * `new TokenBucketLimiter(createMemoryBucketStore(), clock)`, como hace
+   * `blitz-angles.int.test.ts`.
+   */
   readonly limiter?: TokenBucketLimiter;
   readonly now?: string;
+  /**
+   * El puerto `Storage`. Default `MemoryStorage`, **y se queda así a propósito.**
+   *
+   * Desde `P1-STORAGE-007` `main.ts` monta `S3Storage`, así que la pregunta
+   * *"¿el arnés debería montar lo mismo?"* es legítima. La respuesta es no para
+   * el default, por dos razones que no son comodidad:
+   *
+   *  1. **Casi ninguna ruta mira el storage.** De las 30 de la v1 lo tocan
+   *     cinco, y sólo en tres de ellas es el objeto de la prueba. Atar las
+   *     otras 25 a que MinIO esté arriba convierte cada fallo de red en un
+   *     test rojo que no dice nada del código.
+   *  2. **`MemoryStorage` no es un mock.** Es la tercera implementación del
+   *     puerto y pasa la misma suite de contrato que la de S3, así que para una
+   *     ruta que sólo necesita *un* storage que funcione mide lo mismo y más
+   *     rápido.
+   *
+   * Lo que sí hacía falta y no existía es **poder pasarle otro**, porque §9.8
+   * es reserva → PUT directo → finalización y `MemoryStorage` no puede probar
+   * el paso 2: sus URLs son sintéticas y el PUT no ocurre. Eso lo ejercita
+   * `media-upload.int.test.ts` contra MinIO, que es el único lugar donde la
+   * prueba vale.
+   */
+  readonly storage?: Storage;
+}
+
+/**
+ * Un limitador que siempre deja pasar.
+ *
+ * El truco está en el store, no en el limitador: `read` devolviendo `null`
+ * significa *"no hay bucket"*, y `TokenBucketLimiter` trata eso como el bucket
+ * lleno. Así que cada request arranca con el presupuesto entero y el `429` no
+ * puede ocurrir, sin tener que tocar `RATE_LIMITS` —que son números normativos
+ * del PRD y no se tocan por comodidad de un test.
+ */
+export function openLimiter(clock: FixedClock): TokenBucketLimiter {
+  return new TokenBucketLimiter(
+    {
+      async read() {
+        return null;
+      },
+      async compareAndSwap() {
+        return true;
+      },
+    },
+    clock,
+  );
 }
 
 export async function startApi(options: StartApiOptions = {}): Promise<ApiHarness> {
@@ -198,9 +258,8 @@ export async function startApi(options: StartApiOptions = {}): Promise<ApiHarnes
     deps: {
       db: handle.db,
       clock,
-      storage: new MemoryStorage(clock),
-      limiter:
-        options.limiter ?? new TokenBucketLimiter(createMemoryBucketStore(), clock),
+      storage: options.storage ?? new MemoryStorage(clock),
+      limiter: options.limiter ?? openLimiter(clock),
       idempotency: new IdempotencyGuard(
         createDbIdempotencyStore({ db: handle.db, appRole: APP_ROLE }),
         clock,

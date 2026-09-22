@@ -19,7 +19,11 @@ import {
 } from "@fastgram/contracts";
 
 import { numberedPageEnvelope } from "./angles.js";
-import { DEFAULT_BLITZ_PREFERENCES, SETTINGS_APPLICATION, activeAngleIdsOf } from "./blitz.js";
+import {
+  DEFAULT_BLITZ_PREFERENCES,
+  SETTINGS_APPLICATION,
+  activeAngleIdsOf,
+} from "./blitz.js";
 
 describe("DEFAULT_BLITZ_PREFERENCES · DATA-006", () => {
   it("los cuatro pesos de formato suman 100, que es lo único que el PRD exige", () => {

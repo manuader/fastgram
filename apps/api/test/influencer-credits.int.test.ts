@@ -88,8 +88,7 @@ async function cargoDe(influencerId: string): Promise<{
     select internal_refs from influencers where id = ${influencerId}::uuid
   `;
   const fila = filas[0] as unknown as
-    | { internal_refs: Record<string, unknown> | null }
-    | undefined;
+    { internal_refs: Record<string, unknown> | null } | undefined;
   const refs = fila?.internal_refs ?? null;
   if (refs === null) return null;
   return (refs["aiStudioCharge"] ?? null) as never;

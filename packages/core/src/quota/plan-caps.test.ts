@@ -8,10 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import {
-  assertCanActivateInfluencer,
-  assertBatchSize,
-} from "../workspace/caps.js";
+import { assertCanActivateInfluencer, assertBatchSize } from "../workspace/caps.js";
 import { assertCanCreateAngle } from "../angles/angles.js";
 import { capsForPlan, HARD_CAPS, PLAN_CAP_OVERRIDES, PLAN_IDS } from "./plans.js";
 
@@ -59,7 +56,10 @@ describe("las aserciones respetan el cap que se les pasa", () => {
   it("con un cap más alto, lo que antes fallaba pasa", () => {
     expect(() => assertCanActivateInfluencer(50)).toThrow();
     expect(() =>
-      assertCanActivateInfluencer(50, capsForPlan("pro", { pro: { activeInfluencers: 500 } })),
+      assertCanActivateInfluencer(
+        50,
+        capsForPlan("pro", { pro: { activeInfluencers: 500 } }),
+      ),
     ).not.toThrow();
   });
 

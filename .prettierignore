@@ -4,3 +4,10 @@ dist/
 .turbo/
 coverage/
 *.md
+
+# Entornos virtuales de Python. `services/vision` instala sus dependencias
+# dentro del repo, así que sin esto `prettier --check .` reporta decenas de
+# archivos de `site-packages` que no son nuestros — y una lista de warnings que
+# siempre trae los mismos ajenos enseña a ignorar la lista entera. Es lo mismo
+# que hace `.dependency-cruiser.cjs` con sus huérfanos legítimos.
+**/.venv/

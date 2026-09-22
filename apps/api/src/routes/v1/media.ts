@@ -63,11 +63,7 @@ import {
   updateVideoMediaRequestSchema,
   videoMediaCategorySchema,
 } from "@fastgram/contracts";
-import {
-  mediaRepository,
-  uploadReservationRepository,
-  type media,
-} from "@fastgram/db";
+import { mediaRepository, uploadReservationRepository, type media } from "@fastgram/db";
 
 import { rateLimit } from "../../plugins/rate-limit.js";
 import {
@@ -224,29 +220,33 @@ export function registerMediaRoutes(app: ZodApp): void {
   );
 
   // ── GET /media ──
-  app.get("/media", { schema: { querystring: listMediaQuerySchema } }, async (request, reply) => {
-    const q = request.query;
+  app.get(
+    "/media",
+    { schema: { querystring: listMediaQuerySchema } },
+    async (request, reply) => {
+      const q = request.query;
 
-    const result = await request.tx((tx) =>
-      mediaRepository.list(
-        tx,
-        { companyId: request.auth.companyId },
-        {
-          limit: q.limit,
-          ...(q.cursor === undefined ? {} : { cursor: q.cursor }),
-          filter: {
-            mediaType: q.type === undefined ? undefined : { eq: q.type },
-            // FR-100: *"Assets generados, de demo e internos **nunca** se listan"*. Es
-            // el listado del Media Bank, no un índice de todo lo que hay en el bucket:
-            // sin este filtro, cada imagen que genera el pipeline aparecería en la grid
-            // del usuario como si la hubiera subido él.
-            origin: { eq: "manual_upload" },
+      const result = await request.tx((tx) =>
+        mediaRepository.list(
+          tx,
+          { companyId: request.auth.companyId },
+          {
+            limit: q.limit,
+            ...(q.cursor === undefined ? {} : { cursor: q.cursor }),
+            filter: {
+              mediaType: q.type === undefined ? undefined : { eq: q.type },
+              // FR-100: *"Assets generados, de demo e internos **nunca** se listan"*. Es
+              // el listado del Media Bank, no un índice de todo lo que hay en el bucket:
+              // sin este filtro, cada imagen que genera el pipeline aparecería en la grid
+              // del usuario como si la hubiera subido él.
+              origin: { eq: "manual_upload" },
+            },
           },
-        },
-      ),
-    );
-    return reply.send(page(result, toMedia));
-  });
+        ),
+      );
+      return reply.send(page(result, toMedia));
+    },
+  );
 
   // ── GET /media/:id ──
   // Sin el filtro de `origin` que sí lleva el listado, y la asimetría es deliberada:

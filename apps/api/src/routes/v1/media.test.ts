@@ -66,9 +66,9 @@ describe("los estados de reserva son los mismos de un lado y del otro", () => {
   });
 
   it("`committed` no vuelve a finalizar: es el segundo cobro", () => {
-    expect(canFinalize(reservationIn("committed"), { companyId: COMPANY }, NOW).kind).toBe(
-      "conflict",
-    );
+    expect(
+      canFinalize(reservationIn("committed"), { companyId: COMPANY }, NOW).kind,
+    ).toBe("conflict");
   });
 });
 

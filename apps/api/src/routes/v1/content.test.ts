@@ -17,7 +17,13 @@ import { __testables } from "./content.js";
 const { contentTypeOf, canvasOf, toContentTextBox } = __testables;
 
 const canvas = { width: 1080, height: 1920 };
-const media = { url: "https://cdn.test/a.mp4", drawX: 0, drawY: 0, drawW: 1080, drawH: 1920 };
+const media = {
+  url: "https://cdn.test/a.mp4",
+  drawX: 0,
+  drawY: 0,
+  drawW: 1080,
+  drawH: 1920,
+};
 const text = {
   content: "hola",
   x: 0,
@@ -115,9 +121,9 @@ describe("RESERVATION_STATUS · la traducción que evita cobrar dos veces", () =
   const future = 10_000;
 
   it("`reserved` vigente es la única que finaliza", () => {
-    expect(canFinalize(reservation("reserved", future), { companyId: "co-1" }, now)).toEqual(
-      { kind: "proceed" },
-    );
+    expect(
+      canFinalize(reservation("reserved", future), { companyId: "co-1" }, now),
+    ).toEqual({ kind: "proceed" });
   });
 
   it("`committed` NO vuelve a finalizar", () => {
@@ -198,6 +204,8 @@ describe("toContentTextBox · fila de base → contrato", () => {
     // `as` en vez de un `parse`, esta fila saldría por la API prometiendo una
     // forma que no cumple.
     expect(() => toContentTextBox(row({ position: { x: 999, y: 0 } }))).toThrow();
-    expect(() => toContentTextBox(row({ font: { family: "anton", weight: 700 } }))).toThrow();
+    expect(() =>
+      toContentTextBox(row({ font: { family: "anton", weight: 700 } })),
+    ).toThrow();
   });
 });

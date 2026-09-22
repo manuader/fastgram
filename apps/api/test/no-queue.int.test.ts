@@ -24,7 +24,13 @@ let api: ApiHarness;
 
 const WALL_OF_TEXT = {
   canvas: { width: 1080, height: 1920 },
-  video: { url: "https://cdn.example.test/a.mp4", drawX: 0, drawY: 0, drawW: 1080, drawH: 1920 },
+  video: {
+    url: "https://cdn.example.test/a.mp4",
+    drawX: 0,
+    drawY: 0,
+    drawW: 1080,
+    drawH: 1920,
+  },
   text: {
     content: "Sin cola",
     x: 50,

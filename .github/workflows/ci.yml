@@ -129,6 +129,21 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgres://fastgram:fastgram@localhost:5432/fastgram_test
+      # Desde `P1-STORAGE-007` las dos apps montan `S3Storage` y las cinco
+      # variables son **obligatorias**: sin ellas el binario muere al arrancar
+      # nombrándolas, que es el punto —un storage que se apaga solo en
+      # producción responde `409` para siempre sin decir nada.
+      #
+      # **No hace falta MinIO en este job.** Construir el cliente de S3 no abre
+      # ninguna conexión y firmar es CPU local; el smoke sólo hace `POST
+      # /content`, que no toca el storage. Con las variables alcanza, y agregar
+      # el servicio haría este job más lento por nada.
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: auto
+      S3_BUCKET: fastgram-test
+      S3_ACCESS_KEY_ID: fastgram
+      S3_SECRET_ACCESS_KEY: fastgram-dev-secret
+      S3_PUBLIC_URL: http://localhost:9000/fastgram-test
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

@@ -22,7 +22,13 @@ let api: ApiHarness;
 /** Payload válido de `wall-of-text`: es el que menos campos exige (§FR-070). */
 const WALL_OF_TEXT = {
   canvas: { width: 1080, height: 1920 },
-  video: { url: "https://cdn.example.test/a.mp4", drawX: 0, drawY: 0, drawW: 1080, drawH: 1920 },
+  video: {
+    url: "https://cdn.example.test/a.mp4",
+    drawX: 0,
+    drawY: 0,
+    drawW: 1080,
+    drawH: 1920,
+  },
   text: {
     content: "Guía rápida",
     x: 50,
@@ -223,7 +229,10 @@ describe("los filtros que antes devolvían 400", () => {
   it("un valor que no es del enum es 400 y no una lista vacía", async () => {
     // La diferencia importa: una lista vacía se ve como "no hay nada" y el
     // cliente la muestra; un 400 dice que la petición estaba mal.
-    const res = await api.request({ method: "GET", path: "/api/v1/content?type=inventado" });
+    const res = await api.request({
+      method: "GET",
+      path: "/api/v1/content?type=inventado",
+    });
     expect(res.status).toBe(400);
   });
 });
@@ -235,7 +244,10 @@ describe("GET /audio", () => {
   });
 
   it("con `for` responde el envelope de cursor", async () => {
-    const res = await api.request({ method: "GET", path: "/api/v1/audio?for=wall-of-text" });
+    const res = await api.request({
+      method: "GET",
+      path: "/api/v1/audio?for=wall-of-text",
+    });
     expect(res.status).toBe(200);
     expect(res.body?.["pagination"]).toMatchObject({ cursor: null, hasMore: false });
   });
@@ -259,7 +271,10 @@ describe("GET /blitz/angles/page — la paginación numerada de §9.10", () => {
   });
 
   it("`page=0` cae en la primera página en vez de dar error", async () => {
-    const res = await api.request({ method: "GET", path: "/api/v1/blitz/angles/page?page=0" });
+    const res = await api.request({
+      method: "GET",
+      path: "/api/v1/blitz/angles/page?page=0",
+    });
     expect([200, 400]).toContain(res.status);
   });
 });

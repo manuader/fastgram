@@ -114,7 +114,6 @@ const BUILD_GRACE_MS = CONTENT_BUILD_DELETE_GRACE_MINUTES * 60 * 1000;
  */
 const UPLOAD_RESERVATION_TTL_SECONDS = MAX_SIGNED_URL_TTL_SECONDS;
 
-
 /**
  * Un rechazo con código del PRD que no tiene `DomainErrorCode`.
  *
@@ -419,19 +418,14 @@ async function bumpAndRebuild(
   job: Omit<ContentBuildRequest, "companyId" | "contentId" | "contentType" | "revision">,
 ): Promise<ContentResource> {
   const revision = row.revision + 1;
-  const updated = await contentRepository.update(
-    tx,
-    { companyId },
-    row.id,
-    {
-      revision,
-      status: "BUILDING",
-      // `lastEdit` es un objeto opaco en el contrato (`z.record`). La fecha va en
-      // ms epoch y no como `Date` para que el JSON guardado hable el mismo
-      // dialecto que el resto de la API, donde toda fecha sale en ms.
-      lastEdit: { at: edit.atMs, outcome: "applied", kind: edit.kind },
-    },
-  );
+  const updated = await contentRepository.update(tx, { companyId }, row.id, {
+    revision,
+    status: "BUILDING",
+    // `lastEdit` es un objeto opaco en el contrato (`z.record`). La fecha va en
+    // ms epoch y no como `Date` para que el JSON guardado hable el mismo
+    // dialecto que el resto de la API, donde toda fecha sale en ms.
+    lastEdit: { at: edit.atMs, outcome: "applied", kind: edit.kind },
+  });
 
   if (updated === null) {
     // El `findById` de arriba la encontró en esta misma transacción. Llegar acá

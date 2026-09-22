@@ -168,7 +168,7 @@ describe("hashState es canónico", () => {
     expect(hashState({ a: 1 })).not.toBe(hashState({ a: 2 }));
   });
 
-  it("no confunde el número 1 con la cadena \"1\"", async () => {
+  it('no confunde el número 1 con la cadena "1"', async () => {
     // Con una serialización que concatenara valores sin tipo, `{a:1}` y
     // `{a:"1"}` colisionarían y dos estados distintos se compararían como uno.
     expect(hashState({ a: 1 })).not.toBe(hashState({ a: "1" }));

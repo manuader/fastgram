@@ -26,7 +26,7 @@ import {
   createPgBossQueue,
   drizzleTransactionToExecutor,
   MemoryMediaRenderer,
-  MemoryStorage,
+  S3Storage,
   systemClock,
 } from "@fastgram/adapters";
 import { ALL_JOB_QUEUES, JOB_QUEUES } from "@fastgram/core";
@@ -71,19 +71,51 @@ const { queue } = createPgBossQueue({
 });
 
 /**
- * `MemoryMediaRenderer` y `MemoryStorage` son puestos de guardia, no la
- * solución — el mismo criterio que `apps/api/src/main.ts` deja escrito para el
- * storage.
+ * `MemoryMediaRenderer` es un puesto de guardia, no la solución.
  *
- * El motor real es `services/render`, que existe, tiene 119 tests y **no tiene
- * adaptador**: `P2-RENDER-002` sigue abierta. Con esto montado, el pipeline
- * corre de punta a punta —se lee la pieza, se "construye", se sube, se cierra
- * en `CREATED`— pero el artefacto son bytes sintéticos derivados del
- * fingerprint. Es explícito a propósito: lo que se prueba así es el pipeline,
- * que es lo que no existía; el render ya está probado del otro lado.
+ * El adaptador real **ya existe** (`HttpMediaRenderer`, `P2-RENDER-002`) y rinde
+ * video de verdad. No está montado acá porque montarlo hoy **rompería todos los
+ * builds**, y los tres bloqueos están medidos en `P2-RENDER-015`: las 42
+ * fuentes no están en la máquina y el default daría `font_unavailable` —que el
+ * adaptador traduce, correctamente, a un `bad_request` permanente: pieza
+ * fallada y save reembolsado en **cada** build—; el servicio exige grant firmado
+ * por defecto y el puerto no tiene por dónde pasarlo; y un slideshow de más de
+ * un slide no entra en un `RenderResult`, que transporta un artefacto.
+ *
+ * Con el de memoria el pipeline corre de punta a punta y el artefacto son bytes
+ * sintéticos. Con el real mal configurado, el pipeline **cobra y reembolsa en
+ * bucle**. El de memoria es peor producto y mejor estado.
  */
 const renderer = new MemoryMediaRenderer();
-const storage = new MemoryStorage(clock, env.S3_PUBLIC_URL ?? "memory://bucket");
+
+/**
+ * El storage, **real** — `P1-STORAGE-007`, `ADR-006`.
+ *
+ * Acá estaba `MemoryStorage`. Con la API ya sobre S3 y el worker sobre memoria,
+ * `contents.files` guardaría `memory://bucket/...`: URLs que no sirve nadie,
+ * escritas en una columna persistida y devueltas por la API como si fueran
+ * buenas.
+ *
+ * Campo por campo igual que `apps/api/src/support/storage.ts`. **No se importa
+ * de ahí**: `apps/worker` no depende de `apps/api`, y si conviene que exista
+ * una sola definición el sitio es `@fastgram/adapters` o `@fastgram/config` —
+ * es una decisión de IMPL §2.2, no de un `import`.
+ *
+ * **Una diferencia real con la API, y no es cosmética:** la API nunca hace
+ * `put()` —los bytes del usuario van directo al bucket por la URL firmada— y el
+ * worker sí, al guardar el render. Ahí entra la deuda declarada del adaptador:
+ * sin `@aws-sdk/lib-storage` no hay multipart, así que `put` con un
+ * `AsyncIterable` **acumula en memoria** hasta `maxBufferedBytes` y falla
+ * fuerte. En la API ese tope es inerte; acá es el que se va a tocar.
+ */
+const storage = new S3Storage({
+  bucket: env.S3_BUCKET,
+  endpoint: env.S3_ENDPOINT,
+  region: env.S3_REGION,
+  accessKeyId: env.S3_ACCESS_KEY_ID,
+  secretAccessKey: env.S3_SECRET_ACCESS_KEY,
+  forcePathStyle: env.S3_FORCE_PATH_STYLE,
+});
 
 /**
  * Los handlers, en **un solo lugar**.

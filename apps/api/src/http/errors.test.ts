@@ -143,7 +143,12 @@ describe("los `details` de dominio que SÍ son contrato", () => {
     // La lista es explícita y corta a propósito: el default es no publicar, y
     // agregar un código tiene que ser un acto deliberado. Este test es lo que
     // hace que invertir el default se note.
-    for (const code of ["not_found", "conflict", "invalid_state", "out_of_range"] as const) {
+    for (const code of [
+      "not_found",
+      "conflict",
+      "invalid_state",
+      "out_of_range",
+    ] as const) {
       const t = translateError(new DomainError(code, "nope", { secreto: "co_intruso" }));
       expect(t.body.error.details).toBeUndefined();
       expect(t.logContext["details"]).toMatchObject({ secreto: "co_intruso" });
