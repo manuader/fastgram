@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "fonts:fetch": "tsx scripts/fetch-fonts.mts",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {

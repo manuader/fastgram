@@ -22,13 +22,43 @@
  * equivocada ve que "anda" y cierra la investigación. `Helvetica`, que existe
  * en cualquier Mac, cae en el fallback igual que una familia inventada.
  *
- * Lo que SÍ funciona es pasar el archivo con `fontfile` (verificado con
- * Georgia.ttf: 545x40 contra 517x39 del fallback, y "Georgia Bold" 633x40).
+ * ── CORRECCIÓN del 2026-09-22: `fontfile` NO es lo que funciona ──────────────
  *
- * Por eso acá cada peso se carga por archivo absoluto y después se VERIFICA
- * contra la sonda centinela. Si las métricas coinciden con las del centinela,
- * la fuente no cargó y se falla con `font_unavailable` en vez de renderizar la
- * pieza con la tipografía equivocada.
+ * Este comentario decía que «lo que SÍ funciona es pasar el archivo con
+ * `fontfile` (verificado con Georgia.ttf: 545x40 contra 517x39 del fallback)».
+ * **Ese experimento estaba confundido**, y la conclusión era falsa.
+ *
+ * Georgia es una fuente del sistema en macOS, así que resuelve **por nombre**.
+ * Lo que aquella medición comparó fue «una familia que existe» contra «una que
+ * no», no «con archivo» contra «sin archivo». Medido de nuevo, aislando:
+ *
+ *     centinela __NoSuchFamily__            517x39
+ *     Georgia SIN fontfile                  545x40   ← resuelve sola
+ *     Georgia CON fontfile                  545x40   ← igual
+ *     Anton CON su propio fontfile          517x39   ← NO carga
+ *     Anton CON el fontfile de Georgia      517x39   ← el archivo se ignora
+ *
+ * La última línea es la que cierra el caso: pedir "Anton" pasándole el archivo
+ * de Georgia da exactamente el centinela. **`fontfile` no se usa.** Lo único
+ * que decide es si el nombre de familia resuelve en el sistema.
+ *
+ * Consecuencia práctica, y es la que importa: **bajar los 42 archivos a un
+ * directorio no alcanza**. En esta máquina, con las 32 fuentes OFL presentes y
+ * válidas —nombres internos correctos, verificados leyendo la tabla `name`—,
+ * las 10 familias siguen sin cargar. `FONTCONFIG_FILE` apuntando al directorio
+ * tampoco cambia nada. Lo que hace falta es que las fuentes estén donde el
+ * sistema las encuentre por nombre, y eso es trabajo del despliegue —del
+ * Dockerfile que `P0-REPO-004` bloquea—, no de este archivo.
+ *
+ * `services/render/scripts/fetch-fonts.mts` consigue los archivos; instalarlos
+ * es otra cosa y todavía no está resuelta.
+ *
+ * ── Lo que sí sigue en pie ───────────────────────────────────────────────────
+ *
+ * La verificación contra la sonda centinela. Es lo que convierte «no cargó» en
+ * un `font_unavailable` ruidoso en vez de una pieza renderizada con la
+ * tipografía equivocada — y es lo que delató que los archivos bajados no
+ * cargaban, cuando la conclusión fácil habría sido «ya están, listo».
  */
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
