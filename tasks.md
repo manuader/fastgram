@@ -244,6 +244,9 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [~] **P1-BRAND-005** Link a post concreto → resuelve al perfil del autor + aviso · `FR-011.1`
   > Resuelto en TikTok y X, donde el handle está en la URL. En **Instagram, YouTube y LinkedIn** hay que preguntarle a la plataforma y no hay `SocialReader` montado: responde `503`. El aviso de `ERR-B12` viaja en `resolvedFromPost`, un campo nuevo y opcional — la forma literal de PRD:2368 no traía ningún canal para él.
 - [ ] **P1-BRAND-006** Extractor `website` / `other_url` (OpenGraph + contenido) · `AI-001`
+  > **Se evaluó montar el handler de `brand-source-analysis` sin extractor, y se decidió NO hacerlo.** El criterio de la trampa 30 dice que entre no registrar un handler y registrarlo sin proveedor gana registrarlo **si lo que escribe es verdad** — y acá no hay ningún valor del enum que lo sea.
+  > `BRAND_SOURCE_FAILURE_REASON` tiene siete motivos y el más cercano, `provider_unavailable`, se le muestra al usuario como `ERR-B07`: *«{platform} isn't responding right now. Try again in a few minutes or add a different source.»*. Las dos mitades son falsas: la plataforma no tiene nada que ver, y **ninguna otra fuente va a funcionar** porque no hay extractor para ninguna. Es el mismo consejo falso que apareció con `ERR-B10`.
+  > Consecuencia hoy, y hay que saberla: **ninguna fuente sale nunca de `pending`.** Lo que la destraba es este extractor, no un handler que mienta. Si hiciera falta cerrar el estado antes, el enum necesita un motivo que hoy no tiene — algo como `no_extractor_configured`, que además es una migración.
 - [ ] **P1-BRAND-007** Extractor Instagram · `D-02`
 - [ ] **P1-BRAND-008** Extractor TikTok · `D-02`
 - [ ] **P1-BRAND-009** Extractor X · `D-02`
