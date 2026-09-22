@@ -56,12 +56,24 @@ const CAPS: SocialPublishCapabilities = {
   platform: "tiktok",
   accountTypes: ["oauth", "warmed"],
   mediaKinds: ["video", "slideshow"],
-  captionLimits: { captionMaxChars: 2200 },
+  // El puerto lo llama `caption`, no `captionMaxChars`. Con el nombre
+  // equivocado el campo quedaba **`undefined`**, así que cualquier
+  // comprobación de longitud (`texto.length > limits.caption`) era siempre
+  // falsa y el límite no se aplicaba — con el test en verde.
+  captionLimits: { caption: 2200 },
   postingModes: ["inbox", "direct"],
   privacyLevels: ["PUBLIC_TO_EVERYONE", "SELF_ONLY"],
   supportsAiLabel: true,
-  supportsPaidPartnership: true,
-  supportsScheduling: true,
+  // `supportsPaidPartnership` y `supportsScheduling` no existen en el puerto:
+  // se llaman así, y faltaban otros cuatro campos obligatorios. El objeto
+  // entero estaba inventado, y compilaba porque esta carpeta no se
+  // typechequeaba.
+  supportsPartnershipDisclosure: true,
+  supportsAutoAddMusic: false,
+  supportsCaptionGeneration: false,
+  supportsNativeScheduling: true,
+  requiredAccountKinds: [],
+  provider: "memoria",
 };
 
 /** Cuenta llamadas: es la aserción que importa para `NFR-015`. */

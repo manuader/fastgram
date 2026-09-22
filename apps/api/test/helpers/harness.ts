@@ -100,8 +100,25 @@ export class RecordingQueue implements Queue {
           "`JOB_QUEUES` (@fastgram/core), nunca de un literal.",
       );
     }
+    // **`created` faltaba, y `queue` no existe en el puerto.** El doble
+    // devolvía `{jobId, queue}` y nadie se enteraba porque `apps/api` no
+    // typechequeaba su carpeta `test/`. Un caso de uso que mire `created` para
+    // distinguir «encolé» de «ya estaba» recibía `undefined` — falsy, o sea que
+    // se comportaba como «ya estaba» **siempre**, y un test de ese camino
+    // pasaba sin probar nada.
+    //
+    // Y ya que se arregla, el doble honra `singletonKey` como el adaptador
+    // real: dos encolados con la misma clave son un job, y el segundo vuelve
+    // con `created: false`.
+    const clave = job.options?.singletonKey;
+    if (clave !== undefined) {
+      const previo = this.enqueued.findIndex((j) => j.options?.singletonKey === clave);
+      if (previo !== -1) {
+        return { jobId: `job_${String(previo + 1)}`, created: false };
+      }
+    }
     this.enqueued.push(job as JobSpec<unknown>);
-    return { jobId: `job_${String(this.enqueued.length)}`, queue: job.queue };
+    return { jobId: `job_${String(this.enqueued.length)}`, created: true };
   }
 
   async enqueueMany(jobs: readonly JobSpec<unknown>[]): Promise<readonly EnqueuedJob[]> {

@@ -26,7 +26,7 @@
  * a las otras suites.
  */
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { FixedClock, MemoryStorage } from "@fastgram/adapters";
 import {
@@ -156,6 +156,19 @@ beforeAll(async () => {
   await app.ready();
 }, 120_000);
 
+/**
+ * **Cada test necesita su propio minuto.**
+ *
+ * La clave del relleno lleva un cubo de un minuto y el reloj es fijo, así que
+ * sin esto el segundo test se deduplica contra el job del primero y ve cero
+ * jobs nuevos. Lo descubrí cuando el doble de la cola pasó a honrar
+ * `singletonKey` como el adaptador real: hasta entonces registraba todo y la
+ * colisión entre tests era invisible.
+ */
+beforeEach(() => {
+  clock.advanceMs(60_000);
+});
+
 afterAll(async () => {
   await app?.close();
   await handle?.close();
@@ -168,27 +181,33 @@ describe("la cola vacía pide su propio relleno", () => {
     expect(pedidosDeRelleno()).toEqual([{ companyId }]);
   });
 
-  it("dos intentos en el mismo minuto comparten la clave: un solo job", async () => {
-    // El dedupe lo hace el adaptador a partir de la clave; lo que se afirma acá
-    // es que la ruta **manda la misma clave**, que es su parte del contrato.
+  it("dos intentos en el mismo minuto son UN job, no dos", async () => {
+    // **Esta aserción cambió, y por qué cambió importa.** Antes decía «dos jobs
+    // registrados con la misma clave», y eso sólo era verdad porque el doble de
+    // la cola registraba todo sin mirar `singletonKey`. O sea que medía la
+    // permisividad del doble, no la ruta.
+    //
+    // El doble ahora deduplica como el adaptador real, así que lo observable es
+    // lo que de verdad pasa en producción: la segunda petición **no crea un
+    // job**. Es una aserción más fuerte y sobre el comportamiento real.
     const antes = clavesDeRelleno().length;
     await correrBlitz();
     await correrBlitz();
 
-    const nuevas = clavesDeRelleno().slice(antes);
-    expect(nuevas).toHaveLength(2);
-    expect(new Set(nuevas).size).toBe(1);
+    expect(clavesDeRelleno().slice(antes)).toHaveLength(1);
   });
 
-  it("un minuto después la clave cambia: el relleno se puede volver a pedir", async () => {
+  it("un minuto después SÍ se crea otro: el relleno se puede volver a pedir", async () => {
     // Con una clave fija por workspace, el adaptador —que deriva de ella un id
-    // determinista— encolaría el refill una sola vez en la vida del workspace.
+    // determinista y permanente— encolaría el refill **una sola vez en la vida**
+    // del workspace. El cubo de tiempo es lo que lo hace repetible.
     const antes = clavesDeRelleno().length;
     await correrBlitz();
     clock.advanceMs(60_000);
     await correrBlitz();
 
     const nuevas = clavesDeRelleno().slice(antes);
+    expect(nuevas).toHaveLength(2);
     expect(new Set(nuevas).size).toBe(2);
   });
 
