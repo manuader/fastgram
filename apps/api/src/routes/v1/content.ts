@@ -382,19 +382,59 @@ async function assertEditable(
   // ERR-P06: *"cancelar no basta, hay que borrarlos"*. Se cuenta en la misma
   // transacción que la edición: contarlos antes, fuera, dejaría pasar una
   // edición sobre una pieza a la que se le acaba de programar un post.
-  const linkedPosts = await postRepository.count(
+  const linkedPosts = await countLinkedPosts(tx, companyId, row.id);
+  if (linkedPosts > 0) {
+    throw linkedPostsRejection(linkedPosts, "editing");
+  }
+}
+
+/**
+ * Cuántos posts apuntan a esta pieza — el criterio **único** de ERR-P06.
+ *
+ * Existe como función y no como dos consultas parecidas porque `PATCH`,
+ * `regenerate` y `DELETE` tienen que contestar lo mismo a *"¿esta pieza tiene
+ * posts enlazados?"*, y el modo de que se separen es justamente que cada ruta
+ * escriba su propio filtro. Lo que cuenta, dicho explícito para que no se
+ * reinvente:
+ *
+ *  - **Todos los estados.** No hay filtro por `status`, así que un post
+ *    `CANCELLED` cuenta igual que uno `SCHEDULED`. Es literal de FR-051
+ *    (PRD:1201) y de FLOW-008 (PRD:1984): *"hay que **borrar** los posts
+ *    (cancelarlos no basta)"*. Agregar acá un `status != 'CANCELLED'` es
+ *    exactamente el bug que el PRD nombra.
+ *  - **Todas las filas.** `posts` no tiene `deletedAt` —el soft-delete es de
+ *    `contents`, `media` y `leads`, ver `_shared.ts`— así que borrar el post es
+ *    un `DELETE` de verdad y la cuenta baja. Si algún día `posts` lo adquiere,
+ *    esta función tiene que seguir contando sólo los vivos o `DELETE /content`
+ *    se vuelve imposible después del primer post.
+ *
+ * Se llama **dentro** de la transacción de la operación. Contar antes, fuera,
+ * deja una ventana en la que alguien programa un post entre la cuenta y la
+ * escritura.
+ */
+async function countLinkedPosts(
+  tx: Transaction,
+  companyId: string,
+  contentId: string,
+): Promise<number> {
+  return postRepository.count(
     tx,
     { companyId },
-    { filter: { contentId: { eq: row.id } } },
+    { filter: { contentId: { eq: contentId } } },
   );
-  if (linkedPosts > 0) {
-    throw new ContentRejection(
-      409,
-      "content_has_linked_posts",
-      "Delete the posts linked to this piece before editing it.",
-      { linkedPostCount: linkedPosts },
-    );
-  }
+}
+
+/** El `409` de ERR-P06, con el verbo de la operación que lo disparó. */
+function linkedPostsRejection(
+  count: number,
+  action: "editing" | "deleting",
+): ContentRejection {
+  return new ContentRejection(
+    409,
+    "content_has_linked_posts",
+    `Delete the posts linked to this piece before ${action} it.`,
+    { linkedPostCount: count },
+  );
 }
 
 /**
@@ -1030,6 +1070,31 @@ export function registerContentRoutes(app: ZodApp): void {
           return { kind: "building" as const };
         }
 
+        // ERR-P06 en el borrado — **esto faltaba**, y era un agujero real.
+        //
+        // El 409 vivía sólo en `assertEditable`, así que `PATCH` y `regenerate` lo
+        // comprobaban y `DELETE` no: se podía borrar una pieza con posts
+        // programados apuntándola. La tabla de dependencias del PRD (§20,
+        // PRD:3317) dice *"Borrar contenido · Sin posts vinculados ·
+        // `409 content_has_linked_posts`"*, o sea que el borrado tiene la misma
+        // precondición que la edición y no una más laxa.
+        //
+        // El criterio es **el mismo** a propósito y por eso sale de la misma
+        // función (ver {@link countLinkedPosts}): un post `CANCELLED` sigue
+        // contando. Si las dos rutas respondieran distinto, cancelar los posts
+        // dejaría borrar la pieza pero no editarla, que es exactamente la
+        // asimetría que FLOW-008 (PRD:1984) niega.
+        //
+        // Va **después** de la ventana de ERR-P02 porque el de 15 minutos es el
+        // más específico: una pieza que todavía se está construyendo no debería
+        // recibir "borrá los posts" como explicación de por qué no se puede
+        // borrar todavía. Y va **dentro** de la transacción del `softDelete`, no
+        // antes, para que no quede una ventana entre contar y borrar.
+        const linkedPosts = await countLinkedPosts(tx, companyId, id);
+        if (linkedPosts > 0) {
+          return { kind: "linked_posts" as const, count: linkedPosts };
+        }
+
         await contentRepository.softDelete(tx, { companyId }, id);
         return { kind: "deleted" as const };
       });
@@ -1042,6 +1107,18 @@ export function registerContentRoutes(app: ZodApp): void {
             message: `Content that is still building can be deleted after ${CONTENT_BUILD_DELETE_GRACE_MINUTES} minutes.`,
           },
         });
+      }
+      if (outcome.kind === "linked_posts") {
+        const rejected = sendRejection(
+          reply,
+          linkedPostsRejection(outcome.count, "deleting"),
+        );
+        // `sendRejection` sólo devuelve `null` para algo que no es un
+        // `ContentRejection`, y lo de arriba lo es. El `throw` es para que el día
+        // que alguien cambie la fábrica, el compilador y el runtime lo digan en
+        // vez de devolver un cuerpo vacío con 200.
+        if (rejected === null) throw new Error("sendRejection no serializó ERR-P06");
+        return rejected;
       }
       return reply.status(204).send();
     },

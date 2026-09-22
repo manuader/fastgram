@@ -513,6 +513,121 @@ describe("DELETE /content/:id", () => {
     expect(res.status).toBe(204);
   });
 
+  /* ── ERR-P06 en el borrado (P2-CONTENT-006) ──────────────────────────────
+   *
+   * Hasta acá el `409 content_has_linked_posts` sólo lo ejercitaba
+   * `POST /content/:id/regenerate`, y `DELETE` **no lo comprobaba**: miraba la
+   * ventana de ERR-P02 y hacía `softDelete`. O sea que se podía borrar una pieza
+   * con posts programados apuntándola, y ningún test lo decía.
+   *
+   * §20 del PRD (PRD:3317) pone *"Borrar contenido · Sin posts vinculados"* en
+   * la misma tabla de dependencias que el resto, con el mismo código.
+   */
+
+  it("con un post vinculado es 409 content_has_linked_posts y NO borra (ERR-P06)", async () => {
+    const { contentId } = await crearEditable(api.data.a.companyId);
+    await api.handle.sql`
+      insert into posts (company_id, content_id, platform, account_type,
+                         connection_id, scheduled_at_utc, status)
+      values (${api.data.a.companyId}::uuid, ${contentId}::uuid, 'tiktok', 'oauth',
+              ${api.data.a.connectionId}::uuid, '2026-10-01T12:00:00Z', 'SCHEDULED')
+    `;
+
+    const res = await api.request({
+      method: "DELETE",
+      path: `/api/v1/content/${contentId}`,
+    });
+
+    expect(res.status).toBe(409);
+    expect(errorOf(res).code).toBe("content_has_linked_posts");
+    expect(errorOf(res).details).toEqual({ linkedPostCount: 1 });
+
+    // La mitad que el status no garantiza. Un 409 que igual hubiera hecho el
+    // `softDelete` deja al post apuntando a una pieza que ya no se lista, y el
+    // síntoma aparece recién cuando el worker va a publicarlo.
+    const filas = await api.handle.sql`
+      select deleted_at from contents where id = ${contentId}::uuid
+    `;
+    expect((filas[0] as unknown as { deleted_at: Date | null }).deleted_at).toBeNull();
+  });
+
+  it("un post CANCELLED también cuenta: cancelar no basta (FLOW-008, PRD:1984)", async () => {
+    // Éste es el caso que fija el criterio. Es el que se pone rojo si alguien
+    // agrega un `status != 'CANCELLED'` al contador "para que se pueda borrar",
+    // y el que hace que `DELETE` y `PATCH` no puedan responder distinto: las dos
+    // rutas cuentan con la misma función.
+    const { contentId } = await crearEditable(api.data.a.companyId);
+    await api.handle.sql`
+      insert into posts (company_id, content_id, platform, account_type,
+                         connection_id, scheduled_at_utc, status)
+      values (${api.data.a.companyId}::uuid, ${contentId}::uuid, 'tiktok', 'oauth',
+              ${api.data.a.connectionId}::uuid, '2026-10-01T12:00:00Z', 'CANCELLED')
+    `;
+
+    const res = await api.request({
+      method: "DELETE",
+      path: `/api/v1/content/${contentId}`,
+    });
+
+    expect(res.status).toBe(409);
+    expect(errorOf(res).code).toBe("content_has_linked_posts");
+
+    // Y `PATCH` dice exactamente lo mismo sobre la misma pieza. Si las dos
+    // rutas se separaran, este par es el que lo delata.
+    const patch = await api.request({
+      method: "PATCH",
+      path: `/api/v1/content/${contentId}`,
+      body: { revision: 1, textBoxes: [{ ...BOX, text: "otra cosa" }] },
+      idempotencyKey: `patch-cancelled-${randomUUID()}`,
+    });
+    expect(patch.status).toBe(409);
+    expect(errorOf(patch).code).toBe("content_has_linked_posts");
+  });
+
+  it("borrados los posts, la misma pieza sí se borra", async () => {
+    // El control. Sin esto, un `409` constante —"nunca se puede borrar"— pasaría
+    // los dos casos de arriba sin que nadie lo note.
+    const { contentId } = await crearEditable(api.data.a.companyId);
+    await api.handle.sql`
+      insert into posts (company_id, content_id, platform, account_type,
+                         connection_id, scheduled_at_utc, status)
+      values (${api.data.a.companyId}::uuid, ${contentId}::uuid, 'tiktok', 'oauth',
+              ${api.data.a.connectionId}::uuid, '2026-10-01T12:00:00Z', 'CANCELLED')
+    `;
+    expect(
+      (await api.request({ method: "DELETE", path: `/api/v1/content/${contentId}` }))
+        .status,
+    ).toBe(409);
+
+    await api.handle.sql`delete from posts where content_id = ${contentId}::uuid`;
+
+    const res = await api.request({
+      method: "DELETE",
+      path: `/api/v1/content/${contentId}`,
+    });
+    expect(res.status).toBe(204);
+  });
+
+  it("un post de la pieza de OTRO workspace no bloquea el borrado propio", async () => {
+    // El contador va por `postRepository`, que exige `companyId`: un post ajeno
+    // no puede sumar. Se comprueba porque el fallo sería silencioso y muy
+    // confuso — "no puedo borrar mi pieza y no tengo ningún post".
+    const { contentId } = await crearEditable(api.data.a.companyId);
+    await api.handle.sql`
+      insert into posts (company_id, content_id, platform, account_type,
+                         connection_id, scheduled_at_utc, status)
+      values (${api.data.b.companyId}::uuid, ${api.data.b.contentId}::uuid, 'tiktok',
+              'oauth', ${api.data.b.connectionId}::uuid, '2026-10-01T12:00:00Z',
+              'SCHEDULED')
+    `;
+
+    const res = await api.request({
+      method: "DELETE",
+      path: `/api/v1/content/${contentId}`,
+    });
+    expect(res.status).toBe(204);
+  });
+
   it("la pieza de otro workspace es 404 y sigue viva", async () => {
     const res = await api.request({
       method: "DELETE",

@@ -126,6 +126,12 @@ const app = await buildServer({
     ),
     appRole,
     queue,
+    // Sólo para la sonda de `/health` (`P1-OBS-004`): con el nombre del esquema
+    // se puede comprobar que el rol de la aplicación **vea** las tablas de
+    // pg-boss, que es justo el fallo que describe el bloque de
+    // `grantQueueSchemaAccess` de más arriba y que hasta ahora no se notaba
+    // hasta la primera petición que encolaba.
+    queueSchema: env.QUEUE_SCHEMA,
   },
   corsOrigins: parseCorsOrigins(env.API_CORS_ORIGINS),
   logLevel: env.LOG_LEVEL,

@@ -14,7 +14,7 @@
  * §9.3: *"Cambios breaking → nueva versión mayor de ruta"*; montar v2 más adelante es
  * registrar otro plugin al lado.
  */
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import {
@@ -34,6 +34,12 @@ import {
 import { INVALID_API_KEY_MESSAGE, describeRejection } from "../auth/api-keys.js";
 import { resolveScope, runScoped } from "../auth/scope.js";
 import { registerV1Routes } from "../routes/v1/index.js";
+import {
+  createHealthChecker,
+  livenessReport,
+  probesFor,
+  statusCodeFor,
+} from "./health.js";
 import type { ApiDeps, ZodApp } from "./types.js";
 
 /** §9.3 — prefijo de la versión mayor. */
@@ -45,6 +51,14 @@ export interface BuildServerOptions {
   readonly logLevel?: string;
   /** `false` en tests, para que la suite no escupa una línea por request. */
   readonly enableAccessLog?: boolean;
+  /**
+   * TTL del cache de `/health`. Default: `HEALTH_CACHE_TTL_MS` (3 s).
+   *
+   * `0` lo desactiva, y es lo que necesita cualquier test que quiera ver una
+   * dependencia caerse: el `Clock` inyectado está congelado en la suite, así que
+   * una entrada cacheada no vence nunca. Ver la nota de `health.ts`.
+   */
+  readonly healthCacheTtlMs?: number;
 }
 
 export async function buildServer(options: BuildServerOptions): Promise<FastifyInstance> {
@@ -87,9 +101,44 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   if (options.enableAccessLog !== false) registerAccessLogging(app);
 
   // ── /health: sin auth y fuera de la versión ──
+  //
   // Fuera de `/api/v1` a propósito: es para el orquestador, no para integradores, y
   // no debe cambiar cuando la API saque una v2.
-  app.get("/health", async () => ({ status: "ok", service: "api" }));
+  //
+  // `P1-OBS-004`: acá había un literal `{status:"ok"}` que respondía 200 con
+  // Postgres caído. El razonamiento entero —por qué liveness y readiness son dos
+  // rutas, por qué hay cache y de cuánto, y qué puede salir en el cuerpo— está en
+  // `server/health.ts`; lo que queda acá es el cableado.
+  const health = createHealthChecker({
+    probes: probesFor(deps),
+    clock: deps.clock,
+    ...(options.healthCacheTtlMs === undefined
+      ? {}
+      : { ttlMs: options.healthCacheTtlMs }),
+    // El motivo real del fallo va **al log y sólo al log**: el cuerpo de la
+    // respuesta es público y no lleva ni el mensaje de Postgres ni el del SDK.
+    onProbeFailure: (dependency, error) => {
+      app.log.error({ dependency, err: error }, "health probe failed");
+    },
+  });
+
+  /**
+   * Liveness. No toca ninguna dependencia: si falla, la respuesta correcta del
+   * orquestador es reiniciar, y reiniciar no arregla una base caída.
+   */
+  app.get("/health/live", async () => livenessReport());
+
+  /** Readiness. Es el que puede fallar. */
+  const readiness = async (_request: unknown, reply: FastifyReply): Promise<unknown> => {
+    const report = await health.check();
+    return reply.status(statusCodeFor(report)).send(report);
+  };
+
+  app.get("/health/ready", readiness);
+  // La URL que ya estaba desplegada se queda con la readiness, que es la pregunta
+  // que alguien que la consulta se está haciendo. Ver la nota operativa de
+  // `health.ts` sobre mover una livenessProbe existente a `/health/live`.
+  app.get("/health", readiness);
 
   // ── /api/v1: todo lo de adentro pasa por el scope ──
   await app.register(

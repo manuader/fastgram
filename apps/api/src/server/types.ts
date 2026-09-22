@@ -71,6 +71,17 @@ export interface ApiDeps {
    * rutas responden `503 service_unavailable`; no crean la fila.
    */
   readonly queue?: Queue;
+  /**
+   * Esquema de pg-boss (`QUEUE_SCHEMA`). Sólo lo usa la sonda de `/health`.
+   *
+   * Está acá y no dentro de `queue` porque el puerto `Queue` no expone su
+   * esquema —ni tiene por qué: es un detalle del adaptador de pg-boss— y
+   * `packages/ports` no se toca desde esta tarea. Sin este dato la sonda de la
+   * cola sólo puede decir si está montada; con él comprueba además que el rol de
+   * la aplicación vea las tablas, que es el fallo real que describe
+   * `packages/db/src/queue-grants.ts`. Ver `server/health.ts`.
+   */
+  readonly queueSchema?: string;
 }
 
 declare module "fastify" {

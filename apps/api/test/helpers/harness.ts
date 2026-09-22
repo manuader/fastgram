@@ -221,6 +221,25 @@ export interface StartApiOptions {
    * prueba vale.
    */
   readonly storage?: Storage;
+  /**
+   * TTL del cache de `/health`. Default **`0`**, o sea sin cache.
+   *
+   * El default de producción son 3 s y acá se desactiva a propósito: el `Clock`
+   * del arnés es un `FixedClock` y **no avanza**, así que una entrada cacheada no
+   * vencería nunca y dos llamadas seguidas devolverían lo mismo aunque la
+   * dependencia se hubiera caído en el medio. Es la misma trampa que ya está
+   * anotada para `TokenBucketLimiter` unas líneas más arriba. Una suite que
+   * quiera medir el cache pasa el número que quiera medir.
+   */
+  readonly healthCacheTtlMs?: number;
+  /**
+   * Esquema de pg-boss para la sonda de la cola. Default: **sin esquema**.
+   *
+   * Sin él la sonda sólo comprueba que la cola esté montada, que es lo correcto
+   * para una suite cuya cola es `RecordingQueue` y no pg-boss. `health.int.test.ts`
+   * lo pasa explícitamente para ejercitar el nivel que consulta la base.
+   */
+  readonly queueSchema?: string;
 }
 
 /**
@@ -267,9 +286,11 @@ export async function startApi(options: StartApiOptions = {}): Promise<ApiHarnes
       // Sin esto RLS no se aplica y la suite mide la mitad de lo que dice medir.
       appRole: APP_ROLE,
       ...((options.withQueue ?? true) ? { queue } : {}),
+      ...(options.queueSchema === undefined ? {} : { queueSchema: options.queueSchema }),
     },
     logLevel: "silent",
     enableAccessLog: false,
+    healthCacheTtlMs: options.healthCacheTtlMs ?? 0,
   });
   await app.ready();
 

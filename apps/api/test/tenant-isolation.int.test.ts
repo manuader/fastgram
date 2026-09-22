@@ -274,8 +274,17 @@ describe("RLS: la segunda capa existe de verdad (IMPL §2.4 capa 1)", () => {
 
 describe("health", () => {
   it("responde sin autenticación y fuera de /api/v1", async () => {
+    // `P1-OBS-004`: el cuerpo dejó de ser `{status:"ok", service:"api"}` a secas.
+    // Lo que este archivo tiene que seguir midiendo es lo suyo —que la ruta no
+    // pide credencial y no está bajo `/api/v1`—; qué comprueba y qué puede
+    // fallar lo mide `health.int.test.ts`.
     const res = await app.inject({ method: "GET", url: "/health" });
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body)).toEqual({ status: "ok", service: "api" });
+    expect(JSON.parse(res.body)).toMatchObject({ status: "ok", service: "api" });
+  });
+
+  it("`/health/live` tampoco pide credencial", async () => {
+    const res = await app.inject({ method: "GET", url: "/health/live" });
+    expect(res.statusCode).toBe(200);
   });
 });
