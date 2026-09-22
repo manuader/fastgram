@@ -78,6 +78,44 @@ El detalle está en `docs/IMPLEMENTATION-PLAN.md` §2. No lo repito acá para qu
 
 ## 4. Qué cambió, sesión por sesión
 
+### Sesión 2026-09-22 — Cuatro agentes en paralelo, y un 500 que nadie veía
+
+Cuatro tandas simultáneas en directorios disjuntos: `services/render` (audio
+opcional + endpoint de artefacto), el adaptador HTTP de `MediaRenderer`, el cobro
+de créditos de `POST /influencers`, y el saldo comprado + el barrido de cuota.
+
+**Programar un post devolvía 500, siempre.** Apareció verificando, no haciendo
+una tarea. `posts.ts` encolaba en `"publish-post"`, un literal escrito a mano
+cuando no existía `JOB_QUEUES`; el registro nombró a esa cola `"publishing"`.
+`main.ts` registra `[...ALL_JOB_QUEUES]` y pg-boss se niega a encolar en una cola
+no registrada dentro de una transacción. Cuarta aparición de la trampa 19, y la
+primera con consecuencia inmediata. Vivió con 82 tests verdes por **tres**
+razones y hubo que arreglar las tres: el literal, el arnés que aceptaba cualquier
+nombre, y que **nadie ejercitaba la ruta** — con el bug puesto y el arnés ya
+estricto, los 82 seguían verdes.
+
+**`withoutCompany` no saltea RLS.** Con `FORCE ROW LEVEL SECURITY` y sin GUC, un
+`UPDATE` afecta **cero filas sin error**, y en desarrollo la conexión es
+superusuaria y parece andar. Trampa 16 por cuarta vez. Medido:
+`UPDATE` pelado → 0 filas; la función `SECURITY DEFINER` → 1.
+
+**El saldo comprado se perdía al cambiar de ciclo**, en silencio: §16.2 dice que
+no caduca y `lockPeriod` creaba el período nuevo en 0.
+
+**`POST /influencers` no cobraba nada** — 250 créditos y 15–20 min de GPU, el
+driver de costo #1.
+
+**Y el adaptador de render existe y no está montado**, a propósito: hoy rompería
+todos los builds (ver `P2-RENDER-015`). Con el de memoria el artefacto es
+sintético; con el real mal configurado el pipeline cobra y reembolsa en bucle.
+
+Dos lecciones de coordinación, en la trampa 25: **el punto de integración entre
+dos agentes no lo verifica ninguno de los dos**, y **arreglar estado compartido
+por mensaje dura una sesión** — hay que arreglarlo en el default.
+
+Detalle en `docs/SESSION-2026-09-22-cuatro-agentes.md`.
+
+
 ### Sesión 2026-09-21 (cierre 3) — El worker consume, y el círculo cierra
 
 **Nadie consumía la cola.** `POST /content` creaba la pieza, **cobraba el content save**
@@ -289,17 +327,17 @@ pnpm verify           # lint · typecheck · boundaries · consistency · test
 |---|---|---|
 | `pnpm lint` | eslint una vez sobre todo el repo | **0 errores** |
 | `pnpm typecheck` | `tsc --noEmit` por paquete, 12 tareas | **12 successful** |
-| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 395 módulos · **1077 dependencias** |
-| `pnpm consistency` | los números del PRD escritos en más de un paquete | **18 invariantes** |
-| `pnpm test` | unitarios | **1.455** |
+| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 400 módulos · **1103 dependencias** |
+| `pnpm consistency` | los números del PRD escritos en más de un paquete | **19 invariantes** |
+| `pnpm test` | unitarios | **1.556** |
 
 Desglose de `pnpm test`, por si uno solo se cae:
 
 | Paquete | Tests | | Paquete | Tests |
 |---|---|---|---|---|
-| `core` | 425 | | `adapters` | 266 |
+| `core` | 425 | | `adapters` | 348 |
 | `contracts` | 253 | | `ui` | 170 |
-| `render-service` | 119 | | `api` | 111 |
+| `render-service` | 138 | | `api` | 111 |
 | `db` | 52 | | `web` | 22 |
 | `worker` | 28 | | `config` | 9 |
 
@@ -307,7 +345,7 @@ Desglose de `pnpm test`, por si uno solo se cae:
 
 ```bash
 docker compose up -d                       # Postgres con pgvector + MinIO con el bucket creado
-pnpm test:int                              # db 99 · api 67 · worker 21 → 187
+pnpm test:int                              # db 116 · api 91 · worker 34 → 241
 pnpm --filter @fastgram/adapters test:int  # 9 — encolado dentro de la transacción de Drizzle
 pnpm build && pnpm smoke:binary           # el artefacto que se despliega, de verdad
 ```
@@ -342,10 +380,10 @@ motor ausente, todo análisis devuelve `partial`: es lo que manda `AI-016`.
 ### Estado del backlog
 
 ```bash
-grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 92
-grep -c '^- \[~\]' tasks.md     # en curso o parciales — hoy: 9
+grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 95
+grep -c '^- \[~\]' tasks.md     # en curso o parciales — hoy: 10
 grep -c '^- \[!\]' tasks.md     # bloqueadas — hoy: 1
-grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 275
+grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 276
 ```
 
 ### Lo que `pnpm verify` NO mide
@@ -533,6 +571,34 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 275
     Regla que resume las trampas 20, 22, 23 y ésta: **un test verde no dice nada hasta que se lo
     vio rojo.** Romper el mecanismo y volver a correr cuesta un minuto.
 
+25. **Coordinar agentes en paralelo tiene dos modos de falla propios**, y los dos
+    aparecieron en la misma tanda.
+
+    **(a) El punto de integración entre dos agentes no lo verifica ninguno de los
+    dos.** Uno construía `services/render` y el otro el adaptador HTTP contra ese
+    mismo servicio. El reporte del segundo declaraba, como bloqueo de producto
+    número uno, que el servicio seguía exigiendo `audio` — y eso **ya era falso**:
+    el primero lo había hecho opcional mientras el segundo trabajaba. Era verdad
+    cuando lo leyó y mentira cuando lo escribió, y ninguno de los dos tenía cómo
+    saberlo. El coordinador tiene que levantar las dos mitades **en su estado
+    final** y medir el cruce; si no, el sistema queda con dos partes que cada una
+    cree que la otra está rota. Acá fueron tres renders reales, con `ffprobe` del
+    artefacto bajado a través del adaptador.
+
+    Corolario para los prompts: **fijá el contrato por escrito antes de
+    despachar**, y decile a cada uno que si le parece que hay que cambiarlo lo
+    **reporte** en vez de cambiarlo. Eso funcionó — el `href` encajó sin una ronda
+    de corrección.
+
+    **(b) Arreglar estado compartido por mensaje dura una sesión.** Les pasé la
+    misma `DATABASE_URL` a dos agentes, y el fixture de `apps/api` arranca con un
+    `truncate` de nueve tablas que son las que siembra el otro. Lo vi a tiempo y
+    le mandé una base aparte por mensaje — y eso arregló esa sesión y **dejó la
+    trampa para la siguiente**, porque el default del fixture seguía apuntando a
+    la base compartida. La primera corrida de `pnpm test:int` pasó igual, por
+    timing, que es la peor forma de tenerlo. Se arregla **en el default** (la base
+    se deriva del `DATABASE_URL` y el `globalSetup` la crea) o vuelve.
+
 ## 8. Qué falta
 
 El backlog real es `tasks.md`. El estado de hoy está en §6.
@@ -560,7 +626,8 @@ archivo distribuible que se pueda nombrar sin inventarlo** — es una decisión 
 
 | Qué | Por qué urge | Tarea |
 |---|---|---|
-| **No hay adaptador real de `MediaRenderer`**: el worker monta el de memoria y los bytes son sintéticos | es lo único que separa al pipeline de build de ser de verdad. El handler ya está escrito contra el puerto | `P2-RENDER-002` |
+| **El adaptador de `MediaRenderer` existe, rinde video real y NO está montado** | montarlo hoy rompe **todos** los builds: sin fuentes da `font_unavailable` permanente —pieza fallada y save reembolsado en cada build—, el servicio exige grant firmado y el puerto no tiene por dónde pasarlo, y un slideshow multi-slide no entra en `RenderResult` | `P2-RENDER-015` |
+| **`POST /influencers` cobra 250 créditos y nadie los libera** | mismo agujero que tuvieron los content saves: un cargo sin quien lo devuelva no vuelve nunca. Y el registro del cargo está en un `jsonb` que un `update` reemplaza entero | `P1-QUOTA-011` |
 | **`S3Storage` existe y no está montado**: las dos apps montan `MemoryStorage` | `POST /media` siempre da `409`, y las URLs que el worker guarda en `contents.files` apuntan a `memory://bucket` | `P1-STORAGE-*` |
 | **20 de las 21 colas siguen sin consumidor** | la API ya encola en varias; un job sin handler no falla, se queda esperando para siempre | `P1-QUEUE-*` |
 | `text-subtle` en modo oscuro no llega a AA para texto normal (3,65:1 y 3,16:1) | accesibilidad, y hoy está sin restricción de uso | `P1-UI-011` |
@@ -593,5 +660,6 @@ Los dos bloqueantes que estaban acá —`P0-REPO-013` (los paquetes exportaban `
 | [`SESSION-2026-09-21-plan-implementacion.md`](SESSION-2026-09-21-plan-implementacion.md) | cómo se llegó del PRD al plan, y qué se descartó |
 | [`SESSION-2026-09-21-implementacion.md`](SESSION-2026-09-21-implementacion.md) | cómo se organizó el trabajo en paralelo, y las trampas que costaron tiempo |
 | [`SESSION-2026-09-21-escritura-y-endpoints.md`](SESSION-2026-09-21-escritura-y-endpoints.md) | la escritura en los repositorios y los 16 endpoints, con cuatro agentes en paralelo |
+| [`SESSION-2026-09-22-cuatro-agentes.md`](SESSION-2026-09-22-cuatro-agentes.md) | cuatro tandas en paralelo: el contrato entre agentes, el 500 que nadie veía, y las dos trampas de coordinar |
 | [`SESSION-2026-09-21-worker-content-build.md`](SESSION-2026-09-21-worker-content-build.md) | el handler que cierra el círculo, y dónde va lo que dos apps comparten |
 | [`../CLAUDE.md`](../CLAUDE.md) | instrucciones de arranque para agentes |
