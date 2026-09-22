@@ -270,6 +270,15 @@ export {
   type RefillResult,
 } from "./discovery-queue.js";
 export {
+  createJudgmentSink,
+  judgmentSinkStore,
+  writeJudgmentRecord,
+  type DbJudgmentSink,
+  type JudgmentRecordInput,
+  type JudgmentRecordRow,
+  type JudgmentSinkOptions,
+} from "./judgment-sink.js";
+export {
   claimCreditsRefund,
   influencerCreditsStore,
   lockInfluencer,
