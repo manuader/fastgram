@@ -78,6 +78,61 @@ El detalle está en `docs/IMPLEMENTATION-PLAN.md` §2. No lo repito acá para qu
 
 ## 4. Qué cambió, sesión por sesión
 
+### Sesión 2026-09-22 (3) — El documento mentía sobre 67 tareas
+
+**Lo más importante de esta sesión no es código.** `tasks.md` —el documento que
+decide en qué se trabaja— sobreestimaba lo pendiente en 67 tareas, y estuve a
+punto de despachar dos agentes a construir lo que ya existía.
+
+Apareció así: toda `P2-ANGLE` figuraba `[ ]` mientras su ruta tenía **560
+líneas** con las tres mutaciones reconciliando pesos dentro de la misma
+transacción. Un minuto después, la nota de `P2-RENDER-002` citaba un
+`payload.ts` que **no existe**, para afirmar algo que `P2-RENDER-014` había
+arreglado tres líneas más abajo en el mismo documento.
+
+```
+antes   99 hechas · 11 parciales · 276 pendientes
+ahora  145 hechas · 36 parciales · 206 pendientes
+```
+
+El patrón es uniforme: **capa de dominio completa y bien testeada, sin una sola
+ruta HTTP ni UI encima.** P1-BRAND tiene 11 tareas así — defensa contra SSRF con
+tests de IP decimal y el borde 172.32, y cero rutas `/brand` en la API.
+
+Una casilla va para atrás: `P2-RENDER-009` de `[x]` a `[~]`, porque la
+validación existe sólo en `services/render`, que no está montado.
+
+**Cinco notas en prosa afirmaban cosas falsas.** No se borraron: cada una quedó
+con qué decía y por qué cayó. Una nota que desaparece sin rastro no enseña que
+las notas caducan.
+
+**Lo que entró de código.** El adaptador de render estaba atrasado respecto de
+su propio servicio: `/probe`, `/normalize` y `/thumbnail` existían desde la
+tanda anterior y seguía lanzando «does not expose». No era inocuo —
+`build-handler` llama a `thumbnail()` en **cada** build dentro de un `try/catch`
+que loguea y sigue, así que montarlo habría dejado **todas** las piezas sin
+miniatura. Tercera vez en tres tandas que el punto de integración entre dos
+agentes no lo verifica ninguno.
+
+El puerto `MediaRenderer` lleva ahora `MediaAuthorization` obligatoria, **al
+lado** del job y no adentro: `fingerprint(job)` hashea el job y toda
+autorización lleva vencimiento, así que un `expiresAt` adentro haría que el
+cache de IMPL §5 no acierte **nunca** — con factura de CPU como único síntoma.
+La firma se verificó contra el servicio real, no contra un doble.
+
+Y `renderAll` subió al puerto: hasta hoy **un slideshow de más de un slide no se
+podía construir en absoluto**.
+
+`discovery-refill`: nada en todo el repo insertaba una fila en `suggestions`, y
+por eso `POST /blitz` daba siempre «cola vacía». El handler está montado; **el
+productor no existe todavía**, y es el próximo tapón.
+
+También: el `DELETE` de contenido no comprobaba posts enlazados, `GET /health`
+respondía 200 con Postgres caído, y `pnpm smoke:binary` no arrancaba en una
+máquina sin `.env` desde que las variables de S3 se volvieron obligatorias.
+
+Detalle completo en `docs/SESSION-2026-09-22-tercera-tanda.md`.
+
 ### Sesión 2026-09-22 (2) — Lo que nunca había funcionado
 
 Cuatro tandas más en paralelo. El hilo: **todo lo que apareció estaba roto desde
@@ -345,7 +400,7 @@ Y una de la sesión del worker:
 
 ## 6. Cómo verificar
 
-**Números al 2026-09-21.** Son lo que permite distinguir "lo rompí yo" de "ya estaba rojo".
+**Números al 2026-09-22 (tercera tanda).** Son lo que permite distinguir "lo rompí yo" de "ya estaba rojo".
 Si tu corrida da menos, algo se perdió; si da más, actualizá esta sección.
 
 ```bash
@@ -360,25 +415,25 @@ pnpm verify           # lint · typecheck · boundaries · consistency · test
 | `pnpm format:check` | prettier sobre el repo. **Entró en `verify` tarde**: CI lo corría solo y llevaba tandas en rojo sin que nadie lo viera | **limpio** |
 | `pnpm lint` | eslint una vez sobre todo el repo | **0 errores** |
 | `pnpm typecheck` | `tsc --noEmit` por paquete, 12 tareas | **12 successful** |
-| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 424 módulos · **1215 dependencias** |
+| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 439 módulos · **1265 dependencias** |
 | `pnpm consistency` | los números del PRD escritos en más de un paquete | **19 invariantes** |
-| `pnpm test` | unitarios | **1.670** |
+| `pnpm test` | unitarios | **1.772** |
 
 Desglose de `pnpm test`, por si uno solo se cae:
 
 | Paquete | Tests | | Paquete | Tests |
 |---|---|---|---|---|
-| `core` | 430 | | `adapters` | 348 |
+| `core` | 430 | | `adapters` | 355 |
 | `contracts` | 253 | | `ui` | 170 |
-| `render-service` | 207 | | `api` | 119 |
-| `db` | 52 | | `web` | 54 |
+| `render-service` | 207 | | `web` | 137 |
+| `api` | 131 | | `db` | 52 |
 | `worker` | 28 | | `config` | 9 |
 
 ### Lo que necesita servicios levantados
 
 ```bash
 docker compose up -d                       # Postgres con pgvector + MinIO con el bucket creado
-pnpm test:int                              # db 147 · api 137 · worker 62 · adapters 9 → 355
+pnpm test:int                              # db 147 · api 140 · worker 86 · adapters 9 → 382
 pnpm --filter @fastgram/adapters test:int  # 9 — encolado dentro de la transacción de Drizzle
 pnpm build && pnpm smoke:binary           # el artefacto que se despliega, de verdad
 ```
@@ -413,10 +468,10 @@ motor ausente, todo análisis devuelve `partial`: es lo que manda `AI-016`.
 ### Estado del backlog
 
 ```bash
-grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 99
-grep -c '^- \[~\]' tasks.md     # en curso o parciales — hoy: 11
+grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 145
+grep -c '^- \[~\]' tasks.md     # en curso o parciales — hoy: 36
 grep -c '^- \[!\]' tasks.md     # bloqueadas — hoy: 1
-grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 276
+grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 206
 ```
 
 ### Lo que `pnpm verify` NO mide
@@ -692,6 +747,88 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 276
     Por eso el renderer de memoria sí se monta —un artefacto sintético se nota—
     y el publicador de memoria no.
 
+31. **Una rotura deliberada sobre un paquete que publica `dist` no vale hasta
+    recompilar.** Rompí el advisory lock en `packages/db/src`, corrí los 23
+    tests del refill y quedaron **verdes**: iba a reportar que el agente se
+    había equivocado. `apps/worker` resuelve `@fastgram/db` a su `dist`, así que
+    rompí código que no se estaba ejecutando. Recompilando, el test cae con el
+    mensaje exacto que el agente había reportado.
+
+    Es la trampa más peligrosa de la lista, porque **da el resultado
+    tranquilizador**: «lo rompí y no pasó nada» se lee como «la guarda es
+    inútil» o como «el test es malo», y las dos conclusiones son falsas. Antes
+    de creerle a una rotura, comprobá que llegó al artefacto que se ejecuta —
+    `grep` sobre el `dist`, no sobre el `src`.
+
+32. **Las notas en prosa de `tasks.md` envejecen peor que las casillas, y se
+    revisan menos.** En la auditoría del 2026-09-22, **cinco** afirmaban cosas
+    falsas; una citaba un archivo borrado (`render/payload.ts`) para justificar
+    una limitación que la tarea de tres líneas más abajo había levantado.
+
+    Una casilla la mira cualquiera que planifica; una nota la lee quien ya
+    decidió tomar la tarea, y para entonces suena a contexto y no a afirmación
+    verificable. Cuando corrijas una, **dejá escrito qué decía y por qué cayó**:
+    borrarla sin rastro no enseña que las notas caducan.
+
+33. **El patrón que desincronizó el backlog: dominio completo, sin una sola ruta
+    encima.** `P2-ANGLE` entero figuraba pendiente con 560 líneas de ruta
+    implementadas; P1-BRAND tiene 11 tareas con dominio testeado —SSRF con IP
+    decimal y el borde 172.32— y **cero** rutas `/brand`.
+
+    Quien escribe el dominio marca su parte y nadie marca la tarea, porque la
+    tarea describe la capacidad de punta a punta. Antes de planificar sobre
+    `tasks.md`, **mirá el código de la primera sección que vayas a tomar**:
+    cuesta un minuto y evita construir lo que ya está.
+
+34. **Un test de concurrencia puede estar midiendo `connect(2)`.** Tres entregas
+    lanzadas con `Promise.all` no se solapaban: `postgres.js` conecta bajo
+    demanda, la primera reusaba la conexión abierta y las otras dos perdían
+    ~8 ms montando el TCP. El test pasaba **sin guarda**. Con el pool caliente y
+    la misma rotura, la cola quedaba en 15 en vez de 5.
+
+    Un test de carrera que no calienta el pool mide el arranque del driver. Y
+    aun calentándolo sigue dependiendo del timing: el que de verdad mide la
+    guarda es el que **sostiene una transacción abierta a mano** y comprueba que
+    la segunda no puede terminar.
+
+35. **En un test que prueba que algo NO pasa, la aserción negativa va primero.**
+    Con la positiva delante, el día que el banner diga `All changes saved` con
+    una petición en vuelo el test falla diciendo *«no encontré Saving…»*, y
+    quien lo lea va a buscar en el lugar equivocado.
+
+    ```
+    positiva primero → × Unable to find an element with the text: Saving…
+    negativa primero → × expected <span class="fgw-autosave__label"/> to be null
+    ```
+
+    Las dos son rojas; sólo la segunda mide la mentira. La variante hermana:
+    una aserción visible colocada **después** del contador de llamadas de un
+    mock hace que el test mida el mock y no la pantalla. Las dos aparecieron el
+    mismo día, en agentes distintos, y las encontraron rompiendo el código.
+
+36. **Un barrido grande no sustituye al caso elegido a mano.** Un sweep de
+    4×202 combinaciones sobre el reparto de pesos siguió **verde** con la rama
+    de «todo lo que queda vale 0» rota; dos tests escritos a mano cayeron.
+
+    El motivo, medido: al bajar desde 100 el primer paso pide repartir 1 punto
+    entre tres y el reparto de restos lo acierta por casualidad; del paso
+    siguiente en adelante ya hay un peso distinto de 0 y la rama rota no se
+    vuelve a tocar. Un barrido cubre el espacio que **recorre**, no el que
+    parece cubrir.
+
+37. **Una sentencia atómica no es una guarda si la operación es un `INSERT`.**
+    `claimCreditsRefund` se sostiene sola porque es un `UPDATE`: con READ
+    COMMITTED el segundo espera y **reevalúa** su `WHERE`. Un `INSERT` no
+    bloquea contra nada — dos transacciones toman su snapshot, las dos cuentan
+    0, las dos insertan.
+
+    Escribir conteo e inserción en una sola sentencia da atomicidad entre sí y
+    **ningún aislamiento**. Lo que cierra esa carrera es un índice único —que
+    una cola de sugerencias no puede tener, admite N filas iguales— o un lock
+    que las dos entregas disputen. Lo que la sentencia única sí aporta es que no
+    se puedan escribir en transacciones distintas por descuido: la diferencia
+    entre una invariante y una convención.
+
 ## 8. Qué falta
 
 El backlog real es `tasks.md`. El estado de hoy está en §6.
@@ -712,23 +849,35 @@ ya**, en paralelo con el código.
 | **`OQ-21`**: si el tarifario de créditos se hereda o se recalibra | el margen del producto entero | — |
 
 Sobre las fuentes: **ninguna de las 12 familias está en la máquina** y hacen falta 42 archivos.
-Diez son Google Fonts (OFL, distribuibles). `tiktok` y `snapchat` los nombra el PRD pero **no hay
-archivo distribuible que se pueda nombrar sin inventarlo** — es una decisión de licencia.
+**32 de esos 42 son de 10 familias con licencia OFL y se bajan sin que nadie decida nada.** Los 10
+de `tiktok` y `snapchat` los nombra el PRD pero **no hay archivo distribuible que se pueda nombrar
+sin inventarlo** — es una decisión de licencia, y tiene salida sin código: `fonts.json` permite
+mapear una familia a otro nombre Pango.
+
+Y una corrección a cómo estaba escrito: **no es «el default `inter`»**. `family` no tiene default
+en el schema; fallan las 12 familias igual, porque el fallo es por **directorio ausente** y no por
+familia. `RENDER_FONT_DIR` ya está documentada en `.env.example`, con la consecuencia de no
+ponerla.
 
 ### Bloqueantes técnicos que sí resuelve código
 
 | Qué | Por qué urge | Tarea |
 |---|---|---|
-| **El adaptador de `MediaRenderer` existe, rinde video real y NO está montado** | montarlo hoy rompe **todos** los builds: sin fuentes da `font_unavailable` permanente —pieza fallada y save reembolsado en cada build—, el servicio exige grant firmado y el puerto no tiene por dónde pasarlo, y un slideshow multi-slide no entra en `RenderResult` | `P2-RENDER-015` |
+| **El adaptador de `MediaRenderer` rinde video real y sigue sin montarse** | de los cinco bloqueos quedan **dos**. Cerrados: el grant (el puerto lleva `MediaAuthorization` y el adaptador la firma, verificado contra el servicio real), `renderAll` para el slideshow multi-slide, y el `thumbnail()` que se llama en cada build y era un stub que lanzaba. Abiertos: **las fuentes** —sin ellas, `font_unavailable` permanente y save reembolsado en cada build— y **el origen del audio**, que nadie definió | `P2-RENDER-015` |
+| **Nada encola `discovery-refill`** | el handler está montado y testeado; el nombre sólo aparece en el catálogo y en `queues.ts`. Sin productor la cola sigue vacía, `POST /blitz` sigue dando «cola vacía», y **toda P2-BLITZ sigue sin datos que mostrar**. Es el tapón del producto | `P2-DISC-001` |
 | **La UI nunca se probó contra la API sirviendo datos** | la Library se ejercitó contra un stub; las 4 keys de desarrollo están hasheadas y no se pudo crear una. Hay 20 filas en `contents` esperando | `P1-UI-012` |
-| **No hay ni un test de componente en el proyecto** | falta `jsdom` y `@testing-library/react` en `apps/web`; los 54 tests de web son de lógica pura | `P1-UI-*` |
-| **18 de las 21 colas siguen sin consumidor** | la API ya encola en varias; un job sin handler no falla, se queda esperando para siempre | `P1-QUEUE-*` |
+| ~~**No hay ni un test de componente**~~ **cerrado** | el arnés está (`vitest` + jsdom + Testing Library) y hay 83 tests de componente. Lo que falta ahora es otra cosa: **nadie abrió un navegador** con las dos pantallas nuevas, y jsdom no pinta | `P1-UI-014` |
+| **16 de las 21 colas siguen sin consumidor** | la API ya encola en varias; un job sin handler no falla, se queda esperando para siempre | `P1-QUEUE-*` |
+| **El contrato público miente en tres lugares** | el OpenAPI documenta `409 media_in_use`, que la ruta **nunca** devuelve, y publica **cinco endpoints `/brand/*` que no existen**. El test de OpenAPI comprueba 27 paths y no incluye ninguno. Además la cabecera de `content.ts` dice que no consume el content save, y lo consume desde `P1-QUOTA-010` | — |
+| **P1-BRAND: 11 tareas con dominio completo y cero rutas** | SSRF con tests de IP decimal y el borde 172.32, síntesis, link-in-bio, unicidad global, los 14 `ERR-B` en el i18n — y no hay una sola ruta `/brand` en la API. Es el mejor retorno por línea que queda | `P1-BRAND-*` |
 | **No hay adaptador de identidad**: la API sólo acepta API key | el proxy de `apps/web` usa **una key por despliegue**, o sea un workspace para todo el que llegue a la app. Es provisorio y está escrito como tal | `P1-AUTH-*` |
 | `text-subtle` en modo oscuro no llega a AA para texto normal (3,65:1 y 3,16:1) | accesibilidad, y hoy está sin restricción de uso | `P1-UI-011` |
 
 Salieron de acá, cerrados: `P0-REPO-013`, `P1-DATA-014`, `P1-DATA-015`,
-`P1-STORAGE-007` (S3 montado en las dos apps, con `PUT` real verificado contra MinIO)
-y `P1-QUOTA-011` (cobra, y el handler del pipeline ya devuelve los 250).
+`P1-STORAGE-007` (S3 montado en las dos apps, con `PUT` real verificado contra MinIO),
+`P1-QUOTA-011` (cobra, y el handler del pipeline ya devuelve los 250),
+`P2-CONTENT-006` (el `DELETE` comprobaba menos que el `PATCH`) y la mitad de API de
+`P1-OBS-004` (`/health` respondía 200 con Postgres caído).
 
 ### Lo que nadie miró todavía
 
@@ -736,7 +885,13 @@ y `P1-QUOTA-011` (cobra, y el handler del pipeline ya devuelve los 250).
   abrió uno y vio `/library` con sus cuatro estados, el `Load more` del cursor y
   una pieza pasando sola de `BUILDING` a `CREATED` — con la cadencia medida en
   10,1 s, no supuesta. Lo que **sigue sin verse**: esa pantalla contra la API
-  sirviendo datos de verdad (se ejercitó contra un stub), y las otras 39 páginas.
+  sirviendo datos de verdad (se ejercitó contra un stub), las dos pantallas
+  nuevas de la tercera tanda (`/blitz/settings` y la tab del Media Bank, que
+  sólo existen en jsdom, y jsdom no pinta), y las otras 37 páginas.
+- **Ninguno de los cinco handlers corrió a través de pg-boss de verdad.** Los
+  tests los invocan directo con un `JobContext` armado a mano: la reentrega
+  real, el backoff y los timeouts del catálogo no están ejercitados. `smoke:binary`
+  sí atraviesa pg-boss, pero sólo para `content-build` y sólo por el camino feliz.
 - **Ningún frame renderizado se miró.** Los hashes son estables, la geometría está testeada;
   "determinista" no es "se ve bien".
 - **MOV→MP4 y faststart ya corrieron sobre archivos reales**, y aparecieron dos bugs que se
@@ -762,6 +917,7 @@ y `P1-QUOTA-011` (cobra, y el handler del pipeline ya devuelve los 250).
 | [`SESSION-2026-09-21-plan-implementacion.md`](SESSION-2026-09-21-plan-implementacion.md) | cómo se llegó del PRD al plan, y qué se descartó |
 | [`SESSION-2026-09-21-implementacion.md`](SESSION-2026-09-21-implementacion.md) | cómo se organizó el trabajo en paralelo, y las trampas que costaron tiempo |
 | [`SESSION-2026-09-21-escritura-y-endpoints.md`](SESSION-2026-09-21-escritura-y-endpoints.md) | la escritura en los repositorios y los 16 endpoints, con cuatro agentes en paralelo |
+| [`SESSION-2026-09-22-tercera-tanda.md`](SESSION-2026-09-22-tercera-tanda.md) | la auditoría que encontró 67 tareas mal contadas, y las tres mediciones que salieron al revés de lo esperado |
 | [`SESSION-2026-09-22-segunda-tanda.md`](SESSION-2026-09-22-segunda-tanda.md) | la segunda tanda de cuatro: seis cosas que nunca habían funcionado y ningún síntoma las delataba |
 | [`SESSION-2026-09-22-cuatro-agentes.md`](SESSION-2026-09-22-cuatro-agentes.md) | cuatro tandas en paralelo: el contrato entre agentes, el 500 que nadie veía, y las dos trampas de coordinar |
 | [`SESSION-2026-09-21-worker-content-build.md`](SESSION-2026-09-21-worker-content-build.md) | el handler que cierra el círculo, y dónde va lo que dos apps comparten |
