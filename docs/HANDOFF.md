@@ -442,7 +442,7 @@ Y una de la sesión del worker:
 
 ## 6. Cómo verificar
 
-**Números al 2026-09-22 (cuarta tanda).** Son lo que permite distinguir "lo rompí yo" de "ya estaba rojo".
+**Números al 2026-09-22 (quinta tanda).** Son lo que permite distinguir "lo rompí yo" de "ya estaba rojo".
 Si tu corrida da menos, algo se perdió; si da más, actualizá esta sección.
 
 ```bash
@@ -458,24 +458,24 @@ pnpm verify           # lint · typecheck · boundaries · consistency · test
 | `pnpm lint` | eslint una vez sobre todo el repo | **0 errores** |
 | `pnpm typecheck` | `tsc --noEmit` por paquete, 12 tareas | **12 successful** |
 | `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 462 módulos · **1402 dependencias** |
-| `pnpm consistency` | los números del PRD escritos en más de un paquete | **19 invariantes** |
-| `pnpm test` | unitarios | **1.837** |
+| `pnpm consistency` | los números del PRD escritos en más de un paquete | **30 invariantes** |
+| `pnpm test` | unitarios | **1.955** |
 
 Desglose de `pnpm test`, por si uno solo se cae:
 
 | Paquete | Tests | | Paquete | Tests |
 |---|---|---|---|---|
-| `core` | 430 | | `adapters` | 355 |
-| `contracts` | 256 | | `render-service` | 207 |
-| `web` | 194 | | `ui` | 170 |
-| `api` | 136 | | `db` | 52 |
-| `worker` | 28 | | `config` | 9 |
+| `core` | 435 | | `adapters` | 355 |
+| `web` | 263 | | `contracts` | 271 |
+| `render-service` | 207 | | `ui` | 170 |
+| `api` | 155 | | `db` | 52 |
+| `worker` | 38 | | `config` | 9 |
 
 ### Lo que necesita servicios levantados
 
 ```bash
 docker compose up -d                       # Postgres con pgvector + MinIO con el bucket creado
-pnpm test:int                              # db 177 · api 188 · worker 86 · adapters 9 → 460
+pnpm test:int                              # db 177 · api 216 · worker 93 · adapters 9 → 495
 pnpm --filter @fastgram/adapters test:int  # 9 — encolado dentro de la transacción de Drizzle
 pnpm build && pnpm smoke:binary           # el artefacto que se despliega, de verdad
 ```
@@ -510,10 +510,10 @@ motor ausente, todo análisis devuelve `partial`: es lo que manda `AI-016`.
 ### Estado del backlog
 
 ```bash
-grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 149
-grep -c '^- \[~\]' tasks.md     # en curso o parciales — hoy: 41
+grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 151
+grep -c '^- \[~\]' tasks.md     # en curso o parciales — hoy: 43
 grep -c '^- \[!\]' tasks.md     # bloqueadas — hoy: 1
-grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 197
+grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 193
 ```
 
 ### Lo que `pnpm verify` NO mide
@@ -931,6 +931,52 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 197
     Lo que corresponde es **buscar el caso que la distingue**, escribirlo, y
     volver a romper para comprobar que ahora sí duele.
 
+42. **Un doble de test que divergió del puerto falla de la peor forma: el campo
+    que el código lee queda `undefined`.** `RecordingQueue.enqueue` devolvía
+    `{jobId, queue}` cuando el puerto dice `{jobId, created}`. No era «le falta
+    un campo»: un caso de uso que mire `created` para distinguir «encolé» de «ya
+    estaba» recibía `undefined` —falsy— y se comportaba como «ya estaba»
+    **siempre**, con el test en verde.
+
+    Igual `captionLimits: { captionMaxChars }` en vez de `{ caption }`:
+    `texto.length > limits.caption` con `caption` indefinido es **siempre
+    falso**, así que el límite no se aplicaba nunca.
+
+    Las dos vivieron porque **`apps/api` y `apps/worker` no typechequeaban su
+    carpeta `test/`**: `tsconfig.json` incluía sólo `src/**/*`, y son las dos
+    únicas apps con los tests fuera de `src`. Un doble no verificado por el
+    compilador no es un doble: es una segunda implementación del puerto, escrita
+    de memoria.
+
+43. **Arreglar un doble permisivo pone rojos los tests que medían su
+    permisividad — y eso es bueno.** Al hacer que `RecordingQueue` honre
+    `singletonKey` como el adaptador real, dos tests del refill cayeron. Decían
+    «dos intentos registran dos jobs con la misma clave», y eso sólo era cierto
+    porque el doble registraba todo sin mirar la clave.
+
+    El rojo no significaba que el arreglo estuviera mal: significaba que los
+    tests afirmaban una propiedad **del doble**. Reescritos sobre lo que pasa en
+    producción —la segunda petición no crea un job— son más fuertes que antes.
+
+    Y de paso apareció una colisión que era invisible: los cinco tests
+    compartían el minuto del reloj fijo y se deduplicaban entre sí.
+
+44. **Una decisión de seguridad correcta puede dejar media app muerta sin que
+    nadie lo escriba.** El proxy de `apps/web` exporta **sólo `GET`**, con su
+    razón documentada en la cabecera: no hay anti-CSRF, y con escrituras
+    abiertas cualquier página podría disparar un `DELETE` contra el workspace
+    del servidor.
+
+    Lo que no estaba escrito es la **consecuencia**: ninguna pantalla de
+    escritura de la app puede funcionar contra la configuración por defecto.
+    Cada `POST`/`PATCH` pega contra el 405 de Next. El auto-guardado de
+    `/blitz/settings` se construyó, se testeó, se reportó como funcionando — y
+    manda su `PATCH` por ese mismo camino muerto desde hace dos tandas.
+
+    Cuando una decisión deliberada apague una capacidad, **la consecuencia va en
+    el mismo comentario que la decisión**. Ahí no estaba, y por eso nadie la vio
+    hasta que un agente fue a construir la segunda pantalla que escribe.
+
 ## 8. Qué falta
 
 El backlog real es `tasks.md`. El estado de hoy está en §6.
@@ -970,6 +1016,8 @@ ponerla.
 | **La UI nunca se probó contra la API sirviendo datos** | la Library se ejercitó contra un stub; las 4 keys de desarrollo están hasheadas y no se pudo crear una. Hay 20 filas en `contents` esperando | `P1-UI-012` |
 | ~~**No hay ni un test de componente**~~ **cerrado** | el arnés está (`vitest` + jsdom + Testing Library) y hay 83 tests de componente. Lo que falta ahora es otra cosa: **nadie abrió un navegador** con las dos pantallas nuevas, y jsdom no pinta | `P1-UI-014` |
 | **15 de las 21 colas siguen sin consumidor** | la API ya encola en varias; un job sin handler no falla, se queda esperando para siempre | `P1-QUEUE-*` |
+| **NINGUNA pantalla de escritura de la app funciona** | el proxy de `apps/web` exporta **sólo `GET`**, y está documentado y es deliberado: no hay anti-CSRF, y con escrituras abiertas cualquier página podría disparar un `DELETE` contra el workspace del servidor. Pero su **consecuencia** no estaba escrita en ningún lado: cada `POST`/`PATCH` de la app pega contra el 405 de Next. Afecta al auto-guardado de `/blitz/settings` (que se reportó como funcionando dos tandas atrás) y a la subida de video | `P1-AUTH-*` |
+| **No hay configuración de CORS del bucket** | el PUT del navegador a la URL firmada **nunca se hizo desde un navegador**: el test de integración lo hace desde Node, donde no hay CORS. Sólo existe `API_CORS_ORIGINS`, que es de la API. Va a fallar con pinta de error de red | `P1-INFRA-004` |
 | **Nada consume `brand-source-analysis`** | las rutas de brand ya encolan, con un payload que **nadie consume**. Consecuencia directa: **ninguna fuente sale nunca de `pending`**, así que `ready`/`partial`/`failed`/`stale` no los produce nada y el cooldown de re-análisis no se ejercita | `P1-BRAND-006…011` |
 | **Los enums del tier C no coinciden entre paquetes** | `ports`/`core` dicen `C_rendered_fetch`, `db`/`contracts` dicen `C_page_fetch`: `acquisitionPlan()` puede devolver un valor que Postgres rechaza. No explota hoy porque el tier está apagado hasta `OQ-16`; el día que se encienda, sí | `P1-BRAND-013` |
 | **`apps/worker` no expone ninguna sonda** | la API ya tiene health checks que comprueban de verdad; un worker con la base caída no lo dice en ningún lado | `P1-OBS-004` |

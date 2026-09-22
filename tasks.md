@@ -277,15 +277,22 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P1-ONB — Onboarding
 
-- [ ] **P1-ONB-001** Wizard multi-paso con progreso persistido y reanudable · `FR-010`
+- [~] **P1-ONB-001** Wizard multi-paso con progreso persistido y reanudable · `FR-010`
+  > **Las rutas existen y el progreso se reanuda**, pero el paso no se persiste: se **deriva** caminando `advanceOnboarding` sobre lo que sí está guardado. `packages/db` no expone repositorio de `onboarding_records` — es la única tabla sin uno. La lógica de los gates no se reimplementa, así que no puede desincronizarse.
+  > Falta la UI entera.
 - [ ] **P1-ONB-002** Paso 1: input único de Brand Source + chips de plataforma · `FR-011.2`
-- [ ] **P1-ONB-003** Paso 2: `Company Name`, `Company Description`, logo · `FR-010`
-- [ ] **P1-ONB-004** Paso 3: cuestionario de perfilado (6 preguntas) · `F-006`
+- [~] **P1-ONB-003** Paso 2: `Company Name`, `Company Description`, logo · `FR-010`
+  > **No tiene endpoint, y no es olvido:** escribe `companies.name` y `companies.logo_url`, y `companies` **no tiene escritura** (`companyRepository` es sólo lectura por decisión explícita). Un `POST /onboarding/details` que guardara la descripción y descartara en silencio nombre y logo sería peor que no existir.
+  > La descripción sí se escribe, por `PATCH /brand/profile` → `company_profiles.core_identity`.
+- [~] **P1-ONB-004** Paso 3: cuestionario de perfilado (6 preguntas) · `F-006`
+  > **Cerrada la mitad que se podía.** El hueco era más chico: `assertValidProfiling` tiene dos bucles y el de los 4 000 caracteres ya recorría **todo lo que se le pasara** — faltaba que alguien pasara `expectations`. Ahora se recoge, se persiste y se acota, medido rompiéndolo.
+  > **No se hizo obligatoria, a propósito:** la lista de Validation de `FR-010` trae mensaje para las otras cinco preguntas y **ninguno** para expectativas. Rechazarla vacía exigiría inventar copy CONFIRMED.
 - [ ] **P1-ONB-005** Paso 4: estados de procesamiento con sub-pasos por tipo de fuente · `FR-011.2`
 - [ ] **P1-ONB-006** **Pantalla de revisión** con `Worth a quick check` para los campos de confianza baja · `FR-011.2`
 - [ ] **P1-ONB-007** Oferta post-análisis de conectar + importar media, **después** del análisis · `D-04`, `FR-011.5.1`
 - [ ] **P1-ONB-008** Importación opt-in de posts propios al Media Bank, checkbox desmarcado · `FR-011.5.1`
-- [ ] **P1-ONB-009** Todas las validaciones literales de `FR-010`
+- [~] **P1-ONB-009** Todas las validaciones literales de `FR-010`
+  > Las validaciones del cuestionario y del alta están y son las literales del PRD. Falta las de los pasos sin endpoint (ver `P1-ONB-003`).
 - [x] **P1-ONB-010** Rama `Use description instead` → `BrandSource` tipo `manual`
 - [ ] **P1-ONB-011** **E2E: alta completa con sólo un perfil de Instagram, sin un solo consentimiento OAuth** · `FR-011.12` crit. 11 · ⚠️ criterio de salida de la fase
 
@@ -333,7 +340,8 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P1-OBS-001** Logs estructurados con `companyId` y `requestId` en todo
 - [ ] **P1-OBS-002** OpenTelemetry: trazas y métricas
 - [ ] **P1-OBS-003** Sentry (errores) + PostHog (producto) · `INT-010`
-- [~] **P1-OBS-004** Health checks y status page · `F-255`
+- [x] **P1-OBS-004** Health checks y status page · `F-255`
+  > Las tres mitades: `/health` de la API comprueba Postgres, storage y cola; la status page redacta **en el servidor**; y el worker expone su propia sonda, con la semántica invertida (liveness sirve, readiness frena un rollout en vez de sacar de rotación).
   > **Cerradas las dos mitades que se podían:** `/health` de la API comprueba Postgres, storage y cola de verdad (y `degraded` devuelve 200 a propósito), y la status page de `F-255` existe y redacta **en el servidor** — no renderizar no es no publicar.
   > Falta: **`apps/worker` no expone ninguna sonda.** Un worker con la base caída no lo dice en ningún lado.
 - [ ] **P1-OBS-005** Alertas: cola atascada, tasa de fallo de build, saturación de rate limit
@@ -443,7 +451,8 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P2-STUDIO — Content Studio
 
-- [~] **P2-STUDIO-001** Hub `/content` con las 22 tarjetas de formato · `F-070`
+- [x] **P2-STUDIO-001** Hub `/content` con las 22 tarjetas de formato · `F-070`
+  > **Ya estaba hecho; lo que faltaba era el test que lo fija.** Las 22 tarjetas están, cada una es un `<a>` real y su id coincide con el segmento del PRD. Lo único de `F-070` que no está son el póster y el video de ejemplo, que son **assets** que el repo no tiene y que nadie decidió de dónde salen.
 - [ ] **P2-STUDIO-002** Wizard con pasos, checks y `Generate` deshabilitado hasta completar · `F-073`
 - [ ] **P2-STUDIO-003** Modos Remix y Create New · `F-071`, `F-072`
 - [ ] **P2-STUDIO-004** Picker de trending con carrusel paginado y chips de nicho · `F-074`
@@ -452,6 +461,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [ ] **P2-STUDIO-007** Estilos de wall-of-text · `F-078` · ⚠️ catálogo completo en `OQ-08`
 - [ ] **P2-STUDIO-008** Demo video + enlace a la guía de grabación · `F-079`
 - [~] **P2-STUDIO-009** Subida de video custom (MP4/MOV ≤50 MB) · `F-083`
+  > La pantalla está completa —tres pasos de §9.8, progreso real por `XMLHttpRequest`, política de reintento que sigue al costo— y **no puede completar una sola subida**. Ver el bloqueo del proxy más abajo.
 - [~] **P2-STUDIO-010** `Save` / `Schedule` / `Clear` · `F-081`, `F-082`
 
 ## P2-MEDIA — Media Bank
