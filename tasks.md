@@ -349,6 +349,9 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 ## P2-DISC — Discovery queue
 
 - [~] **P2-DISC-001** `DATA-007` + relleno en background, objetivo ~5 · `F-050`
+  > **El handler existe y está montado; el productor no.** `discovery-refill` no lo encola nadie — el nombre sólo aparece en el catálogo y en `queues.ts`. Con el consumidor arriba y sin productor, la cola sigue vacía, así que `FR-030`/`AI-002` («automático en background») no se cumple todavía. **Es el próximo tapón.**
+  > La guarda contra la reentrega es un **advisory lock** por workspace, no la sentencia atómica: un `INSERT` no bloquea contra nada, así que escribir conteo e inserción juntos da atomicidad entre sí y ningún aislamiento. Lo que la sentencia única aporta es que no se puedan escribir en transacciones distintas por descuido.
+  > **Trampa medida:** el primer test de tres entregas concurrentes pasaba sin guarda porque las tres **no se solapaban** — `postgres.js` conecta bajo demanda y las dos últimas perdían ~8 ms montando el TCP. Medía `connect(2)`. El único que mide la guarda es el que sostiene una transacción abierta a mano.
 - [x] **P2-DISC-002** Selección ponderada: tipo, ángulo, remix/original, own-media, estilo · `AI-002`
 - [x] **P2-DISC-003** `influencerChance` como **tirada independiente**, no ratio de lote · `FR-055`
 - [x] **P2-DISC-004** Fallback a contenido regular si no hay influencer elegible; `green-screen` nunca usa influencer · `FR-055`
@@ -380,7 +383,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
   > POST y no GET porque la URL del medio es firmada y lleva token en la query, y una query string va a **todos** los access logs. Los bytes salen por el `GET /artifact` que ya existía: una sola ruta que sirve bytes es una sola que auditar.
   > **La versión del motor se deriva del hash del árbol de código** más ffmpeg, sharp, libvips, Pango, FreeType y el registro de fuentes. Era `ENGINE_VERSION = "1"`, o sea el número a mano. **Invalida la cache existente: el primer deploy re-encodea todo.**
   > Canvas impar: **rechazar, no redondear.** El canvas es la forma declarada del artefacto y el adaptador devuelve sus dimensiones sin medir el archivo; redondear introduciría justo el sesgo de 1 px que el adaptador verificó que no existe.
-- [ ] **P2-RENDER-015** **Montar `HttpMediaRenderer` en `apps/worker`** — hoy monta el de memoria, y cambiarlo sin esto rompe **todos** los builds
+- [~] **P2-RENDER-015** **Montar `HttpMediaRenderer` en `apps/worker`** — hoy monta el de memoria, y cambiarlo sin esto rompe **todos** los builds
   > **Estado al 2026-09-22, tras `7cb8dd9`.** Eran cuatro bloqueos y quedan dos, con una corrección de bulto sobre cómo estaban contados.
   > **(1) Las 42 fuentes — VIGENTE, y es el único que necesita a una persona.** Archivos de fuente en la máquina: **cero**. El `fontLoader` los busca en `RENDER_FONT_DIR` con el nombre exacto `${family}-${weight}.ttf`, y esa variable **no está en `.env.example`, ni en `docker-compose.yml` —que ni define el servicio de render—, ni en ningún script**. Sin directorio, `available === false` → `strict` (default `true`) → `font_unavailable`.
   > Corrección: **no es «el default `inter`»**. `family` no tiene default; fallan las 12 familias igual, porque el fallo es por directorio ausente y no por familia. Y el tamaño real del problema es menor de lo que decía: **32 de los 42 archivos son de 10 familias con licencia OFL** y se bajan. Sólo los 10 de `tiktok`/`snapchat` (5 pesos × 2) esperan una decisión de licencia.
@@ -400,7 +403,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P2-CONTENT-003** Edición menor: **no** crea fila, **no** consume save, **no** factura · `FR-051`
 - [~] **P2-CONTENT-004** Regeneración de copy preservando estructura y nº de slides · `AI-004` · **parcial:** `POST /content/:id/regenerate` valida, sube la revisión y encola; el modelo lo llama el worker, que no existe
 - [x] **P2-CONTENT-005** Todas las validaciones de rango de `FR-051`
-- [~] **P2-CONTENT-006** Borrado: soft-delete + `409 content_has_linked_posts` (cancelar no basta) · `FR-051` · **parcial:** el 409 está en `PATCH`; el `DELETE` no lo comprueba
+- [x] **P2-CONTENT-006** Borrado: soft-delete + `409 content_has_linked_posts` (cancelar no basta) · `FR-051` · **parcial:** el 409 está en `PATCH`; el `DELETE` no lo comprueba
 - [x] **P2-CONTENT-007** `409 content_still_building` con la ventana de 15 min · `ERR-P02`
 - [x] **P2-CONTENT-008** `buildPayload` y `studioState` **nunca** salen por la API · `DATA-008`
   > No es una omisión que haya que recordar: el tipo de retorno del serializador es explícito, así que agregarlos sería un error de compilación.
