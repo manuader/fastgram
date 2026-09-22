@@ -22,7 +22,16 @@
  * equivocado. `{ eq: … }` y `{ in: [ … ] }` no se pueden confundir.
  */
 
-import { and, eq, getTableColumns, inArray, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  eq,
+  getTableColumns,
+  inArray,
+  isNotNull,
+  isNull,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 
 /** Los cuatro operadores que hacen falta. Se agregan cuando haya un caso, no antes. */
@@ -44,8 +53,7 @@ export type RowFilter<TTable extends PgTable> = {
   // `{ status: q.status === undefined ? undefined : { in: q.status } }`— no compila,
   // y la alternativa es armar el objeto con spreads condicionales en cada handler.
   readonly [K in keyof TTable["$inferSelect"]]?:
-    | ColumnPredicate<TTable["$inferSelect"][K]>
-    | undefined;
+    ColumnPredicate<TTable["$inferSelect"][K]> | undefined;
 };
 
 /**

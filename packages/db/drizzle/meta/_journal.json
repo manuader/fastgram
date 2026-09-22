@@ -50,6 +50,20 @@
       "when": 1790008494028,
       "tag": "0006_quota_swipe_sweep",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790008494029,
+      "tag": "0007_influencer_credits",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790008494030,
+      "tag": "0008_post_external_id",
+      "breakpoints": true
     }
   ]
 }

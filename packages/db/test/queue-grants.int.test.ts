@@ -87,7 +87,9 @@ describe("una tabla creada DESPUÉS de la migración", () => {
       await tx.execute(sql`delete from pgboss.job_probe`);
     });
 
-    const filas = await ctx.db.execute(sql`select count(*)::int as n from pgboss.job_probe`);
+    const filas = await ctx.db.execute(
+      sql`select count(*)::int as n from pgboss.job_probe`,
+    );
     expect((filas[0] as { n: number }).n).toBe(0);
   });
 });

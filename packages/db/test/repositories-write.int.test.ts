@@ -28,7 +28,12 @@ import {
   contentTextBoxRepository,
   blitzPreferencesRepository,
 } from "../src/repositories/index";
-import { APP_ROLE, seedCompany, startTestDatabase, type TestDatabase } from "./helpers/postgres";
+import {
+  APP_ROLE,
+  seedCompany,
+  startTestDatabase,
+  type TestDatabase,
+} from "./helpers/postgres";
 
 let ctx: TestDatabase;
 let alpha: string;
@@ -60,8 +65,10 @@ const preferences = (slideshow: number) => ({
   influencerChance: 0,
 });
 
-const asApp = <T>(companyId: string, fn: Parameters<typeof withCompany<T>>[2]): Promise<T> =>
-  withCompany(ctx.db, companyId, fn, { role: APP_ROLE });
+const asApp = <T>(
+  companyId: string,
+  fn: Parameters<typeof withCompany<T>>[2],
+): Promise<T> => withCompany(ctx.db, companyId, fn, { role: APP_ROLE });
 
 beforeAll(async () => {
   ctx = await startTestDatabase();
@@ -187,10 +194,14 @@ describe("update", () => {
 describe("acceso cruzado", () => {
   it("`update` sobre una fila ajena devuelve null Y NO la modifica", async () => {
     const victima = await asApp(beta, (tx) =>
-      contentRepository.create(tx, { companyId: beta }, {
-        type: "slideshow",
-        generatedText: "original de beta",
-      }),
+      contentRepository.create(
+        tx,
+        { companyId: beta },
+        {
+          type: "slideshow",
+          generatedText: "original de beta",
+        },
+      ),
     );
 
     const resultado = await asApp(alpha, (tx) =>
@@ -274,12 +285,20 @@ describe("acceso cruzado", () => {
 describe("upsert", () => {
   it("inserta cuando no existe y actualiza cuando existe", async () => {
     const primera = await asApp(alpha, (tx) =>
-      blitzPreferencesRepository.upsert(tx, { companyId: alpha }, preferences(70) as never),
+      blitzPreferencesRepository.upsert(
+        tx,
+        { companyId: alpha },
+        preferences(70) as never,
+      ),
     );
     expect(primera?.slideshowWeight).toBe(70);
 
     const segunda = await asApp(alpha, (tx) =>
-      blitzPreferencesRepository.upsert(tx, { companyId: alpha }, preferences(40) as never),
+      blitzPreferencesRepository.upsert(
+        tx,
+        { companyId: alpha },
+        preferences(40) as never,
+      ),
     );
     expect(segunda?.slideshowWeight).toBe(40);
 
@@ -338,9 +357,13 @@ describe("filtros y paginación numerada", () => {
     );
 
     const page = await asApp(alpha, (tx) =>
-      contentRepository.list(tx, { companyId: alpha }, {
-        filter: { type: { in: ["video-hook"] } },
-      }),
+      contentRepository.list(
+        tx,
+        { companyId: alpha },
+        {
+          filter: { type: { in: ["video-hook"] } },
+        },
+      ),
     );
     expect(page.items.map((r) => r.id)).toContain(mio.id);
     expect(page.items.every((r) => r.companyId === alpha)).toBe(true);

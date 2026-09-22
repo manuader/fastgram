@@ -14,14 +14,21 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { companyRepository } from "../src/repositories/index";
 import { withCompany } from "../src/tenancy";
-import { APP_ROLE, seedCompany, startTestDatabase, type TestDatabase } from "./helpers/postgres";
+import {
+  APP_ROLE,
+  seedCompany,
+  startTestDatabase,
+  type TestDatabase,
+} from "./helpers/postgres";
 
 let ctx: TestDatabase;
 let alpha: string;
 let beta: string;
 
-const asApp = <T>(companyId: string, fn: Parameters<typeof withCompany<T>>[2]): Promise<T> =>
-  withCompany(ctx.db, companyId, fn, { role: APP_ROLE });
+const asApp = <T>(
+  companyId: string,
+  fn: Parameters<typeof withCompany<T>>[2],
+): Promise<T> => withCompany(ctx.db, companyId, fn, { role: APP_ROLE });
 
 beforeAll(async () => {
   ctx = await startTestDatabase();
@@ -35,7 +42,9 @@ afterAll(async () => {
 
 describe("lee su propio workspace", () => {
   it("`load` trae la fila", async () => {
-    const row = await asApp(alpha, (tx) => companyRepository.load(tx, { companyId: alpha }));
+    const row = await asApp(alpha, (tx) =>
+      companyRepository.load(tx, { companyId: alpha }),
+    );
     expect(row?.id).toBe(alpha);
     expect(row?.name).toBe("Alpha");
   });
@@ -75,7 +84,9 @@ describe("no lee el de otro", () => {
     // Lo que se prueba no es que la consulta filtre —eso se ve leyendo el
     // código— sino que **pedir explícitamente el id ajeno** dentro del scope
     // propio no lo traiga. Es el caso que un `findById(id)` suelto rompería.
-    const row = await asApp(alpha, (tx) => companyRepository.load(tx, { companyId: beta }));
+    const row = await asApp(alpha, (tx) =>
+      companyRepository.load(tx, { companyId: beta }),
+    );
     expect(row).toBeNull();
   });
 

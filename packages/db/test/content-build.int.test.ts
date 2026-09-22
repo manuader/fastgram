@@ -75,7 +75,7 @@ describe("lockContent", () => {
     expect(row?.status).toBe("BUILDING");
   });
 
-  it("no devuelve la de otro workspace", async () => {
+  it("no devuelve la de otro workspace (las dos capas juntas)", async () => {
     // Mismo `404` invisible de §9.2 bajado al worker: con el scope equivocado la
     // fila **no existe**. Si esto fallara, un payload manipulado podría cerrar la
     // pieza de otro y devolverle el save.
@@ -85,6 +85,24 @@ describe("lockContent", () => {
     const row = await asApp(otro, (tx) =>
       contentBuildStore.lockContent(tx, { companyId: otro }, id),
     );
+    expect(row).toBeNull();
+  });
+
+  it("…y con RLS fuera del camino tampoco: el WHERE aísla por sí solo", async () => {
+    // **El de arriba NO medía este repositorio, y lo encontró el agente que
+    // escribió `influencer-credits`.** Corre como `fastgram_app` con el GUC
+    // puesto, así que RLS (capa 1) tapa el agujero aunque el `where` del
+    // repositorio (capa 2) no tenga el `companyId`. Verificado quitándoselo a
+    // `lockContent`: los 146 tests del paquete siguieron **verdes**.
+    //
+    // Éste corre como superusuario, sin `SET ROLE` y sin GUC, con RLS fuera del
+    // camino. Ahí lo único que aísla es el `WHERE`, que es lo que IMPL §2.4
+    // llama la segunda capa — y la que queda sola el día que alguien consulte
+    // con una conexión privilegiada.
+    const otro = (await seedCompany(ctx.db, { name: "Ajeno 2" })).companyId;
+    const id = await nuevaPieza();
+
+    const row = await contentBuildStore.lockContent(ctx.db, { companyId: otro }, id);
     expect(row).toBeNull();
   });
 

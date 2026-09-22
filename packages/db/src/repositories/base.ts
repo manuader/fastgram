@@ -21,14 +21,7 @@
  * es que no tenés dónde escribir el campo.
  */
 
-import {
-  and,
-  eq,
-  getTableColumns,
-  isNull,
-  sql,
-  type SQL,
-} from "drizzle-orm";
+import { and, eq, getTableColumns, isNull, sql, type SQL } from "drizzle-orm";
 import type { PgColumn, PgTable, PgUpdateSetSource } from "drizzle-orm/pg-core";
 
 import type { Executor } from "../client.js";
@@ -132,7 +125,11 @@ export interface CompanyScopedRepository<TTable extends PgTable> {
     options?: OffsetListOptions<TTable>,
   ): Promise<OffsetPage<TTable["$inferSelect"]>>;
 
-  count(exec: Executor, scope: TenantScope, options?: CountOptions<TTable>): Promise<number>;
+  count(
+    exec: Executor,
+    scope: TenantScope,
+    options?: CountOptions<TTable>,
+  ): Promise<number>;
 
   /** Crea una fila en el workspace del scope. Devuelve la fila tal como quedó. */
   create(
@@ -225,7 +222,10 @@ export function createCompanyScopedRepository<TTable extends PgTable>(
    * El tipo ya las excluye, pero un patch armado desde un body JSON llega como
    * `Record<string, unknown>` y el tipo no lo mira. Acá se nota en el primer test.
    */
-  const rejectReservedKeys = (values: Record<string, unknown>, operation: string): void => {
+  const rejectReservedKeys = (
+    values: Record<string, unknown>,
+    operation: string,
+  ): void => {
     if (companyIdKey in values) {
       throw new Error(
         `\`${operation}\` no acepta '${companyIdKey}': lo impone el scope. Mover una ` +
@@ -398,7 +398,10 @@ export function createCompanyScopedRepository<TTable extends PgTable>(
       }
       rejectReservedKeys(values as Record<string, unknown>, "upsert");
 
-      const row = { ...values, [companyIdKey]: scope.companyId } as TTable["$inferInsert"];
+      const row = {
+        ...values,
+        [companyIdKey]: scope.companyId,
+      } as TTable["$inferInsert"];
       const { [companyIdKey]: _ignored, ...updatable } = row as Record<string, unknown>;
 
       const rows = await exec

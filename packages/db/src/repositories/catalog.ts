@@ -74,7 +74,9 @@ export const audioTrackRepository = {
   ): Promise<Page<AudioTrackRow>> {
     const limit = normalizeLimit(options.limit);
     const conditions: (SQL | undefined)[] = [
-      options.library === undefined ? undefined : eq(audioTracks.library, options.library),
+      options.library === undefined
+        ? undefined
+        : eq(audioTracks.library, options.library),
       cursorCondition(audioTracks.createdAt, audioTracks.audioId, options.cursor, "asc"),
     ];
 
@@ -100,7 +102,9 @@ export const audioTrackRepository = {
       .select({ value: sql<number>`count(*)::int` })
       .from(audioTracks)
       .where(
-        options.library === undefined ? undefined : eq(audioTracks.library, options.library),
+        options.library === undefined
+          ? undefined
+          : eq(audioTracks.library, options.library),
       );
     return rows[0]?.value ?? 0;
   },

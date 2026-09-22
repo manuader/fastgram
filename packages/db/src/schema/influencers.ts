@@ -15,7 +15,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, timestamps } from "./_shared.js";
+import { createdAtOnly, timestamps, tsColumn } from "./_shared.js";
 import { companyRef } from "./identity.js";
 import { influencerAssetKindEnum, influencerStatusEnum } from "./enums.js";
 import { INFLUENCER_LIMITS } from "../limits.js";
@@ -47,8 +47,49 @@ export const influencers = pgTable(
      * NO ESTÁ EN EL PRD (como columna con nombre): DATA-013 menciona *"ids de media y de
      * job"* entre los campos internos pero **no los nombra**. Inventar nombres sería
      * peor que agruparlos; cuando el PRD los nombre, se desnormalizan.
+     *
+     * **El cargo de créditos ya NO vive acá** (`P1-DATA-016`). Vivía —como
+     * `internal_refs.aiStudioCharge`— y el riesgo estaba medido: `update(…, {
+     * internalRefs })` **reemplaza el jsonb entero**, así que el primer handler que
+     * escribiera `soulId` borraba el registro del cargo y nada fallaba. Ver
+     * `creditsPeriod` abajo.
      */
     internalRefs: jsonb(),
+
+    // ── El cargo de 250 créditos de AI Studio — `P1-DATA-016`, `FR-080`, §9.4 ──
+    //
+    // Mismas tres preguntas —y misma forma— que `contents.save_bucket` /
+    // `save_period` / `save_refunded_at` resuelven para el content save. Lo que
+    // no tiene respuesta no se puede reembolsar, y un cargo que no se reembolsa
+    // no vuelve nunca.
+    /**
+     * A qué período de facturación se cobró — `quota_ledgers.period`.
+     *
+     * Se persiste en vez de derivarlo de `createdAt` porque derivarlo depende de
+     * `billingAnchorDay`, que puede cambiar entre el cobro y el reembolso: ahí los
+     * 250 créditos volverían a **otro ledger**, en silencio.
+     */
+    creditsPeriod: text(),
+    /**
+     * Cuántos créditos se reservaron. Es lo que hay que devolver, ni más ni menos.
+     *
+     * Se guarda el número y no la operación porque `AI_STUDIO_COST.influencer` es
+     * un número del PRD y puede moverse: un reembolso que lo volviera a leer de la
+     * tabla de tarifas devolvería la tarifa de hoy por un cargo de ayer. Con el
+     * monto acá, el reembolso no necesita saber qué operación fue —y por eso
+     * tampoco hay columna `operation`: en esta tabla siempre es `influencer`.
+     */
+    creditsCharged: integer(),
+    /**
+     * Guarda contra el doble reembolso. El handler de `influencer-pipeline` puede
+     * reintentarse (lo dice el puerto `Queue`), y dos reembolsos sobre un solo
+     * cargo regalan 250 créditos sin que nada falle.
+     *
+     * No alcanza con leerla: la guarda es el `WHERE … credits_refunded_at is null`
+     * de `claimCreditsRefund`, que es una sola sentencia y no depende de que el
+     * llamador se acuerde de comprobarla.
+     */
+    creditsRefundedAt: tsColumn(),
 
     ...timestamps(),
   },
@@ -64,6 +105,28 @@ export const influencers = pgTable(
     check(
       "influencers_progress_range",
       sql`${t.progress} between ${sql.raw(String(INFLUENCER_LIMITS.progressMin))} and ${sql.raw(String(INFLUENCER_LIMITS.progressMax))}`,
+    ),
+    /**
+     * Un cargo tiene período y monto, o no tiene ninguno de los dos. Saber cuánto
+     * se cobró sin saber a qué ledger devolverlo no alcanza para reembolsar, y al
+     * revés tampoco.
+     */
+    check(
+      "influencers_credits_period_with_charged",
+      sql`(${t.creditsPeriod} is null) = (${t.creditsCharged} is null)`,
+    ),
+    /** No se puede reembolsar lo que no se cobró. */
+    check(
+      "influencers_refund_requires_charge",
+      sql`${t.creditsRefundedAt} is null or ${t.creditsCharged} is not null`,
+    ),
+    /**
+     * Un cargo de 0 no es un cargo, y uno negativo le **quita** créditos al cliente
+     * cuando se "devuelve". Los dos son bugs que sin esto llegan al ledger.
+     */
+    check(
+      "influencers_credits_charged_positive",
+      sql`${t.creditsCharged} is null or ${t.creditsCharged} > 0`,
     ),
   ],
 );

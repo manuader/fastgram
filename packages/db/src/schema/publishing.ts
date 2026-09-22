@@ -184,6 +184,21 @@ export const posts = pgTable(
     errorCode: text(),
     errorMessage: text(),
     postUrl: text(),
+    /**
+     * Id del post **en la plataforma**. No es `postUrl`: ése es el permalink, y es
+     * para el usuario.
+     *
+     * NO ESTÁ EN EL PRD como campo de `DATA-020`, pero el nombre no se inventa: es
+     * el de `PublishRef` en el puerto `SocialPublisher`, que es el contrato con el
+     * que se llena y se lee. Sin esta columna el `externalPostId` que devuelve
+     * `publish()` no sobrevive al proceso, y entonces `getStatus`, `cancel` y
+     * `fetchMetrics` no tienen a qué post referirse — en particular el watcher del
+     * carril lento de TikTok (`NFR-015`, hasta 72 h), que no podría ni arrancar.
+     *
+     * `null` mientras el post no llegó a la plataforma; el puerto lo dice igual
+     * (*"presente desde `processing` en adelante"*).
+     */
+    externalPostId: text(),
     postedAt: tsColumn(),
     views: integer().notNull().default(0),
     likes: integer().notNull().default(0),

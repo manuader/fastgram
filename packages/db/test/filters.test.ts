@@ -20,7 +20,8 @@ function render(filter: Parameters<typeof compileFilter>[1]): {
   params: unknown[];
 } {
   const compiled = compileFilter(contents, filter);
-  if (compiled === undefined) throw new Error("Se esperaba una condición y salió undefined.");
+  if (compiled === undefined)
+    throw new Error("Se esperaba una condición y salió undefined.");
   const query = dialect.sqlToQuery(compiled);
   return { sql: query.sql, params: query.params };
 }
@@ -97,18 +98,16 @@ describe("lo que rechaza", () => {
   it("una columna que no existe explota con el nombre a la vista", () => {
     // El tipo ya lo impide, pero un filtro armado desde un body JSON llega como
     // `Record<string, unknown>` y el tipo no lo mira.
-    expect(() =>
-      compileFilter(contents, { nope: { eq: 1 } } as never),
-    ).toThrow(/'nope'/);
+    expect(() => compileFilter(contents, { nope: { eq: 1 } } as never)).toThrow(/'nope'/);
   });
 
   it("una columna de OTRA tabla también: el filtro se valida contra la suya", () => {
     // `mediaId` existe en el schema, pero no en `contents`. Es el error de
     // copy-paste entre dos rutas, y sin esto saldría un SQL que Postgres rechaza
     // con un mensaje mucho menos útil.
-    expect(() =>
-      compileFilter(contents, { mediaId: { eq: "x" } } as never),
-    ).toThrow(/'mediaId'/);
+    expect(() => compileFilter(contents, { mediaId: { eq: "x" } } as never)).toThrow(
+      /'mediaId'/,
+    );
     expect(compileFilter(media, { mediaId: { eq: "x" } })).toBeDefined();
   });
 });
