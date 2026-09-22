@@ -134,8 +134,11 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
   > El cobro va **antes** de crear y de encolar, y dentro de la misma transacción. `quotaLedgerStore.lockPeriod` usa `SELECT … FOR UPDATE`; sus dos tests de concurrencia se ponen rojos si se le quita.
 - [x] **P1-QUOTA-002** Swipes diarios con reset 00:00 UTC · `F-066`
 - [x] **P1-QUOTA-003** Créditos de AI Studio
+- [~] **P1-QUOTA-011** **Cablear el cobro de créditos a `POST /influencers`** (250, `AI_STUDIO_COST.influencer`) con liberación si el pipeline falla · `FR-080`, §9.4 · agente C
 - [x] **P1-QUOTA-004** Trial allowance **de por vida**, compartida entre workspaces personales, sin reset · PRD §16.2
 - [x] **P1-QUOTA-005** **Reembolso de content save cuando el build falla** · `FR-050` · ⚠️ regla de negocio explícita
+- [~] **P1-QUOTA-012** **El saldo comprado no se arrastra entre períodos** — §16.2 dice que no caduca y `lockPeriod` crea el período nuevo en 0 · agente D
+- [~] **P1-QUOTA-013** Handler de `quota-reset` (§9.5 #17): barrido de períodos vencidos · agente D
 - [x] **P1-QUOTA-006** Orden de evaluación: el gate de saves **antes** que el cap de swipes · PRD §16.2
 - [x] **P1-QUOTA-007** Rate limiting token-bucket por workspace, con `Retry-After` y `details.retryAfterMs` · `NFR-009`
 - [x] **P1-QUOTA-008** `503 service_unavailable` cuando el límite no se puede comprobar (≠ 429) · `NFR-009`
@@ -315,7 +318,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 ## P2-RENDER — Motor de render
 
 - [x] **P2-RENDER-001** Scaffold `services/render` (FFmpeg + sharp, sin estado) · `ADR-007`
-- [~] **P2-RENDER-002** Puerto `MediaRenderer` + adaptador · **parcial:** el puerto está y tiene su suite de contrato; el adaptador **real contra `services/render` no existe**. Hoy `apps/worker` monta `MemoryMediaRenderer`, así que el pipeline de build corre completo y el artefacto son bytes sintéticos.
+- [~] **P2-RENDER-002** Puerto `MediaRenderer` + adaptador · agente B · **parcial:** el puerto está y tiene su suite de contrato; el adaptador **real contra `services/render` no existe**. Hoy `apps/worker` monta `MemoryMediaRenderer`, así que el pipeline de build corre completo y el artefacto son bytes sintéticos.
   > Al escribir el handler apareció que `audio` era **obligatorio** en `WallOfTextJob` y `VideoHookJob`, y `FR-053.1` (PRD:1234) dice que *No audio* omite el bloque. El contrato público ya lo tenía opcional: una pieza válida de `POST /content` no se podía ni escribir como `RenderJob`. Corregido en el puerto. **`services/render` todavía lo exige** (`payload.ts`), así que el adaptador real se va a topar con eso.
 - [x] **P2-RENDER-003** Esquema de text-object compartido por los 4 formatos · `FR-070`
 - [x] **P2-RENDER-004** Render `slideshow` (hasta 20 slides, 4 aspect ratios) · `FR-070`
@@ -327,6 +330,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P2-RENDER-010** **Cache por hash del payload**: no re-encodear si sólo cambió el texto · IMPL §5
 - [x] **P2-RENDER-011** Golden-file tests por formato · IMPL §4
 - [x] **P2-RENDER-012** Recorte inteligente en vez de `stretch-to-canvas` · `EXT-006`
+- [~] **P2-RENDER-014** **`audio` opcional en `wall-of-text` y `video-hook`** (`FR-053.1`: *No audio* omite el bloque) + endpoint para recuperar el artefacto renderizado · agente A
 - [~] **P2-RENDER-013** Normalización de media: MOV→MP4, HDR→SDR, faststart · `NFR-014` · **parcial:** MOV→MP4 y faststart escritos pero **nunca corridos sobre un archivo real**; HDR→SDR **falla cerrado** porque este build de ffmpeg no trae `zscale` ni `libplacebo`
 
 ## P2-CONTENT — Entidad Content
