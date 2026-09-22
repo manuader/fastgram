@@ -344,7 +344,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P2-PREFS-004** 7 presets de estilo de caption · `FR-055`
 - [x] **P2-PREFS-005** **Los cambios aplican sólo a generaciones futuras; la cola no se vacía** · `FR-055` · ⚠️ regla explícita
 - [x] **P2-PREFS-006** Rate limit dedicado de 3/min
-- [ ] **P2-PREFS-007** UI `/blitz/settings` con auto-guardado y banner `All changes saved` · `FR-055`
+- [x] **P2-PREFS-007** UI `/blitz/settings` con auto-guardado y banner `All changes saved` · `FR-055`
 
 ## P2-DISC — Discovery queue
 
@@ -454,7 +454,9 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 - [ ] **P2-LIB-001** Tab `My Posts` con estado, tipo y métricas · `F-120`
 - [x] **P2-LIB-002** Tab `My Content` · `F-124`
-- [ ] **P2-LIB-003** Tab `My Media Bank` · `F-125`
+- [x] **P2-LIB-003** Tab `My Media Bank` · `F-125`
+  > Se construyó pidiendo `P2-MEDIA-006` por error del coordinador: esa tarea es el modo `CREATING SET`, que **no** está. Lo que se hizo es esta tab — lista, los cuatro estados de §19 y filtro por `type`, que es el único filtro que `GET /media` tiene hoy.
+  > **Sin polling a propósito**, aunque un asset nazca `processing`: no hay handler de normalización en el worker, así que se quedaría así para siempre y el intervalo sería una petición cada 10 s sin ver cambiar nada.
 - [~] **P2-LIB-004** `Refresh Metrics` · `F-121`
 - [ ] **P2-LIB-005** Modo `Select` y acciones masivas · `F-122` · ⚠️ alcance exacto en `OQ-04`
 

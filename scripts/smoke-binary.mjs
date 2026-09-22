@@ -47,6 +47,34 @@ const PORT = Number(process.env.SMOKE_PORT ?? 3199);
 const BASE = `http://127.0.0.1:${PORT}`;
 const QUEUE_SCHEMA = process.env.QUEUE_SCHEMA ?? "pgboss_smoke";
 
+/**
+ * Las variables de S3, con el default del MinIO de `docker-compose.yml`.
+ *
+ * Sin esto el smoke **no arranca en una máquina de desarrollo**: desde que
+ * `P1-STORAGE-007` montó `S3Storage` en las dos apps, las cinco son
+ * obligatorias, y el binario muere en `loadApiEnv` antes de escuchar un puerto.
+ * CI las exporta en el job `binario`; una persona sin `.env` no, y el script ya
+ * defaulteaba todo lo demás —la base, el puerto, el esquema de cola— así que la
+ * excepción eran justamente éstas.
+ *
+ * Se defaultean y no se exigen porque este script **no habla con el storage**:
+ * su smoke es `POST /content` → encolado → el worker lo consume. Las variables
+ * hacen falta para que el proceso arranque, no para que el camino funcione —
+ * por eso el job `binario` de CI corre a propósito **sin MinIO escuchando**.
+ */
+const S3_DEFAULTS = {
+  S3_ENDPOINT: "http://localhost:9000",
+  S3_REGION: "auto",
+  S3_BUCKET: "fastgram-dev",
+  S3_ACCESS_KEY_ID: "fastgram",
+  // Credencial del MinIO local de `docker-compose.yml`, no un secreto.
+  S3_SECRET_ACCESS_KEY: "fastgram-dev-secret",
+  S3_PUBLIC_URL: "http://localhost:9000/fastgram-dev",
+};
+
+/** Lo que heredan los dos binarios: el entorno real gana sobre el default. */
+const ENV_BASE = { ...S3_DEFAULTS, ...process.env };
+
 const fallos = [];
 const ok = [];
 
@@ -157,7 +185,7 @@ try {
   proc = spawn(process.execPath, ["dist/main.js"], {
     cwd: new URL("../apps/api/", import.meta.url).pathname,
     env: {
-      ...process.env,
+      ...ENV_BASE,
       DATABASE_URL,
       DATABASE_APP_ROLE: process.env.DATABASE_APP_ROLE ?? "fastgram_app",
       QUEUE_SCHEMA,
@@ -228,7 +256,7 @@ try {
     worker = spawn(process.execPath, ["dist/main.js"], {
       cwd: new URL("../apps/worker/", import.meta.url).pathname,
       env: {
-        ...process.env,
+        ...ENV_BASE,
         DATABASE_URL,
         DATABASE_APP_ROLE: process.env.DATABASE_APP_ROLE ?? "fastgram_app",
         QUEUE_SCHEMA,
