@@ -138,6 +138,69 @@ mismaLista("tiers de adquisición (PRD FR-011.4) · 3 paquetes", [
   ["packages/contracts/src/resources/brand.ts", "acquisitionTierSchema"],
 ]);
 
+// ── Las listas que coincidían por cuidado, no por garantía ───────────────────
+//
+// Un escaneo de 47 listas de literales en `ports`+`core` contra 90 en
+// `db`+`contracts` encontró **25 pares que coinciden hoy sin que nada lo
+// garantice** — exactamente el estado en que estuvo `acquisition_tier` durante
+// cuatro tandas, hasta que casi tumba un `INSERT`.
+//
+// Van las de más superficie. **La dirección peligrosa es un valor que exista en
+// `core`/`ports` y NO en la base**: ése es el que Postgres rechaza. Al revés
+// (dominio ⊂ base) es inofensivo, y por eso las que se sabe que son subconjuntos
+// deliberados —`BrandSourceType` sin `manual`, `INFLUENCER_CAPABLE_TYPES` sin
+// `green-screen`— **no** están acá: las pondría rojas por diseño.
+
+mismaLista("estados de Post (PRD FR-060) · core ↔ db", [
+  ["packages/core/src/scheduling/schedule-post.ts", "POST_STATUSES"],
+  ["packages/db/src/schema/enums.ts", "POST_STATUS"],
+]);
+
+mismaLista("motivos de fallo de Brand Source (ERR-B01…B14) · core ↔ db", [
+  ["packages/core/src/brand/brand-source.ts", "BRAND_SOURCE_FAILURE_REASONS"],
+  ["packages/db/src/schema/enums.ts", "BRAND_SOURCE_FAILURE_REASON"],
+]);
+
+mismaLista("estados de Brand Source (DATA-031) · core ↔ db", [
+  ["packages/core/src/brand/brand-source.ts", "BRAND_SOURCE_STATUSES"],
+  ["packages/db/src/schema/enums.ts", "BRAND_SOURCE_STATUS"],
+]);
+
+mismaLista("puntos de decisión de Judgment (EXT-008 §25) · ports ↔ db", [
+  ["packages/ports/src/judgment.ts", "DECISION_POINTS"],
+  ["packages/db/src/schema/enums.ts", "DECISION_POINT"],
+]);
+
+mismaLista("presets de estilo de caption (FR-055) · core ↔ contracts", [
+  ["packages/core/src/discovery/blitz-preferences.ts", "TEXT_STYLE_PRESETS"],
+  ["packages/contracts/src/primitives/enums.ts", "textStylePresetSchema"],
+]);
+
+mismaLista("tipos de Content (DATA-008) · core ↔ db", [
+  ["packages/core/src/content/content.ts", "CONTENT_TYPES"],
+  ["packages/db/src/schema/enums.ts", "CONTENT_TYPE"],
+]);
+
+mismaLista("estados de Content (DATA-008) · core ↔ db", [
+  ["packages/core/src/content/content.ts", "CONTENT_STATUSES"],
+  ["packages/db/src/schema/enums.ts", "CONTENT_STATUS"],
+]);
+
+mismaLista("plataformas sociales (D-02) · core ↔ db", [
+  ["packages/core/src/scheduling/schedule-post.ts", "PLATFORMS"],
+  ["packages/db/src/schema/enums.ts", "SOCIAL_PLATFORM"],
+]);
+
+mismaLista("estados de idempotencia (NFR-004) · core ↔ db", [
+  ["packages/core/src/idempotency.ts", "IDEMPOTENCY_STATES"],
+  ["packages/db/src/schema/enums.ts", "IDEMPOTENCY_STATE"],
+]);
+
+mismaLista("buckets de content save (FR-051) · core ↔ db", [
+  ["packages/core/src/quota/content-saves.ts", "SAVE_BUCKETS"],
+  ["packages/db/src/schema/enums.ts", "SAVE_BUCKET"],
+]);
+
 mismoNumero("content angles por workspace (PRD FR-056)", [
   ["packages/core/src/quota/plans.ts", "contentAngles"],
 ]);
