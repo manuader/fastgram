@@ -19,4 +19,10 @@ export const queryKeys = {
   connections: () => ["connections"] as const,
   warmedAccounts: () => ["warmed-accounts"] as const,
   homeKpis: () => ["home", "kpis"] as const,
+  /**
+   * El estado del servicio (`F-255`). No cuelga de ningún recurso del API v1 a
+   * propósito: no lleva workspace ni sesión, así que invalidar "todo lo del
+   * workspace" no debe tocarlo.
+   */
+  serviceStatus: () => ["service-status"] as const,
 } as const;

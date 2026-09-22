@@ -3,10 +3,10 @@
  *
  * Lo único que este archivo prueba es **cuándo se monta cada panel**, y no es
  * un detalle de implementación: `TabsContent` renderiza siempre su contenido y
- * lo tapa con `hidden`, así que con dos tabs que hacen fetch, abrir `/library`
- * dispararía `GET /content` **y** `GET /media` para enseñar una sola. Son el
- * doble de peticiones contra el límite de §9.6 y el doble de tiempo hasta que
- * aparece lo que el usuario sí pidió.
+ * lo tapa con `hidden`, así que con las tres tabs cableadas, abrir `/library`
+ * dispararía `GET /content`, `GET /media` **y** `GET /posts` para enseñar una
+ * sola. Son el triple de peticiones contra el límite de §9.6 y el triple de
+ * tiempo hasta que aparece lo que el usuario sí pidió.
  *
  * La aserción es sobre la petición y no sobre el DOM a propósito: "el panel
  * está en el árbol" no es lo que cuesta dinero, la petición sí.
@@ -49,13 +49,14 @@ beforeEach(() => {
 });
 
 describe("cuándo habla con la API cada tab", () => {
-  it("al abrir la Library sólo se pide el contenido, no el Media Bank", async () => {
+  it("al abrir la Library sólo se pide el contenido, ni los posts ni el Media Bank", async () => {
     renderTabs();
 
     await waitFor(() => {
       expect(pathsRequested()).toEqual(["/content"]);
     });
     expect(pathsRequested()).not.toContain("/media");
+    expect(pathsRequested()).not.toContain("/posts");
   });
 
   it("el Media Bank se pide la primera vez que se abre su pestaña", async () => {
@@ -94,12 +95,21 @@ describe("cuándo habla con la API cada tab", () => {
     expect(pathsRequested().filter((path) => path === "/content")).toHaveLength(1);
   });
 
-  it("`My Posts` sigue diciendo que no está cableada, en vez de quedarse en blanco", async () => {
+  it("`My Posts` se pide la primera vez que se abre su pestaña, y sólo una vez", async () => {
     const user = userEvent.setup();
     renderTabs();
+    await waitFor(() => {
+      expect(pathsRequested()).toEqual(["/content"]);
+    });
 
     await user.click(screen.getByRole("tab", { name: "My Posts" }));
-    expect(screen.getByText("My Posts is not wired up yet")).toBeInTheDocument();
-    expect(pathsRequested()).not.toContain("/posts");
+    await waitFor(() => {
+      expect(pathsRequested()).toContain("/posts");
+    });
+
+    await user.click(screen.getByRole("tab", { name: "My Content" }));
+    await user.click(screen.getByRole("tab", { name: "My Posts" }));
+
+    expect(pathsRequested().filter((path) => path === "/posts")).toHaveLength(1);
   });
 });

@@ -1,9 +1,10 @@
 "use client";
 
-import { EmptyState, Tabs, TabsContent, TabsList, TabsTrigger } from "@fastgram/ui";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@fastgram/ui";
 import { useState } from "react";
 import { MyContentTab } from "./MyContentTab";
 import { MyMediaBankTab } from "./MyMediaBankTab";
+import { MyPostsTab } from "./MyPostsTab";
 import { tw } from "@/lib/i18n/t";
 
 const DEFAULT_TAB = "content";
@@ -11,18 +12,15 @@ const DEFAULT_TAB = "content";
 /**
  * Las tres tabs de la Library · FR-100 (PRD:332, PRD:1601-1626).
  *
- * `My Content` y `My Media Bank` están cableadas contra `GET /content` y
- * `GET /media`. `My Posts` no, y eso se dice en la tab en vez de dejarla en
- * blanco: `GET /posts` existe y sirve datos, así que el hueco es de la tarea,
- * no del contrato (`P2-LIB-001`).
+ * Las tres están cableadas: `GET /posts`, `GET /content` y `GET /media`.
  *
  * ## El panel se monta cuando se abre, no antes
  *
  * `TabsContent` de `@fastgram/ui` **renderiza siempre** su contenido y lo tapa
- * con `hidden`, que es lo correcto para un panel de texto. Con dos tabs que
- * hacen fetch deja de serlo: abrir `/library` dispararía `GET /content` **y**
- * `GET /media` aunque sólo se mire una, o sea el doble de peticiones contra el
- * límite de §9.6 para enseñar lo mismo.
+ * con `hidden`, que es lo correcto para un panel de texto. Con tres tabs que
+ * hacen fetch deja de serlo: abrir `/library` dispararía `GET /content`,
+ * `GET /media` **y** `GET /posts` aunque sólo se mire una, o sea el triple de
+ * peticiones contra el límite de §9.6 para enseñar lo mismo.
  *
  * Así que cada panel se monta la primera vez que se abre. Se monta, no se
  * desmonta: una vez visitado se queda, porque `useContentList` corre con
@@ -58,11 +56,7 @@ export function LibraryTabs() {
       </TabsList>
 
       <TabsContent value="posts">
-        <EmptyState
-          bordered
-          title={tw("library.tab.notWired", { tab: tw("library.tab.myPosts") })}
-          description={tw("library.tab.notWiredDescription")}
-        />
+        {visited.includes("posts") && <MyPostsTab />}
       </TabsContent>
 
       <TabsContent value="content">

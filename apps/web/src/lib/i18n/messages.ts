@@ -93,6 +93,23 @@ export const webEn = {
   "placeholder.specLabel": "Spec", // nuevo
   "placeholder.taskLabel": "Task", // nuevo
 
+  /* ------------------------------------------- status page · F-255 (PRD:721) */
+  // El PRD dice "estado del servicio" y no da ni un texto, así que todo este
+  // bloque es `nuevo`. Lo que sí es normativo es lo que **no** dice: ninguna
+  // de estas cadenas nombra una dependencia interna. El porqué está en
+  // `lib/status/health.ts`.
+  "status.title": "Status", // literal (label de la ruta, PRD:259)
+  "status.ok.title": "All systems operational", // nuevo
+  "status.ok.description": "FastGram is running normally.", // nuevo
+  "status.degraded.title": "Partial degradation", // nuevo
+  "status.degraded.description":
+    "Some features may be unavailable or slower than usual. The rest of FastGram is working.", // nuevo
+  "status.unavailable.title": "Major outage", // nuevo
+  "status.unavailable.description": "FastGram can't serve requests right now.", // nuevo
+  "status.checkedAt": "Last checked at {time} UTC", // nuevo
+  "status.scope":
+    "This page reports the overall state of the service. It doesn't break it down by component.", // nuevo
+
   /* -------------------------------------------- errores sin copy en el PRD */
   // El PRD §19.6 da el **código** de estos errores pero no el texto de pantalla.
   // Todo lo de este bloque es `nuevo`.
@@ -191,10 +208,74 @@ export const webEn = {
   "library.detail.noFiles": "This piece has no files yet.", // nuevo
   "library.detail.revision": "Revision {revision}", // nuevo
   "library.detail.openFile": "Open file {index}", // nuevo
-  // La tab que esta tanda no cableó. Decirlo es mejor que una tab muerta.
-  "library.tab.notWired": "{tab} is not wired up yet", // nuevo
-  "library.tab.notWiredDescription":
-    "The route and the API endpoint exist; this tab lands with its own task.", // nuevo
+
+  /* --------------------------------- My Posts · F-120, FR-100 (PRD:1603-1611) */
+  "posts.filter.statusLabel": "Status", // nuevo
+  "posts.filter.allStatuses": "All statuses", // nuevo
+  // PRD:1605 — el contador de la derecha de la cabecera (`101 posts`).
+  "posts.count": "{count} posts", // literal (forma)
+  "posts.countOne": "1 post", // nuevo · el PRD sólo muestra el plural
+  // `GET /posts` no devuelve un total, sólo una página y `hasMore`: decir
+  // `101 posts` con más páginas por venir sería afirmar un número que nadie
+  // calculó. Mismo criterio que en `My Content` y el Media Bank.
+  "posts.countPartial": "{count} posts loaded", // nuevo
+  "posts.loadMore": "Load more", // nuevo
+  "posts.loadingMore": "Loading more…", // nuevo
+
+  "posts.empty.title": "No posts", // literal §12 (PRD:2729)
+  "posts.empty.description":
+    "Schedule a piece of content and the post shows up here with its metrics.", // nuevo
+  "posts.empty.action": "Create content", // nuevo
+  "posts.empty.filteredDescription":
+    "No posts match this status. Clear the filter to see everything.", // nuevo
+  "posts.empty.clearFilter": "Clear filter", // nuevo
+
+  // El hueco declarado de esta tab: `GET /posts` no publica nada de la pieza
+  // más allá de su id, así que el thumbnail y el badge de tipo de PRD:1607-1608
+  // no se pueden dibujar sin una petición por post.
+  "posts.noContentFields":
+    "Posts don't carry the thumbnail or the content type yet, so those aren't shown here.", // nuevo
+
+  "posts.platform.tiktok": "TikTok", // literal
+  "posts.platform.instagram": "Instagram", // literal
+  "posts.platform.youtube": "YouTube", // literal
+  "posts.platform.reddit": "Reddit", // literal
+
+  // Los diez estados de FR-060 (PRD:1387). El enum es normativo; el texto de
+  // pantalla no está en el PRD, así que los diez son `nuevo`.
+  "posts.status.building": "Building", // nuevo
+  "posts.status.created": "Created", // nuevo
+  "posts.status.scheduled": "Scheduled", // nuevo
+  "posts.status.uploading": "Uploading to TikTok", // nuevo
+  "posts.status.inUserInbox": "Waiting in your TikTok inbox", // nuevo · PRD:1390
+  "posts.status.posted": "Posted", // nuevo
+  "posts.status.failed": "Failed", // nuevo
+  "posts.status.deleted": "Deleted", // nuevo
+  "posts.status.awaitingReconnect": "Waiting for reconnect", // nuevo · PRD:1391
+  "posts.status.cancelled": "Cancelled", // nuevo
+
+  "posts.account.oauth": "Connected account", // nuevo
+  "posts.account.warmed": "Warmed account", // nuevo
+
+  // PRD:1608 — `Posted: DD/MM/YY` y `Scheduled: hh:mm am/pm, DD/MM/YY`. El
+  // `UTC` del segundo lo agrega esta sesión: ver `lib/library/posts.ts`.
+  "posts.postedAt": "Posted: {date}", // literal PRD:1608
+  "posts.scheduledAt": "Scheduled: {time} UTC, {date}", // literal (forma) + zona
+
+  // PRD:1610 — `views N · likes N · comments N`, con iconos.
+  "posts.metric.views": "views {count}", // literal
+  "posts.metric.likes": "likes {count}", // literal
+  "posts.metric.comments": "comments {count}", // literal
+
+  "posts.viewOnPlatform": "View on {platform}", // nuevo
+
+  // Las tres notas que FR-060 documenta con consecuencia. La de TikTok es la
+  // cara: reprogramar con el flag puesto crea un duplicado (PRD:1392).
+  "posts.notice.inUserInbox":
+    "TikTok accepted it as a draft. It isn't live until you open the app and post it from Inbox → System notifications.", // nuevo · PRD:1390
+  "posts.notice.tiktokDelayed":
+    "TikTok is processing this one slowly — it usually publishes on its own within 48h. Don't reschedule it, that would post it twice.", // nuevo · PRD:1392
+  "posts.notice.cancelling": "Cancelling. It resolves on its own; retrying doesn't help.", // nuevo · PRD:1395
 
   /* ------------------------------------ Media Bank · FR-100 (PRD:1618-1626) */
   "media.filter.typeLabel": "Type", // nuevo

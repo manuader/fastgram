@@ -442,6 +442,81 @@ body {
   color: var(--fg-color-text);
 }
 
+/* ------------------------------------------------ status page · F-255 */
+/* El layout de `(public)` centra su contenido, así que acá sólo hace falta
+   acotar el ancho: una sola frase en una línea de 1200 px no se lee. */
+
+.fgw-status-page {
+  display: grid;
+  gap: var(--fg-space-5);
+  width: 100%;
+  max-width: 560px;
+}
+
+.fgw-status-page__title {
+  margin: 0;
+  font-size: var(--fg-text-2xl);
+  font-weight: var(--fg-weight-semibold);
+}
+
+.fgw-status {
+  display: grid;
+  gap: var(--fg-space-3);
+}
+
+.fgw-status__card {
+  display: grid;
+  gap: var(--fg-space-2);
+  padding: var(--fg-space-5);
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-xl);
+  background: var(--fg-color-surface);
+}
+
+.fgw-status__headline {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  margin: 0;
+  font-size: var(--fg-text-lg);
+  font-weight: var(--fg-weight-semibold);
+}
+
+/* El punto es **decorativo**: el estado va escrito al lado, siempre. Un
+   semáforo sin palabra no le dice nada a quien no distingue verde de ámbar, y
+   ésta es una pantalla que se mira con prisa. */
+.fgw-status__dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: var(--fg-radius-full);
+  background: var(--fg-color-text-subtle);
+  flex: none;
+}
+
+.fgw-status__card[data-state="ok"] .fgw-status__dot {
+  background: var(--fg-color-success);
+}
+
+.fgw-status__card[data-state="degraded"] .fgw-status__dot {
+  background: var(--fg-color-warning);
+}
+
+.fgw-status__card[data-state="unavailable"] .fgw-status__dot {
+  background: var(--fg-color-danger);
+}
+
+.fgw-status__description {
+  margin: 0;
+  color: var(--fg-color-text-muted);
+}
+
+.fgw-status__meta,
+.fgw-status__scope {
+  margin: 0;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+}
+
 /* ------------------------------------------------------- placeholders */
 
 .fgw-placeholder {
@@ -876,6 +951,103 @@ body {
   justify-content: center;
 }
 
+/* ------------------------------------------------- My Posts · F-120, FR-100 */
+/* Las tarjetas de esta tab **no tienen thumbnail**: `GET /posts` no sirve nada
+   de la pieza más allá de su id (ver `lib/library/posts.ts`). Sin imagen, la
+   caja 9:16 de `My Content` dejaría un rectángulo alto y vacío, así que la
+   tarjeta es de altura automática y algo más ancha: lo que hay que leer es
+   texto —cuenta, estado, fecha y tres métricas—, no una miniatura. */
+
+.fgw-post-grid {
+  display: grid;
+  gap: var(--fg-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
+}
+
+.fgw-post-card,
+.fgw-post-skeleton {
+  display: grid;
+  gap: var(--fg-space-2);
+  padding: var(--fg-space-3);
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-lg);
+  background: var(--fg-color-surface-raised);
+  align-content: start;
+}
+
+.fgw-post-card__head,
+.fgw-post-card__state {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+  min-width: 0;
+}
+
+/* El handle se trunca (PRD:1607, `@seefutureba…`). El `title` del elemento lo
+   deja completo al pasar el ratón, que es lo que hace falta cuando dos cuentas
+   del mismo workspace comparten prefijo. */
+.fgw-post-card__account {
+  overflow: hidden;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fgw-post-card__when {
+  margin: 0;
+  margin-left: auto;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+  white-space: nowrap;
+}
+
+.fgw-post-card__metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fg-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fgw-post-card__metric {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-1);
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Las notas de FR-060 (inbox, carril lento, cancelación en curso). Llevan
+   fondo porque no son decoración: la de TikTok dice "no reprogrames", y quien
+   la ignore publica dos veces. */
+.fgw-post-card__notice {
+  margin: 0;
+  padding: var(--fg-space-2);
+  border-radius: var(--fg-radius-md);
+  background: var(--fg-color-warning-subtle);
+  color: var(--fg-color-warning-text);
+  font-size: var(--fg-text-xs);
+}
+
+.fgw-post-card__error {
+  margin: 0;
+  color: var(--fg-color-danger-text);
+  font-size: var(--fg-text-xs);
+}
+
+.fgw-post-card__link {
+  border-radius: var(--fg-radius-sm);
+  color: var(--fg-color-accent-text);
+  font-size: var(--fg-text-xs);
+  justify-self: start;
+}
+
 /* --------------------------------------------------- detalle de una pieza */
 
 .fgw-detail {
@@ -1259,6 +1431,13 @@ body {
   .fgw-content-grid,
   .fgw-media-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Una sola, no dos: la tarjeta de un post es texto —cuenta, estado, fecha y
+     tres métricas—, y a 170 px de ancho la fila de métricas se parte en tres
+     líneas. Lo que en una miniatura es "más pequeña", acá es "ilegible". */
+  .fgw-post-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .fgw-library-filters__count {
