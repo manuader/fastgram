@@ -78,6 +78,48 @@ El detalle está en `docs/IMPLEMENTATION-PLAN.md` §2. No lo repito acá para qu
 
 ## 4. Qué cambió, sesión por sesión
 
+### Sesión 2026-09-22 (4) — Lo que un test verde no dice
+
+Cuatro agentes. El hilo: **seis roturas deliberadas**, y las tres que más
+enseñaron son las que **no** salieron como se esperaba.
+
+**Una línea sostiene el aislamiento de los 28 repositorios, y la cubría un
+test.** Sacando el `eq(companyId)` de `base.ts` y corriendo la suite entera de
+`packages/db`: `1 failed | 135 passed`. Los 19 tests de acceso cruzado de
+`repositories-write` no se enteraron, porque con el GUC puesto **RLS tapa el
+agujero** y el `WHERE` nunca se ejerce. El archivo nuevo corre sin GUC: ahora son
+**7 rojos**, cubriendo lectura y escritura.
+
+**Las fuentes: bajarlas no era el problema.** Se bajaron las 32 OFL, eran TTF
+válidos con nombres internos correctos, y el motor seguía sin tomarlas. La causa
+era una conclusión falsa documentada en el propio cargador —«lo que funciona es
+pasar el archivo con `fontfile`, verificado con Georgia»—: Georgia es una fuente
+del sistema y resolvía **por nombre**. Pedir «Anton» pasándole el archivo de
+Georgia da el centinela: **`fontfile` no se usa**. El bloqueo queda partido en
+conseguir los archivos (hecho) e instalarlos (trabajo del Dockerfile bloqueado).
+
+**Una rotura que dio el resultado tranquilizador.** Romper el advisory lock del
+refill en `packages/db/src` dejó los 23 tests verdes: `apps/worker` resuelve
+`@fastgram/db` a su **`dist`**, así que la rotura no se ejecutaba. Recompilando,
+cae con el mensaje exacto que el agente había reportado.
+
+**Y una que reveló una guarda casi redundante.** Borrar el pre-chequeo de
+duplicados de brand dejó 40 tests verdes — el índice global lo atrapa igual.
+Casi: con el workspace en el cap de 5, sin pre-chequeo el usuario recibe «borrá
+una fuente» sobre una fuente que ya tiene. La respuesta no era borrar la guarda
+ni dejarla sin test, sino **encontrar el caso que la distingue**.
+
+**Lo que se construyó.** El mensaje «the queue replenishes in the background»
+dejó de ser una promesa vacía. Ninguna brand source envejecía nunca, y ahora hay
+un barrido con `SECURITY DEFINER` medido (sin él: cero filas, sin error). Nueve
+rutas de brand sobre un dominio que llevaba tandas sin poder alcanzarse, más un
+test que compara el OpenAPI contra las rutas **registradas** en los dos sentidos
+— y que en su primera corrida encontró una tercera mentira que nadie pidió
+buscar. El `JudgmentSink` contra la base. La tab `My Posts` y una status page
+que redacta **en el servidor**, porque no renderizar no es no publicar.
+
+Detalle completo en `docs/SESSION-2026-09-22-cuarta-tanda.md`.
+
 ### Sesión 2026-09-22 (3) — El documento mentía sobre 67 tareas
 
 **Lo más importante de esta sesión no es código.** `tasks.md` —el documento que
@@ -400,7 +442,7 @@ Y una de la sesión del worker:
 
 ## 6. Cómo verificar
 
-**Números al 2026-09-22 (tercera tanda).** Son lo que permite distinguir "lo rompí yo" de "ya estaba rojo".
+**Números al 2026-09-22 (cuarta tanda).** Son lo que permite distinguir "lo rompí yo" de "ya estaba rojo".
 Si tu corrida da menos, algo se perdió; si da más, actualizá esta sección.
 
 ```bash
@@ -415,25 +457,25 @@ pnpm verify           # lint · typecheck · boundaries · consistency · test
 | `pnpm format:check` | prettier sobre el repo. **Entró en `verify` tarde**: CI lo corría solo y llevaba tandas en rojo sin que nadie lo viera | **limpio** |
 | `pnpm lint` | eslint una vez sobre todo el repo | **0 errores** |
 | `pnpm typecheck` | `tsc --noEmit` por paquete, 12 tareas | **12 successful** |
-| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 439 módulos · **1265 dependencias** |
+| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 462 módulos · **1402 dependencias** |
 | `pnpm consistency` | los números del PRD escritos en más de un paquete | **19 invariantes** |
-| `pnpm test` | unitarios | **1.772** |
+| `pnpm test` | unitarios | **1.837** |
 
 Desglose de `pnpm test`, por si uno solo se cae:
 
 | Paquete | Tests | | Paquete | Tests |
 |---|---|---|---|---|
 | `core` | 430 | | `adapters` | 355 |
-| `contracts` | 253 | | `ui` | 170 |
-| `render-service` | 207 | | `web` | 137 |
-| `api` | 131 | | `db` | 52 |
+| `contracts` | 256 | | `render-service` | 207 |
+| `web` | 194 | | `ui` | 170 |
+| `api` | 136 | | `db` | 52 |
 | `worker` | 28 | | `config` | 9 |
 
 ### Lo que necesita servicios levantados
 
 ```bash
 docker compose up -d                       # Postgres con pgvector + MinIO con el bucket creado
-pnpm test:int                              # db 147 · api 140 · worker 86 · adapters 9 → 382
+pnpm test:int                              # db 177 · api 188 · worker 86 · adapters 9 → 460
 pnpm --filter @fastgram/adapters test:int  # 9 — encolado dentro de la transacción de Drizzle
 pnpm build && pnpm smoke:binary           # el artefacto que se despliega, de verdad
 ```
@@ -468,10 +510,10 @@ motor ausente, todo análisis devuelve `partial`: es lo que manda `AI-016`.
 ### Estado del backlog
 
 ```bash
-grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 145
-grep -c '^- \[~\]' tasks.md     # en curso o parciales — hoy: 36
+grep -c '^- \[x\]' tasks.md     # terminadas — hoy: 149
+grep -c '^- \[~\]' tasks.md     # en curso o parciales — hoy: 41
 grep -c '^- \[!\]' tasks.md     # bloqueadas — hoy: 1
-grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 206
+grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 197
 ```
 
 ### Lo que `pnpm verify` NO mide
@@ -829,6 +871,66 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 206
     se puedan escribir en transacciones distintas por descuido: la diferencia
     entre una invariante y una convención.
 
+38. **La aserción negativa primero no alcanza si el `await` de arriba es
+    positivo.** En un test que prueba que algo **no** pasa, poner
+    `expect(...).toBeNull()` antes que la positiva es necesario y no suficiente:
+    si el `await` que espera a que la pantalla se estabilice es
+    `findByRole("alert")`, espera por lo **correcto** y falla ahí, antes de
+    llegar a la negativa.
+
+    ```
+    await positivo  → × Unable to find an element with role="alert"
+    await neutral   → × expected <p class="fg-state__title"/> to be null
+    ```
+
+    Las dos son rojas; sólo la segunda manda a mirar donde hay que mirar.
+    Esperá una señal que sea **verdadera en los dos mundos** —que se apague el
+    `aria-busy`, por ejemplo— y afirmá después.
+
+39. **Un `singletonKey` con id determinista dispara una sola vez en la vida.**
+    El adaptador de pg-boss deriva de la clave el id del job, así que una clave
+    fija por workspace choca para siempre contra el `ON CONFLICT DO NOTHING` de
+    la PK: el adaptador encuentra el job viejo —ya completado— y devuelve
+    `created: false`.
+
+    O sea que `singletonKey: \`refill:${companyId}\`` acota los jobs **y**
+    hace que el trabajo no se repita nunca. No se ve en ningún test que mire una
+    sola petición. Si el trabajo tiene que poder repetirse, la clave necesita
+    algo que rote — un cubo de tiempo, por ejemplo.
+
+40. **Una conclusión sacada de un experimento confundido sobrevive años en un
+    comentario.** `fontLoader.ts` documentaba que «lo que funciona es pasar el
+    archivo con `fontfile`, verificado con Georgia.ttf: 545x40 contra 517x39 del
+    fallback». Georgia es una fuente **del sistema** en macOS: aquel experimento
+    comparó «una familia que existe» contra «una que no», no «con archivo»
+    contra «sin archivo».
+
+    ```
+    Anton CON su propio fontfile      517x39   ← NO carga
+    Anton CON el fontfile de Georgia  517x39   ← el archivo se ignora
+    ```
+
+    El control que faltaba era pedir una familia **pasándole el archivo de
+    otra**. Cuando un comentario afirme que X es lo que hace que algo funcione,
+    el experimento que lo prueba tiene que **variar X dejando todo lo demás
+    igual** — y el caso de Georgia no variaba X, variaba si la familia existía.
+
+    Corolario práctico: **bajar fuentes a un directorio no es instalarlas.**
+
+41. **Una rotura que no pone nada rojo puede significar que la guarda es *casi*
+    redundante — y lo interesante está en el «casi».** Borrar el pre-chequeo de
+    duplicados del alta de brand dejó **40 tests verdes**: el índice único
+    global atrapa el duplicado igual y produce la respuesta idéntica.
+
+    Casi: con el workspace **en el cap de 5**, sin pre-chequeo la validación de
+    cap se evalúa antes del `INSERT` y le dice al usuario «borrá una fuente»
+    sobre una fuente que **ya tiene**. Consejo falso.
+
+    Las dos salidas fáciles son malas. Borrar la guarda porque «ningún test la
+    extraña» pierde el caso; dejarla sin test deja que alguien la borre mañana.
+    Lo que corresponde es **buscar el caso que la distingue**, escribirlo, y
+    volver a romper para comprobar que ahora sí duele.
+
 ## 8. Qué falta
 
 El backlog real es `tasks.md`. El estado de hoy está en §6.
@@ -844,7 +946,7 @@ ya**, en paralelo con el código.
 | Derechos del catálogo de tendencias (`OQ-13`) | **toda la épica P2-TREND** | `P2-TREND-001` |
 | Decisión de licencia del build de FFmpeg | el render | `P0-REPO-004` |
 | Estrategia de librerías UGC (`OQ-13`) | P5-LIBR | `P5-LIBR-001/002` |
-| **Las 42 fuentes: conseguir los archivos, y decidir qué hacer con `tiktok` y `snapchat`** | el overlay de texto de los 4 formatos | `P2-RENDER-008` |
+| **Las 10 fuentes de `tiktok`/`snapchat`** (las otras 32 ya se bajan con `pnpm fonts:fetch`) | el overlay de texto de los 4 formatos | `P2-RENDER-008` |
 | **Confirmación escrita de Cloudflare**: si R2 + Workers está permitido hoy para servir video fuera de Enterprise | `ADR-006`, y con él la elección de storage | `P1-INFRA-004` |
 | **`OQ-21`**: si el tarifario de créditos se hereda o se recalibra | el margen del producto entero | — |
 
@@ -863,13 +965,16 @@ ponerla.
 
 | Qué | Por qué urge | Tarea |
 |---|---|---|
-| **El adaptador de `MediaRenderer` rinde video real y sigue sin montarse** | de los cinco bloqueos quedan **dos**. Cerrados: el grant (el puerto lleva `MediaAuthorization` y el adaptador la firma, verificado contra el servicio real), `renderAll` para el slideshow multi-slide, y el `thumbnail()` que se llama en cada build y era un stub que lanzaba. Abiertos: **las fuentes** —sin ellas, `font_unavailable` permanente y save reembolsado en cada build— y **el origen del audio**, que nadie definió | `P2-RENDER-015` |
+| **El adaptador de `MediaRenderer` rinde video real y sigue sin montarse** | quedan **dos** bloqueos, y el de las fuentes cambió de forma: los 32 archivos OFL **ya se bajan** (`pnpm fonts:fetch`) y **el motor sigue sin tomarlos**, porque `fontfile` se ignora y lo único que resuelve es el nombre en el sistema — instalarlas es trabajo del Dockerfile que `P0-REPO-004` bloquea. El otro es **el origen del audio**, que nadie definió | `P2-RENDER-015` |
 | **Nada encola `discovery-refill`** | el handler está montado y testeado; el nombre sólo aparece en el catálogo y en `queues.ts`. Sin productor la cola sigue vacía, `POST /blitz` sigue dando «cola vacía», y **toda P2-BLITZ sigue sin datos que mostrar**. Es el tapón del producto | `P2-DISC-001` |
 | **La UI nunca se probó contra la API sirviendo datos** | la Library se ejercitó contra un stub; las 4 keys de desarrollo están hasheadas y no se pudo crear una. Hay 20 filas en `contents` esperando | `P1-UI-012` |
 | ~~**No hay ni un test de componente**~~ **cerrado** | el arnés está (`vitest` + jsdom + Testing Library) y hay 83 tests de componente. Lo que falta ahora es otra cosa: **nadie abrió un navegador** con las dos pantallas nuevas, y jsdom no pinta | `P1-UI-014` |
-| **16 de las 21 colas siguen sin consumidor** | la API ya encola en varias; un job sin handler no falla, se queda esperando para siempre | `P1-QUEUE-*` |
-| **El contrato público miente en tres lugares** | el OpenAPI documenta `409 media_in_use`, que la ruta **nunca** devuelve, y publica **cinco endpoints `/brand/*` que no existen**. El test de OpenAPI comprueba 27 paths y no incluye ninguno. Además la cabecera de `content.ts` dice que no consume el content save, y lo consume desde `P1-QUOTA-010` | — |
-| **P1-BRAND: 11 tareas con dominio completo y cero rutas** | SSRF con tests de IP decimal y el borde 172.32, síntesis, link-in-bio, unicidad global, los 14 `ERR-B` en el i18n — y no hay una sola ruta `/brand` en la API. Es el mejor retorno por línea que queda | `P1-BRAND-*` |
+| **15 de las 21 colas siguen sin consumidor** | la API ya encola en varias; un job sin handler no falla, se queda esperando para siempre | `P1-QUEUE-*` |
+| **Nada consume `brand-source-analysis`** | las rutas de brand ya encolan, con un payload que **nadie consume**. Consecuencia directa: **ninguna fuente sale nunca de `pending`**, así que `ready`/`partial`/`failed`/`stale` no los produce nada y el cooldown de re-análisis no se ejercita | `P1-BRAND-006…011` |
+| **Los enums del tier C no coinciden entre paquetes** | `ports`/`core` dicen `C_rendered_fetch`, `db`/`contracts` dicen `C_page_fetch`: `acquisitionPlan()` puede devolver un valor que Postgres rechaza. No explota hoy porque el tier está apagado hasta `OQ-16`; el día que se encienda, sí | `P1-BRAND-013` |
+| **`apps/worker` no expone ninguna sonda** | la API ya tiene health checks que comprueban de verdad; un worker con la base caída no lo dice en ningún lado | `P1-OBS-004` |
+| ~~**El contrato público miente en tres lugares**~~ **cerrado, y con guardián** | los cinco `/brand/*` **existen**; `409 media_in_use` se quitó (implementarlo necesita un operador «contiene» en los filtros de `packages/db`); y `openapi-routes.test.ts` compara ahora el OpenAPI contra las rutas **registradas** en los dos sentidos. En su primera corrida encontró una tercera mentira que nadie pidió buscar: `GET /blitz/angles/page` existía y el contrato no la nombraba | — |
+| ~~**P1-BRAND: dominio completo y cero rutas**~~ **cerrado** | las nueve rutas de §9.14 existen. Lo que falta ahora es otra cosa: **nadie consume el job que encolan** (fila de arriba) | `P1-BRAND-*` |
 | **No hay adaptador de identidad**: la API sólo acepta API key | el proxy de `apps/web` usa **una key por despliegue**, o sea un workspace para todo el que llegue a la app. Es provisorio y está escrito como tal | `P1-AUTH-*` |
 | `text-subtle` en modo oscuro no llega a AA para texto normal (3,65:1 y 3,16:1) | accesibilidad, y hoy está sin restricción de uso | `P1-UI-011` |
 
@@ -917,6 +1022,7 @@ Salieron de acá, cerrados: `P0-REPO-013`, `P1-DATA-014`, `P1-DATA-015`,
 | [`SESSION-2026-09-21-plan-implementacion.md`](SESSION-2026-09-21-plan-implementacion.md) | cómo se llegó del PRD al plan, y qué se descartó |
 | [`SESSION-2026-09-21-implementacion.md`](SESSION-2026-09-21-implementacion.md) | cómo se organizó el trabajo en paralelo, y las trampas que costaron tiempo |
 | [`SESSION-2026-09-21-escritura-y-endpoints.md`](SESSION-2026-09-21-escritura-y-endpoints.md) | la escritura en los repositorios y los 16 endpoints, con cuatro agentes en paralelo |
+| [`SESSION-2026-09-22-cuarta-tanda.md`](SESSION-2026-09-22-cuarta-tanda.md) | seis roturas deliberadas, y las tres que enseñaron son las que no salieron como se esperaba |
 | [`SESSION-2026-09-22-tercera-tanda.md`](SESSION-2026-09-22-tercera-tanda.md) | la auditoría que encontró 67 tareas mal contadas, y las tres mediciones que salieron al revés de lo esperado |
 | [`SESSION-2026-09-22-segunda-tanda.md`](SESSION-2026-09-22-segunda-tanda.md) | la segunda tanda de cuatro: seis cosas que nunca habían funcionado y ningún síntoma las delataba |
 | [`SESSION-2026-09-22-cuatro-agentes.md`](SESSION-2026-09-22-cuatro-agentes.md) | cuatro tandas en paralelo: el contrato entre agentes, el 500 que nadie veía, y las dos trampas de coordinar |

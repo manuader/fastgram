@@ -241,7 +241,8 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [ ] **P1-BRAND-002** **Spike de cobertura pública por plataforma (las 5)** · `OQ-19` · ⚠️ **hacer ANTES de escribir los extractores**; puede reabrir `D-02`
 - [x] **P1-BRAND-003** Resolución y normalización de entrada: URL, `@handle`, limpieza de tracking, `x.com`≡`twitter.com` · `FR-011.1`
 - [ ] **P1-BRAND-004** Desambiguador de plataforma, con preselección de la cuenta ya conectada · `FR-011.1`
-- [ ] **P1-BRAND-005** Link a post concreto → resuelve al perfil del autor + aviso · `FR-011.1`
+- [~] **P1-BRAND-005** Link a post concreto → resuelve al perfil del autor + aviso · `FR-011.1`
+  > Resuelto en TikTok y X, donde el handle está en la URL. En **Instagram, YouTube y LinkedIn** hay que preguntarle a la plataforma y no hay `SocialReader` montado: responde `503`. El aviso de `ERR-B12` viaja en `resolvedFromPost`, un campo nuevo y opcional — la forma literal de PRD:2368 no traía ningún canal para él.
 - [ ] **P1-BRAND-006** Extractor `website` / `other_url` (OpenGraph + contenido) · `AI-001`
 - [ ] **P1-BRAND-007** Extractor Instagram · `D-02`
 - [ ] **P1-BRAND-008** Extractor TikTok · `D-02`
@@ -249,18 +250,25 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [ ] **P1-BRAND-010** Extractor YouTube · `D-02`
 - [ ] **P1-BRAND-011** Extractor LinkedIn · `D-02`
 - [x] **P1-BRAND-012** Orden de tiers **B → C → A → D**; el signup **no pide OAuth** · `D-01`, `FR-011.4`
-- [ ] **P1-BRAND-013** Tier C **detrás de bandera apagada** hasta `OQ-16` · `FR-011.4`
+- [~] **P1-BRAND-013** Tier C **detrás de bandera apagada** hasta `OQ-16` · `FR-011.4`
+  > **Los enums del tier C no coinciden entre paquetes:** `ports`/`core` dicen `C_rendered_fetch`, `db`/`contracts` dicen `C_page_fetch`. `acquisitionPlan()` puede devolver un valor que Postgres rechaza. Hoy no explota porque el tier está apagado; el día que se encienda, sí. Hay un traductor explícito en la ruta, pero la unificación es de `ports` + `db`.
 - [ ] **P1-BRAND-014** Tier D asistido: pegar bio, subir capturas · `FR-011.4`
 - [ ] **P1-BRAND-015** Resolución de link-in-bio: 1 nivel, máx. 5 destinos, sin recursión · `INT-018`
-- [ ] **P1-BRAND-016** `AI-016`: síntesis con `fieldMeta` (confianza + origen + extracto)
+- [~] **P1-BRAND-016** `AI-016`: síntesis con `fieldMeta` (confianza + origen + extracto)
+  > `fieldMetaSchema` exigía `sourceId` y `excerptRef`, y una edición manual no tiene ni fuente ni extracto: era **imposible marcar `editedByUser`** en un campo que la síntesis nunca escribió — y `FR-011.6` depende de esa marca para no pisarlo. Ahora son nullable.
 - [x] **P1-BRAND-017** Preguntas de cierre de huecos · `FR-011.3` · ⚠️ **nunca inventar** un campo sin señal
-- [ ] **P1-BRAND-018** Protección SSRF en **todos** los orígenes, incluido el seguimiento de link-in-bio · `NFR-017`
+- [x] **P1-BRAND-018** Protección SSRF en **todos** los orígenes, incluido el seguimiento de link-in-bio · `NFR-017`
+  > No se reimplementó en la ruta: `detectBrandSource` llama a `assertHostAllowed` por dentro. Dos definiciones de «URL segura» se desincronizan.
+  > **Matiz medido:** la rama `/^\d+$/` es inalcanzable vía `detectBrandSource` — `new URL("http://2130706433/")` normaliza el host a `127.0.0.1` antes, así que entra por la rama de IP privada. Queda bloqueado igual; esa rama sólo la ejercita el test unitario de `core`.
 - [ ] **P1-BRAND-019** **Suite de regresión con bios adversariales** (prompt injection) · `FR-011.9` · ⚠️ exigida por el PRD
-- [ ] **P1-BRAND-020** Unicidad `(sourceType, handle)` global · `FR-011.7`
+- [x] **P1-BRAND-020** Unicidad `(sourceType, handle)` global · `FR-011.7`
+  > El choque con **otro** workspace no se puede consultar: RLS esconde la fila ajena de cualquier `SELECT` con scope, así que lo único que lo sabe es el índice al fallar el `INSERT`. La rama `ERR-B06` del dominio es **inalcanzable desde HTTP**, y el 409 se traduce del `23505`.
+  > El cuerpo es **byte a byte idéntico** choques con una fuente tuya o con la de otro: el literal del PRD («already connected to another workspace») convierte el alta en un buscador de clientes.
 - [x] **P1-BRAND-021** Retención del snapshot + purga por `rawRetentionExpiresAt`; binarios de terceros **no se persisten** · `DATA-032`
   > El circuito de la omisión: sin handler, `main.ts` **no programa el cron** —a propósito, porque un cron sin consumidor acumula jobs mientras el log dice que está programado—, así que ninguna fuente envejecía nunca.
   > `SECURITY DEFINER` medido: sin él, con `fastgram_app` y sin GUC el `UPDATE` afecta **cero filas y sin error** (`expected 0 to be greater than or equal to 1`). Un test que corra como superusuario no puede ver la diferencia.
-- [ ] **P1-BRAND-022** Estados y errores completos de `FR-011.8` / `FR-011.9` (14 mensajes) · `ERR-B01`…`ERR-B14`
+- [~] **P1-BRAND-022** Estados y errores completos de `FR-011.8` / `FR-011.9` (14 mensajes) · `ERR-B01`…`ERR-B14`
+  > Los 14 mensajes existen y las rutas los emiten, pero **ninguna fuente sale nunca de `pending`**: el handler de `brand-source-analysis` no existe, así que `ready`, `partial`, `failed` y `stale` no los produce nada.
 - [ ] **P1-BRAND-023** Semilla de content angles desde los temas con mejor engagement · `AI-016`
 - [ ] **P1-BRAND-024** **Iniciar la revisión legal `OQ-16`** · ⚠️ bloquea el tier C, no es tarea de ingeniería
 
