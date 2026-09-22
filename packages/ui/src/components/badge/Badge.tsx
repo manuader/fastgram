@@ -1,6 +1,6 @@
 import { type ComponentPropsWithRef, type ReactNode } from "react";
-import { cn } from "../../cn.js";
-import { badgeVariants, type BadgeVariants } from "./badge.variants.js";
+import { cn } from "../../cn";
+import { badgeVariants, type BadgeVariants } from "./badge.variants";
 
 export interface BadgeProps extends ComponentPropsWithRef<"span">, BadgeVariants {
   /** Punto de color antes del texto (estados: posted, scheduled, failed…). */

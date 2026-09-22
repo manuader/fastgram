@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Button } from "../button/Button.js";
-import { EmptyState } from "./EmptyState.js";
+import { Button } from "../button/Button";
+import { EmptyState } from "./EmptyState";
 
 describe("EmptyState (markup)", () => {
   it("renderiza el copy literal del PRD a partir del ID del estado", () => {

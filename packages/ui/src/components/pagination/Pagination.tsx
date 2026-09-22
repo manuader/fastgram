@@ -2,14 +2,14 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { type ComponentPropsWithRef } from "react";
-import { cn } from "../../cn.js";
-import { t } from "../../i18n/t.js";
+import { cn } from "../../cn";
+import { t } from "../../i18n/t";
 import {
   getPaginationRange,
   PAGINATION_ELLIPSIS,
   type PaginationItem,
-} from "../../lib/pagination.js";
-import { paginationVariants, type PaginationVariants } from "./pagination.variants.js";
+} from "../../lib/pagination";
+import { paginationVariants, type PaginationVariants } from "./pagination.variants";
 
 export interface PaginationProps
   extends Omit<ComponentPropsWithRef<"nav">, "onChange">, PaginationVariants {

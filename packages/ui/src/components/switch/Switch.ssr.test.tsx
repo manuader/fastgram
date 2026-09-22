@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Switch } from "./Switch.js";
+import { Switch } from "./Switch";
 
 describe("Switch (markup)", () => {
   it("expone role=switch con su estado", () => {

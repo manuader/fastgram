@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, type ComponentPropsWithRef } from "react";
-import { cn } from "../../cn.js";
-import { switchVariants, type SwitchVariants } from "./switch.variants.js";
+import { cn } from "../../cn";
+import { switchVariants, type SwitchVariants } from "./switch.variants";
 
 export interface SwitchProps
   extends

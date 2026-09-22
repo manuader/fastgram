@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { badgeVariants, PLATFORM_TONES } from "./badge.variants.js";
+import { badgeVariants, PLATFORM_TONES } from "./badge.variants";
 
 describe("badgeVariants", () => {
   it("por defecto es neutral/md", () => {

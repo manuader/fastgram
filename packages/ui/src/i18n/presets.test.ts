@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { en } from "./messages.js";
-import { emptyStatePresets, errorStatePresets, type StatePreset } from "./presets.js";
-import { t } from "./t.js";
+import { en } from "./messages";
+import { emptyStatePresets, errorStatePresets, type StatePreset } from "./presets";
+import { t } from "./t";
 
 const allPresets: Array<[string, StatePreset]> = [
   ...Object.entries(emptyStatePresets),

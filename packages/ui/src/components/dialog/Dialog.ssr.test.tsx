@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Dialog, DialogTitle } from "./Dialog.js";
+import { Dialog, DialogTitle } from "./Dialog";
 
 describe("Dialog (markup)", () => {
   it("cerrado no renderiza nada", () => {

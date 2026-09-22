@@ -1,15 +1,5 @@
 import type { NextConfig } from "next";
 
-/**
- * Sólo el trozo del config de webpack que tocamos.
- *
- * El tipo que expone Next para ese parámetro es `any`; declararlo así en vez de
- * aceptarlo evita el `any` y, de paso, documenta qué es lo único que se toca.
- */
-interface WebpackResolveConfig {
-  resolve: { extensionAlias?: Record<string, readonly string[]> };
-}
-
 const config: NextConfig = {
   reactStrictMode: true,
   transpilePackages: ["@fastgram/ui", "@fastgram/contracts"],
@@ -18,28 +8,35 @@ const config: NextConfig = {
     // repita en cada build duplica el trabajo y puede usar otra config.
     ignoreDuringBuilds: true,
   },
-
-  /**
-   * **Por qué existe este `webpack`.**
-   *
-   * `packages/ui` escribe sus imports internos con extensión `.js`
-   * (`./cn.js`, `./i18n/index.js`) aunque los archivos sean `.ts`/`.tsx`: es lo
-   * que exige el ESM de Node y lo que TypeScript resuelve sin ayuda. Webpack no
-   * hace esa traducción por su cuenta, así que sin esto `next build` falla con
-   * `Can't resolve './cn.js'` — y el error apunta a `packages/ui`, que es donde
-   * **no** está el problema. Costó un rato entenderlo.
-   *
-   * `extensionAlias` le enseña a webpack la misma regla que ya aplican
-   * TypeScript y Node.
-   */
-  webpack(webpackConfig: WebpackResolveConfig) {
-    webpackConfig.resolve.extensionAlias = {
-      ".js": [".ts", ".tsx", ".js", ".jsx"],
-      ".mjs": [".mts", ".mjs"],
-      ".cjs": [".cts", ".cjs"],
-    };
-    return webpackConfig;
-  },
 };
 
 export default config;
+
+/**
+ * ## Acá había un bloque `webpack` con `extensionAlias`, y su historia importa
+ *
+ * `packages/ui` escribía sus imports internos con extensión `.js` (`./cn.js`)
+ * aunque los archivos fueran `.ts`/`.tsx`. Webpack no hace esa traducción solo,
+ * así que `next build` fallaba con `Can't resolve './cn.js'` — apuntando a
+ * `packages/ui`, que es donde **no** estaba el problema. El `extensionAlias` le
+ * enseñaba a webpack la regla.
+ *
+ * Y tapaba el síntoma sólo de un lado: **el script `dev` corre
+ * `next dev --turbopack`, y turbopack no lee ese bloque.** O sea que
+ * **ninguna pantalla de esta app arrancó nunca en modo desarrollo**: el
+ * `layout.tsx` raíz importa `@fastgram/ui`, así que morían todas. `next build`
+ * iba por webpack y estaba verde, que es por lo que nadie lo notó — hasta que
+ * alguien abrió un navegador por primera vez.
+ *
+ * **El arreglo fue de raíz, no acá**: `packages/ui` dejó de escribir la
+ * extensión. Podía hacerlo porque su `package.json` apunta `main` y `types` a
+ * `./src/index.ts` — **no tiene `dist` y nadie lo corre por Node**, así que esas
+ * extensiones no le servían a ningún consumidor. Con imports sin extensión, los
+ * resuelven los dos bundlers y TypeScript con `moduleResolution: "Bundler"`.
+ *
+ * Medido después del cambio: `next dev --turbopack` sirve `/library` con
+ * **200** y cero `Module not found`.
+ *
+ * `packages/contracts` **sí** conserva sus `.js` y tiene que conservarlos: tiene
+ * `dist`, lo consume `apps/api` por Node ESM, y ahí la extensión es obligatoria.
+ */

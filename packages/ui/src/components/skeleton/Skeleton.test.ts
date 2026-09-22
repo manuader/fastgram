@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { skeletonVariants } from "./skeleton.variants.js";
+import { skeletonVariants } from "./skeleton.variants";
 
 describe("skeletonVariants", () => {
   it("por defecto es un rectángulo", () => {

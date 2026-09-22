@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardVariants } from "./card.variants.js";
+import { cardVariants } from "./card.variants";
 
 describe("cardVariants", () => {
   it("por defecto es superficie con padding md y no interactiva", () => {

@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Select } from "./Select.js";
+import { Select } from "./Select";
 
 describe("Select (markup)", () => {
   it("es un select nativo con sus opciones", () => {

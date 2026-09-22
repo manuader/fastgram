@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { switchVariants } from "./switch.variants.js";
+import { switchVariants } from "./switch.variants";
 
 describe("switchVariants", () => {
   it("por defecto es md", () => {

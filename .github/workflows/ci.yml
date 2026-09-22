@@ -156,7 +156,11 @@ jobs:
         run: pnpm build
       - name: migrar
         run: pnpm --filter @fastgram/db db:migrate
-      - name: los dos binarios: la API escribe y encola, el worker consume
+      # Las comillas no son estilo: un `:` sin comillas en un escalar de YAML
+      # parte la clave y **el workflow entero deja de parsear**. Lo escribí así
+      # en la tanda anterior y lo encontró `prettier` recién ahora, al entrar
+      # `format:check` en `pnpm verify`.
+      - name: "los dos binarios: la API escribe y encola, el worker consume"
         # `pnpm verify` no puede ver esto: ahí todo corre con tsx o vitest, que
         # resuelven TypeScript. Dos veces ya pasó que el build quedara verde y
         # el artefacto no arrancara — la primera por `exports` a `.ts`, la

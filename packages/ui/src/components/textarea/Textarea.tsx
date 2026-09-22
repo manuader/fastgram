@@ -1,6 +1,6 @@
 import { type ComponentPropsWithRef } from "react";
-import { cn } from "../../cn.js";
-import { textareaVariants, type TextareaVariants } from "./textarea.variants.js";
+import { cn } from "../../cn";
+import { textareaVariants, type TextareaVariants } from "./textarea.variants";
 
 export interface TextareaProps
   extends ComponentPropsWithRef<"textarea">, TextareaVariants {

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, type ComponentPropsWithRef, type ReactNode } from "react";
-import { cn } from "../../cn.js";
-import { getInitials } from "../../lib/initials.js";
-import { avatarVariants, type AvatarVariants } from "./avatar.variants.js";
+import { cn } from "../../cn";
+import { getInitials } from "../../lib/initials";
+import { avatarVariants, type AvatarVariants } from "./avatar.variants";
 
 export interface AvatarProps
   extends Omit<ComponentPropsWithRef<"span">, "children">, AvatarVariants {

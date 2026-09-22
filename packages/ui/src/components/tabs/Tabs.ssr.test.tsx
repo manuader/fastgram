@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./Tabs.js";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./Tabs";
 
 // Las tabs de Library, PRD §3.3.
 function LibraryTabs() {

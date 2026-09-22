@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getInitials } from "./initials.js";
+import { getInitials } from "./initials";
 
 describe("getInitials", () => {
   it("toma la primera y la última palabra", () => {

@@ -1,6 +1,6 @@
 import { type ComponentPropsWithRef } from "react";
-import { cn } from "../../cn.js";
-import { cardVariants, type CardVariants } from "./card.variants.js";
+import { cn } from "../../cn";
+import { cardVariants, type CardVariants } from "./card.variants";
 
 export interface CardProps extends ComponentPropsWithRef<"div">, CardVariants {}
 

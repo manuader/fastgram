@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextRovingIndex } from "../../lib/roving.js";
+import { nextRovingIndex } from "../../lib/roving";
 
 // Las tabs de Library, PRD §3.3.
 const LIBRARY_TABS = ["My Posts", "My Content", "My Media Bank"] as const;

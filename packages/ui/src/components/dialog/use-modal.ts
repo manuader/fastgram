@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
   type RefObject,
 } from "react";
-import { getFocusableElements, resolveTrapTarget } from "../../lib/focus.js";
+import { getFocusableElements, resolveTrapTarget } from "../../lib/focus";
 
 export interface UseModalOptions {
   open: boolean;

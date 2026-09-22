@@ -12,10 +12,10 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import { cn } from "../../cn.js";
-import { t } from "../../i18n/t.js";
-import { dialogVariants, type DialogVariants } from "./dialog.variants.js";
-import { useModal } from "./use-modal.js";
+import { cn } from "../../cn";
+import { t } from "../../i18n/t";
+import { dialogVariants, type DialogVariants } from "./dialog.variants";
+import { useModal } from "./use-modal";
 
 interface DialogContextValue {
   titleId: string;

@@ -12,10 +12,10 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import { cn } from "../../cn.js";
-import { t } from "../../i18n/t.js";
-import { useModal } from "../dialog/use-modal.js";
-import { drawerVariants, type DrawerVariants } from "./drawer.variants.js";
+import { cn } from "../../cn";
+import { t } from "../../i18n/t";
+import { useModal } from "../dialog/use-modal";
+import { drawerVariants, type DrawerVariants } from "./drawer.variants";
 
 interface DrawerContextValue {
   titleId: string;

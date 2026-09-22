@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { ErrorState } from "./ErrorState.js";
+import { ErrorState } from "./ErrorState";
 
 const noop = (): void => {};
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { tooltipVariants } from "./tooltip.variants.js";
+import { tooltipVariants } from "./tooltip.variants";
 
 describe("tooltipVariants", () => {
   it("por defecto aparece arriba", () => {

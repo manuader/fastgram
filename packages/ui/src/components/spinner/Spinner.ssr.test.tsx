@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Spinner } from "./Spinner.js";
+import { Spinner } from "./Spinner";
 
 describe("Spinner (markup)", () => {
   it("se anuncia como status con el copy `Loading...` del PRD", () => {

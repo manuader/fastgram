@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FOCUSABLE_SELECTOR, resolveTrapTarget } from "./focus.js";
+import { FOCUSABLE_SELECTOR, resolveTrapTarget } from "./focus";
 
 // El foco se representa con strings: la lógica de la trampa no depende del DOM.
 const items = ["close", "input", "cancel", "confirm"] as const;

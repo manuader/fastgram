@@ -9,8 +9,8 @@ import {
   type ComponentPropsWithRef,
   type ReactNode,
 } from "react";
-import { cn } from "../../cn.js";
-import { nextRovingIndex, type Orientation } from "../../lib/roving.js";
+import { cn } from "../../cn";
+import { nextRovingIndex, type Orientation } from "../../lib/roving";
 
 interface TabsContextValue {
   value: string;

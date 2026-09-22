@@ -127,6 +127,74 @@ export const webEn = {
   "error.network.title": "We couldn't reach the server. Check your connection.",
   "error.invalidResponse.title": "The server sent something we couldn't read",
   "error.timeout.title": "That took too long. Try again.",
+
+  /* ---------------------------------------------- salidas de un error · §19 */
+  // `nuevo`: el PRD nombra la acción (`Upgrade`, `Reload`) dentro del copy de
+  // cada error, pero no da un label de botón suelto para reutilizar.
+  "action.reload": "Reload", // nuevo
+  "action.goToBrand": "Go to Brand", // nuevo · ERR-P08 manda al perfil de empresa
+  // El `resetAt` del 402 (§16.2) es lo que separa "no podés" de "podés el 15".
+  "error.quota.resetsAt": "Your quota resets on {date}.", // nuevo
+
+  /* ------------------------------------------------- Library · FR-100 §3.3 */
+  "library.title": "Library", // literal (label de la ruta, PRD:304)
+  "library.tab.myPosts": "My Posts", // literal PRD:332
+  "library.tab.myContent": "My Content", // literal PRD:332
+  "library.tab.myMediaBank": "My Media Bank", // literal PRD:332
+  // PRD:1612 — el contador de la cabecera de `My Content` (`78 items`).
+  "library.itemCount": "{count} items", // literal (forma)
+  "library.itemCountOne": "1 item", // nuevo · el PRD sólo muestra el plural
+  // El contador del PRD (`78 items`) es el total del workspace, y `GET /content`
+  // no devuelve ningún total: sólo una página y `hasMore`. Mientras haya más,
+  // decir `78 items` sería afirmar un número que nadie calculó.
+  "library.itemCountPartial": "{count} items loaded", // nuevo
+  // PRD:1612 — `Created: DD/MM/YY` en el pie de cada tarjeta.
+  "library.card.created": "Created: {date}", // literal
+  "library.loadMore": "Load more", // nuevo · el PRD no muestra el control de paginación de esta tab
+  "library.loadingMore": "Loading more…", // nuevo
+  "library.building": "Building…", // nuevo · estado `BUILDING` (DATA-008)
+  "library.buildingHint":
+    "This piece is still being built. The page checks again every few seconds.", // nuevo
+  "library.failed": "Build failed", // nuevo · estado `FAILED`
+  "library.empty.title": "No content yet", // nuevo · el PRD dice "estado vacío" sin dar el texto (PRD:2730)
+  "library.empty.description":
+    "Content you create in the Studio or approve in Blitz shows up here.", // nuevo
+  "library.empty.action": "Create content", // nuevo
+  // Un vacío con filtros puestos no es el mismo vacío: la salida es otra.
+  "library.empty.filteredDescription":
+    "No content matches these filters. Clear them to see everything.", // nuevo
+  "library.empty.clearFilters": "Clear filters", // nuevo
+  // PRD:1607 — los labels del badge de tipo, literales de la tarjeta de Library.
+  "library.type.slideshow": "Slideshow", // literal
+  "library.type.wallOfText": "Wall of Text", // literal
+  "library.type.greenScreen": "Green Screen", // literal
+  "library.type.videoHook": "Video Hook", // literal
+  "library.type.custom": "Custom", // literal F-070 (PRD:532)
+  // DATA-008 (PRD:2076) da el enum, no el texto de pantalla: los tres son `nuevo`.
+  "library.status.building": "Building", // nuevo
+  "library.status.created": "Created", // nuevo
+  "library.status.failed": "Failed", // nuevo
+  // El hueco de DATA-008: la tarjeta del PRD lleva `Created: DD/MM/YY` y el
+  // contrato no publica ninguna fecha. Se dice una vez, no por tarjeta.
+  "library.noCreatedAt":
+    "The API doesn't return a creation date for content yet, so the cards don't show one.", // nuevo
+  "library.filter.allTypes": "All types", // nuevo
+  "library.filter.allStatuses": "All statuses", // nuevo
+  "library.filter.typeLabel": "Type", // nuevo
+  "library.filter.statusLabel": "Status", // nuevo
+  "library.backToLibrary": "Back to Library", // nuevo
+  "library.detail.notFound": "That content doesn't exist, or it isn't yours.", // nuevo · §9.2: ajeno e inexistente son lo mismo
+  "library.detail.caption": "Caption", // nuevo · `generatedText` de DATA-008
+  "library.detail.noCaption": "No caption was generated for this piece.", // nuevo
+  "library.detail.remixSource": "Remixed from", // nuevo
+  "library.detail.files": "{count} files", // nuevo
+  "library.detail.noFiles": "This piece has no files yet.", // nuevo
+  "library.detail.revision": "Revision {revision}", // nuevo
+  "library.detail.openFile": "Open file {index}", // nuevo
+  // Las dos tabs que esta tarea no cableó. Decirlo es mejor que una tab muerta.
+  "library.tab.notWired": "{tab} is not wired up yet", // nuevo
+  "library.tab.notWiredDescription":
+    "The route and the API endpoint exist; this tab lands with its own task.", // nuevo
 } as const;
 
 export type WebMessageKey = keyof typeof webEn;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { spinnerVariants } from "./spinner.variants.js";
+import { spinnerVariants } from "./spinner.variants";
 
 describe("spinnerVariants", () => {
   it("por defecto es md y hereda el color del texto", () => {

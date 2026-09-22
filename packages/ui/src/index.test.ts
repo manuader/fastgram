@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import * as ui from "./index.js";
+import * as ui from "./index";
 
 /**
  * El barrel es fácil de romper en silencio: una ruta mal escrita o un componente

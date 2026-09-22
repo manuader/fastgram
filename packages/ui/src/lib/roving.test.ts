@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextRovingIndex } from "./roving.js";
+import { nextRovingIndex } from "./roving";
 
 describe("nextRovingIndex", () => {
   it("avanza y retrocede en horizontal", () => {

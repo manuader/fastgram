@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getPaginationRange } from "./pagination.js";
+import { getPaginationRange } from "./pagination";
 
 describe("getPaginationRange", () => {
   it("sin páginas devuelve una lista vacía", () => {

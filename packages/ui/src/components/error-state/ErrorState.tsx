@@ -1,14 +1,14 @@
 import { AlertTriangle } from "lucide-react";
 import { type ComponentPropsWithRef, type ReactNode } from "react";
-import { cn } from "../../cn.js";
+import { cn } from "../../cn";
 import {
   errorStatePresets,
   resolveStatePreset,
   type ErrorStatePresetId,
-} from "../../i18n/presets.js";
-import { t, type MessageVars } from "../../i18n/t.js";
-import { Button } from "../button/Button.js";
-import { errorStateVariants, type ErrorStateVariants } from "./error-state.variants.js";
+} from "../../i18n/presets";
+import { t, type MessageVars } from "../../i18n/t";
+import { Button } from "../button/Button";
+import { errorStateVariants, type ErrorStateVariants } from "./error-state.variants";
 
 export interface ErrorStateProps
   extends Omit<ComponentPropsWithRef<"div">, "title">, ErrorStateVariants {

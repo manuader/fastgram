@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { t } from "../../i18n/t.js";
-import { createToastStore, DEFAULT_TOAST_DURATION } from "./toast-store.js";
-import { toastVariants } from "./toast.variants.js";
+import { t } from "../../i18n/t";
+import { createToastStore, DEFAULT_TOAST_DURATION } from "./toast-store";
+import { toastVariants } from "./toast.variants";
 
 beforeEach(() => {
   vi.useFakeTimers();

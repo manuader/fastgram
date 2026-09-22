@@ -1,7 +1,7 @@
 import { ChevronDown } from "lucide-react";
 import { type ComponentPropsWithRef, type ReactNode } from "react";
-import { cn } from "../../cn.js";
-import { selectVariants, type SelectVariants } from "./select.variants.js";
+import { cn } from "../../cn";
+import { selectVariants, type SelectVariants } from "./select.variants";
 
 export interface SelectOption {
   value: string;

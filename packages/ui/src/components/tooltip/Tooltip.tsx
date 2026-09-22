@@ -10,8 +10,8 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { cn } from "../../cn.js";
-import { tooltipVariants, type TooltipVariants } from "./tooltip.variants.js";
+import { cn } from "../../cn";
+import { tooltipVariants, type TooltipVariants } from "./tooltip.variants";
 
 export interface TooltipProps extends TooltipVariants {
   /** Texto del tooltip. Corto: no es un sitio para explicar nada largo. */

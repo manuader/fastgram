@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { t } from "../../i18n/t.js";
-import { getPaginationRange } from "../../lib/pagination.js";
-import { paginationVariants } from "./pagination.variants.js";
+import { t } from "../../i18n/t";
+import { getPaginationRange } from "../../lib/pagination";
+import { paginationVariants } from "./pagination.variants";
 
 describe("paginationVariants", () => {
   it("por defecto muestra `Page X of Y`, como el modal M-01 del PRD", () => {

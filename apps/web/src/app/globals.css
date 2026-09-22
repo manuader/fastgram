@@ -763,6 +763,228 @@ body {
   color: var(--fg-color-text-subtle);
 }
 
+/* ------------------------------------------------------- Library · FR-100 */
+/* Ningún color de texto sale de `--fg-color-text-subtle`: la deuda conocida de
+   contraste (AA en modo oscuro para texto normal) está ahí, y esta pantalla no
+   la empeora. Lo que sí lo usa es un icono, que no es texto. */
+
+.fgw-library-tabs {
+  display: grid;
+  gap: var(--fg-space-4);
+}
+
+.fgw-library-panel {
+  display: grid;
+  gap: var(--fg-space-4);
+}
+
+.fgw-library-filters {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: var(--fg-space-3);
+}
+
+.fgw-library-filters__field {
+  display: grid;
+  gap: var(--fg-space-1);
+}
+
+.fgw-library-filters__label {
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+  font-weight: var(--fg-weight-medium);
+}
+
+/* El contador del PRD va a la derecha de la barra (PRD:1611). */
+.fgw-library-filters__count {
+  margin-left: auto;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+}
+
+.fgw-library-note {
+  margin: 0;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+}
+
+/* PRD:1606 pide una grid de 5 columnas. `auto-fill` la da en un ancho de
+   escritorio y la degrada sola: fijar 5 columnas obligaría a un breakpoint por
+   cada ancho intermedio. */
+.fgw-content-grid {
+  display: grid;
+  gap: var(--fg-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+}
+
+.fgw-content-card__link {
+  display: grid;
+  gap: var(--fg-space-2);
+  border-radius: var(--fg-radius-lg);
+  color: inherit;
+  text-decoration: none;
+}
+
+/* 9:16, el formato de todo lo que produce el pipeline (PRD:1607). Reservar la
+   caja antes de que cargue la imagen es lo que evita que la grid salte. */
+.fgw-content-card__thumb {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-lg);
+  background: var(--fg-color-surface-sunken);
+  aspect-ratio: 9 / 16;
+  place-items: center;
+}
+
+.fgw-content-card__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fgw-content-card__placeholder {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+}
+
+.fgw-content-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fg-space-2);
+  min-height: 1.5rem;
+}
+
+.fgw-content-card__status {
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+}
+
+.fgw-content-card__status[data-status="FAILED"] {
+  color: var(--fg-color-danger-text);
+}
+
+.fgw-library-more {
+  display: flex;
+  justify-content: center;
+}
+
+/* --------------------------------------------------- detalle de una pieza */
+
+.fgw-detail {
+  display: grid;
+  gap: var(--fg-space-4);
+  max-width: 720px;
+}
+
+.fgw-detail__back {
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+  text-decoration: none;
+  justify-self: start;
+}
+
+.fgw-detail__back:hover {
+  color: var(--fg-color-text);
+}
+
+.fgw-detail__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--fg-space-2);
+}
+
+.fgw-detail__revision {
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+}
+
+.fgw-detail__media {
+  display: grid;
+  min-height: 240px;
+  padding: var(--fg-space-4);
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-xl);
+  background: var(--fg-color-surface-sunken);
+}
+
+.fgw-detail__building {
+  display: grid;
+  gap: var(--fg-space-2);
+  place-items: center;
+  align-content: center;
+  text-align: center;
+}
+
+.fgw-detail__building-title {
+  margin: 0;
+  font-weight: var(--fg-weight-semibold);
+}
+
+.fgw-detail__building-hint,
+.fgw-detail__empty {
+  margin: 0;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+  text-align: center;
+  align-self: center;
+}
+
+.fgw-detail__files {
+  display: grid;
+  gap: var(--fg-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+.fgw-detail__file {
+  display: grid;
+  gap: var(--fg-space-1);
+}
+
+.fgw-detail__file img,
+.fgw-detail__file video {
+  width: 100%;
+  border-radius: var(--fg-radius-lg);
+  background: var(--fg-color-surface);
+  aspect-ratio: 9 / 16;
+  object-fit: contain;
+}
+
+.fgw-detail__file-link {
+  color: var(--fg-color-accent-text);
+  font-size: var(--fg-text-xs);
+}
+
+.fgw-detail__section {
+  margin: 0 0 var(--fg-space-2);
+  font-size: var(--fg-text-sm);
+  font-weight: var(--fg-weight-semibold);
+}
+
+.fgw-detail__caption {
+  margin: 0;
+  color: var(--fg-color-text);
+  white-space: pre-wrap;
+}
+
+.fgw-detail__remix {
+  margin: var(--fg-space-3) 0 0;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+  overflow-wrap: anywhere;
+}
+
 /* ------------------------------------------------------------ responsive */
 /* NFR-019 · P1-UI-008. Tres cortes, los mismos que `useSidebarState`. */
 
@@ -813,6 +1035,16 @@ body {
 
   .fgw-page-header__title {
     font-size: var(--fg-text-xl);
+  }
+
+  /* Dos columnas a 375 px de ancho siguen dando una miniatura legible; tres
+     dan 100 px y el badge de tipo ya no entra en su fila. */
+  .fgw-content-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fgw-library-filters__count {
+    margin-left: 0;
   }
 }
 

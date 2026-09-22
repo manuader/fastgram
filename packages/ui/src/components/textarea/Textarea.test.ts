@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { textareaVariants } from "./textarea.variants.js";
+import { textareaVariants } from "./textarea.variants";
 
 describe("textareaVariants", () => {
   it("por defecto sólo se estira en vertical", () => {

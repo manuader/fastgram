@@ -67,7 +67,20 @@ export type GuardDecision = { readonly redirectTo: string } | null;
  */
 export const RETURN_TO_PARAM = "redirect_url";
 
+/**
+ * Prefijo de los route handlers de esta app (hoy, el puente con la API).
+ *
+ * Quedan **fuera** de la guard: quien los llama es un `fetch`, no una
+ * navegación. Un 307 hacia `/login` le devolvería el HTML del login con status
+ * 200 y el cliente lo leería como "el servidor mandó algo que no entiendo"
+ * (`invalid_response`) en vez de "no estás autenticado". El handler responde
+ * su propio `401` con el sobre de §9.3, que es lo que el cliente sabe traducir.
+ */
+export const API_ROUTE_PREFIX = "/api/";
+
 export function resolveGuard({ pathname, session }: GuardInput): GuardDecision {
+  if (pathname.startsWith(API_ROUTE_PREFIX)) return null;
+
   // `/` es sólo un desvío: a la app si hay sesión, al login si no (PRD:216).
   if (pathname === ROUTES.root) {
     return { redirectTo: session === null ? ROUTES.login : ROUTES.home };

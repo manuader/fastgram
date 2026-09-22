@@ -1,9 +1,9 @@
 "use client";
 
 import { type ComponentPropsWithRef, type ReactNode } from "react";
-import { cn } from "../../cn.js";
-import { Spinner } from "../spinner/Spinner.js";
-import { buttonVariants, type ButtonVariants } from "./button.variants.js";
+import { cn } from "../../cn";
+import { Spinner } from "../spinner/Spinner";
+import { buttonVariants, type ButtonVariants } from "./button.variants";
 
 export interface ButtonProps
   extends Omit<ComponentPropsWithRef<"button">, "color">, ButtonVariants {

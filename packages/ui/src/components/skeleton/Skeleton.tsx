@@ -1,6 +1,6 @@
 import { type ComponentPropsWithRef, type CSSProperties } from "react";
-import { cn } from "../../cn.js";
-import { skeletonVariants, type SkeletonVariants } from "./skeleton.variants.js";
+import { cn } from "../../cn";
+import { skeletonVariants, type SkeletonVariants } from "./skeleton.variants";
 
 export interface SkeletonProps
   extends Omit<ComponentPropsWithRef<"div">, "children">, SkeletonVariants {

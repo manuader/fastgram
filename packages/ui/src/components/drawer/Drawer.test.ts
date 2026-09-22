@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { drawerVariants } from "./drawer.variants.js";
+import { drawerVariants } from "./drawer.variants";
 
 describe("drawerVariants", () => {
   it("por defecto entra por la derecha con ancho md", () => {

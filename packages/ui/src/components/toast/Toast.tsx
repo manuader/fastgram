@@ -8,16 +8,16 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { cn } from "../../cn.js";
-import { t } from "../../i18n/t.js";
-import { toastVariants } from "./toast.variants.js";
+import { cn } from "../../cn";
+import { t } from "../../i18n/t";
+import { toastVariants } from "./toast.variants";
 import {
   createToastStore,
   type Toast as ToastData,
   type ToastOptions,
   type ToastStore,
   type ToastStoreConfig,
-} from "./toast-store.js";
+} from "./toast-store";
 
 export interface ToastContextValue {
   /** Encola un toast y devuelve su id. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { resolveTrapTarget } from "../../lib/focus.js";
-import { dialogVariants } from "./dialog.variants.js";
+import { resolveTrapTarget } from "../../lib/focus";
+import { dialogVariants } from "./dialog.variants";
 
 describe("dialogVariants", () => {
   it("por defecto es md", () => {

@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Input } from "./Input.js";
+import { Input } from "./Input";
 
 describe("Input (markup)", () => {
   it("invalid no es sólo color: pone aria-invalid", () => {

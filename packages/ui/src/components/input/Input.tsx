@@ -1,6 +1,6 @@
 import { type ComponentPropsWithRef, type ReactNode } from "react";
-import { cn } from "../../cn.js";
-import { inputVariants, type InputVariants } from "./input.variants.js";
+import { cn } from "../../cn";
+import { inputVariants, type InputVariants } from "./input.variants";
 
 export interface InputProps
   extends

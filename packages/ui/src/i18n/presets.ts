@@ -1,5 +1,5 @@
-import type { MessageKey } from "./messages.js";
-import { t, type MessageVars } from "./t.js";
+import type { MessageKey } from "./messages";
+import { t, type MessageVars } from "./t";
 
 /**
  * Un estado vacío o de error listo para renderizar: qué claves de copy usa.

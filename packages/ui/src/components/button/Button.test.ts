@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buttonVariants } from "./button.variants.js";
+import { buttonVariants } from "./button.variants";
 
 describe("buttonVariants", () => {
   it("aplica primary/md por defecto", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { errorStatePresets, resolveStatePreset } from "../../i18n/presets.js";
-import { errorStateVariants } from "./error-state.variants.js";
+import { errorStatePresets, resolveStatePreset } from "../../i18n/presets";
+import { errorStateVariants } from "./error-state.variants";
 
 describe("errorStateVariants", () => {
   it("por defecto es md, tono danger y sin borde", () => {

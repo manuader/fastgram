@@ -31,14 +31,48 @@ import { ApiRequestError } from "./errors";
 export type OutputSchema<T> = z.ZodType<T, z.ZodTypeDef, unknown>;
 
 /**
- * Base del API.
+ * Base del API **tal y como la ve el navegador**.
  *
- * `NEXT_PUBLIC_API_URL` **no existe todavía en `.env.example`** (esta tarea no
- * puede editarlo). El default apunta a `API_PORT=3001`, que es lo que declara
- * `.env.example` para `apps/api`.
+ * El default ya no apunta a `apps/api` (`:3001`) sino al route handler de esta
+ * misma app (`src/app/api/fastgram/v1/[...path]/route.ts`), y el motivo no es
+ * de comodidad: **hoy la API sólo acepta `Authorization: Bearer fsln_live_…`**
+ * (FR-180) y esa credencial no puede vivir en el navegador. El handler la
+ * inyecta del lado del servidor. Todo el porqué —y por qué es provisorio— está
+ * en la cabecera de `lib/api/upstream.ts`.
+ *
+ * `NEXT_PUBLIC_API_URL` sigue mandando si está puesta: apuntarla a
+ * `http://localhost:3001/api/v1` devuelve el comportamiento anterior (directo,
+ * sin credencial, o sea 401 contra la API real). Sirve para depurar el
+ * handler, no para producción.
  */
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api/v1";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api/fastgram/v1";
+
+/**
+ * Origen con el que se resuelve una base **relativa** fuera del navegador.
+ *
+ * `new URL(path, base)` exige una base absoluta, y `/api/fastgram/v1` no lo es.
+ * En el navegador el origen es el de la página. Fuera de él —los tests de este
+ * módulo, que corren en Node a propósito— no hay ninguno, así que se usa este
+ * marcador: ningún camino de la app hace `fetch` desde el servidor (los hooks
+ * de TanStack Query corren siempre en el cliente y no hay prefetch en SSR).
+ *
+ * Si algún día lo hay, este marcador deja de ser inocuo y hay que pasar el
+ * origen real por configuración: un `fetch` de servidor contra `localhost`
+ * apunta a la propia máquina, que en producción no es la app.
+ */
+const NON_BROWSER_ORIGIN = "http://localhost";
+
+/** `true` para `http://…` y `https://…`; `false` para una ruta relativa. */
+function isAbsolute(base: string): boolean {
+  return /^https?:\/\//i.test(base);
+}
+
+function resolveBase(): string {
+  if (isAbsolute(API_BASE_URL)) return API_BASE_URL;
+  const origin =
+    typeof window === "undefined" ? NON_BROWSER_ORIGIN : window.location.origin;
+  return `${origin}${API_BASE_URL}`;
+}
 
 export type QueryValue = string | number | boolean | null | undefined;
 export type QueryParams = Readonly<Record<string, QueryValue>>;
@@ -65,9 +99,10 @@ export interface ApiRequestOptions<TOutput> extends SendOptions {
 }
 
 function buildUrl(path: string, query?: QueryParams): string {
+  const base = resolveBase();
   const url = new URL(
     path.startsWith("/") ? path.slice(1) : path,
-    API_BASE_URL.endsWith("/") ? API_BASE_URL : `${API_BASE_URL}/`,
+    base.endsWith("/") ? base : `${base}/`,
   );
   if (query !== undefined) {
     for (const [key, value] of Object.entries(query)) {

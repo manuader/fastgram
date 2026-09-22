@@ -269,7 +269,22 @@ export const contentSchema = z
     type: contentTypeSchema,
     status: contentStatusSchema,
     files: z.array(z.string().url()),
-    thumbnailUrl: z.string().url(),
+    /**
+     * **Opcional**, y el contrato decía que no.
+     *
+     * Una pieza en `BUILDING` **todavía no tiene thumbnail**, así que el caso
+     * ausente no es excepcional: es el estado de toda pieza recién creada
+     * mientras el worker la construye. Con el campo obligatorio, cualquier
+     * cliente que valide la respuesta rechaza **cada build en curso** como
+     * `invalid_response` — y tira el listado entero mientras el backend hace
+     * exactamente lo que debe.
+     *
+     * `apps/api` ya lo tenía anotado como desajuste y lo resolvía omitiendo el
+     * campo con un `Omit<Content, "thumbnailUrl">`; `apps/web` tuvo que poner un
+     * schema local para poder pintar la Library. Dos parches del mismo lado
+     * equivocado: el que estaba mal era el contrato.
+     */
+    thumbnailUrl: z.string().url().optional(),
     generatedText: z.string().max(GENERATED_TEXT_MAX).nullable().optional(),
     remixSourceUrl: z.string().url().nullable().optional(),
     revision: z.number().int().nonnegative(),

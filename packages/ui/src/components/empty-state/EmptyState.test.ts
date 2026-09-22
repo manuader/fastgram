@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { emptyStatePresets, resolveStatePreset } from "../../i18n/presets.js";
-import { emptyStateVariants } from "./empty-state.variants.js";
+import { emptyStatePresets, resolveStatePreset } from "../../i18n/presets";
+import { emptyStateVariants } from "./empty-state.variants";
 
 describe("emptyStateVariants", () => {
   it("por defecto es md y sin borde", () => {

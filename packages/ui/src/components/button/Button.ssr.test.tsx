@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Button } from "./Button.js";
+import { Button } from "./Button";
 
 describe("Button (markup)", () => {
   it("es type=button salvo que se pida otra cosa", () => {

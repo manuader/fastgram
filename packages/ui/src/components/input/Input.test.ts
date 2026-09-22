@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inputVariants } from "./input.variants.js";
+import { inputVariants } from "./input.variants";
 
 describe("inputVariants", () => {
   it("por defecto es md y válido", () => {

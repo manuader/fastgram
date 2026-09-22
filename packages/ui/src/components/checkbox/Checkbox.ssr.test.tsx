@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Checkbox } from "./Checkbox.js";
+import { Checkbox } from "./Checkbox";
 
 describe("Checkbox (markup)", () => {
   it("es un input nativo dentro de un label, no un div con rol", () => {

@@ -1,12 +1,12 @@
 import { type ComponentPropsWithRef, type ReactNode } from "react";
-import { cn } from "../../cn.js";
+import { cn } from "../../cn";
 import {
   emptyStatePresets,
   resolveStatePreset,
   type EmptyStatePresetId,
-} from "../../i18n/presets.js";
-import { type MessageVars } from "../../i18n/t.js";
-import { emptyStateVariants, type EmptyStateVariants } from "./empty-state.variants.js";
+} from "../../i18n/presets";
+import { type MessageVars } from "../../i18n/t";
+import { emptyStateVariants, type EmptyStateVariants } from "./empty-state.variants";
 
 export interface EmptyStateProps
   extends Omit<ComponentPropsWithRef<"div">, "title">, EmptyStateVariants {

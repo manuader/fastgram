@@ -1,4 +1,4 @@
-import { en, type MessageKey, type Messages } from "./messages.js";
+import { en, type MessageKey, type Messages } from "./messages";
 
 /** Valores para los huecos `{nombre}` de un mensaje. */
 export type MessageVars = Readonly<Record<string, string | number>>;

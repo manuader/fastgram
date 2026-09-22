@@ -2,7 +2,7 @@
 
 import { Check, Minus } from "lucide-react";
 import { useCallback, type ComponentPropsWithRef, type ReactNode } from "react";
-import { cn } from "../../cn.js";
+import { cn } from "../../cn";
 
 export interface CheckboxProps extends Omit<
   ComponentPropsWithRef<"input">,

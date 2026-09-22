@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Toaster } from "./Toast.js";
-import { createToastStore } from "./toast-store.js";
+import { Toaster } from "./Toast";
+import { createToastStore } from "./toast-store";
 
 describe("Toaster (markup)", () => {
   it("la live region existe aunque no haya ningún toast", () => {

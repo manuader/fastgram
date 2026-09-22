@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { getInitials } from "../../lib/initials.js";
-import { avatarVariants } from "./avatar.variants.js";
+import { getInitials } from "../../lib/initials";
+import { avatarVariants } from "./avatar.variants";
 
 describe("avatarVariants", () => {
   it("por defecto es md y circular", () => {

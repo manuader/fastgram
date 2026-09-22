@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { en, type MessageKey } from "./messages.js";
-import { createTranslator, interpolate, t } from "./t.js";
+import { en, type MessageKey } from "./messages";
+import { createTranslator, interpolate, t } from "./t";
 
 describe("interpolate", () => {
   it("sustituye los huecos presentes", () => {

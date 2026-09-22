@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Tooltip } from "./Tooltip.js";
+import { Tooltip } from "./Tooltip";
 
 describe("Tooltip (markup)", () => {
   it("cerrado no deja un aria-describedby apuntando a la nada", () => {

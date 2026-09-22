@@ -135,3 +135,32 @@ describe("apiList · paginación por cursor", () => {
     });
   });
 });
+
+/**
+ * La base pasó de ser absoluta (`:3001`) a ser **relativa** (el route handler
+ * que pone la credencial). Una base relativa no es una URL: si se resolviera
+ * mal, cada petición del navegador saldría hacia otro origen —o no saldría— y
+ * el síntoma sería un CORS en consola, lejos de la causa.
+ */
+describe("base del API", () => {
+  function lastFetchedUrl(): string {
+    const fetchMock = globalThis.fetch as unknown as { mock: { calls: [string][] } };
+    return fetchMock.mock.calls[0]?.[0] ?? "";
+  }
+
+  it("en el navegador, la base relativa cuelga del origen de la página", async () => {
+    respondWith({ data: { ok: true } });
+    vi.stubGlobal("window", { location: { origin: "https://app.example.test" } });
+    await apiRequest("/content");
+    expect(lastFetchedUrl()).toBe("https://app.example.test/api/fastgram/v1/content");
+  });
+
+  it("el path de la petición no se come el prefijo de versión", async () => {
+    // `new URL("/content", "https://x/api/fastgram/v1/")` daría `https://x/content`:
+    // el `/` inicial descarta el path de la base. De ahí el `slice(1)` del cliente.
+    respondWith({ data: { ok: true } });
+    vi.stubGlobal("window", { location: { origin: "https://app.example.test" } });
+    await apiRequest("/content/abc");
+    expect(lastFetchedUrl()).toContain("/api/fastgram/v1/content/abc");
+  });
+});

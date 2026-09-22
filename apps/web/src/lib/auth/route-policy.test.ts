@@ -88,6 +88,19 @@ describe("resolveGuard · con sesión", () => {
     });
   });
 
+  /**
+   * El fallo que esto evita no se ve en la pantalla que lo sufre: sin sesión,
+   * un `fetch` a `/api/fastgram/v1/content` seguiría el 307 hasta `/login`,
+   * recibiría **200 con HTML**, y la Library mostraría "el servidor mandó algo
+   * que no entiendo" en vez de "no estás autenticado". El handler tiene que
+   * poder contestar su propio 401 con el sobre de §9.3.
+   */
+  it("no redirige los route handlers: contestan ellos, con JSON", () => {
+    for (const session of [null, ready, mid]) {
+      expect(resolveGuard({ pathname: "/api/fastgram/v1/content", session })).toBeNull();
+    }
+  });
+
   it("no hay bucle: el destino de cada redirect se queda quieto", () => {
     for (const session of [null, ready, mid]) {
       const first = resolveGuard({ pathname: "/home", session });
