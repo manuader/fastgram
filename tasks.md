@@ -134,6 +134,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
   > El cobro va **antes** de crear y de encolar, y dentro de la misma transacción. `quotaLedgerStore.lockPeriod` usa `SELECT … FOR UPDATE`; sus dos tests de concurrencia se ponen rojos si se le quita.
 - [x] **P1-QUOTA-002** Swipes diarios con reset 00:00 UTC · `F-066`
 - [x] **P1-QUOTA-003** Créditos de AI Studio
+- [~] **P1-DATA-016** **Columnas del cargo de créditos en `influencers`** (`credits_period`, `credits_charged`, `credits_refunded_at` + CHECK) — hoy el cargo vive en un `jsonb` que un `update` reemplaza entero · agente E
 - [~] **P1-QUOTA-011** **Cablear el cobro de créditos a `POST /influencers`** (250, `AI_STUDIO_COST.influencer`) · `FR-080`, §9.4 · **parcial:** cobra, pero **nadie libera todavía** — el handler de `influencer-pipeline` no existe
   > **`ai_credits` cuenta consumidos, no saldo.** La fila del período la crea quien llega primero y dos de los tres caminos la crean con el default `0`; con semántica de saldo, un workspace Growth que guardó contenido antes arrancaría el período en 0 y **todo influencer daría 402**, sin poder distinguir "nunca se sembró" de "se gastó todo". Falta `ai_credits_purchased` para el `Buy more`.
   > **`inFlightCount` es parcial y está dicho como tal:** `NFR-025` acota imágenes + videos + influencers juntos y sólo se puede contar el tercero (no hay tabla de generaciones). Se cuenta la mitad que más cuesta; un `0` silencioso habría vuelto el cap decorativo.
@@ -182,6 +183,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P1-STORAGE-003** Límites y tipos: imagen 10 MB, video 50 MB, extensión coherente con content-type · `NFR-013`
 - [x] **P1-STORAGE-004** URLs firmadas de vida corta (1 h), **nunca logueadas ni persistidas** · `NFR-008`
 - [x] **P1-STORAGE-005** Errores de reserva: `409` no alcanzable, `410` expirada, `404` ajena · PRD §9.8
+- [~] **P1-STORAGE-007** **Montar `S3Storage` en las dos apps** — existe con 17 tests y nadie lo monta; hoy `POST /media` siempre da `409` · agente H (api) + coordinador (worker)
 - [~] **P1-STORAGE-006** Limpieza best-effort que **no bloquea** el borrado de la fila · `ERR-F05` · **parcial:** el puerto deja la política al llamador (correcto); falta el caso de uso que loguea y sigue
 
 ## P1-API — Contrato y API
@@ -279,6 +281,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P1-UI-006** Primitivas de estado: `empty`, `loading`, `error`, skeletons · PRD §19
 - [x] **P1-UI-007** TanStack Query + capa de cliente de API tipada
 - [ ] **P1-UI-008** Responsive: móvil y tablet · `NFR-019`
+- [~] **P1-UI-012** **Cablear las páginas al cliente tipado** — `lib/api/` está construido y **ninguna página lo usa**: 40 `page.tsx` de ~16 líneas · agente F
 - [x] **P1-UI-009** Home con KPIs, Tasks y Views History · `FR-030`
 - [x] **P1-UI-010** FAQ del Home: 5 categorías, 37 preguntas, copy literal · `FR-030`
 - [ ] **P1-UI-011** **`text-subtle` en modo oscuro no cumple AA para texto normal** · `NFR-019`
@@ -345,6 +348,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
   > Sin pista, **MP4 sin stream de audio** (`-an`), no pista de silencio. Lo que cerró el criterio no fue el PRD —que igual lo dice literal— sino la consistencia interna: `planGreenScreenBase` ya emitía `-an` desde `P2-RENDER-006`, y con silencio la misma elección del usuario daría contenedores distintos según el formato.
   > La defensa del endpoint contra path traversal **rechaza en vez de sanear**: sólo sha256 hex + índice + extensión de lista cerrada toca el disco. El shard de `FileCacheStore` no protege nada (`key.slice(0,2)` de `../../etc/passwd` es `..`). Sondeado con 16 formas: acepta 3, rechaza 13. Verificado rompiéndolo: sin el validador, el endpoint **sirve un archivo de fuera del root de la cache**.
   > **Restricción de despliegue:** la cache es local. Con varias réplicas y sin volumen compartido, el `GET` del href puede caer en una réplica sin el archivo — y ahí el 404 es *correcto*. Hay que bajar el artefacto en el mismo flujo, no guardarse el link.
+- [~] **P2-RENDER-016** **Los tres endpoints que faltan** (`normalize`, `probe`, `thumbnail`) + versión del motor en `/capabilities` + canvas impar como `bad_request` · agente G
 - [ ] **P2-RENDER-015** **Montar `HttpMediaRenderer` en `apps/worker`** — hoy monta el de memoria, y cambiarlo sin esto rompe **todos** los builds
   > Tres bloqueos, los tres medidos: (1) **las 42 fuentes no existen** y con `RENDER_FONT_STRICT=true` el default `inter` da `font_unavailable` → `bad_request` permanente → pieza fallada y reembolsada en cada build; (2) el servicio exige **grant firmado** por defecto y el puerto `MediaRenderer` **no tiene por dónde pasarlo** (inventar un grant estático sería per-workspace incorrecto, rompe `NFR-006`); (3) sin `RENDER_ALLOWED_MEDIA_PREFIXES` toda URL se rechaza con `media_url_not_allowed / sin_politica_configurada`.
   > Y un cuarto de diseño: **un slideshow de más de un slide no se puede construir por `render()`**. `RenderResult` transporta un artefacto; el adaptador lanza `provider_contract_violation` en vez de devolver el primero, porque devolver el primero publica una pieza de una sola imagen sin error en ningún log. Hay `renderAll()`, y el handler de build tiene que usarlo y subir N objetos.
