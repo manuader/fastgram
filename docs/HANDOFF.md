@@ -78,6 +78,24 @@ El detalle está en `docs/IMPLEMENTATION-PLAN.md` §2. No lo repito acá para qu
 
 ## 4. Qué cambió, sesión por sesión
 
+### Sesión 2026-09-23 (5) — La primera pieza real
+
+**Verificado a mano, de punta a punta, sin simular nada:** subida real al Media Bank →
+`POST /content` → cola → worker con `HttpMediaRenderer` → `services/render` con fuentes activadas →
+dos slides 1080×1350 y thumbnail en MinIO, con Inter Bold legible. Es la primera vez que el
+producto produce una pieza de verdad.
+
+Tres cosas lo hicieron posible: el render real montado en el build (`835628e`); las fuentes
+activadas por proceso, porque en macOS el Pango de sharp sólo tiene CoreText y fontconfig no
+tenía nada que ver (trampa 6 corregida); y el texto escalado por `canvas.width / 360`
+(`af8d80d`, decisión del dueño anotada en el PRD). Blitz arma su `buildPayload` desde la
+sugerencia antes de cobrar (`a914d47`), pero **necesita un LLM configurado** para tener cola.
+
+**Cómo levantarlo** (orden importa: el worker muere si el render no contesta al arrancar):
+`fonts:fetch` a un directorio fuera del repo → `services/render` con `RENDER_FONT_DIR`, el
+secreto y `NODE_OPTIONS=--experimental-ffi` → API → worker con `RENDER_SERVICE_URL` y el mismo
+secreto → `pnpm dev:workspace` para la key de la web.
+
 ### Sesión 2026-09-23 (4) — Primero las features: auth y suscripciones a otra rama
 
 **Decisión del dueño:** las suscripciones y la auth multiusuario son secundarias por ahora; lo
