@@ -5,6 +5,7 @@ export * from "./sanitization/untrusted-text.js";
 export * from "./jobs/queues.js";
 export * from "./jobs/content-build.js";
 export * from "./jobs/publish.js";
+export * from "./publishing/error-code.js";
 export * from "./jobs/influencer-pipeline.js";
 export * from "./quota/plans.js";
 export * from "./quota/reset.js";

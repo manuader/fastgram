@@ -60,16 +60,66 @@ function numero(rel, nombre) {
   return Number(m[1].replace(/_/g, ""));
 }
 
-/** Extrae los literales de un array `NOMBRE = ["a", "b"]`. */
+/**
+ * Extrae los literales de un array `NOMBRE = ["a", "b"]` o, si no hay array
+ * con ese nombre, de una unión de tipos `type NOMBRE = "a" | "b";` — hay
+ * puertos que declaran la lista sólo como tipo (`PublishFailureReason`). En la
+ * unión se descartan antes los comentarios, que suelen citar otros literales.
+ */
 function literales(rel, nombre) {
   const src = leer(rel);
   if (src === null) return null;
   const m = src.match(new RegExp(`\\b${nombre}\\s*=\\s*(?:z\\.enum\\()?\\[([^\\]]+)\\]`));
-  if (!m) {
-    problemas.push(`no encontré la lista \`${nombre}\` en ${rel} — ¿la renombraron?`);
-    return null;
+  if (m) return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+  const sinComentarios = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  const u = sinComentarios.match(new RegExp(`\\btype\\s+${nombre}\\s*=([^;]+);`));
+  if (u) {
+    const valores = [...u[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+    if (valores.length > 0) return valores;
   }
-  return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+  problemas.push(`no encontré la lista \`${nombre}\` en ${rel} — ¿la renombraron?`);
+  return null;
+}
+
+/**
+ * Todos los literales de una lista están en otra más grande. Para cuando un
+ * paquete emite un subconjunto de un catálogo que vive en otro (`core` emite
+ * cinco `errorCode` de publicación; `contracts` enumera todos los de la API).
+ * `ausentes` declara los que faltan en el catálogo **a propósito**, con la
+ * misma regla que en `mismaLista`: si el catálogo pasa a tenerlos, falla.
+ */
+function contenida(etiqueta, [relSub, nombreSub, ausentes = []], [relSup, nombreSup]) {
+  const sub = literales(relSub, nombreSub);
+  const sup = literales(relSup, nombreSup);
+  if (sub === null || sup === null) return;
+  const vencidas = ausentes.filter((a) => sup.includes(a));
+  if (vencidas.length > 0) {
+    problemas.push(
+      `${etiqueta}: se declaró que ${relSup} · ${nombreSup} no tiene ` +
+        `${vencidas.join(", ")}, pero lo tiene. Borrá la excepción del script`,
+    );
+    return;
+  }
+  const noDeclaradas = ausentes.filter((a) => !sub.includes(a));
+  if (noDeclaradas.length > 0) {
+    problemas.push(
+      `${etiqueta}: la excepción ${noDeclaradas.join(", ")} ya no está en ` +
+        `${relSub} · ${nombreSub}. Borrala del script`,
+    );
+    return;
+  }
+  const faltan = sub.filter((v) => !ausentes.includes(v) && !sup.includes(v));
+  if (faltan.length > 0) {
+    problemas.push(
+      `${etiqueta}: ${relSub} · ${nombreSub} tiene ${faltan.join(", ")}, ` +
+        `que no está en ${relSup} · ${nombreSup}`,
+    );
+  } else {
+    verificados.push(
+      `${etiqueta} = [${sub.join(", ")}] ⊂ ${nombreSup}` +
+        (ausentes.length > 0 ? ` (salvo ${ausentes.join(", ")})` : ""),
+    );
+  }
 }
 
 function mismoNumero(etiqueta, fuentes) {
@@ -290,6 +340,29 @@ mismaLista("privacy level de TikTok (DATA-020 / F-152) · 3 paquetes", [
   ["packages/db/src/schema/enums.ts", "PRIVACY_LEVEL"],
   ["packages/contracts/src/primitives/enums.ts", "privacyLevelSchema"],
 ]);
+
+// `DP-006` / `P3-PUB-006`. El puerto declara los motivos sólo como unión de
+// tipos y `core` necesita la lista en runtime para iterar la tabla: dos copias
+// que un compilador ata en una dirección (`satisfies`) y este chequeo en las dos.
+mismaLista("motivos de fallo de publicación (FR-060 / DP-006) · ports ↔ core", [
+  ["packages/ports/src/social-publisher.ts", "PublishFailureReason"],
+  ["packages/core/src/publishing/error-code.ts", "PUBLISH_FAILURE_REASONS"],
+]);
+
+// Los `errorCode` que la tabla de `DP-006` puede escribir en un `Post` tienen
+// que existir con la misma grafía en el catálogo del contrato (§19.8 ERR-R05,
+// FR-060). `instagram_repeated_mention` es la excepción: el PRD lo da como
+// `errorCode` de un `Post` (FR-060, INT-002), no como código del sobre de error
+// de la API, y `errorCodeSchema` sólo enumera los del sobre.
+contenida(
+  "errorCode de publicación (DP-006) · core ⊂ contracts",
+  [
+    "packages/core/src/publishing/error-code.ts",
+    "PUBLISH_ERROR_CODES",
+    ["instagram_repeated_mention"],
+  ],
+  ["packages/contracts/src/primitives/errors.ts", "errorCodeSchema"],
+);
 
 // `manual` es texto que pega el usuario (tier D): el puerto no lo lee, y
 // `core` lo vuelve a sumar en `CoreBrandSourceType`. Es la única diferencia
