@@ -45,8 +45,11 @@ function issued(status = 200): Response {
   return json(status, { data: { sessionToken: TOKEN, expiresAt: EXPIRES, user: USER } });
 }
 
-function sessionOf(companyId: string | null): Response {
-  return json(200, { data: { user: USER, companyId } });
+function sessionOf(
+  companyId: string | null,
+  onboardingComplete = companyId !== null,
+): Response {
+  return json(200, { data: { user: USER, companyId, onboardingComplete } });
 }
 
 beforeEach(() => {
@@ -153,6 +156,15 @@ describe("login · éxito", () => {
 
   it("companyId null → next = /onboarding, aunque haya returnTo", async () => {
     routes["/auth/session"] = () => sessionOf(null);
+    const res = await handleLogin(
+      post("/login", { ...LOGIN, returnTo: "/calendar" }),
+      ENV,
+    );
+    expect(await res.json()).toMatchObject({ data: { next: "/onboarding" } });
+  });
+
+  it("workspace en draft → next = /onboarding: no se deduce del companyId", async () => {
+    routes["/auth/session"] = () => sessionOf("c1", false);
     const res = await handleLogin(
       post("/login", { ...LOGIN, returnTo: "/calendar" }),
       ENV,

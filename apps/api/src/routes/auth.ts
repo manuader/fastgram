@@ -38,6 +38,7 @@ import {
   type ErrorCode,
   type SessionInfo,
 } from "@fastgram/contracts";
+import { companyRepository, withCompany, type Database } from "@fastgram/db";
 import { isPortError, type AuthorizationResult } from "@fastgram/ports";
 
 import { resolveClientIp } from "../auth/client-ip.js";
@@ -73,6 +74,9 @@ export interface AuthRoutesOptions {
   readonly limiter: TokenBucketLimiter;
   /** `AUTH_TRUSTED_PROXIES`. Ver `auth/client-ip.ts`. */
   readonly trustedProxies: ReadonlySet<string>;
+  /** Para leer el estado del workspace en `GET /session` (`onboardingComplete`). */
+  readonly db: Database;
+  readonly appRole: string | undefined;
 }
 
 function sendError(
@@ -302,6 +306,25 @@ export function registerAuthRoutes(app: ZodApp, options: AuthRoutesOptions): voi
           return sendError(reply, 503, "service_unavailable", AUTH_UNAVAILABLE_MESSAGE);
         case "valid": {
           const { principal } = session;
+          // El estado vive en `companies.status`. Con el GUC del propio
+          // workspace: la sesión ya lo resolvió, así que RLS deja leer esa fila
+          // y ninguna otra.
+          const onboardingComplete =
+            session.companyId === null
+              ? false
+              : await withCompany(
+                  options.db,
+                  session.companyId,
+                  async (tx) =>
+                    (
+                      await companyRepository.billing(tx, {
+                        companyId: session.companyId as string,
+                      })
+                    )?.status === "active",
+                  options.appRole === undefined || options.appRole === ""
+                    ? {}
+                    : { role: options.appRole },
+                );
           const body: SessionInfo = {
             user: {
               id: principal.userId,
@@ -309,6 +332,7 @@ export function registerAuthRoutes(app: ZodApp, options: AuthRoutesOptions): voi
               emailVerified: principal.emailVerified,
             },
             companyId: session.companyId,
+            onboardingComplete,
           };
           return reply.status(200).send({ data: body });
         }

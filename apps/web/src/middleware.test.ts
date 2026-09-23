@@ -33,6 +33,7 @@ beforeEach(() => {
         data: {
           user: { id: "u1", email: "a@b.test", emailVerified: true },
           companyId: "c1",
+          onboardingComplete: true,
         },
       }),
     ),

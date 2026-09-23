@@ -198,9 +198,9 @@ async function relayError(upstream: Response, what: string): Promise<Response> {
 }
 
 /**
- * A dónde ir tras entrar. `companyId: null` → `/onboarding`, siempre: el
- * `returnTo` de alguien sin workspace lo devolvería al wizard igual, con un
- * redirect de más.
+ * A dónde ir tras entrar. Onboarding sin terminar (sin workspace, o con uno
+ * todavía en `draft`) → `/onboarding`, siempre: el `returnTo` lo devolvería al
+ * wizard igual, con un redirect de más.
  *
  * Si la verificación no contesta, se va al `returnTo` (o `/home`) y el
  * middleware decide en la próxima navegación — no se falla un login que sí
@@ -209,7 +209,7 @@ async function relayError(upstream: Response, what: string): Promise<Response> {
 async function nextAfterSignIn(token: string, rawReturnTo: string | undefined, env: Env) {
   const fallback = safeReturnTo(rawReturnTo) ?? ROUTES.home;
   const state = await verifySessionToken(token, env);
-  if (state.kind === "authenticated" && state.session.companyId === null) {
+  if (state.kind === "authenticated" && !state.session.onboardingComplete) {
     return ROUTES.onboarding;
   }
   return fallback;

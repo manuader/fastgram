@@ -24,6 +24,7 @@ const VALID = {
   data: {
     user: { id: "u1", email: "a@b.test", emailVerified: false },
     companyId: "c1",
+    onboardingComplete: true,
   },
 };
 
@@ -59,7 +60,7 @@ describe("verifySessionToken", () => {
     expect(headers.get("authorization")).toBeNull();
   });
 
-  it("200 con el contrato → authenticated, con companyId y onboarding derivado", async () => {
+  it("200 con el contrato → authenticated, con companyId y onboarding de la API", async () => {
     const state = await verifySessionToken(TOKEN, ENV, async () =>
       Promise.resolve(json(200, VALID)),
     );
@@ -77,11 +78,27 @@ describe("verifySessionToken", () => {
 
   it("companyId null → onboarding pendiente", async () => {
     const state = await verifySessionToken(TOKEN, ENV, async () =>
-      Promise.resolve(json(200, { data: { ...VALID.data, companyId: null } })),
+      Promise.resolve(
+        json(200, {
+          data: { ...VALID.data, companyId: null, onboardingComplete: false },
+        }),
+      ),
     );
     expect(state).toMatchObject({
       kind: "authenticated",
       session: { companyId: null, onboardingComplete: false },
+    });
+  });
+
+  it("con workspace en draft → onboarding pendiente: NO se deduce del companyId", async () => {
+    // El primer workspace nace en `draft`. Deducirlo de `companyId !== null`
+    // mandaba a /home a quien recargaba a mitad del alta.
+    const state = await verifySessionToken(TOKEN, ENV, async () =>
+      Promise.resolve(json(200, { data: { ...VALID.data, onboardingComplete: false } })),
+    );
+    expect(state).toMatchObject({
+      kind: "authenticated",
+      session: { companyId: "c1", onboardingComplete: false },
     });
   });
 

@@ -181,6 +181,8 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
         sessions,
         limiter: deps.limiter,
         trustedProxies,
+        db: deps.db,
+        appRole: deps.appRole,
       });
       await Promise.resolve();
     },

@@ -132,6 +132,14 @@ export const sessionInfoSchema = z
   .object({
     user: authUserSchema,
     companyId: z.string().min(1).nullable(),
+    /**
+     * `true` sólo si el workspace está `active` (FR-010: `POST
+     * /onboarding/complete` lo pasa de `draft`). **No** es `companyId !== null`:
+     * el primer workspace nace en `draft` y el usuario sigue en el onboarding.
+     * Deducirlo del `companyId` mandaba a `/home` a quien recargaba a mitad del
+     * alta. `false` sin workspace.
+     */
+    onboardingComplete: z.boolean(),
   })
   .strict();
 export type SessionInfo = z.infer<typeof sessionInfoSchema>;

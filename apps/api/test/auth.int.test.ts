@@ -126,6 +126,7 @@ describe("alta → sesión → ruta de negocio", () => {
     expect(dataOf(session)).toEqual({
       user: { id: userId, email: mail, emailVerified: false },
       companyId: null,
+      onboardingComplete: false,
     });
 
     const business = await api.request({

@@ -74,16 +74,20 @@ export const apiSessionSchema = z.object({
       emailVerified: z.boolean(),
     }),
     companyId: z.string().min(1).nullable(),
+    onboardingComplete: z.boolean(),
   }),
 });
 
 export function sessionFromApi(body: z.infer<typeof apiSessionSchema>): Session {
-  const { user, companyId } = body.data;
+  const { user, companyId, onboardingComplete } = body.data;
   return {
     userId: user.id,
     email: user.email,
     companyId,
-    onboardingComplete: companyId !== null,
+    // De la API (workspace `active`), no de `companyId !== null`: el primer
+    // workspace nace en `draft`, y deducirlo del id mandaba a /home a quien
+    // recargaba a mitad del alta.
+    onboardingComplete,
     isStaff: false,
   };
 }

@@ -168,6 +168,26 @@ describe("signup → crear → sesión con companyId → negocio", () => {
     expect(await sessionCompanyId(user.token)).toBe(companyId);
   });
 
+  it("…con onboardingComplete: false mientras el workspace está en draft, y true al activarse", async () => {
+    // Sin esto la web deducía «onboarding completo» de `companyId !== null`, y
+    // quien recargaba a mitad del alta terminaba en /home sin fuente de marca.
+    const draft = await asSession(user.token, {
+      method: "GET",
+      path: "/api/v1/auth/session",
+    });
+    expect(dataOf(draft)["onboardingComplete"]).toBe(false);
+
+    await api.handle
+      .sql`update companies set status = 'active' where id = ${companyId}::uuid`;
+    const active = await asSession(user.token, {
+      method: "GET",
+      path: "/api/v1/auth/session",
+    });
+    expect(dataOf(active)["onboardingComplete"]).toBe(true);
+    await api.handle
+      .sql`update companies set status = 'draft' where id = ${companyId}::uuid`;
+  });
+
   it("y las rutas de negocio responden 200 sobre él", async () => {
     const onboarding = await asSession(user.token, {
       method: "GET",
