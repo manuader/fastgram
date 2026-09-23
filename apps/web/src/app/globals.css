@@ -1967,3 +1967,233 @@ body {
   color: var(--fg-color-text-muted);
   font-variant-numeric: tabular-nums;
 }
+
+/* ------------------------------------------------ /brand · FR-020, F-024 */
+
+.fgw-brand {
+  display: grid;
+  gap: var(--fg-space-6);
+  width: 100%;
+  max-width: 760px;
+}
+
+.fgw-brand__profile {
+  display: grid;
+  gap: var(--fg-space-4);
+}
+
+.fgw-brand__loading {
+  display: grid;
+  gap: var(--fg-space-2);
+}
+
+.fgw-brand__revision,
+.fgw-brand__note,
+.fgw-brand-field__hint,
+.fgw-brand-source__date {
+  margin: 0;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-brand__notice {
+  margin: 0;
+  padding: var(--fg-space-3);
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-lg);
+  background: var(--fg-color-surface-sunken);
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-brand__quick-check {
+  display: grid;
+  gap: var(--fg-space-2);
+  padding: var(--fg-space-4);
+  border: 1px solid var(--fg-color-warning);
+  border-radius: var(--fg-radius-xl);
+}
+
+.fgw-brand__quick-check p,
+.fgw-brand__quick-check ul {
+  margin: 0;
+}
+
+.fgw-brand-section,
+.fgw-brand-sources {
+  display: grid;
+  gap: var(--fg-space-3);
+  padding: var(--fg-space-4);
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-xl);
+}
+
+.fgw-brand-section__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fg-space-3);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fgw-brand-section__title {
+  margin: 0;
+  font-size: var(--fg-text-lg);
+  font-weight: var(--fg-weight-semibold);
+}
+
+.fgw-brand-section__saved {
+  margin: 0 0 0 auto;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-brand-section__fields,
+.fgw-brand-section__form {
+  display: grid;
+  gap: var(--fg-space-4);
+  margin: 0;
+}
+
+.fgw-brand-section__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fg-space-2);
+}
+
+.fgw-brand-field {
+  display: grid;
+  gap: var(--fg-space-1);
+}
+
+.fgw-brand-field__label {
+  color: var(--fg-color-text-subtle);
+  font-size: var(--fg-text-xs);
+  font-weight: var(--fg-weight-semibold);
+  letter-spacing: 0.04em;
+}
+
+.fgw-brand-field__value {
+  display: grid;
+  gap: var(--fg-space-2);
+  margin: 0;
+}
+
+.fgw-brand-field__text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.fgw-brand-field__empty {
+  color: var(--fg-color-text-muted);
+  font-style: italic;
+}
+
+.fgw-brand-field__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fg-space-2);
+  align-items: center;
+}
+
+.fgw-brand-field__conflict {
+  margin: 0;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-brand-field__hint {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fg-space-2);
+}
+
+.fgw-brand-field__counter {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.fgw-brand-field__error {
+  color: var(--fg-color-danger-text);
+}
+
+.fgw-brand-sources__list {
+  display: grid;
+  gap: var(--fg-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fgw-brand-source {
+  display: grid;
+  gap: var(--fg-space-1);
+  padding: var(--fg-space-3);
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-lg);
+}
+
+.fgw-brand-source__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fg-space-2);
+  align-items: center;
+}
+
+.fgw-brand-source__name {
+  overflow-wrap: anywhere;
+  font-weight: var(--fg-weight-semibold);
+}
+
+.fgw-brand-source__menu {
+  position: relative;
+  margin-left: auto;
+}
+
+.fgw-brand-source__actions {
+  position: absolute;
+  z-index: 10;
+  right: 0;
+  display: grid;
+  min-width: 160px;
+  margin: var(--fg-space-1) 0 0;
+  padding: var(--fg-space-1);
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-lg);
+  background: var(--fg-color-surface-raised);
+  list-style: none;
+}
+
+.fgw-brand-source__actions .fg-btn {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.fgw-brand-source__stale {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fg-space-2);
+  align-items: center;
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-brand-source__stale p,
+.fgw-brand-source__problem p {
+  margin: 0;
+}
+
+.fgw-brand-source__problem {
+  display: grid;
+  gap: var(--fg-space-1);
+  color: var(--fg-color-danger-text);
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-brand-sources__add {
+  max-width: none;
+}
+
+.fgw-brand-sources__add-title {
+  margin: 0;
+  font-size: var(--fg-text-base);
+}

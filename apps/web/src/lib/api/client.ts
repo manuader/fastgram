@@ -233,6 +233,20 @@ export async function apiRequest<TOutput = unknown>(
   return validate(unwrapData(body, status), options.schema, status);
 }
 
+/**
+ * Una escritura **sin recurso de vuelta** (`204`), p. ej. `DELETE /brand/sources/:id`.
+ *
+ * `apiRequest` exige el sobre `{data}` y convierte su ausencia en
+ * `invalid_response` —que es lo correcto para una lectura: un `200` vacío es un
+ * backend roto—. Un `204` no tiene sobre por definición, así que pasarlo por
+ * `apiRequest` haría fallar **todo borrado exitoso**. Esta variante acepta el
+ * cuerpo vacío y nada más: un `2xx` con cuerpo se ignora (no hay schema contra
+ * el que validarlo), y un error sigue siendo `ApiRequestError`.
+ */
+export async function apiSend(path: string, options: SendOptions = {}): Promise<void> {
+  await send(path, options);
+}
+
 // ---------------------------------------------------------------------------
 // Paginación por cursor · PRD:2256, PRD:2345
 // ---------------------------------------------------------------------------

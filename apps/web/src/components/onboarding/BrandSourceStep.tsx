@@ -22,8 +22,13 @@ function isChip(value: string): value is ChipType {
   return (CHIP_TYPES as readonly string[]).includes(value);
 }
 
-/** Un fallo de entrada o de alta, con la salida que le toca (§19). */
-function InputProblem({
+/**
+ * Un fallo de entrada o de alta, con la salida que le toca (§19).
+ *
+ * Este y los dos de abajo se exportan porque `+ Add source` de `/brand`
+ * (`components/brand/AddSourceForm.tsx`) es el mismo alta con otra cáscara.
+ */
+export function InputProblem({
   error,
   onRetry,
 }: {
@@ -48,7 +53,7 @@ function InputProblem({
  * error, es una pregunta. Preselecciona la plataforma que el usuario ya tenga
  * conectada (la manda la API), o la del chip que ya fijó.
  */
-function Disambiguator({
+export function Disambiguator({
   ambiguity,
   chip,
   onPick,
@@ -93,7 +98,7 @@ function Disambiguator({
  * tiene `SocialReader` montado y no los inventa. La tarjeta no espera a que
  * lleguen: nombre = el handle, avatar = sus iniciales.
  */
-function ConfirmationCard({
+export function ConfirmationCard({
   detection,
   busy,
 }: {

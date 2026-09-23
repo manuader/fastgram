@@ -39,6 +39,15 @@ export const queryKeys = {
   brandSourceResolve: (input: string, hint?: string) =>
     ["brand-sources", "resolve", input, hint ?? null] as const,
   /**
+   * `GET /brand/sources` en `/brand` (`P1-BRANDPG-002`). Cuelga de
+   * `brand-sources` por lo mismo que `brandSourceResolve`: el alta que
+   * comparte con el onboarding (`useCreateBrandSource`) invalida ese prefijo, y
+   * así la tarjeta ve la fuente nueva sin que el hook del alta sepa de ella.
+   */
+  brandSources: () => ["brand-sources", "list"] as const,
+  /** `GET /brand/profile` (`P1-BRANDPG-001`). */
+  brandProfile: () => ["brand", "profile"] as const,
+  /**
    * El estado del servicio (`F-255`). No cuelga de ningún recurso del API v1 a
    * propósito: no lleva workspace ni sesión, así que invalidar "todo lo del
    * workspace" no debe tocarlo.

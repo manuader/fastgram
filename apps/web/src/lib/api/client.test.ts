@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { apiList, apiRequest } from "./client";
+import { apiList, apiRequest, apiSend } from "./client";
 import { ApiRequestError } from "./errors";
 
 function respondWith(body: unknown, status = 200): void {
@@ -189,5 +189,38 @@ describe("header anti-CSRF del proxy", () => {
     respondWith({ data: {} });
     await apiRequest("/content");
     expect(sentHeaders().get("x-fastgram-csrf")).toBeNull();
+  });
+});
+
+describe("apiSend · escrituras sin recurso de vuelta", () => {
+  // `new Response("", {status: 204})` lanza: un 204 se construye con `null`.
+  function respondNoContent(): void {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Promise.resolve(new Response(null, { status: 204 }))),
+    );
+  }
+
+  it("un 204 sin cuerpo resuelve; `apiRequest` lo habría tratado como sobre roto", async () => {
+    respondNoContent();
+    await expect(
+      apiSend("/brand/sources/x", { method: "DELETE" }),
+    ).resolves.toBeUndefined();
+    respondNoContent();
+    await expect(
+      apiRequest("/brand/sources/x", { method: "DELETE" }),
+    ).rejects.toMatchObject({ code: "invalid_response" });
+  });
+
+  it("un error sigue saliendo como `ApiRequestError` con su código y `details`", async () => {
+    respondWith(
+      { error: { code: "conflict", message: "x", details: { code: "ERR-B01" } } },
+      409,
+    );
+    const failure = await apiSend("/brand/sources/x", { method: "DELETE" }).catch(
+      (e: unknown) => e,
+    );
+    expect(failure).toBeInstanceOf(ApiRequestError);
+    expect(failure).toMatchObject({ code: "conflict", details: { code: "ERR-B01" } });
   });
 });

@@ -548,6 +548,101 @@ export const webEn = {
   // sería inventarlos. Ver `lib/onboarding/processing.ts`.
   "brand.substep.noProgress": "We can't show which of these is running yet.", // nuevo
 
+  /* ------------------------------------ /brand · FR-020 (PRD:996-1025) */
+  // La cabecera del PRD es `<Company>'s Company Profile` (PRD:1003). Ningún
+  // endpoint de brand trae el nombre de la empresa, así que va sin él.
+  "brand.profile.title": "Company Profile", // nuevo · ver nota
+  "brand.profile.subtitle":
+    "We've analysed your business to understand how to do the best marketing for you. Please review your profile and make any changes.", // literal PRD:1003
+  "brand.section.identity": "Identity & Product", // literal PRD:1004
+  "brand.section.market": "Market & Competition", // literal PRD:1005
+  "brand.section.voice": "Tone & Audience", // nuevo · la sección es INFERRED (PRD:1006)
+  "brand.field.coreIdentity": "CORE IDENTITY", // literal PRD:1004
+  "brand.field.productOffering": "PRODUCT OFFERING", // literal PRD:1004
+  "brand.field.uniqueBenefits": "UNIQUE BENEFITS", // literal PRD:1004
+  "brand.field.problemSolution": "PROBLEM SOLUTION", // literal PRD:1004
+  "brand.field.marketAndCompetition": "MARKET & COMPETITION", // nuevo · el PRD nombra la sección, no el subcampo
+  "brand.field.businessCategories": "CATEGORIES", // nuevo
+  "brand.field.toneOfVoice": "TONE OF VOICE", // nuevo
+  "brand.field.targetAudience": "TARGET AUDIENCE", // nuevo
+  "brand.field.empty": "Not filled in yet", // nuevo
+  "brand.field.categoriesHint": "Separate categories with commas.", // nuevo
+  "brand.field.counter": "{count} / {max}", // nuevo
+  // FR-020 Validation: *"INFERRED límite 4 000 caracteres"*. La API no lo aplica.
+  "brand.field.tooLong": "Keep this under {max} characters.", // nuevo
+  "brand.edit": "Edit", // literal PRD:1003
+  "brand.editSection": "Edit {section}", // nuevo · nombre accesible de cada `Edit`
+  "brand.save": "Save", // nuevo
+  "brand.saving": "Saving…", // nuevo · estado `saving` de FR-020
+  "brand.saved": "Saved", // nuevo · estado `saved` de FR-020 ("confirmación")
+  // F-022 — `brandRevision` es un entero que sube en cada guardado.
+  "brand.revision": "Revision {revision}", // nuevo
+  // No hay `expectedBrandRevision` en `PATCH /brand/profile`: esto avisa, no
+  // protege. Ver la cabecera de `lib/brand/profile.ts`.
+  "brand.revisionMoved":
+    "This profile changed while you had this section open. Saving only sends the fields you changed here.", // nuevo
+  "brand.profile.pending":
+    "We haven't built your profile yet. It fills in as your sources finish analysing.", // nuevo
+  "brand.profile.failed":
+    "We couldn't build your profile from your sources. You can still fill in the sections below yourself.", // nuevo
+  // FR-011.2 (PRD:837) — badge de origen. Las dos formas son literales del
+  // ejemplo del PRD (`from @mimarca on Instagram`, `from miproducto.com`).
+  "brand.origin.social": "from {handle} on {platform}", // literal (forma) PRD:837
+  "brand.origin.domain": "from {domain}", // literal (forma) PRD:837
+  "brand.origin.platformOnly": "from your {platform} source", // nuevo · fuente sin handle
+  "brand.origin.edited": "Edited by you", // nuevo · `editedByUser`
+  "brand.origin.removed": "from a source you removed", // nuevo · `sourceId` huérfano (FR-011.11)
+  // PRD:837 dice que el badge es *"clicable para ver el extracto exacto"*. El
+  // extracto vive en el snapshot y ningún endpoint lo devuelve.
+  "brand.origin.noExcerpt": "We can't show the excerpt each field came from yet.", // nuevo
+  // FR-011.2 (PRD:838) — `high` / `medium` / `low`, literales.
+  "brand.confidence.high": "high", // literal PRD:838
+  "brand.confidence.medium": "medium", // literal PRD:838
+  "brand.confidence.low": "low", // literal PRD:838
+  "brand.confidence.label": "Confidence: {level}", // nuevo
+  "brand.conflict": "Other sources disagree: {sources}", // nuevo · `conflictsWith` (FR-011.6)
+  "brand.quickCheck.title": "Worth a quick check", // literal PRD:840
+  "brand.quickCheck.body":
+    "We guessed these. Fix anything that's off — it shapes every post we write for you.", // literal PRD:840
+  // FR-020 / FR-011.6 — el re-análisis no pisa lo editado. La mitad que falta
+  // (ver la propuesta y aceptarla, ERR-B14) no tiene endpoint: se dice.
+  "brand.editedKept":
+    "Fields you edited stay as you wrote them: re-analysing a source won't overwrite them.", // nuevo
+  "brand.proposalsUnavailable":
+    "If a source suggests a different answer for one of them, we can't show you the suggestion yet.", // nuevo
+
+  /* ------------------------- /brand · tarjeta Brand sources · F-024 (PRD:844) */
+  "brand.sources.title": "Brand sources", // literal PRD:844
+  "brand.sources.reanalyse": "Re-analyse", // literal PRD:844
+  "brand.sources.setPrimary": "Set as primary", // literal PRD:844
+  "brand.sources.remove": "Remove", // literal PRD:844
+  "brand.sources.menu": "More actions for {source}", // nuevo · nombre accesible del `⋯`
+  "brand.sources.primary": "Primary", // nuevo
+  "brand.sources.lastAnalysed": "Last analysed {date}", // nuevo
+  "brand.sources.neverAnalysed": "Not analysed yet", // nuevo
+  // `stale` (FR-011.8): *"el análisis tiene más de 90 días; se ofrece `Re-analyse`"*.
+  "brand.sources.staleOffer": "This analysis is more than 90 days old.", // nuevo
+  "brand.sources.working": "Working…", // nuevo · la acción de la fila en vuelo
+  // `409` + `ERR-B01` del `DELETE` (§9.14: *"Rechazado si es la única fuente y
+  // el perfil quedaría sin origen"*). El texto es el del servidor, copiado acá
+  // para no pintar el `message` crudo; el literal de ERR-B01 es de onboarding.
+  "brand.sources.onlySource":
+    "This is the only source behind your brand profile. Add another one first.", // nuevo
+  // `403` del `DELETE` — FR-011.10, sólo el owner quita la primaria.
+  "brand.sources.ownerOnly": "Only the workspace owner can remove the primary source.", // nuevo
+  "brand.sources.gone": "This source isn't there anymore. The list has been refreshed.", // nuevo
+  // NFR-005: re-analizar no se reintenta a ciegas.
+  "brand.sources.checkStatus":
+    "We didn't retry, so it won't count twice. The list shows the source's current status.", // nuevo
+  "brand.sources.removeTitle": "Remove {source}?", // nuevo
+  // FR-011.11: el perfil materializado no se toca al borrar la fuente.
+  "brand.sources.removeBody":
+    "Your brand profile keeps what it already learned from this source.", // nuevo
+  // La API promueve la más antigua de las que quedan (`DELETE` en brand.ts).
+  "brand.sources.removePrimaryBody":
+    "It's your primary source, so your oldest remaining source becomes primary.", // nuevo
+  "brand.sources.addTitle": "Add a source", // nuevo
+
   /* --------------------------- Onboarding · paso 4 · FR-010 (PRD:748, 760) */
   "onboarding.processing.done": "Brand analysis finished", // nuevo · ver `ProcessingStep`
   "onboarding.processing.needsSupport":
