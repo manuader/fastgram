@@ -435,7 +435,9 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P2-CONTENT-001** `DATA-008` + `DATA-009` + ciclo `BUILDING → CREATED|FAILED` · `FR-050`
 - [x] **P2-CONTENT-002** Concurrencia optimista por `revision`; `409 stale_revision` · `FR-051`
 - [x] **P2-CONTENT-003** Edición menor: **no** crea fila, **no** consume save, **no** factura · `FR-051`
+  > **Estaba roto en el camino de fallo hasta `eab8fa5`.** Las ediciones se encolaban en `content-build`, cuyo cierre de fallo es `FAILED` + reembolso; la pieza editada lleva el `saveBucket` del build original, así que **cada edición fallida devolvía un save** y mataba una pieza que PRD:1204 dice que sigue usable. Ahora van a `content-rebuild`: el fallo vuelve a `CREATED` con los archivos anteriores y `lastEdit` fallido, sin reembolso. `PATCH` y `regenerate` leen con lock (dos `PATCH` con la misma `revision` escribían los dos).
 - [~] **P2-CONTENT-004** Regeneración de copy preservando estructura y nº de slides · `AI-004` · **parcial:** `POST /content/:id/regenerate` valida, sube la revisión y encola; el modelo lo llama el worker, que no existe
+  > **Hoy ninguna edición llega al video (`eab8fa5`).** El render lee sólo `buildPayload`; `PATCH` escribe `content_text_boxes`. El mapeo de cajas del editor (0–100) a píxeles del payload **no lo da el PRD**, y `regenerate` necesita un modelo de copy que el worker no tiene. Una pieza con cajas cierra el rebuild con `edit_not_renderable` sin llamar al renderer — honesto, no aplicado. Decisiones de una persona: el mapeo, el modelo, y el contrato del swap de media (F-061, sin ruta).
 - [x] **P2-CONTENT-005** Todas las validaciones de rango de `FR-051`
 - [x] **P2-CONTENT-006** Borrado: soft-delete + `409 content_has_linked_posts` (cancelar no basta) · `FR-051` · **parcial:** el 409 está en `PATCH`; el `DELETE` no lo comprueba
 - [x] **P2-CONTENT-007** `409 content_still_building` con la ventana de 15 min · `ERR-P02`

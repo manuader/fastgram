@@ -78,6 +78,24 @@ El detalle está en `docs/IMPLEMENTATION-PLAN.md` §2. No lo repito acá para qu
 
 ## 4. Qué cambió, sesión por sesión
 
+### Sesión 2026-09-23 (2) — Un save regalado por cada edición fallida
+
+Tres agentes más. Detalle en
+[`SESSION-2026-09-23-sexta-tanda.md`](SESSION-2026-09-23-sexta-tanda.md), sección «Séptima tanda».
+
+**Bug de dinero, cerrado (`eab8fa5`).** Las ediciones se encolaban en `content-build`, que al
+fallar reembolsa. Una pieza editada ya entregó su save: cada edición fallida lo devolvía y dejaba
+la pieza `FAILED`, cuando el PRD dice que la versión anterior sigue usable. Ahora hay
+`content-rebuild` con su propio cierre. **Y ninguna edición llega al video**: el render no lee las
+cajas de texto, y el mapeo a píxeles no está en el PRD.
+
+**Una regla de build rota, cerrada (`a7a7f3e`).** `lastEdit.failureReason` llevaba el mensaje
+crudo del proveedor y sale por la API. Los tests afirmaban el texto crudo.
+
+**Dos carreras de lectura sin lock**, cerradas con `FOR UPDATE`: el re-análisis (`0a26503`) y
+`PATCH`/`regenerate` de contenido. **No se implementó** el filtro por fecha de `GET /posts`: el PRD
+no documenta el parámetro. La propuesta está en el session doc.
+
 ### Sesión 2026-09-23 — Las escrituras llegan; las fuentes pueden salir de `pending`
 
 Ocho agentes, doce commits. Detalle en
@@ -464,7 +482,7 @@ Y una de la sesión del worker:
 
 ## 6. Cómo verificar
 
-**Números al 2026-09-23 (sexta tanda).** Son lo que permite distinguir "lo rompí yo" de "ya estaba rojo".
+**Números al 2026-09-23 (séptima tanda).** Son lo que permite distinguir "lo rompí yo" de "ya estaba rojo".
 Si tu corrida da menos, algo se perdió; si da más, actualizá esta sección.
 
 ```bash
@@ -478,17 +496,17 @@ pnpm verify           # lint · typecheck · boundaries · consistency · test
 |---|---|---|
 | `pnpm format:check` | prettier sobre el repo. **Entró en `verify` tarde**: CI lo corría solo y llevaba tandas en rojo sin que nadie lo viera | **limpio** |
 | `pnpm lint` | eslint una vez sobre todo el repo | **0 errores** |
-| `pnpm typecheck` | `tsc --noEmit` por paquete, 12 tareas | **12 successful** |
-| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 503 módulos · **1614 dependencias** |
+| `pnpm typecheck` | `tsc --noEmit` por paquete, 18 tareas | **18 successful** |
+| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 505 módulos · **1622 dependencias** |
 | `pnpm consistency` | los números del PRD escritos en más de un paquete | **39 invariantes** |
-| `pnpm test` | unitarios | **2.277** |
+| `pnpm test` | unitarios | **2.280** |
 
 Desglose de `pnpm test`, por si uno solo se cae:
 
 | Paquete | Tests | | Paquete | Tests |
 |---|---|---|---|---|
 | `core` | 472 | | `adapters` | 464 (+10 salteados) |
-| `web` | 378 | | `contracts` | 274 |
+| `web` | 381 | | `contracts` | 274 |
 | `render-service` | 207 | | `ui` | 170 |
 | `api` | 175 | | `db` | 52 |
 | `worker` | 76 | | `config` | 9 |
@@ -497,7 +515,7 @@ Desglose de `pnpm test`, por si uno solo se cae:
 
 ```bash
 docker compose up -d                       # Postgres con pgvector + MinIO con el bucket creado
-pnpm test:int                              # db 214 · api 229 (+11 salteados sin S3) · worker 130 · adapters 9 → 582
+pnpm test:int                              # db 218 · api 239 (+11 salteados sin S3) · worker 147 · adapters 9 → 613
 pnpm --filter @fastgram/adapters test:int  # 9 — encolado dentro de la transacción de Drizzle
 pnpm build && pnpm smoke:binary           # el artefacto que se despliega, de verdad
 ```
@@ -1028,6 +1046,20 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 193
     quitar la guarda. Usá `expect(() => …).toThrow()` o poné el `unreachable`
     **fuera** del `try`.
 
+48. **`pnpm build` no restaura un `dist` editado a mano.** Para romper algo que
+    un consumidor lee vía `dist` (trampa 31) es tentador editar el `.js`
+    compilado. Pero el `tsbuildinfo` incremental cree que el `dist` está al día
+    y `tsc` no lo reescribe: la rotura **sobrevive al rebuild**. Hay que borrar
+    `tsconfig.build.tsbuildinfo` y el `.js` tocado. Mejor todavía: romper el
+    `src` y recompilar.
+
+49. **Reusar un camino que ya existe puede heredar su política de dinero.** Las
+    ediciones se encolaban con `enqueueBuild` en `content-build` porque el
+    render es el mismo. Pero la cola decide también **cómo se cierra un
+    fallo**, y la de build reembolsa. Una pieza editada ya entregó su save:
+    cada edición fallida devolvía uno. Cuando dos flujos comparten motor y no
+    comparten reglas de cobro, van por colas —o al menos por cierres— distintos.
+
 ## 8. Qué falta
 
 El backlog real es `tasks.md`. El estado de hoy está en §6.
@@ -1066,7 +1098,7 @@ ponerla.
 | ~~**Nada encola `discovery-refill`**~~ **cerrado** | `POST /blitz` con la cola vacía y el onboarding lo encolan, con clave por minuto (trampa 39). Sigue sin haber pasado por pg-boss real | `P2-DISC-001` |
 | **La UI nunca se probó contra la API sirviendo datos** | la Library se ejercitó contra un stub; las 4 keys de desarrollo están hasheadas y no se pudo crear una. Hay 20 filas en `contents` esperando | `P1-UI-012` |
 | ~~**No hay ni un test de componente**~~ **cerrado** | el arnés está (`vitest` + jsdom + Testing Library) y hay 83 tests de componente. Lo que falta ahora es otra cosa: **nadie abrió un navegador** con las dos pantallas nuevas, y jsdom no pinta | `P1-UI-014` |
-| **12 de las 21 colas siguen sin consumidor** | 9 tienen handler; `media-normalization` y `brand-source-analysis` sólo se montan con su configuración, y hoy ningún entorno la trae. Un job sin handler no falla: se queda esperando para siempre | `P1-QUEUE-*` |
+| **11 de las 21 colas siguen sin consumidor** | 10 tienen handler; `media-normalization` y `brand-source-analysis` sólo se montan con su configuración, y hoy ningún entorno la trae. Un job sin handler no falla: se queda esperando para siempre | `P1-QUEUE-*` |
 | ~~**NINGUNA pantalla de escritura de la app funciona**~~ **destrabado, sin probar en navegador** | el proxy acepta escrituras con anti-CSRF (`Origin` exacto contra `FASTGRAM_APP_ORIGIN`, `Sec-Fetch-Site`, header propio). **No es autenticación**: `fg_session` no está firmada y cualquiera que alcance el puerto se fabrica una sesión | `P1-AUTH-002` |
 | **No hay configuración de CORS del bucket** | el PUT del navegador a la URL firmada **nunca se hizo desde un navegador**: el test de integración lo hace desde Node, donde no hay CORS. Sólo existe `API_CORS_ORIGINS`, que es de la API. Va a fallar con pinta de error de red | `P1-INFRA-004` |
 | **`brand-source-analysis` tiene handler, montado sólo con configuración** | extractor `website` + `LLM_*` + `BRAND_SNAPSHOT_RAW_RETENTION_DAYS`, sin defaults (el PRD no da los números). Sin eso, las fuentes siguen en `pending`. Con eso: `website`/`other_url` se analizan, las sociales fallan con `unsupported_platform` y degradan a D. Nunca corrió con un LLM real. Confianza siempre `low` hasta `JV-4` | `P1-BRAND-007…011`, `P1-BRAND-016` |

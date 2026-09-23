@@ -84,3 +84,48 @@ no coinciden son la próxima divergencia.
 - **HTTPS real** en el extractor (SNI con IP fijada) sin probar.
 - **Divergencia fijada, no decidida:** `SubscriptionStatus` del puerto tiene `incomplete`, que
   DATA-002 y Postgres no tienen.
+
+---
+
+## Séptima tanda (misma fecha)
+
+Tres agentes más, cuatro commits (`36ab90c`…`a7a7f3e`).
+
+### El save regalado
+
+`bumpAndRebuild` encolaba las ediciones con `enqueueBuild`, en `content-build`, porque el render
+es el mismo. Pero la cola también decide **cómo se cierra un fallo**, y la de build hace `FAILED`
++ reembolso. La pieza editada conserva el `saveBucket` del build original, que sí se entregó: cada
+edición fallida devolvía un save y mataba una pieza que PRD:1204 dice que sigue usable. Nunca se
+vio porque ningún productor real crea piezas editables (el accept de Blitz no está cableado).
+
+`content-rebuild` usa el mismo motor con otro cierre: vuelve a `CREATED` con los archivos
+anteriores y `lastEdit` fallido, sin tocar la cuota. Los jobs de edición que queden en la cola
+vieja se cierran como rebuild.
+
+**Ninguna edición llega al video.** El render lee sólo `buildPayload`; `PATCH` escribe
+`content_text_boxes`. El mapeo de las cajas del editor (0–100) a píxeles no está en el PRD, así que
+una pieza con cajas cierra el rebuild con `edit_not_renderable` sin llamar al renderer, en vez de
+rehacer la misma pieza y decir que la edición se aplicó.
+
+### El mensaje del proveedor salía por la API
+
+`failBuild` escribía `failure.reason` en `lastEdit.failureReason`, y `lastEdit` sale tal cual por
+`toContent`: `"bad_request: <mensaje del motor>"`. Los tests afirmaban ese texto. Ahora va el
+código; el mensaje queda en el log.
+
+### Lo que no se construyó, a propósito
+
+- **`GET /posts?from&to`.** §9.3 (PRD:2292) no lista parámetros; §12 (PRD:2729) documenta sólo
+  `status`. Propuesta para el PRD: `[from, to)` en UTC, fecha efectiva
+  `coalesce(posted_at, scheduled_at_utc)`, orden ascendente con cursor que codifique el modo,
+  índice por expresión, y —para el criterio (1) de FR-110— un `GET /posts/counts?from&to`.
+- **Tier D asistido.** `POST /brand/sources` rechaza `manual` y §9.14 no trae ruta para pegar la
+  bio o subir capturas. El copy de `unsupported_platform` se corrigió para no prometerlo.
+
+### Carreras cerradas
+
+Dos lecturas sin lock que precedían a una decisión: el re-análisis de brand (`lockBrandSource`) y
+`PATCH`/`regenerate` de contenido (`lockContent`). El test del re-análisis tuvo que avanzar el
+reloj entre los dos pedidos: con el mismo milisegundo la clave coincidía, el doble de la cola los
+juntaba y el test veía un job **también sin lock** — medía la deduplicación, no la guarda.
