@@ -25,6 +25,7 @@ import { createBrandStalenessHandler } from "./brand/staleness-handler.js";
 import type { BrandSynthesizer } from "./brand/synthesizer.js";
 import { createSnapshotPurgeHandler } from "./brand/snapshot-purge-handler.js";
 import { createContentBuildHandler, type BuildLogger } from "./content/build-handler.js";
+import { createContentRebuildHandler } from "./content/rebuild-handler.js";
 import { createDiscoveryRefillHandler } from "./discovery/refill-handler.js";
 import { createInfluencerPipelineHandler } from "./influencers/pipeline-handler.js";
 import { createQuotaResetHandler } from "./jobs/quota-reset-handler.js";
@@ -33,7 +34,10 @@ import { createPublishHandler } from "./publishing/publish-handler.js";
 
 export interface WorkerHandlerDeps {
   readonly db: Database;
-  /** El de `content-build`. Hoy `MemoryMediaRenderer`: ver `main.ts`. */
+  /**
+   * El de `content-build` **y** `content-rebuild`. Hoy `MemoryMediaRenderer`:
+   * ver `main.ts`.
+   */
   readonly renderer: MediaRenderer;
   /**
    * El de `media-normalization`, **otra instancia** y a propósito: un
@@ -124,6 +128,25 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
 
   const handlers: Record<string, JobHandler<unknown>> = {
     [JOB_QUEUES.contentBuild]: createContentBuildHandler({
+      db,
+      renderer,
+      storage,
+      clock,
+      appRole,
+      logger,
+    }),
+    /**
+     * **Con el MISMO `renderer` que `content-build`, no con el de
+     * normalización.** Un rebuild es el mismo render con otra revisión: con otro
+     * motor, una edición que no cambia nada produciría una pieza que se ve
+     * distinta. Hoy es el de memoria, así que el rebuild que llega a renderizar
+     * deja un artefacto sintético igual que el build; el día que `content-build`
+     * pase a `services/render`, éste pasa con él sin tocar esta línea.
+     *
+     * Montarlo no es opcional desde que la API encola acá: sin handler, cada
+     * edición dejaría la pieza en `BUILDING` para siempre, sin fallar.
+     */
+    [JOB_QUEUES.contentRebuild]: createContentRebuildHandler({
       db,
       renderer,
       storage,

@@ -42,9 +42,10 @@ function deps(
   };
 }
 
-/** Las siete que se montan siempre, con o sin servicio de render. */
+/** Las ocho que se montan siempre, con o sin servicio de render. */
 const SIEMPRE = [
   JOB_QUEUES.contentBuild,
+  JOB_QUEUES.contentRebuild,
   JOB_QUEUES.publishing,
   JOB_QUEUES.influencerPipeline,
   JOB_QUEUES.discoveryRefill,

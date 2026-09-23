@@ -60,6 +60,26 @@
  * - **`prompt` / `mentionBusiness`** — `AI-004` los usa para regenerar copy con
  *   un modelo antes de construir. No hay puerto `Llm` cableado acá; el payload
  *   los trae y este handler los ignora, que es mejor que fingir que los aplica.
+ *
+ * ## El mismo motor sirve a `content-rebuild`
+ *
+ * {@link createContentRenderHandler} es el motor; `content-build` y
+ * `content-rebuild` (`rebuild-handler.ts`) son dos entradas. Leer, renderizar,
+ * subir y escribir son idénticos. Lo que cambia es **cómo se cierra un fallo**,
+ * y ahí está el dinero:
+ *
+ * | | build (`FR-050`) | rebuild (`FR-051`) |
+ * |---|---|---|
+ * | cobró un save | sí, `POST /content` | **no** (PRD:1186, FLOW-008) |
+ * | fallo definitivo | `FAILED` + reembolso | `CREATED` con los `files` anteriores + `lastEdit` fallido (PRD:1204) |
+ *
+ * Un rebuild que reembolsara devolvería el save **del build original, que sí
+ * se entregó**: un save gratis por cada edición que falla. Y marcarlo `FAILED`
+ * mataría una pieza que el PRD dice que sigue usable.
+ *
+ * El modo lo decide la cola **o** el `reason` del job: un job de edición que
+ * haya quedado en la cola `content-build` —la API los encolaba ahí antes de que
+ * existiera `content-rebuild`— se cierra como rebuild igual.
  */
 
 import {
@@ -70,6 +90,7 @@ import {
 import {
   contentBuildStore,
   contentRepository,
+  contentTextBoxRepository,
   withCompany,
   type Database,
   type Transaction,
@@ -129,20 +150,27 @@ const RETRYABLE_PORT_CODES: ReadonlySet<string> = new Set([
 
 /** Un fallo que ya sabe si merece otro intento. */
 interface BuildFailure {
+  /** Para el log. Puede llevar el mensaje del proveedor. */
   readonly reason: string;
+  /**
+   * Código estable, sin texto del proveedor. Es lo que el rebuild deja en
+   * `lastEdit`, que **sale por la API** tal cual (`toContent`).
+   */
+  readonly code: string;
   readonly retryable: boolean;
   readonly cause?: unknown;
 }
 
-const permanent = (reason: string, cause?: unknown): BuildFailure =>
+const permanent = (reason: string, code: string, cause?: unknown): BuildFailure =>
   cause === undefined
-    ? { reason, retryable: false }
-    : { reason, retryable: false, cause };
+    ? { reason, code, retryable: false }
+    : { reason, code, retryable: false, cause };
 
 function classify(error: unknown): BuildFailure {
   if (error instanceof PortError) {
     return {
       reason: `${error.code}: ${error.message}`,
+      code: error.code,
       retryable: RETRYABLE_PORT_CODES.has(error.code),
       cause: error,
     };
@@ -152,9 +180,40 @@ function classify(error: unknown): BuildFailure {
   // caen acá, y un bug determinista termina igual en `FAILED` al último intento.
   return {
     reason: error instanceof Error ? error.message : "unknown build error",
+    code: "internal_error",
     retryable: true,
     cause: error,
   };
+}
+
+/**
+ * Qué cola trajo el job. `rebuild` = `content-rebuild`; ver la cabecera.
+ */
+export type ContentJobQueueKind = "build" | "rebuild";
+
+/**
+ * Los `reason` que describen una edición de una pieza que ya se construyó.
+ *
+ * Un job con uno de éstos se cierra como rebuild aunque venga por la cola
+ * `content-build`: es una pieza con una versión anterior usable y un save que
+ * se cobró y **se entregó**.
+ */
+const EDIT_REASONS: ReadonlySet<string> = new Set(["edit", "regenerate"]);
+
+/**
+ * Qué `kind` de `lastEdit` escribir al cerrar un rebuild fallido.
+ *
+ * La API escribe `minor` o `regenerate` al aceptar la edición; se conserva el
+ * mismo vocabulario para que el fallo se lea como el fallo **de esa** edición.
+ */
+function editKindOf(job: ContentBuildJob, lastEdit: unknown): string {
+  if (job.reason === "edit") return "minor";
+  if (job.reason === "regenerate") return "regenerate";
+  if (typeof lastEdit === "object" && lastEdit !== null) {
+    const kind = (lastEdit as Record<string, unknown>)["kind"];
+    if (typeof kind === "string") return kind;
+  }
+  return "rebuild";
 }
 
 /** Lo que se lee de la fila antes de trabajar. */
@@ -171,6 +230,17 @@ type ReadOutcome =
   | { readonly kind: "fail"; readonly failure: BuildFailure };
 
 export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<unknown> {
+  return createContentRenderHandler(deps, "build");
+}
+
+/**
+ * El motor de `content-build` y `content-rebuild`. Ver la cabecera: la única
+ * diferencia entre los dos es cómo se cierra un fallo definitivo.
+ */
+export function createContentRenderHandler(
+  deps: ContentBuildDeps,
+  queueKind: ContentJobQueueKind,
+): JobHandler<unknown> {
   const prefix = deps.objectPrefix ?? "content";
 
   const inCompany = <T>(
@@ -185,7 +255,10 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
     );
 
   /** Transacción 1: bloquear, decidir y soltar. */
-  async function read(job: ContentBuildJob): Promise<ReadOutcome> {
+  async function read(
+    job: ContentBuildJob,
+    mode: ContentJobQueueKind,
+  ): Promise<ReadOutcome> {
     return inCompany(job.companyId, async (tx) => {
       const row = await contentBuildStore.lockContent(
         tx,
@@ -214,8 +287,36 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
           failure: permanent(
             "las piezas `custom` necesitan normalización, no render, y la fila no " +
               "guarda la clave del objeto subido: no hay de dónde leerlo",
+            "custom_not_renderable",
           ),
         };
+
+      if (mode === "rebuild") {
+        // **El render lee sólo `buildPayload`.** Las ediciones de `PATCH
+        // /content/:id` viven en `content_text_boxes` (posición 0–100,
+        // `widthPercent`, fuente), y `regenerate` necesita un modelo de copy
+        // que este worker no tiene. Ninguna de las dos llega a `toRenderJob`:
+        // rehacer el render acá produciría **la misma pieza de antes** y la
+        // dejaría en `CREATED` con `lastEdit.outcome = "applied"` — una edición
+        // que dice estar aplicada y no se ve (FR-051, criterio 1). El mapeo de
+        // cajas a píxeles del payload no lo da el PRD, y `content.ts` ya se
+        // negó a inventarlo; acá tampoco. Se cierra como rebuild fallido:
+        // la versión anterior sigue usable y el fallo se reporta (PRD:1204).
+        const cajas = await contentTextBoxRepository.count(
+          tx,
+          { companyId: job.companyId },
+          { filter: { contentId: { eq: job.contentId } } },
+        );
+        if (cajas > 0)
+          return {
+            kind: "fail",
+            failure: permanent(
+              `la pieza tiene ${String(cajas)} caja(s) de texto y el render sólo lee ` +
+                "buildPayload: la edición no llegaría al video",
+              "edit_not_renderable",
+            ),
+          };
+      }
 
       return {
         kind: "build",
@@ -260,7 +361,7 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
    * perdió el save y la pieza ya está muerta; y si fuera al revés, un reintento
    * que encuentra `FAILED` sin `saveRefundedAt` no sabría si devolver o no.
    */
-  async function fail(
+  async function failBuild(
     job: ContentBuildJob,
     reason: string,
   ): Promise<"refunded" | "closed" | "skipped"> {
@@ -312,6 +413,51 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
     });
   }
 
+  /**
+   * Transacción 2, camino de fallo **de un rebuild**: vuelve a `CREATED`.
+   *
+   * FR-051 (PRD:1197, PRD:1204): durante el rebuild *"el contenido previo sigue
+   * usable"* y, si falla, *"la versión anterior sigue siendo usable y se
+   * reporta `lastEdit` fallido"*. Por eso **no** es `FAILED`: `files` y
+   * `thumbnailUrl` no se tocan —la API no los limpia al encolar— y siguen
+   * siendo los de la revisión anterior.
+   *
+   * **Y no hay reembolso**, a propósito: una edición no cobra (PRD:1186), así
+   * que no hay nada que devolver. `saveBucket` en esta fila es el cargo del
+   * build **original**, que sí se entregó. Devolverlo acá regalaría un save
+   * por cada edición fallida. `saveRefundedAt` no se toca.
+   *
+   * Sólo cierra si la pieza sigue en `BUILDING` con la revisión del job: una
+   * reentrega que la encuentra en `CREATED` no reescribe `lastEdit`.
+   */
+  async function revertRebuild(
+    job: ContentBuildJob,
+    code: string,
+  ): Promise<"reverted" | "skipped"> {
+    return inCompany(job.companyId, async (tx) => {
+      const row = await contentBuildStore.lockContent(
+        tx,
+        { companyId: job.companyId },
+        job.contentId,
+      );
+      if (row === null || row.revision !== job.revision || row.status !== "BUILDING")
+        return "skipped";
+
+      await contentRepository.update(tx, { companyId: job.companyId }, job.contentId, {
+        status: "CREATED",
+        lastEdit: {
+          at: deps.clock.nowMs(),
+          outcome: "failed",
+          kind: editKindOf(job, row.lastEdit),
+          // Código estable, no el mensaje: `lastEdit` sale por la API tal
+          // cual, y un error crudo de proveedor no sale hacia afuera.
+          failureReason: code,
+        },
+      });
+      return "reverted";
+    });
+  }
+
   /** Sube el artefacto y devuelve su URL canónica. */
   async function upload(
     job: ContentBuildJob,
@@ -355,9 +501,19 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
     }
 
     const job = parsed.payload;
-    const base = { jobId: ctx.jobId, contentId: job.contentId, revision: job.revision };
+    const mode: ContentJobQueueKind =
+      queueKind === "rebuild" ||
+      (job.reason !== undefined && EDIT_REASONS.has(job.reason))
+        ? "rebuild"
+        : "build";
+    const base = {
+      jobId: ctx.jobId,
+      contentId: job.contentId,
+      revision: job.revision,
+      mode,
+    };
 
-    const outcome = await read(job);
+    const outcome = await read(job, mode);
     if (outcome.kind === "skip") {
       deps.logger.info({ ...base, why: outcome.why }, "build omitido");
       return;
@@ -374,7 +530,7 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
         outcome.subject.contentType,
       );
       if (!mapped.ok) {
-        failure = permanent(mapped.reason);
+        failure = permanent(mapped.reason, "invalid_build_payload");
       } else {
         try {
           // El grant se acuña **por build** y autoriza exactamente la media de
@@ -488,7 +644,10 @@ export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<un
       throw failure.cause instanceof Error ? failure.cause : new Error(failure.reason);
     }
 
-    const resultado = await fail(job, failure.reason);
+    const resultado =
+      mode === "rebuild"
+        ? await revertRebuild(job, failure.code)
+        : await failBuild(job, failure.reason);
     deps.logger.error(
       { ...base, attempt: ctx.attempt, reason: failure.reason, resultado },
       "build fallido definitivamente",

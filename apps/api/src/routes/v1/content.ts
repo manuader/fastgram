@@ -33,14 +33,12 @@
  *
  * ## Lo que este archivo NO hace, y por qué
  *
- * - **No consume el content save de `POST /content` ni de `POST /content/custom/video`.**
- *   El motor está en `core` (`quota/content-saves.ts`) y necesita tres cosas que
- *   hoy no se pueden leer ni escribir desde acá: el `planId` y el
- *   `apiOverageEnabled` viven en `companies`, que **no tiene repositorio**; el
- *   formato de `quota_ledgers.period` está marcado PENDIENTE en el schema; y el
- *   `saveBucket` del que hay que reembolsar **no tiene columna en `contents`**.
- *   Cablearlo a medias sería peor que no cablearlo: cobraría un save que el
- *   camino de reembolso no sabría devolver. Queda reportado.
+ * - **No cobra content save en `POST /content/custom/video`, ni en las
+ *   ediciones.** (Decía que tampoco en `POST /content`; eso dejó de ser cierto
+ *   cuando `consumeContentSave` se cableó ahí, con `saveBucket`/`savePeriod`
+ *   en la fila.) Las ediciones —`PATCH` y `regenerate`— no cobran por FR-051
+ *   (PRD:1186), y por eso encolan en `content-rebuild`, cuyo handler **no
+ *   reembolsa** al fallar: el `saveBucket` de la fila es del build original.
  *
  * - **No valida que las URLs del payload pertenezcan al Media Bank** (FR-070,
  *   PRD:1459). La mitad se puede —`media` está scopeado por workspace— pero la
@@ -78,6 +76,7 @@ import {
   type UploadReservation,
 } from "@fastgram/contracts";
 import {
+  contentBuildStore,
   contentRepository,
   contentTextBoxRepository,
   postRepository,
@@ -85,7 +84,7 @@ import {
   type Transaction,
   type contentTextBoxes,
 } from "@fastgram/db";
-import { CONTENT_BUILD_QUEUE } from "@fastgram/core";
+import { CONTENT_BUILD_QUEUE, JOB_QUEUES } from "@fastgram/core";
 import { MAX_SIGNED_URL_TTL_SECONDS, type Queue } from "@fastgram/ports";
 import { randomUUID } from "node:crypto";
 import type { FastifyReply } from "fastify";
@@ -270,13 +269,11 @@ type BuildReason = "create" | "edit" | "regenerate" | "custom-video";
 /**
  * Payload del job de build para las piezas que **no** vienen de Blitz.
  *
- * No se reusa `ContentBuildJob` de `core` porque exige `suggestionId` y un
- * `BlitzContentType`: ninguna de las dos cosas existe acá (no hay sugerencia, y
- * `custom` no es un tipo de Blitz). Se encola en la **misma cola**
- * (`CONTENT_BUILD_QUEUE`) porque es el único nombre con respaldo —IMPL §2.3 y la
- * constante de `core`—; §9.5 lista el rebuild y la normalización como trabajos
- * distintos, pero inventar dos nombres de cola que ningún worker lee sería peor.
- * Queda reportado para que quien escriba el worker lo cierre.
+ * Tiene la forma de `ContentBuildJob` de `core` (`jobs/content-build.ts`), que
+ * es con la que el worker lo parsea. Las piezas nuevas van a `content-build`
+ * ({@link enqueueBuild}); las ediciones, a `content-rebuild`
+ * ({@link enqueueRebuild}), que §9.5 #4 lista como trabajo propio y cuyo
+ * handler cierra un fallo **sin reembolsar** y sin matar la pieza.
  */
 interface ContentBuildRequest {
   readonly companyId: string;
@@ -312,6 +309,64 @@ async function enqueueBuild(
       retryBackoff: true,
     },
   });
+}
+
+/**
+ * Encola el rebuild de una edición — §9.5 #4, `FR-051` — **dentro de la
+ * transacción del llamador**, igual que el build.
+ *
+ * ## La clave: `<contentId>:<revision>`, y por qué no se repite
+ *
+ * La trampa 45 fue una clave con un contador **que volvía a 1**, y la 39 una
+ * clave fija: el adaptador de pg-boss deriva el id del job de la clave, así que
+ * una clave repetida choca contra el job viejo —ya completado— y **no encola
+ * nada**. Acá eso deja la pieza en `BUILDING` para siempre.
+ *
+ * `revision` no es un contador que se reinicia: es una columna de la fila que
+ * **sólo sube** (la única escritura es `row.revision + 1` en
+ * {@link bumpAndRebuild}), y la fila no se recrea con el mismo id. Lo que sí
+ * podía repetirla era la carrera: dos `PATCH` simultáneos con la misma
+ * `revision` leían los dos N sin bloqueo, pasaban `stale_revision` y escribían
+ * los dos N+1. Por eso las dos rutas leen ahora con `lockContent` (`FOR
+ * UPDATE`): el segundo espera, ve N+1 y recibe `409 stale_revision`. Con eso,
+ * cada edición aceptada tiene una `revision` propia y la clave es única por
+ * edición.
+ *
+ * Se prefirió a meter el instante o un UUID porque la clave además **dice**
+ * algo: un job por revisión, que es exactamente lo que el handler construye
+ * (compara `revision` al leer y al escribir). Con un UUID, dos jobs para la
+ * misma revisión serían encolables y el segundo trabajaría de más.
+ *
+ * ## Y se mira `created`
+ *
+ * La otra mitad de la trampa 45: quien encola y no mira `created` no se entera
+ * de que no encoló. Si alguna vez la clave se repitiera, esto lanza y la
+ * transacción entera vuelve atrás —la revisión, las cajas, el `BUILDING`—, en
+ * vez de responder 200 con una pieza que nadie va a reconstruir.
+ */
+async function enqueueRebuild(
+  queue: Queue,
+  tx: Transaction,
+  job: ContentBuildRequest,
+): Promise<void> {
+  const singletonKey = `${JOB_QUEUES.contentRebuild}:${job.contentId}:${job.revision}`;
+  const { created } = await queue.enqueue<ContentBuildRequest>({
+    queue: JOB_QUEUES.contentRebuild,
+    payload: job,
+    options: {
+      transaction: tx,
+      singletonKey,
+      // 2 reintentos = 3 intentos, el `maxAttempts` del catálogo del worker.
+      retryLimit: 2,
+      retryBackoff: true,
+    },
+  });
+  if (!created) {
+    throw new Error(
+      `content-rebuild no encoló: la clave ${singletonKey} ya tenía un job. ` +
+        "La pieza quedaría en BUILDING sin nadie que la reconstruya.",
+    );
+  }
 }
 
 /** Fila de `contents` tal como la devuelve el repositorio. */
@@ -473,7 +528,7 @@ async function bumpAndRebuild(
     throw new ContentRejection(404, "not_found", "content not found");
   }
 
-  await enqueueBuild(queue, tx, {
+  await enqueueRebuild(queue, tx, {
     companyId,
     contentId: row.id,
     contentType: row.type,
@@ -681,7 +736,11 @@ export function registerContentRoutes(app: ZodApp): void {
           },
           () =>
             request.tx(async (tx) => {
-              const row = await contentRepository.findById(tx, { companyId }, id);
+              // `lockContent` y no `findById`: el `FOR UPDATE` serializa dos
+              // ediciones de la misma pieza, y es lo que hace que la
+              // comprobación de `revision` valga y que la clave del rebuild
+              // no se repita. Ver {@link enqueueRebuild}.
+              const row = await contentBuildStore.lockContent(tx, { companyId }, id);
               if (row === null) {
                 throw new ContentRejection(404, "not_found", "content not found");
               }
@@ -774,8 +833,11 @@ export function registerContentRoutes(app: ZodApp): void {
     async (request, reply) => {
       // No hace falta adaptador de LLM acá, al revés que en
       // `POST /blitz/angles/generate`: AI-004 reescribe la copy y **rehace la
-      // pieza**, y §9.5 #4 pone ese trabajo en la cola. La ruta sólo valida,
-      // sube la `revision` y encola; el modelo lo llama el worker.
+      // pieza**, y §9.5 #4 pone ese trabajo en la cola `content-rebuild`. La
+      // ruta sólo valida, sube la `revision` y encola. **Hoy el worker no tiene
+      // modelo de copy**: el rebuild cierra la regeneración como fallida
+      // (`lastEdit.outcome = "failed"`) y la pieza vuelve a `CREATED` con su
+      // versión anterior — ver `apps/worker/src/content/rebuild-handler.ts`.
       if (queue === undefined) return queueUnavailable(reply);
 
       const { id } = request.params;
@@ -795,7 +857,11 @@ export function registerContentRoutes(app: ZodApp): void {
           },
           () =>
             request.tx(async (tx) => {
-              const row = await contentRepository.findById(tx, { companyId }, id);
+              // `lockContent` y no `findById`: el `FOR UPDATE` serializa dos
+              // ediciones de la misma pieza, y es lo que hace que la
+              // comprobación de `revision` valga y que la clave del rebuild
+              // no se repita. Ver {@link enqueueRebuild}.
+              const row = await contentBuildStore.lockContent(tx, { companyId }, id);
               if (row === null) {
                 throw new ContentRejection(404, "not_found", "content not found");
               }

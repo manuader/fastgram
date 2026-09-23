@@ -165,8 +165,13 @@ const revisionDe = async (contentId: string): Promise<number> => {
   return (filas[0] as unknown as { revision: number }).revision;
 };
 
+/**
+ * Los jobs de **rebuild**. `PATCH` y `regenerate` encolan en `content-rebuild`
+ * (§9.5 #4), no en `content-build`: el handler de build reembolsaría el save del
+ * build original al fallar una edición. Ver `content-rebuild.int.test.ts`.
+ */
 const buildJobs = (): { payload: unknown }[] =>
-  api.queue.forQueue(JOB_QUEUES.contentBuild);
+  api.queue.forQueue(JOB_QUEUES.contentRebuild);
 
 /* ══════════════════════════════════════════════════════════════════════════
  * POST /content/:id/regenerate — cero cobertura hasta acá
