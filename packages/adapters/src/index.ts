@@ -121,3 +121,31 @@ export {
   type MemorySocialProfile,
   type MemorySocialReaderOptions,
 } from "./social-reader/memory-social-reader.js";
+
+/**
+ * Extractor `website` / `other_url` (`P1-BRAND-006`, `AI-001`). Tier B: un GET
+ * con guarda SSRF en cada salto y la IP fijada contra DNS rebinding. Toda la
+ * configuración numérica es obligatoria — el PRD no da ningún número.
+ */
+export {
+  WebsiteReader,
+  type WebsiteReaderConfig,
+} from "./social-reader/website-reader.js";
+export {
+  guardedFetch,
+  pinnedNodeTransport,
+  systemResolver,
+  type GuardedFetchConfig,
+  type GuardedFetchResult,
+  type HostResolver,
+  type PinnedTransport,
+  type ResolvedAddress,
+  type TransportRequest,
+  type TransportResponse,
+} from "./social-reader/website-http.js";
+export {
+  checkUrl,
+  classifyAddress,
+  type BlockReason,
+  type UrlPolicy,
+} from "./social-reader/website-ssrf.js";
