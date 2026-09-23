@@ -3,7 +3,12 @@
  * negocio con un número en el PRD lleva un test que fija ese número".
  */
 import { describe, expect, it } from "vitest";
-import { textObjectListSchema, textObjectSchema } from "./text.js";
+import {
+  EDITOR_REFERENCE_WIDTH,
+  editorUnitsToCanvasPx,
+  textObjectListSchema,
+  textObjectSchema,
+} from "./text.js";
 
 const base = {
   id: "t1",
@@ -129,5 +134,34 @@ describe("lista de cajas — FR-051", () => {
     expect(textObjectListSchema.safeParse([base, { ...base, id: "t2" }]).success).toBe(
       true,
     );
+  });
+});
+
+describe("unidades de editor → píxeles del lienzo (PRD, «Payloads de build»)", () => {
+  it("la vista previa de referencia mide 360 px de ancho", () => {
+    expect(EDITOR_REFERENCE_WIDTH).toBe(360);
+  });
+
+  it("en un canvas de 360 el factor es ×1", () => {
+    expect(editorUnitsToCanvasPx(18, 360)).toBe(18);
+    expect(editorUnitsToCanvasPx(3, 360)).toBe(3);
+  });
+
+  it("en 1080 el factor es ×3: el 18 por defecto sale a 54 px y el stroke 3 a 9", () => {
+    expect(editorUnitsToCanvasPx(18, 1080)).toBe(54);
+    expect(editorUnitsToCanvasPx(3, 1080)).toBe(9);
+    expect(editorUnitsToCanvasPx(8, 1080)).toBe(24);
+    expect(editorUnitsToCanvasPx(72, 1080)).toBe(216);
+  });
+
+  it("en un canvas impar redondea al entero más cercano", () => {
+    // 1001 / 360 = 2.78…: 18 → 50.05, 20 → 55.61, 3 → 8.34.
+    expect(editorUnitsToCanvasPx(18, 1001)).toBe(50);
+    expect(editorUnitsToCanvasPx(20, 1001)).toBe(56);
+    expect(editorUnitsToCanvasPx(3, 1001)).toBe(8);
+  });
+
+  it("stroke 0 sigue siendo 0 en cualquier canvas", () => {
+    expect(editorUnitsToCanvasPx(0, 1080)).toBe(0);
   });
 });

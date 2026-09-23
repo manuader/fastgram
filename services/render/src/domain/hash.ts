@@ -24,6 +24,7 @@ import { createHash } from "node:crypto";
 import { codeVersion } from "./codeVersion.js";
 import { FONT_REGISTRY_VERSION } from "./fonts.js";
 import type { BuildPayload } from "./payload.js";
+import { EDITOR_REFERENCE_WIDTH } from "./text.js";
 
 /**
  * Versión del motor que entra en las tres claves.
@@ -135,7 +136,16 @@ export function overlayFingerprint(payload: BuildPayload): unknown {
     payload.type === "slideshow"
       ? payload.slides.map((slide) => slide.texts)
       : [payload.texts];
-  return { type: payload.type, canvases, texts, fonts: FONT_REGISTRY_VERSION };
+  // `editorReferenceWidth`: los tamaños de `texts` son unidades de editor y se
+  // resuelven contra este ancho. Entra explícito, además de estar cubierto por
+  // `codeVersion`, para que la clave diga en qué escala se leyó el payload.
+  return {
+    type: payload.type,
+    canvases,
+    texts,
+    fonts: FONT_REGISTRY_VERSION,
+    editorReferenceWidth: EDITOR_REFERENCE_WIDTH,
+  };
 }
 
 export function computeCacheKeys(

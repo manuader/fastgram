@@ -34,6 +34,34 @@ export const FONT_SIZE_MAX = 72;
 export const STROKE_WIDTH_MIN = 0;
 export const STROKE_WIDTH_MAX = 8;
 
+/**
+ * Ancho, en píxeles, de la vista previa del editor contra la que están medidos
+ * `font.size` y `stroke.width`. Decisión del dueño del producto (PRD, «Payloads
+ * de build», 2026-09-23): son **unidades de editor**, no píxeles del lienzo, y
+ * el render las escala por `canvas.width / 360`. En 1080 de ancho, ×3: el `18`
+ * por defecto sale a 54 px.
+ *
+ * Hasta el 2026-09-23 este servicio usaba 1080 (una elección propia, sin
+ * respaldo del PRD) y además lo dejaba configurable por opción, sin que la
+ * opción entrara en la clave de cache. Los rangos de arriba (`[8, 72]`,
+ * `[0, 8]`) siguen validando unidades de editor: no cambian.
+ *
+ * Lo que NO se escala acá, porque ya viene resuelto contra el canvas:
+ * `position` y `widthPercent` (porcentajes del canvas), y la geometría de
+ * media (`draw`, píxeles de canvas). El padding del fondo y el interlineado
+ * derivan del tamaño ya escalado, así que escalan solos.
+ */
+export const EDITOR_REFERENCE_WIDTH = 360;
+
+/**
+ * Unidades de editor → píxeles del lienzo, redondeado a entero. La única
+ * conversión de `font.size` y `stroke.width`; la aplica `renderTextBox`, por
+ * donde pasa todo texto de los cuatro formatos.
+ */
+export function editorUnitsToCanvasPx(units: number, canvasWidth: number): number {
+  return Math.round((units * canvasWidth) / EDITOR_REFERENCE_WIDTH);
+}
+
 /** `FR-051`: los colores se expresan `#RRGGBB`. */
 export const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 

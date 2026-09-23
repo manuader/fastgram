@@ -4,7 +4,12 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildPayloadSchema, type BuildPayload } from "./payload.js";
-import { canonicalJson, computeCacheKeys } from "./hash.js";
+import {
+  canonicalJson,
+  computeCacheKeys,
+  mediaFingerprint,
+  overlayFingerprint,
+} from "./hash.js";
 
 const text = {
   id: "t1",
@@ -77,6 +82,19 @@ describe("claves de cache", () => {
     const after = computeCacheKeys(wallOfText({ canvas: { width: 1080, height: 1350 } }));
     expect(after.mediaKey).not.toBe(before.mediaKey);
     expect(after.overlayKey).not.toBe(before.overlayKey);
+  });
+});
+
+describe("escala de unidades de editor en las claves", () => {
+  // `font.size` / `stroke.width` son unidades de editor sobre 360 px. Si ese
+  // ancho cambia, el overlay cambia para el mismo payload: tiene que estar en la
+  // huella del overlay, y NO en la del fondo (el fondo no tiene texto).
+  it("el ancho de referencia entra en overlayFingerprint y no en mediaFingerprint", () => {
+    const payload = wallOfText();
+    expect(overlayFingerprint(payload)).toMatchObject({ editorReferenceWidth: 360 });
+    expect(canonicalJson(mediaFingerprint(payload))).not.toContain(
+      "editorReferenceWidth",
+    );
   });
 });
 

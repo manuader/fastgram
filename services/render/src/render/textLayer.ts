@@ -11,30 +11,27 @@
  * de relleno. Es determinista: la misma entrada da el mismo PNG byte a byte
  * (verificado antes de escribir este módulo).
  *
- * ── ABIERTO: la escala de `font.size` ────────────────────────────────────────
- * `FR-051` fija `font.size ∈ [8, 72]` y el inspector muestra "18px", pero el
- * PRD NO dice sobre qué ancho de canvas están medidos esos píxeles: el editor
- * previsualiza en una tarjeta chica y el render sale a 1080 de ancho. Se elige
- * interpretar `font.size` como píxeles sobre un canvas de referencia de 1080
- * (`EDITOR_REFERENCE_WIDTH`), que es el ancho del ejemplo del propio PRD
- * (1080×1920), y se deja configurable. Es una elección del servicio, no del
- * PRD. Lo mismo vale para `stroke.width`.
+ * ── La escala de `font.size` y `stroke.width` ──────────────────────────────
+ * Son unidades de editor (vista previa de 360 px), no píxeles del lienzo. La
+ * conversión vive en `domain/text.ts` (`editorUnitsToCanvasPx`) y se aplica en
+ * `renderTextBox`, que es el único camino del texto para los cuatro formatos
+ * —cada slide del slideshow con su propio canvas—.
  */
 import sharp from "sharp";
 import type { Canvas } from "../domain/canvas.js";
-import type { TextObject } from "../domain/text.js";
+import { editorUnitsToCanvasPx, type TextObject } from "../domain/text.js";
 import { noteTextEngineUse } from "./fontActivation.js";
 import { resolveFont, type FontLoaderOptions, type ResolvedFont } from "./fontLoader.js";
-
-/** Ver la nota ABIERTO del encabezado. */
-export const EDITOR_REFERENCE_WIDTH = 1080;
 
 /** Padding del fondo, en múltiplos del tamaño de fuente. Elección del servicio. */
 export const BACKGROUND_PADDING_RATIO = 0.35;
 
-export interface TextLayerOptions extends FontLoaderOptions {
-  readonly editorReferenceWidth?: number;
-}
+/**
+ * Sin perilla de escala: el ancho de referencia es una constante de dominio.
+ * Una opción por llamada no entraría en la clave de cache (`domain/hash.ts`) y
+ * dos procesos podrían servirse frames de escalas distintas bajo la misma clave.
+ */
+export type TextLayerOptions = FontLoaderOptions;
 
 export interface TextLayerGeometry {
   /** Ancho de la caja en píxeles de canvas (`widthPercent` resuelto). */
@@ -142,10 +139,11 @@ export async function renderTextBox(
 ): Promise<RenderedTextLayer | null> {
   if (box.text.trim() === "") return null;
 
-  const referenceWidth = options.editorReferenceWidth ?? EDITOR_REFERENCE_WIDTH;
-  const scale = canvas.width / referenceWidth;
-  const fontSizePx = Math.max(1, Math.round(box.font.size * scale));
-  const strokeWidthPx = Math.max(0, Math.round(box.stroke.width * scale));
+  const fontSizePx = Math.max(1, editorUnitsToCanvasPx(box.font.size, canvas.width));
+  const strokeWidthPx = Math.max(
+    0,
+    editorUnitsToCanvasPx(box.stroke.width, canvas.width),
+  );
   const boxWidth = Math.max(1, Math.round((canvas.width * box.widthPercent) / 100));
   // El contorno crece hacia afuera: el wrap usa el ancho útil.
   const wrapWidth = Math.max(1, boxWidth - strokeWidthPx * 2);
