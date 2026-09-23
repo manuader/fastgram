@@ -78,6 +78,28 @@ El detalle está en `docs/IMPLEMENTATION-PLAN.md` §2. No lo repito acá para qu
 
 ## 4. Qué cambió, sesión por sesión
 
+### Sesión 2026-09-23 — Las escrituras llegan; las fuentes pueden salir de `pending`
+
+Ocho agentes, doce commits. Detalle en
+[`SESSION-2026-09-23-sexta-tanda.md`](SESSION-2026-09-23-sexta-tanda.md).
+
+**Destrabado con código, sin probar de punta a punta.** El proxy acepta escrituras con
+anti-CSRF (`91a43d9`). Existe el extractor `website` con guarda SSRF (`6f68221`) y el handler de
+`brand-source-analysis` (`62b91cb`), que **sólo se monta** con extractor + LLM + retención
+configurados; hoy ningún entorno los trae. `media-normalization` tiene productor y se monta con
+su propio renderer HTTP (`dc20938`). `snapshot-purge` tiene handler. Colas con handler:
+**9 de 21**, dos de ellas condicionadas a configuración.
+
+**Un bug que el consumidor destapó.** El re-análisis de otro día repetía su clave de job, pg-boss
+lo deduplicaba y la API respondía 202 con la fuente `analyzing` para siempre (trampa 45).
+
+**Dos tests verdes que no miraban lo que decían.** Los de `createHandlers` no veían qué renderer
+recibía la normalización (trampa 46), y uno de `env.test.ts` no podía fallar (trampa 47).
+
+**39 invariantes** entre paquetes (eran 30): las uniones de `ports` con gemelo son listas.
+Apareció una divergencia real que queda **fijada sin decidir**: `SubscriptionStatus` del
+puerto tiene `incomplete`, que la base rechaza.
+
 ### Sesión 2026-09-22 (4) — Lo que un test verde no dice
 
 Cuatro agentes. El hilo: **seis roturas deliberadas**, y las tres que más
@@ -442,7 +464,7 @@ Y una de la sesión del worker:
 
 ## 6. Cómo verificar
 
-**Números al 2026-09-22 (quinta tanda).** Son lo que permite distinguir "lo rompí yo" de "ya estaba rojo".
+**Números al 2026-09-23 (sexta tanda).** Son lo que permite distinguir "lo rompí yo" de "ya estaba rojo".
 Si tu corrida da menos, algo se perdió; si da más, actualizá esta sección.
 
 ```bash
@@ -457,25 +479,25 @@ pnpm verify           # lint · typecheck · boundaries · consistency · test
 | `pnpm format:check` | prettier sobre el repo. **Entró en `verify` tarde**: CI lo corría solo y llevaba tandas en rojo sin que nadie lo viera | **limpio** |
 | `pnpm lint` | eslint una vez sobre todo el repo | **0 errores** |
 | `pnpm typecheck` | `tsc --noEmit` por paquete, 12 tareas | **12 successful** |
-| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 462 módulos · **1402 dependencias** |
-| `pnpm consistency` | los números del PRD escritos en más de un paquete | **30 invariantes** |
-| `pnpm test` | unitarios | **1.955** |
+| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 503 módulos · **1614 dependencias** |
+| `pnpm consistency` | los números del PRD escritos en más de un paquete | **39 invariantes** |
+| `pnpm test` | unitarios | **2.277** |
 
 Desglose de `pnpm test`, por si uno solo se cae:
 
 | Paquete | Tests | | Paquete | Tests |
 |---|---|---|---|---|
-| `core` | 435 | | `adapters` | 355 |
-| `web` | 263 | | `contracts` | 271 |
+| `core` | 472 | | `adapters` | 464 (+10 salteados) |
+| `web` | 378 | | `contracts` | 274 |
 | `render-service` | 207 | | `ui` | 170 |
-| `api` | 155 | | `db` | 52 |
-| `worker` | 38 | | `config` | 9 |
+| `api` | 175 | | `db` | 52 |
+| `worker` | 76 | | `config` | 9 |
 
 ### Lo que necesita servicios levantados
 
 ```bash
 docker compose up -d                       # Postgres con pgvector + MinIO con el bucket creado
-pnpm test:int                              # db 177 · api 216 · worker 93 · adapters 9 → 495
+pnpm test:int                              # db 214 · api 229 (+11 salteados sin S3) · worker 130 · adapters 9 → 582
 pnpm --filter @fastgram/adapters test:int  # 9 — encolado dentro de la transacción de Drizzle
 pnpm build && pnpm smoke:binary           # el artefacto que se despliega, de verdad
 ```
@@ -977,6 +999,35 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 193
     el mismo comentario que la decisión**. Ahí no estaba, y por eso nadie la vio
     hasta que un agente fue a construir la segunda pantalla que escribe.
 
+45. **Una clave con un contador que se reinicia es una clave fija en el
+    reinicio.** El re-análisis encolaba con `brand-source:<id>:<analysisCount>`,
+    y el comentario explicaba bien la trampa 39. Pero el contador **vuelve a 1**
+    al vencer la ventana: el segundo re-análisis de otro día repetía `:1`, pg-boss
+    lo deduplicaba contra el job viejo y la API respondía 202 con la fuente
+    `analyzing` sin nada que la analizara. Como la columna de la ventana no
+    existe, en la práctica volvía a 1 **siempre**.
+
+    Dos lecciones. Una clave que tiene que ser distinta por pedido necesita un
+    componente que **no se repite** (el instante), no uno que suele crecer. Y
+    quien encola y **no mira `created`** no se entera de que no encoló: no se
+    notó hasta que alguien escribió el consumidor.
+
+46. **Un test de «qué se monta» no ve «con qué se monta».** `media-normalization`
+    recibe un renderer propio porque el de `content-build` es el de memoria y
+    marcaría `failed` cada video real. Los tests de `createHandlers` verificaban
+    qué colas quedaban montadas; cambiar una línea para pasarle `deps.renderer`
+    —exactamente el fallo que el diseño previene— los dejaba **todos verdes**.
+    Cuando una dependencia existe por una razón, el test tiene que atravesarla
+    con un doble que falle si llega la otra.
+
+47. **`expect.unreachable` dentro de un `try` se atrapa a sí mismo.** Un test
+    «el mensaje de error no incluye el secreto» ponía `expect.unreachable()`
+    después de la llamada, **dentro** del `try`. Si la llamada no lanzaba, el
+    `catch` del propio test atrapaba el error de `unreachable` y comparaba *su*
+    mensaje — que no incluye el secreto. Verde sin que nada lanzara. Se vio al
+    quitar la guarda. Usá `expect(() => …).toThrow()` o poné el `unreachable`
+    **fuera** del `try`.
+
 ## 8. Qué falta
 
 El backlog real es `tasks.md`. El estado de hoy está en §6.
@@ -1012,15 +1063,15 @@ ponerla.
 | Qué | Por qué urge | Tarea |
 |---|---|---|
 | **El adaptador de `MediaRenderer` rinde video real y sigue sin montarse** | quedan **dos** bloqueos, y el de las fuentes cambió de forma: los 32 archivos OFL **ya se bajan** (`pnpm fonts:fetch`) y **el motor sigue sin tomarlos**, porque `fontfile` se ignora y lo único que resuelve es el nombre en el sistema — instalarlas es trabajo del Dockerfile que `P0-REPO-004` bloquea. El otro es **el origen del audio**, que nadie definió | `P2-RENDER-015` |
-| **Nada encola `discovery-refill`** | el handler está montado y testeado; el nombre sólo aparece en el catálogo y en `queues.ts`. Sin productor la cola sigue vacía, `POST /blitz` sigue dando «cola vacía», y **toda P2-BLITZ sigue sin datos que mostrar**. Es el tapón del producto | `P2-DISC-001` |
+| ~~**Nada encola `discovery-refill`**~~ **cerrado** | `POST /blitz` con la cola vacía y el onboarding lo encolan, con clave por minuto (trampa 39). Sigue sin haber pasado por pg-boss real | `P2-DISC-001` |
 | **La UI nunca se probó contra la API sirviendo datos** | la Library se ejercitó contra un stub; las 4 keys de desarrollo están hasheadas y no se pudo crear una. Hay 20 filas en `contents` esperando | `P1-UI-012` |
 | ~~**No hay ni un test de componente**~~ **cerrado** | el arnés está (`vitest` + jsdom + Testing Library) y hay 83 tests de componente. Lo que falta ahora es otra cosa: **nadie abrió un navegador** con las dos pantallas nuevas, y jsdom no pinta | `P1-UI-014` |
-| **15 de las 21 colas siguen sin consumidor** | la API ya encola en varias; un job sin handler no falla, se queda esperando para siempre | `P1-QUEUE-*` |
-| **NINGUNA pantalla de escritura de la app funciona** | el proxy de `apps/web` exporta **sólo `GET`**, y está documentado y es deliberado: no hay anti-CSRF, y con escrituras abiertas cualquier página podría disparar un `DELETE` contra el workspace del servidor. Pero su **consecuencia** no estaba escrita en ningún lado: cada `POST`/`PATCH` de la app pega contra el 405 de Next. Afecta al auto-guardado de `/blitz/settings` (que se reportó como funcionando dos tandas atrás) y a la subida de video | `P1-AUTH-*` |
+| **12 de las 21 colas siguen sin consumidor** | 9 tienen handler; `media-normalization` y `brand-source-analysis` sólo se montan con su configuración, y hoy ningún entorno la trae. Un job sin handler no falla: se queda esperando para siempre | `P1-QUEUE-*` |
+| ~~**NINGUNA pantalla de escritura de la app funciona**~~ **destrabado, sin probar en navegador** | el proxy acepta escrituras con anti-CSRF (`Origin` exacto contra `FASTGRAM_APP_ORIGIN`, `Sec-Fetch-Site`, header propio). **No es autenticación**: `fg_session` no está firmada y cualquiera que alcance el puerto se fabrica una sesión | `P1-AUTH-002` |
 | **No hay configuración de CORS del bucket** | el PUT del navegador a la URL firmada **nunca se hizo desde un navegador**: el test de integración lo hace desde Node, donde no hay CORS. Sólo existe `API_CORS_ORIGINS`, que es de la API. Va a fallar con pinta de error de red | `P1-INFRA-004` |
-| **Nada consume `brand-source-analysis`** | las rutas de brand ya encolan, con un payload que **nadie consume**. Consecuencia directa: **ninguna fuente sale nunca de `pending`**, así que `ready`/`partial`/`failed`/`stale` no los produce nada y el cooldown de re-análisis no se ejercita | `P1-BRAND-006…011` |
-| **Los enums del tier C no coinciden entre paquetes** | `ports`/`core` dicen `C_rendered_fetch`, `db`/`contracts` dicen `C_page_fetch`: `acquisitionPlan()` puede devolver un valor que Postgres rechaza. No explota hoy porque el tier está apagado hasta `OQ-16`; el día que se encienda, sí | `P1-BRAND-013` |
-| **`apps/worker` no expone ninguna sonda** | la API ya tiene health checks que comprueban de verdad; un worker con la base caída no lo dice en ningún lado | `P1-OBS-004` |
+| **`brand-source-analysis` tiene handler, montado sólo con configuración** | extractor `website` + `LLM_*` + `BRAND_SNAPSHOT_RAW_RETENTION_DAYS`, sin defaults (el PRD no da los números). Sin eso, las fuentes siguen en `pending`. Con eso: `website`/`other_url` se analizan, las sociales fallan con `unsupported_platform` y degradan a D. Nunca corrió con un LLM real. Confianza siempre `low` hasta `JV-4` | `P1-BRAND-007…011`, `P1-BRAND-016` |
+| **`SubscriptionStatus` del puerto tiene `incomplete`; DATA-002 y Postgres no** | guardarlo tal cual lo rechaza la base. Hoy nadie lo guarda. Está fijado en `check-consistency` como divergencia conocida: o se traduce al persistir, o se suma al PRD y a la base | `P4-BILL-001` |
+| **`GET /posts` no filtra por fecha, y ningún endpoint publica la zona horaria** | el calendario pide hasta 500 posts y dice cuando no alcanzan; usa la zona del navegador, y la Library usa UTC: un post puede caer en días distintos en cada pantalla | `P2-CAL-*` |
 | ~~**El contrato público miente en tres lugares**~~ **cerrado, y con guardián** | los cinco `/brand/*` **existen**; `409 media_in_use` se quitó (implementarlo necesita un operador «contiene» en los filtros de `packages/db`); y `openapi-routes.test.ts` compara ahora el OpenAPI contra las rutas **registradas** en los dos sentidos. En su primera corrida encontró una tercera mentira que nadie pidió buscar: `GET /blitz/angles/page` existía y el contrato no la nombraba | — |
 | ~~**P1-BRAND: dominio completo y cero rutas**~~ **cerrado** | las nueve rutas de §9.14 existen. Lo que falta ahora es otra cosa: **nadie consume el job que encolan** (fila de arriba) | `P1-BRAND-*` |
 | **No hay adaptador de identidad**: la API sólo acepta API key | el proxy de `apps/web` usa **una key por despliegue**, o sea un workspace para todo el que llegue a la app. Es provisorio y está escrito como tal | `P1-AUTH-*` |
@@ -1070,6 +1121,7 @@ Salieron de acá, cerrados: `P0-REPO-013`, `P1-DATA-014`, `P1-DATA-015`,
 | [`SESSION-2026-09-21-plan-implementacion.md`](SESSION-2026-09-21-plan-implementacion.md) | cómo se llegó del PRD al plan, y qué se descartó |
 | [`SESSION-2026-09-21-implementacion.md`](SESSION-2026-09-21-implementacion.md) | cómo se organizó el trabajo en paralelo, y las trampas que costaron tiempo |
 | [`SESSION-2026-09-21-escritura-y-endpoints.md`](SESSION-2026-09-21-escritura-y-endpoints.md) | la escritura en los repositorios y los 16 endpoints, con cuatro agentes en paralelo |
+| [`SESSION-2026-09-23-sexta-tanda.md`](SESSION-2026-09-23-sexta-tanda.md) | escrituras con anti-CSRF, el handler de brand que no miente, y una clave de job que se repetía sin parecerlo |
 | [`SESSION-2026-09-22-cuarta-tanda.md`](SESSION-2026-09-22-cuarta-tanda.md) | seis roturas deliberadas, y las tres que enseñaron son las que no salieron como se esperaba |
 | [`SESSION-2026-09-22-tercera-tanda.md`](SESSION-2026-09-22-tercera-tanda.md) | la auditoría que encontró 67 tareas mal contadas, y las tres mediciones que salieron al revés de lo esperado |
 | [`SESSION-2026-09-22-segunda-tanda.md`](SESSION-2026-09-22-segunda-tanda.md) | la segunda tanda de cuatro: seis cosas que nunca habían funcionado y ningún síntoma las delataba |

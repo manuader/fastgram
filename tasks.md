@@ -243,10 +243,12 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [ ] **P1-BRAND-004** Desambiguador de plataforma, con preselección de la cuenta ya conectada · `FR-011.1`
 - [~] **P1-BRAND-005** Link a post concreto → resuelve al perfil del autor + aviso · `FR-011.1`
   > Resuelto en TikTok y X, donde el handle está en la URL. En **Instagram, YouTube y LinkedIn** hay que preguntarle a la plataforma y no hay `SocialReader` montado: responde `503`. El aviso de `ERR-B12` viaja en `resolvedFromPost`, un campo nuevo y opcional — la forma literal de PRD:2368 no traía ningún canal para él.
-- [ ] **P1-BRAND-006** Extractor `website` / `other_url` (OpenGraph + contenido) · `AI-001`
+- [x] **P1-BRAND-006** Extractor `website` / `other_url` (OpenGraph + contenido) · `AI-001`
   > **Se evaluó montar el handler de `brand-source-analysis` sin extractor, y se decidió NO hacerlo.** El criterio de la trampa 30 dice que entre no registrar un handler y registrarlo sin proveedor gana registrarlo **si lo que escribe es verdad** — y acá no hay ningún valor del enum que lo sea.
   > `BRAND_SOURCE_FAILURE_REASON` tiene siete motivos y el más cercano, `provider_unavailable`, se le muestra al usuario como `ERR-B07`: *«{platform} isn't responding right now. Try again in a few minutes or add a different source.»*. Las dos mitades son falsas: la plataforma no tiene nada que ver, y **ninguna otra fuente va a funcionar** porque no hay extractor para ninguna. Es el mismo consejo falso que apareció con `ERR-B10`.
   > Consecuencia hoy, y hay que saberla: **ninguna fuente sale nunca de `pending`.** Lo que la destraba es este extractor, no un handler que mienta. Si hiciera falta cerrar el estado antes, el enum necesita un motivo que hoy no tiene — algo como `no_extractor_configured`, que además es una migración.
+  > **Hecho en `6f68221` (2026-09-23).** `WebsiteReader` en `packages/adapters/src/social-reader/`: GET + parseo propio (sin JS), SSRF con DNS resuelto y **todas** las IPs clasificadas, cada redirect revalidado, socket fijado a la IP validada (anti-rebinding), plazo total y tope de cuerpo post-descompresión. Toda la config numérica, los puertos y los hosts bloqueados son **obligatorios y sin default**: el PRD no da ningún número. Reporta **tier B** (OpenGraph, sin render); si se decide que un GET de la web es tier C (D-01 lo llama «fetch público»), es una línea — y hay que sumar `robots.txt`, que hoy no se consulta. Sin verificar: HTTPS real (SNI + certificado con IP fijada), sitios reales, charset sólo en `<meta>`. Baja la home dos veces por análisis.
+  > Lo de arriba sobre el handler quedó **superado en `62b91cb`**: con el extractor, el handler existe y es verdadero. Para las sociales usa `unsupported_platform` + `D_assisted` — literal: esta instalación no lee esa plataforma, y no culpa a la plataforma como `provider_unavailable`.
 - [ ] **P1-BRAND-007** Extractor Instagram · `D-02`
 - [ ] **P1-BRAND-008** Extractor TikTok · `D-02`
 - [ ] **P1-BRAND-009** Extractor X · `D-02`
@@ -259,11 +261,13 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [ ] **P1-BRAND-015** Resolución de link-in-bio: 1 nivel, máx. 5 destinos, sin recursión · `INT-018`
 - [~] **P1-BRAND-016** `AI-016`: síntesis con `fieldMeta` (confianza + origen + extracto)
   > `fieldMetaSchema` exigía `sourceId` y `excerptRef`, y una edición manual no tiene ni fuente ni extracto: era **imposible marcar `editedByUser`** en un campo que la síntesis nunca escribió — y `FR-011.6` depende de esa marca para no pisarlo. Ahora son nullable.
+  > **Cableada en `62b91cb`:** `packages/core/src/brand/analysis.ts` arma el pedido (texto de terceros **sólo** en `untrusted`, doble delimitación), exige que el extracto esté **textual** en lo que recibió el modelo, y vacía un campo si valor o cita parecen una orden. Falta `JV-4`: sin él, `materializeField` recorta todo a `low` y cada campo sintetizado sale como `Worth a quick check`. Sin LLM real: nunca se probó el esquema estricto contra un gateway.
 - [x] **P1-BRAND-017** Preguntas de cierre de huecos · `FR-011.3` · ⚠️ **nunca inventar** un campo sin señal
 - [x] **P1-BRAND-018** Protección SSRF en **todos** los orígenes, incluido el seguimiento de link-in-bio · `NFR-017`
   > No se reimplementó en la ruta: `detectBrandSource` llama a `assertHostAllowed` por dentro. Dos definiciones de «URL segura» se desincronizan.
   > **Matiz medido:** la rama `/^\d+$/` es inalcanzable vía `detectBrandSource` — `new URL("http://2130706433/")` normaliza el host a `127.0.0.1` antes, así que entra por la rama de IP privada. Queda bloqueado igual; esa rama sólo la ejercita el test unitario de `core`.
-- [ ] **P1-BRAND-019** **Suite de regresión con bios adversariales** (prompt injection) · `FR-011.9` · ⚠️ exigida por el PRD
+- [~] **P1-BRAND-019** **Suite de regresión con bios adversariales** (prompt injection) · `FR-011.9` · ⚠️ exigida por el PRD
+  > **Parcial (`62b91cb`):** un test adversarial mira el **cuerpo HTTP real** que el adaptador manda: la bio sólo dentro de `<untrusted>`, un único cierre aunque la bio intente cerrar el bloque, y campo vacío si el modelo «obedece» y cita la orden. No es una suite. **Límite conocido y documentado en un test:** un modelo que obedece y cita un fragmento sin marcas pasa, con confianza `low`.
 - [x] **P1-BRAND-020** Unicidad `(sourceType, handle)` global · `FR-011.7`
   > El choque con **otro** workspace no se puede consultar: RLS esconde la fila ajena de cualquier `SELECT` con scope, así que lo único que lo sabe es el índice al fallar el `INSERT`. La rama `ERR-B06` del dominio es **inalcanzable desde HTTP**, y el 409 se traduce del `23505`.
   > El cuerpo es **byte a byte idéntico** choques con una fuente tuya o con la de otro: el literal del PRD («already connected to another workspace») convierte el alta en un buscador de clientes.
@@ -272,6 +276,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
   > `SECURITY DEFINER` medido: sin él, con `fastgram_app` y sin GUC el `UPDATE` afecta **cero filas y sin error** (`expected 0 to be greater than or equal to 1`). Un test que corra como superusuario no puede ver la diferencia.
 - [~] **P1-BRAND-022** Estados y errores completos de `FR-011.8` / `FR-011.9` (14 mensajes) · `ERR-B01`…`ERR-B14`
   > Los 14 mensajes existen y las rutas los emiten, pero **ninguna fuente sale nunca de `pending`**: el handler de `brand-source-analysis` no existe, así que `ready`, `partial`, `failed` y `stale` no los produce nada.
+  > **Actualizado (`62b91cb`):** las fuentes salen de `pending` **cuando el handler está montado** — y sólo se monta con `LLM_*` (4), las 7 `BRAND_WEBSITE_*` y `BRAND_SNAPSHOT_RAW_RETENTION_DAYS`. Hoy ningún entorno las trae, así que en la práctica sigue igual. Y había un bug que lo habría vuelto a colgar: la clave del re-análisis repetía `:1` al vencer la ventana (arreglado en `2687ba9`).
 - [ ] **P1-BRAND-023** Semilla de content angles desde los temas con mejor engagement · `AI-016`
 - [ ] **P1-BRAND-024** **Iniciar la revisión legal `OQ-16`** · ⚠️ bloquea el tier C, no es tarea de ingeniería
 
@@ -280,14 +285,16 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [~] **P1-ONB-001** Wizard multi-paso con progreso persistido y reanudable · `FR-010`
   > **Las rutas existen y el progreso se reanuda**, pero el paso no se persiste: se **deriva** caminando `advanceOnboarding` sobre lo que sí está guardado. `packages/db` no expone repositorio de `onboarding_records` — es la única tabla sin uno. La lógica de los gates no se reimplementa, así que no puede desincronizarse.
   > Falta la UI entera.
-- [ ] **P1-ONB-002** Paso 1: input único de Brand Source + chips de plataforma · `FR-011.2`
+- [~] **P1-ONB-002** Paso 1: input único de Brand Source + chips de plataforma · `FR-011.2`
+  > **Hecho en jsdom, no en un navegador (`01a32df`).** Literales de FR-011.2, detección vía `POST /brand/sources/resolve` (debounce 500 ms, no se duplica `detectBrandSource`: `@fastgram/core` no está en el `package.json` de `apps/web`), ERR-B03 con preselección, alta con `Idempotency-Key` estable por cuerpo. `/resolve` ya acepta `hint: "website"` (`a8cebb7`), pero la UI todavía lo rodea del lado del cliente.
 - [~] **P1-ONB-003** Paso 2: `Company Name`, `Company Description`, logo · `FR-010`
   > **No tiene endpoint, y no es olvido:** escribe `companies.name` y `companies.logo_url`, y `companies` **no tiene escritura** (`companyRepository` es sólo lectura por decisión explícita). Un `POST /onboarding/details` que guardara la descripción y descartara en silencio nombre y logo sería peor que no existir.
   > La descripción sí se escribe, por `PATCH /brand/profile` → `company_profiles.core_identity`.
 - [~] **P1-ONB-004** Paso 3: cuestionario de perfilado (6 preguntas) · `F-006`
   > **Cerrada la mitad que se podía.** El hueco era más chico: `assertValidProfiling` tiene dos bucles y el de los 4 000 caracteres ya recorría **todo lo que se le pasara** — faltaba que alguien pasara `expectations`. Ahora se recoge, se persiste y se acota, medido rompiéndolo.
   > **No se hizo obligatoria, a propósito:** la lista de Validation de `FR-010` trae mensaje para las otras cinco preguntas y **ninguno** para expectativas. Rechazarla vacía exigiría inventar copy CONFIRMED.
-- [ ] **P1-ONB-005** Paso 4: estados de procesamiento con sub-pasos por tipo de fuente · `FR-011.2`
+- [~] **P1-ONB-005** Paso 4: estados de procesamiento con sub-pasos por tipo de fuente · `FR-011.2`
+  > **Parcial (`01a32df`):** estado por fuente con ERR-B* traducidos, polling de 10 s mientras haya `pending`/`analyzing`. **Los sub-pasos no se pueden mostrar**: la API no expone progreso por sub-paso, así que se listan sin marcar (sólo los de Instagram, los únicos que da el PRD). `pending`-para-siempre dicho con honestidad: `Queued`, y a los 3 min (FR-011.12 crit. 9) «hasn't started yet»; nunca `Workspace ready!`.
 - [ ] **P1-ONB-006** **Pantalla de revisión** con `Worth a quick check` para los campos de confianza baja · `FR-011.2`
 - [ ] **P1-ONB-007** Oferta post-análisis de conectar + importar media, **después** del análisis · `D-04`, `FR-011.5.1`
 - [ ] **P1-ONB-008** Importación opt-in de posts propios al Media Bank, checkbox desmarcado · `FR-011.5.1`
@@ -321,6 +328,7 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
   > **La credencial**: el navegador no habla con `apps/api`. Habla con un route handler de la propia app que lee la key del entorno y reenvía — sólo `GET`, con la sesión exigida, headers de salida por lista blanca y el cuerpo tal cual **con su status**, porque reempaquetarlo haría que el `402` deje de distinguirse del `500`. **Provisorio**: una key por despliegue es un workspace para todo el que llegue. Lo que corresponde es P1-AUTH.
   > **Sin verificar, y es lo que importa:** la Library se ejercitó contra un **stub**, no contra la API sirviendo datos — las 4 keys de desarrollo están hasheadas. Sigue pendiente y necesita una key de desarrollo, que la da una persona.
   > La segunda mitad de esta nota decía que no había ni un test de componente por falta de `jsdom` y `@testing-library/react`. **Caducó el 2026-09-22**: `e8b59d2` los instaló y `f5f25cf` escribió los primeros 19. Ver `P1-UI-014`.
+  > **Escrituras abiertas (`91a43d9`).** El proxy acepta `POST/PUT/PATCH/DELETE` si el `Origin` coincide **exacto** con el propio (`FASTGRAM_APP_ORIGIN`; fuera de producción `http://<Host>`; en producción sin la variable, 503), `Sec-Fetch-Site` es `same-origin` cuando viene, y trae `x-fastgram-csrf`. **No es autenticación**: `fg_session` no está firmada (P1-AUTH-002). Sin probar en navegador. La subida del Studio sigue cayéndose en el PUT firmado: no hay CORS del bucket de producción (P1-INFRA-004; MinIO de desarrollo no se probó).
 - [x] **P1-UI-014** **Arnés de test de componentes** (vitest + jsdom + Testing Library) y los primeros 19 · `f5f25cf`
   > jsdom va **sólo** para `src/components/**` y `src/app/**`. Ponerlo para todo apagaba en silencio la rama `typeof window === "undefined"` de `client.ts`: los tests seguían verdes midiendo la otra mitad.
   > `@fastgram/contracts` queda sin alias a propósito — resuelve a su `dist`, que es lo que `next build` empaqueta; aliasearlo a `src` haría validar contra un contrato distinto del que corre.
@@ -416,9 +424,11 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
   > **(4) El slideshow multi-slide — CERRADO a medias.** `renderAll` subió al puerto con artefactos perezosos. Falta que `build-handler` lo use y suba los N objetos; hoy sigue llamando a `render()`, que acepta uno solo.
   > **(5) Un quinto que no estaba listado — CERRADO.** `build-handler` llama a `thumbnail()` en **cada** build, dentro de un `try/catch` que loguea y sigue. Con el adaptador de antes eso era un stub que lanzaba: montarlo habría dejado **todas** las piezas sin miniatura, con una línea de warning por build y nada más.
   > **(6) Nuevo, abierto: el audio no tiene origen.** `FR-070` exige que venga de la librería compartida y **en todo el repo no hay una sola pista de dónde vive** — ni clave, ni variable, ni endpoint. `workspaceMediaAuthorization` deja `sharedPrefixes` vacío en vez de inventar un prefijo. Consecuencia: con el adaptador montado, un `wall-of-text` o un `video-hook` **con** audio se rechaza con `audio_fuera_de_libreria`.
+  > **(7) La normalización NO necesita esto (`dc20938`).** `media-normalization` se monta con **su propia** instancia de `HttpMediaRenderer` cuando están `RENDER_SERVICE_URL` + `RENDER_MEDIA_GRANT_SECRET` (las dos o ninguna; una sola = el worker no arranca). `content-build` sigue en memoria. Probado a mano contra `services/render`: probe de un `.mov` y normalize a mp4. Un test de cableado ve si alguien le pasa el renderer de `content-build`: los de `handlers.test.ts` no lo veían.
 - [~] **P2-RENDER-013** Normalización de media: MOV→MP4, HDR→SDR, faststart · `NFR-014` · **parcial: MOV→MP4 y faststart ahora sí corrieron sobre archivos reales y aparecieron dos bugs**; HDR→SDR sigue sin poder probarse
   > **Los dos bugs se cancelaban entre sí.** `isMp4Compatible` daba `true` para un `.mov` —MOV y MP4 comparten demuxer: ffprobe emite `mov,mp4,m4a,3gp,3g2,mj2` para los dos y el discriminador real es `major_brand` (`qt ` vs `isom`)— y `needsRemux` daba `true` siempre. Uno decía "ya está bien" y el otro "hay que convertir", así que **en el único caso que alguien miró el resultado era correcto**. El test unitario pasaba fabricando `["mov","quicktime"]`, una lista que ffprobe **no emite jamás**.
   > **HDR→SDR exitoso NUNCA corrió**: este ffmpeg no trae `zscale` ni `libplacebo`, así que la cadena de tonemapping sólo existe como string en un test de plan. Falla cerrado sobre un PQ real, que es lo único verificable en esta máquina.
+  > **El productor y el handler existen (`2757f86`, `dc20938`):** `POST /media` encola cada video en la misma transacción; el handler normaliza sólo si no es mp4, es HDR o no tiene faststart, y cierra con un `UPDATE` condicionado. Quedan: el MOV original huérfano en el bucket (el PRD no dice qué hacer), el custom video del Studio **no entra** (no guarda `storageKey` en ningún lado — decisión de schema), y HDR→SDR sigue sin haber corrido nunca con ffmpeg.
 
 ## P2-CONTENT — Entidad Content
 
@@ -488,9 +498,10 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P2-CAL — Calendar
 
-- [ ] **P2-CAL-001** Vista mes con navegación · `F-140`
-- [ ] **P2-CAL-002** Chips de post por plataforma, tipo y hora · `F-141`
-- [ ] **P2-CAL-003** Contador por día y contadores de cabecera · `F-142`, `F-143`
+- [~] **P2-CAL-001** Vista mes con navegación · `F-140`
+- [~] **P2-CAL-002** Chips de post por plataforma, tipo y hora · `F-141`
+- [~] **P2-CAL-003** Contador por día y contadores de cabecera · `F-142`, `F-143`
+  > **Las tres, parciales por la API (`1e2c19d`).** `GET /posts` **no filtra por fecha** y ordena por creación, así que nunca se sabe que un mes está completo: se piden hasta 5 páginas de 100 y, si hay más, la pantalla lo dice (`5+`, «may not be empty»). `Post` no trae el tipo de contenido: se cruza con `GET /content` (otras 5 páginas como mucho). La zona es la del navegador, nombrada en pantalla: el PRD guarda `timezone` en usuario y workspace, pero ningún endpoint la publica — y la Library fija UTC, así que un post puede caer en días distintos en cada pantalla. Sin navegador real.
 
 ## P2-TREND — Catálogo de tendencias
 
