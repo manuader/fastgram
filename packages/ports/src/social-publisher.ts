@@ -46,17 +46,41 @@
  * es de `core`, que sabe cuántas conexiones hay).
  */
 
-export type PublishPlatform = "tiktok" | "instagram" | "youtube" | "linkedin" | "reddit";
+/*
+ * Las listas de este archivo están en runtime —y los tipos derivados de ellas—
+ * por la misma razón que `ACQUISITION_TIERS` en `social-reader.ts`: cada una
+ * tiene un gemelo en el enum de Postgres (`packages/db`) y en el zod de
+ * `packages/contracts`, y una unión de literales no se puede leer desde fuera
+ * de TypeScript. `scripts/check-consistency.mjs` las compara leyendo texto.
+ * El orden es el del `CREATE TYPE` de la base.
+ */
+
+/** `D-02` · enum `social_platform` (`DATA-016`). */
+export const PUBLISH_PLATFORMS = [
+  "tiktok",
+  "instagram",
+  "youtube",
+  "linkedin",
+  "reddit",
+] as const;
+export type PublishPlatform = (typeof PUBLISH_PLATFORMS)[number];
 
 /** `DATA-020`. Mutuamente excluyentes en un `Post`. */
-export type PublishAccountType = "oauth" | "warmed";
+export const PUBLISH_ACCOUNT_TYPES = ["oauth", "warmed"] as const;
+export type PublishAccountType = (typeof PUBLISH_ACCOUNT_TYPES)[number];
 
 /** `INT-001`. Sólo TikTok OAuth. */
-export type PostingMode = "inbox" | "direct";
+export const POSTING_MODES = ["inbox", "direct"] as const;
+export type PostingMode = (typeof POSTING_MODES)[number];
 
 /** `DATA-020`, literal. */
-export type PrivacyLevel =
-  "PUBLIC_TO_EVERYONE" | "MUTUAL_FOLLOW_FRIENDS" | "FOLLOWER_OF_CREATOR" | "SELF_ONLY";
+export const PRIVACY_LEVELS = [
+  "PUBLIC_TO_EVERYONE",
+  "MUTUAL_FOLLOW_FRIENDS",
+  "FOLLOWER_OF_CREATOR",
+  "SELF_ONLY",
+] as const;
+export type PrivacyLevel = (typeof PRIVACY_LEVELS)[number];
 
 export type PublishMediaKind = "video" | "image" | "carousel" | "slideshow" | "text";
 

@@ -90,23 +90,57 @@ function mismoNumero(etiqueta, fuentes) {
   }
 }
 
+/**
+ * Compara listas de literales como conjuntos.
+ *
+ * Una fuente puede declarar un tercer elemento: los literales que **le faltan
+ * a propósito** respecto de las demás (p. ej. `BrandSourceType` de `ports` no
+ * tiene `manual`). Se suman antes de comparar, así que la excepción queda fija
+ * en exactamente esos valores: cualquier otra diferencia sigue fallando. Y si
+ * la fuente pasa a tenerlos, también falla — una excepción vencida que nadie
+ * borra termina escondiendo la próxima divergencia.
+ */
 function mismaLista(etiqueta, fuentes) {
-  const valores = fuentes.map(([rel, nombre]) => ({
+  const valores = fuentes.map(([rel, nombre, ausentes = []]) => ({
     rel,
     nombre,
+    ausentes,
     valor: literales(rel, nombre),
   }));
   if (valores.some((v) => v.valor === null)) return;
-  const canon = valores.map((v) => JSON.stringify([...v.valor].sort()));
+  for (const v of valores) {
+    const presentes = v.ausentes.filter((a) => v.valor.includes(a));
+    if (presentes.length > 0) {
+      problemas.push(
+        `${etiqueta}: ${v.rel} · ${v.nombre} declara que no tiene ` +
+          `${presentes.join(", ")}, pero lo tiene. Borrá la excepción del script ` +
+          "o revisá el cambio: una excepción vencida esconde la próxima divergencia",
+      );
+      return;
+    }
+  }
+  const canon = valores.map((v) => JSON.stringify([...v.valor, ...v.ausentes].sort()));
   if (new Set(canon).size > 1) {
     problemas.push(
       `${etiqueta} difiere entre paquetes:\n` +
         valores
-          .map((v) => `      ${v.rel} · ${v.nombre} = ${v.valor.join(", ")}`)
+          .map(
+            (v) =>
+              `      ${v.rel} · ${v.nombre} = ${v.valor.join(", ")}` +
+              (v.ausentes.length > 0
+                ? `  (+ ausentes declarados: ${v.ausentes.join(", ")})`
+                : ""),
+          )
           .join("\n"),
     );
   } else {
-    verificados.push(`${etiqueta} = [${valores[0].valor.join(", ")}]`);
+    const excepciones = valores
+      .filter((v) => v.ausentes.length > 0)
+      .map((v) => `${v.nombre} sin ${v.ausentes.join(", ")}`);
+    verificados.push(
+      `${etiqueta} = [${valores[0].valor.join(", ")}]` +
+        (excepciones.length > 0 ? ` (salvo ${excepciones.join("; ")})` : ""),
+    );
   }
 }
 
@@ -147,9 +181,10 @@ mismaLista("tiers de adquisición (PRD FR-011.4) · 3 paquetes", [
 //
 // Van las de más superficie. **La dirección peligrosa es un valor que exista en
 // `core`/`ports` y NO en la base**: ése es el que Postgres rechaza. Al revés
-// (dominio ⊂ base) es inofensivo, y por eso las que se sabe que son subconjuntos
-// deliberados —`BrandSourceType` sin `manual`, `INFLUENCER_CAPABLE_TYPES` sin
-// `green-screen`— **no** están acá: las pondría rojas por diseño.
+// (dominio ⊂ base) es inofensivo. Los subconjuntos deliberados se comparan
+// declarando qué les falta (tercer elemento de la fuente, ver `mismaLista`):
+// `BrandSourceType` sin `manual` está así más abajo. `INFLUENCER_CAPABLE_TYPES`
+// sin `green-screen` todavía no.
 
 mismaLista("estados de Post (PRD FR-060) · core ↔ db", [
   ["packages/core/src/scheduling/schedule-post.ts", "POST_STATUSES"],
@@ -201,6 +236,84 @@ mismaLista("buckets de content save (FR-051) · core ↔ db", [
   ["packages/db/src/schema/enums.ts", "SAVE_BUCKET"],
 ]);
 
+// ── Las uniones de `ports` que tenían gemelo y nadie podía ver ───────────────
+//
+// Mismo caso que `ACQUISITION_TIERS`: eran uniones de literales en
+// `packages/ports`, invisibles desde fuera de TypeScript, con un gemelo en el
+// enum de Postgres y otro en el zod de `contracts`. Ahora son listas `as const`
+// con el tipo derivado, y se comparan acá. Las uniones de `ports` **sin**
+// gemelo (`PublishFailureReason`, `JobState`, `LlmFinishReason`, …) siguen
+// siendo uniones: convertirlas no protege de nada.
+
+mismaLista("formatos renderizables (FR-070) · 4 paquetes", [
+  ["packages/ports/src/media-renderer.ts", "RENDER_FORMATS"],
+  ["packages/db/src/schema/enums.ts", "SUGGESTION_CONTENT_TYPE"],
+  ["packages/contracts/src/primitives/enums.ts", "blitzContentTypeSchema"],
+  ["packages/core/src/content/content.ts", "BLITZ_CONTENT_TYPES"],
+]);
+
+mismaLista("textAlign del payload de build (FR-070) · 3 paquetes", [
+  ["packages/ports/src/media-renderer.ts", "TEXT_ALIGNS"],
+  ["packages/contracts/src/primitives/enums.ts", "textAlignSchema"],
+  ["services/render/src/domain/text.ts", "textAlignSchema"],
+]);
+
+mismaLista("aspect ratios de slideshow (FR-050 / F-068) · 4 paquetes", [
+  ["packages/ports/src/media-renderer.ts", "SLIDE_ASPECT_RATIOS"],
+  ["packages/contracts/src/primitives/enums.ts", "aspectRatioSchema"],
+  ["packages/core/src/content/content.ts", "ASPECT_RATIOS"],
+  ["services/render/src/domain/canvas.ts", "ASPECT_RATIOS"],
+]);
+
+mismaLista("plataformas de publicación (D-02 / DATA-016) · 5 lugares", [
+  ["packages/ports/src/social-publisher.ts", "PUBLISH_PLATFORMS"],
+  ["packages/db/src/schema/enums.ts", "SOCIAL_PLATFORM"],
+  ["packages/db/src/schema/enums.ts", "POST_PLATFORM"],
+  ["packages/contracts/src/primitives/enums.ts", "platformSchema"],
+  ["packages/ui/src/components/badge/badge.variants.ts", "PLATFORM_TONES"],
+]);
+
+mismaLista("tipo de cuenta de un Post (DATA-020) · 3 paquetes", [
+  ["packages/ports/src/social-publisher.ts", "PUBLISH_ACCOUNT_TYPES"],
+  ["packages/db/src/schema/enums.ts", "POST_ACCOUNT_TYPE"],
+  ["packages/contracts/src/primitives/enums.ts", "accountTypeSchema"],
+]);
+
+mismaLista("posting mode de TikTok (INT-001 / F-151) · 3 paquetes", [
+  ["packages/ports/src/social-publisher.ts", "POSTING_MODES"],
+  ["packages/db/src/schema/enums.ts", "POSTING_MODE"],
+  ["packages/contracts/src/primitives/enums.ts", "postingModeSchema"],
+]);
+
+mismaLista("privacy level de TikTok (DATA-020 / F-152) · 3 paquetes", [
+  ["packages/ports/src/social-publisher.ts", "PRIVACY_LEVELS"],
+  ["packages/db/src/schema/enums.ts", "PRIVACY_LEVEL"],
+  ["packages/contracts/src/primitives/enums.ts", "privacyLevelSchema"],
+]);
+
+// `manual` es texto que pega el usuario (tier D): el puerto no lo lee, y
+// `core` lo vuelve a sumar en `CoreBrandSourceType`. Es la única diferencia
+// permitida — la dirección inofensiva (puerto ⊂ base).
+mismaLista("tipos de Brand Source (DATA-031) · 3 paquetes", [
+  ["packages/ports/src/social-reader.ts", "BRAND_SOURCE_TYPES", ["manual"]],
+  ["packages/db/src/schema/enums.ts", "BRAND_SOURCE_TYPE"],
+  ["packages/contracts/src/resources/brand.ts", "brandSourceTypeSchema"],
+]);
+
+// **Divergencia conocida, sin decidir — y en la dirección peligrosa.** El
+// puerto tiene `incomplete` (§16.3) y `Workspace.subscriptionStatus` del PRD
+// (DATA-002) y el enum de Postgres no. Hoy nadie persiste el estado del puerto,
+// así que no explota. Esto la fija en exactamente `incomplete` para que no
+// crezca en silencio; no es una aprobación. Cuando se decida (mapear al
+// persistir, o sumarlo al PRD y a la base), esta excepción se borra.
+mismaLista(
+  "estados de suscripción (DATA-002) · ports ↔ db · DIVERGENCIA CONOCIDA, sin decidir",
+  [
+    ["packages/ports/src/payments.ts", "SUBSCRIPTION_STATUSES"],
+    ["packages/db/src/schema/enums.ts", "SUBSCRIPTION_STATUS", ["incomplete"]],
+  ],
+);
+
 mismoNumero("content angles por workspace (PRD FR-056)", [
   ["packages/core/src/quota/plans.ts", "contentAngles"],
 ]);
@@ -213,20 +326,23 @@ mismoNumero("influencers activos por workspace (PRD FR-080)", [
 // se hablaron entre sí: el contrato que valida la entrada, el dominio que
 // sostiene la invariante, y el motor que finalmente dibuja. Coinciden hoy;
 // nada lo garantizaba.
-mismoNumero("slides por slideshow (PRD FR-070) · 3 paquetes", [
+mismoNumero("slides por slideshow (PRD FR-070) · 4 paquetes", [
   ["packages/core/src/quota/plans.ts", "slidesPerSlideshow"],
   ["packages/contracts/src/resources/content.ts", "SLIDESHOW_MAX_SLIDES"],
   ["services/render/src/domain/payload.ts", "MAX_SLIDES"],
+  ["packages/ports/src/media-renderer.ts", "MAX_SLIDES"],
 ]);
 
 mismoNumero("fontSize mínimo (PRD FR-051)", [
   ["packages/contracts/src/resources/content.ts", "FONT_SIZE_MIN"],
   ["services/render/src/domain/text.ts", "FONT_SIZE_MIN"],
+  ["packages/ports/src/media-renderer.ts", "MIN_FONT_SIZE"],
 ]);
 
 mismoNumero("fontSize máximo (PRD FR-051)", [
   ["packages/contracts/src/resources/content.ts", "FONT_SIZE_MAX"],
   ["services/render/src/domain/text.ts", "FONT_SIZE_MAX"],
+  ["packages/ports/src/media-renderer.ts", "MAX_FONT_SIZE"],
 ]);
 
 mismoNumero("widthPercent mínimo (PRD FR-051)", [

@@ -50,15 +50,27 @@ export type PaymentCustomerRef = string;
  */
 export type PaymentPlanRef = string;
 
-/** Estados neutrales de suscripción. */
-export type SubscriptionStatus =
-  | "trialing"
-  | "active"
+/**
+ * Estados neutrales de suscripción.
+ *
+ * **Divergencia conocida y sin decidir:** `incomplete` no existe en
+ * `Workspace.subscriptionStatus` del PRD (`DATA-002`: `trialing | active |
+ * past_due | canceled`) ni, por lo tanto, en el enum `subscription_status` de
+ * Postgres. Si alguien persiste este estado tal cual, la base lo rechaza.
+ * `scripts/check-consistency.mjs` fija la diferencia en exactamente
+ * `incomplete` para que no crezca sin que nadie lo vea; resolverla (mapearlo al
+ * persistir, o sumarlo al PRD y a la base) es una decisión pendiente.
+ */
+export const SUBSCRIPTION_STATUSES = [
+  "trialing",
+  "active",
   /** §9.7: un workspace de Partner en `past_due` sigue teniendo capacidades. */
-  | "past_due"
-  | "canceled"
+  "past_due",
+  "canceled",
   /** §16.3: «Sort out your billing first and this will open back up». */
-  | "incomplete";
+  "incomplete",
+] as const;
+export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
 
 export interface ScheduledPlanChange {
   readonly planRef: PaymentPlanRef;

@@ -58,13 +58,36 @@ export const SLIDE_ASPECT_RATIOS = ["1:1", "4:5", "3:4", "9:16"] as const;
 export type SlideAspectRatio = (typeof SLIDE_ASPECT_RATIOS)[number];
 export const DEFAULT_SLIDE_ASPECT_RATIO: SlideAspectRatio = "4:5";
 
-export type ContentFormat = "slideshow" | "wall-of-text" | "green-screen" | "video-hook";
+/**
+ * Los cuatro formatos que el renderer sabe construir (`FR-070`).
+ *
+ * En runtime y no sólo como unión para que `scripts/check-consistency.mjs`
+ * pueda compararla con sus gemelos —el enum `suggestion_content_type` de
+ * `packages/db`, `blitzContentTypeSchema` de `packages/contracts` y
+ * `BLITZ_CONTENT_TYPES` de `packages/core`—, que es lo que `ports` no puede
+ * hacer porque no importa ninguno de los tres. `custom` no está a propósito: es
+ * video propio subido (`POST /content/custom/video`), no se renderiza. Mismo
+ * orden que el `CREATE TYPE` de la base.
+ */
+export const RENDER_FORMATS = [
+  "slideshow",
+  "wall-of-text",
+  "green-screen",
+  "video-hook",
+] as const;
+export type ContentFormat = (typeof RENDER_FORMATS)[number];
 
 /* ------------------------------------------------------------------------ *
  * Primitivas del payload de build (`FR-070`, contrato normativo)
  * ------------------------------------------------------------------------ */
 
-export type TextAlign = "left" | "center" | "right";
+/**
+ * `FR-070`. Gemelos: `textAlignSchema` de `packages/contracts` (lo que acepta la
+ * API) y el de `services/render` (lo que dibuja el motor). En runtime para que
+ * `scripts/check-consistency.mjs` vea las tres a la vez.
+ */
+export const TEXT_ALIGNS = ["left", "center", "right"] as const;
+export type TextAlign = (typeof TEXT_ALIGNS)[number];
 
 /**
  * Objeto de texto común a los cuatro formatos (`P2-RENDER-003`).

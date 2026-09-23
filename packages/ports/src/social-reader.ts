@@ -46,9 +46,26 @@
  * los pasa por `Ocr`/`Asr` **en memoria**, sin persistirlos (`DATA-032`).
  */
 
-/** Las cinco de `D-02`, más los orígenes no sociales de `FR-011.1`. */
-export type BrandSourceType =
-  "instagram" | "tiktok" | "x" | "youtube" | "linkedin" | "website" | "other_url";
+/**
+ * Las cinco de `D-02`, más los orígenes no sociales de `FR-011.1`.
+ *
+ * Es el enum `brand_source_type` de `DATA-031` **menos `manual`**, a propósito:
+ * una fuente manual es texto que pega el usuario (tier D), no algo que este
+ * puerto lea. `@fastgram/core` la vuelve a sumar (`CoreBrandSourceType`).
+ * `scripts/check-consistency.mjs` compara esta lista con `packages/db` y
+ * `packages/contracts` exigiendo que la **única** diferencia sea `manual`.
+ * Orden: el del `CREATE TYPE`, sin `manual`.
+ */
+export const BRAND_SOURCE_TYPES = [
+  "website",
+  "instagram",
+  "tiktok",
+  "x",
+  "youtube",
+  "linkedin",
+  "other_url",
+] as const;
+export type BrandSourceType = (typeof BRAND_SOURCE_TYPES)[number];
 
 /**
  * Niveles de `FR-011.4`, en runtime y como fuente única del tipo.
