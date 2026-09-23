@@ -25,7 +25,7 @@
  *
  * El fixture compartido las siembra en `active`, que para la derivación
  * significa *"el alta ya cerró"* — y entonces todo el wizard responde `ready` y
- * `complete` responde 409. Es el estado correcto para un fixture de rutas
+ * `complete` no hace nada. Es el estado correcto para un fixture de rutas
  * normales y el equivocado para éste, así que cada caso arranca en `draft`, que
  * es el default de la columna y el estado en el que nace un workspace real.
  */
@@ -33,6 +33,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { JOB_QUEUES } from "@fastgram/core";
 
+import { openDb } from "./helpers/fixtures.js";
 import { dataOf, errorOf, startApi, type ApiHarness } from "./helpers/harness.js";
 
 let api: ApiHarness;
@@ -85,6 +86,12 @@ const complete = (
     idempotencyKey: options.key ?? randomUUID(),
     ...(options.token === undefined ? {} : { token: options.token }),
   });
+
+/** El `status` de la company, leído de la base y no de la respuesta. */
+async function statusOf(companyId: string): Promise<string | undefined> {
+  const rows = await api.handle.sql`select status from companies where id = ${companyId}`;
+  return rows[0]?.["status"] as string | undefined;
+}
 
 const refillJobs = (): readonly { companyId: string }[] =>
   api.queue
@@ -298,15 +305,21 @@ describe("POST /onboarding/complete", () => {
     expect(refillJobs()).toEqual([{ companyId: api.data.a.companyId }]);
   });
 
-  it("el `step` que devuelve es `processing`, no `ready`", async () => {
-    // `markComplete` no tiene dónde escribirse —`companies` no tiene
-    // repositorio de escritura—, así que devolver `ready` sería una mentira que
-    // la siguiente lectura desmentiría. Este caso fija esa honestidad: si
-    // alguien la "arregla" devolviendo `ready` a secas, se entera acá.
+  it("pasa el workspace a `active` y `GET /onboarding` llega a `ready`", async () => {
+    // El bug: nada escribía `active`, así que el wizard terminaba en
+    // `processing` para siempre. Se mira la **base**, no sólo la respuesta: un
+    // `ready` en el cuerpo que la siguiente lectura desmintiera es justo lo que
+    // la versión anterior de este caso existía para impedir.
     await hastaElCuestionario();
     await submitProfiling({ ...ANSWERS });
-    expect(dataOf(await complete())["step"]).toBe("processing");
-    expect(dataOf(await get())["step"]).toBe("processing");
+    expect(await statusOf(api.data.a.companyId)).toBe("draft");
+
+    const res = await complete();
+    expect(res.status).toBe(202);
+    expect(dataOf(res)["step"]).toBe("ready");
+
+    expect(await statusOf(api.data.a.companyId)).toBe("active");
+    expect(dataOf(await get())["step"]).toBe("ready");
   });
 
   it("sin completar el cuestionario, el error dice qué falta", async () => {
@@ -324,14 +337,135 @@ describe("POST /onboarding/complete", () => {
     expect(errorOf(res).details).toMatchObject({ code: "ERR-B01" });
   });
 
-  it("cerrar un alta ya terminada es 409, no un segundo relleno", async () => {
+  it("cerrar un alta ya terminada devuelve lo mismo, sin un segundo relleno", async () => {
     await api.handle.sql`
       update companies set status = 'active' where id = ${api.data.a.companyId}
     `;
     const res = await complete();
-    expect(res.status).toBe(409);
-    expect(errorOf(res).message).toBe("This onboarding is already finished.");
+    // Ningún efecto primero (trampa 35): el status solo no lo prueba.
     expect(refillJobs()).toEqual([]);
+    expect(res.status).toBe(202);
+    expect(dataOf(res)["step"]).toBe("ready");
+    // Dice si **esta** llamada encoló. No lo hizo.
+    expect(dataOf(res)["discoveryRefillQueued"]).toBe(false);
+    expect(await statusOf(api.data.a.companyId)).toBe("active");
+  });
+
+  it("completar dos veces con keys distintas: mismo estado, un solo relleno", async () => {
+    // Distinto del doble clic de abajo: acá NO hay replay de idempotencia que
+    // tape nada — cada petición trae su key y corre entera.
+    await hastaElCuestionario();
+    await submitProfiling({ ...ANSWERS });
+
+    const primera = await complete();
+    const segunda = await complete();
+
+    expect(refillJobs()).toHaveLength(1);
+    expect(primera.status).toBe(202);
+    expect(segunda.status).toBe(202);
+    const { discoveryRefillQueued: q1, ...estado1 } = dataOf(primera);
+    const { discoveryRefillQueued: q2, ...estado2 } = dataOf(segunda);
+    expect([q1, q2]).toEqual([true, false]);
+    expect(estado2).toEqual(estado1);
+    expect(await statusOf(api.data.a.companyId)).toBe("active");
+  });
+
+  it("dos cierres simultáneos: el que pierde la carrera no encola", async () => {
+    // Forzado, no a la suerte (trampas 22 y 34). Una transacción ajena retiene
+    // la fila de la company; los dos cierres leen `draft` sin bloquearse
+    // (MVCC), pasan las validaciones y se quedan esperando en el `UPDATE`.
+    // Recién cuando **los dos** esperan se suelta. El primero activa y encola;
+    // el segundo reevalúa el `WHERE status IN (…)`, no toca filas y recibe
+    // `already_active` — y es la rama de la ruta que no puede encolar. Sin
+    // forzar el solapamiento el segundo suele llegar tarde, **leer** `active` y
+    // salir por la otra puerta: el test pasaba igual con esta rama rota.
+    await hastaElCuestionario();
+    await submitProfiling({ ...ANSWERS });
+    const companyId = api.data.a.companyId;
+
+    let soltar!: () => void;
+    const puerta = new Promise<void>((r) => {
+      soltar = r;
+    });
+    let tomada!: () => void;
+    const bloqueada = new Promise<void>((r) => {
+      tomada = r;
+    });
+    // Conexiones propias para el que retiene y para el sondeo: el pool del
+    // arnés es de 4 y los dos cierres en vuelo ya ocupan su parte. Con el
+    // mismo pool el sondeo esperaba una conexión que nunca se liberaba.
+    const side = openDb();
+    const sostenida = side.sql.begin(async (sql) => {
+      // `NO KEY UPDATE` y no `UPDATE`: el `INSERT` en `idempotency_records`
+      // chequea su FK contra `companies` con `FOR KEY SHARE`, que un `FOR
+      // UPDATE` bloquea — y los cierres se quedaban antes de la transacción, no
+      // en el `UPDATE` que se quiere medir. El `UPDATE` de `status` no toca la
+      // clave, así que pide lo mismo que esto y sí espera.
+      await sql`select 1 from companies where id = ${companyId}::uuid for no key update`;
+      tomada();
+      await puerta;
+    });
+    await bloqueada;
+
+    const uno = complete();
+    const dos = complete();
+
+    // Hasta que los dos estén esperando en el `UPDATE` de `companies`. Se
+    // filtra por la consulta y no se cuenta cualquier espera de lock: la base
+    // es compartida con otras suites.
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      const rows = await side.sql`
+        select count(*)::int as n from pg_stat_activity
+        where cardinality(pg_blocking_pids(pid)) > 0
+          and query ilike 'update "companies"%'
+      `;
+      if (((rows[0]?.["n"] as number | undefined) ?? 0) >= 2) break;
+      if (Date.now() > deadline) {
+        soltar();
+        await sostenida;
+        await side.close();
+        throw new Error("los dos cierres nunca se bloquearon");
+      }
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    soltar();
+    await sostenida;
+    await side.close();
+    const respuestas = await Promise.all([uno, dos]);
+
+    expect(refillJobs()).toHaveLength(1);
+    expect(respuestas.map((r) => r.status)).toEqual([202, 202]);
+    expect(respuestas.map((r) => dataOf(r)["step"])).toEqual(["ready", "ready"]);
+    expect(respuestas.map((r) => dataOf(r)["discoveryRefillQueued"]).sort()).toEqual([
+      false,
+      true,
+    ]);
+  });
+
+  it("si falta un paso, el workspace sigue en `draft`", async () => {
+    await hastaElCuestionario();
+    const res = await complete();
+    expect(await statusOf(api.data.a.companyId)).toBe("draft");
+    expect(refillJobs()).toEqual([]);
+    expect(res.status).toBe(400);
+    expect(dataOf(await get())["step"]).toBe("profiling");
+  });
+
+  it("si el encolado falla, no queda un `active` sin relleno", async () => {
+    // El encolado va en la misma transacción que la transición: si revienta,
+    // las dos vuelven atrás y el usuario puede reintentar desde `draft`.
+    await hastaElCuestionario();
+    await submitProfiling({ ...ANSWERS });
+    api.queue.failNext = true;
+
+    const res = await complete();
+    expect(await statusOf(api.data.a.companyId)).toBe("draft");
+    expect(res.status).toBe(500);
+
+    const reintento = await complete();
+    expect(reintento.status).toBe(202);
+    expect(await statusOf(api.data.a.companyId)).toBe("active");
   });
 
   it("el doble clic en `Continue to Dashboard` se replica, no se duplica", async () => {
@@ -399,6 +533,16 @@ describe("scope de companyId", () => {
     );
     expect(perfilB["ownerRole"]).toBeUndefined();
     expect(perfilB["brandRevision"]).toBe(0);
+  });
+
+  it("cerrar el alta de un workspace no activa el otro", async () => {
+    await hastaElCuestionario();
+    await submitProfiling({ ...ANSWERS });
+    expect((await complete()).status).toBe(202);
+
+    expect(await statusOf(api.data.b.companyId)).toBe("draft");
+    expect(await statusOf(api.data.a.companyId)).toBe("active");
+    expect(dataOf(await get(api.data.b.token))["step"]).toBe("brand_source");
   });
 
   it("el relleno se encola para el workspace que pidió, no para otro", async () => {
