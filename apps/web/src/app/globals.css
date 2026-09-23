@@ -1756,3 +1756,214 @@ body {
 .fgw-onb-source__notice[data-problem="true"] {
   color: var(--fg-color-danger-text);
 }
+
+/* ------------------------------------------ Calendar · F-140..F-143, FR-110 */
+
+.fgw-calendar {
+  display: grid;
+  gap: var(--fg-space-3);
+  min-width: 0;
+}
+
+.fgw-calendar__bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--fg-space-3);
+}
+
+.fgw-calendar__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-1);
+}
+
+/* Ancho mínimo para que `‹ ›` no bailen al pasar de `May` a `September`. */
+.fgw-calendar__title {
+  min-width: 11rem;
+  margin: 0;
+  font-size: var(--fg-text-lg);
+  font-weight: var(--fg-weight-semibold);
+  text-align: center;
+}
+
+.fgw-calendar__counters {
+  display: flex;
+  gap: var(--fg-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fgw-calendar__counter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fg-space-1);
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-calendar__counter[data-counter="posted"] svg {
+  color: var(--fg-color-success);
+}
+
+.fgw-calendar__counter[data-counter="scheduled"] svg {
+  color: var(--fg-color-info);
+}
+
+.fgw-calendar__counter-value {
+  color: var(--fg-color-text);
+  font-weight: var(--fg-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.fgw-calendar__note {
+  margin: 0;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+}
+
+/* Siete columnas a 375 px dejan 50 px por día: ahí un chip `TikTok: Slideshow
+   11:56 PM` no entra ni partido. La tabla conserva un ancho legible y es su
+   contenedor el que se desplaza — la página no. */
+.fgw-calendar__scroll {
+  overflow-x: auto;
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-lg);
+}
+
+.fgw-calendar__grid {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.fgw-calendar__grid th {
+  padding: var(--fg-space-2);
+  border-bottom: 1px solid var(--fg-color-border);
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+  font-weight: var(--fg-weight-medium);
+  text-align: left;
+}
+
+.fgw-calendar__grid td {
+  height: 7rem;
+  padding: var(--fg-space-1);
+  border-top: 1px solid var(--fg-color-border);
+  border-left: 1px solid var(--fg-color-border);
+  vertical-align: top;
+}
+
+.fgw-calendar__grid td:first-child {
+  border-left: 0;
+}
+
+.fgw-calendar__pad {
+  background: var(--fg-color-surface-sunken);
+}
+
+/* El día actual, resaltado con fondo (PRD:1658). */
+.fgw-calendar__day[data-today="true"] {
+  background: var(--fg-color-accent-subtle);
+}
+
+.fgw-calendar__day-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--fg-space-1);
+  padding: 0 var(--fg-space-1) var(--fg-space-1);
+}
+
+.fgw-calendar__day-number {
+  font-size: var(--fg-text-sm);
+  font-weight: var(--fg-weight-medium);
+}
+
+.fgw-calendar__day[data-today="true"] .fgw-calendar__day-number {
+  color: var(--fg-color-accent-text);
+  font-weight: var(--fg-weight-bold);
+}
+
+.fgw-calendar__day-count {
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-xs);
+}
+
+.fgw-calendar__chips {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* F-141: fondo tintado por plataforma. El color sale de los tokens
+   `--fg-platform-*` de `@fastgram/ui`, los mismos que el badge. */
+.fgw-cal-chip {
+  --fgw-chip-color: var(--fg-color-border-strong);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 2px 4px;
+  border-left: 3px solid var(--fgw-chip-color);
+  border-radius: var(--fg-radius-sm);
+  background: color-mix(in srgb, var(--fgw-chip-color) 14%, var(--fg-color-surface));
+  font-size: var(--fg-text-xs);
+  line-height: var(--fg-leading-snug);
+}
+
+.fgw-cal-chip[data-tone="tiktok"] {
+  --fgw-chip-color: var(--fg-platform-tiktok);
+}
+.fgw-cal-chip[data-tone="instagram"] {
+  --fgw-chip-color: var(--fg-platform-instagram);
+}
+.fgw-cal-chip[data-tone="youtube"] {
+  --fgw-chip-color: var(--fg-platform-youtube);
+}
+.fgw-cal-chip[data-tone="linkedin"] {
+  --fgw-chip-color: var(--fg-platform-linkedin);
+}
+.fgw-cal-chip[data-tone="reddit"] {
+  --fgw-chip-color: var(--fg-platform-reddit);
+}
+
+.fgw-cal-chip__dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--fg-radius-full);
+  background: var(--fg-color-text-subtle);
+}
+
+.fgw-cal-chip__dot[data-tone="info"] {
+  background: var(--fg-color-info);
+}
+.fgw-cal-chip__dot[data-tone="success"] {
+  background: var(--fg-color-success);
+}
+.fgw-cal-chip__dot[data-tone="warning"] {
+  background: var(--fg-color-warning);
+}
+.fgw-cal-chip__dot[data-tone="danger"] {
+  background: var(--fg-color-danger);
+}
+
+/* `Instagram: Wall of Te…` (PRD:1659): el título se trunca, la hora no. */
+.fgw-cal-chip__title {
+  overflow: hidden;
+  flex: 1 1 auto;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fgw-cal-chip__time {
+  flex: none;
+  color: var(--fg-color-text-muted);
+  font-variant-numeric: tabular-nums;
+}

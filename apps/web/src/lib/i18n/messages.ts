@@ -209,6 +209,59 @@ export const webEn = {
   "library.detail.revision": "Revision {revision}", // nuevo
   "library.detail.openFile": "Open file {index}", // nuevo
 
+  /* ------------------------------ Calendar · F-140..F-143, FR-110 (PRD:1653) */
+  "calendar.title": "Calendar", // literal (label de la ruta, PRD:305)
+  "calendar.prevMonth": "Previous month", // nuevo · el `‹` de PRD:1655 no tiene texto
+  "calendar.nextMonth": "Next month", // nuevo · el `›` de PRD:1655 no tiene texto
+  // PRD:1657 — `Su Mo Tu We Th Fr Sa`. El nombre completo es el `abbr` del
+  // `<th>`, para que un lector de pantalla no lea "Su".
+  "calendar.weekday.su": "Su", // literal PRD:1657
+  "calendar.weekday.mo": "Mo", // literal PRD:1657
+  "calendar.weekday.tu": "Tu", // literal PRD:1657
+  "calendar.weekday.we": "We", // literal PRD:1657
+  "calendar.weekday.th": "Th", // literal PRD:1657
+  "calendar.weekday.fr": "Fr", // literal PRD:1657
+  "calendar.weekday.sa": "Sa", // literal PRD:1657
+  "calendar.weekday.sunday": "Sunday", // nuevo
+  "calendar.weekday.monday": "Monday", // nuevo
+  "calendar.weekday.tuesday": "Tuesday", // nuevo
+  "calendar.weekday.wednesday": "Wednesday", // nuevo
+  "calendar.weekday.thursday": "Thursday", // nuevo
+  "calendar.weekday.friday": "Friday", // nuevo
+  "calendar.weekday.saturday": "Saturday", // nuevo
+  // F-142 (PRD:610) — `(N posts)` junto al número de día.
+  "calendar.dayCount": "({count} posts)", // literal F-142
+  "calendar.dayCountOne": "(1 post)", // nuevo · el PRD sólo muestra el plural
+  // El nombre de la celda para un lector de pantalla: el número suelto no dice
+  // de qué mes es, y el `(N posts)` visible no dice de qué día.
+  "calendar.dayLabel": "{date}, {count} posts", // nuevo
+  "calendar.dayLabelOne": "{date}, 1 post", // nuevo
+  "calendar.dayLabelNone": "{date}, no posts", // nuevo
+  "calendar.dayLabelToday": "Today, {label}", // nuevo
+  // F-141 (PRD:1659) — `TikTok: Slideshow`, `Instagram: Wall of Te…`.
+  "calendar.chip.withType": "{platform}: {type}", // literal (forma) PRD:1659
+  "calendar.chip.label": "{title}, {time}, {status}", // nuevo · sólo lectores de pantalla
+  // F-143 (PRD:1655) — `✓ 36` · `📥 0` · `📅 19`. Los iconos no tienen nombre
+  // en el PRD; éstos son los que se leen en voz alta y en el `title`.
+  "calendar.counters.label": "Post totals", // nuevo
+  "calendar.counter.posted": "{count} posted", // nuevo
+  "calendar.counter.inbox": "{count} in inbox", // nuevo
+  "calendar.counter.scheduled": "{count} scheduled", // nuevo
+  "calendar.counter.atLeast": "At least {count}", // nuevo · ver `truncated`
+  // Ver la cabecera de `lib/calendar/calendar.ts`: la API no publica la zona
+  // del usuario, así que se usa la del navegador, y se dice.
+  "calendar.timeZone": "Days and times are in your browser's time zone ({zone}).", // nuevo
+  // Ver `lib/calendar/data.ts`: `GET /posts` no filtra por fecha y ordena por
+  // creación, así que la vista pide hasta un tope y, si lo alcanza, lo dice.
+  "calendar.truncated":
+    "Showing the {count} most recently created posts. Older ones aren't loaded, so some days and totals may be missing posts.", // nuevo
+  "calendar.typesPartial":
+    "Some posts don't show their content type because it couldn't be loaded.", // nuevo
+  "calendar.empty.title": "No posts", // literal ERR-E05 (PRD:3106)
+  "calendar.empty.description": "Nothing is scheduled or posted in {month}.", // nuevo
+  "calendar.empty.truncatedDescription":
+    "Nothing loaded for {month}. Older posts aren't loaded, so this month may not be empty.", // nuevo
+
   /* --------------------------------- My Posts · F-120, FR-100 (PRD:1603-1611) */
   "posts.filter.statusLabel": "Status", // nuevo
   "posts.filter.allStatuses": "All statuses", // nuevo

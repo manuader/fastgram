@@ -10,8 +10,17 @@ import type { QueryParams } from "./client";
 export const queryKeys = {
   posts: (filters?: QueryParams) => ["posts", filters ?? {}] as const,
   post: (postId: string) => ["posts", postId] as const,
+  /**
+   * El listado del Calendar (`P2-CAL-001`). Cuelga de `posts` para que
+   * invalidar los posts —programar, cancelar— también refresque la vista mes.
+   * Clave propia y no `posts({})` porque pide páginas de 100 y la Library de
+   * 20: compartir la clave mezclaría en la misma caché páginas de dos tamaños.
+   */
+  calendarPosts: () => ["posts", "calendar"] as const,
   content: (filters?: QueryParams) => ["content", filters ?? {}] as const,
   contentItem: (contentId: string) => ["content", contentId] as const,
+  /** El tipo de cada pieza, para el chip del Calendar (`P2-CAL-002`). */
+  calendarContent: () => ["content", "calendar"] as const,
   media: (filters?: QueryParams) => ["media", filters ?? {}] as const,
   blitzPreferences: () => ["blitz", "preferences"] as const,
   influencers: () => ["influencers"] as const,
