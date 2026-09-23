@@ -35,7 +35,17 @@ export type UntrustedSource =
   | "hashtag"
   | "link_title"
   | "reddit_post"
-  | "reddit_comment";
+  | "reddit_comment"
+  /**
+   * Campos del Company Profile. Viajan como dato porque `AI-016` los deriva
+   * de bios y captions de terceros: una inyección que sobrevivió a la síntesis
+   * quedaría viva en el perfil y entraría a cada copy (`AI-002`).
+   */
+  | "brand_profile"
+  /** Título, descripción y audiencia de un content angle (`DATA-005`). */
+  | "content_angle"
+  /** `companies.name`: lo escribe el usuario, pero es texto libre. */
+  | "business_name";
 
 export interface UntrustedText {
   source: UntrustedSource;

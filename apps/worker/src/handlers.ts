@@ -26,7 +26,11 @@ import type { BrandSynthesizer } from "./brand/synthesizer.js";
 import { createSnapshotPurgeHandler } from "./brand/snapshot-purge-handler.js";
 import { createContentBuildHandler, type BuildLogger } from "./content/build-handler.js";
 import { createContentRebuildHandler } from "./content/rebuild-handler.js";
-import { createDiscoveryRefillHandler } from "./discovery/refill-handler.js";
+import type { SuggestionCopywriter } from "./discovery/copywriter.js";
+import {
+  REFILL_WITHOUT_LLM_WHY,
+  createDiscoveryRefillHandler,
+} from "./discovery/refill-handler.js";
 import { createInfluencerPipelineHandler } from "./influencers/pipeline-handler.js";
 import { createQuotaResetHandler } from "./jobs/quota-reset-handler.js";
 import { createMediaNormalizationHandler } from "./media/normalization-handler.js";
@@ -54,6 +58,13 @@ export interface WorkerHandlerDeps {
    * bloque de esa cola más abajo.
    */
   readonly brandAnalysis: BrandAnalysisMount;
+  /**
+   * La copy de `AI-002` para `discovery-refill`, o `null` sin LLM configurado.
+   * Con `null` el handler **se monta igual** y no encola nada (ver su
+   * cabecera): no registrarlo dejaría los jobs acumulándose, uno por minuto
+   * mientras el deck está abierto.
+   */
+  readonly copywriter: SuggestionCopywriter | null;
 }
 
 export type BrandAnalysisMount =
@@ -179,18 +190,12 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
       logger,
     }),
     /**
-     * **Montado sin productor, y conviene saberlo.**
+     * `discovery-refill` — lo encola `POST /blitz` con la cola vacía, un job por
+     * workspace por minuto.
      *
-     * Nada en el repo encola `discovery-refill` todavía: el nombre sólo aparece
-     * en el catálogo y en `queues.ts`. O sea que registrar esto no llena ninguna
-     * cola por sí solo.
-     *
-     * Se monta igual por el mismo criterio que el de influencers: lo que el
-     * handler escribe **es verdad**. Rellena la cola con `planSuggestion`, que es
-     * la selección ponderada de `AI-002` completa y testeada, y la
-     * `aiExplanation` que persiste se deriva de la propia selección — no la
-     * inventa un modelo que no existe. Con productor, funciona; sin productor, no
-     * miente.
+     * Rellena con sugerencias **construibles** (media del Media Bank + copy del
+     * LLM, `AI-002`). Sin LLM se monta igual y no escribe nada —una sugerencia
+     * sin copy no se puede construir— y el arranque lo dice en `unmounted`.
      */
     [JOB_QUEUES.discoveryRefill]: createDiscoveryRefillHandler({
       db,
@@ -198,6 +203,7 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
       // concurrentes, así que un `SeededRng` acá no daría el determinismo que
       // promete — daría una secuencia compartida y entrelazada.
       rng: systemRng,
+      copywriter: deps.copywriter,
       appRole,
       logger,
     }),
@@ -258,6 +264,11 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
    * consumidor. Por eso va en `unmounted` y el arranque lo dice.
    */
   const unmounted: UnmountedQueue[] = [];
+  if (deps.copywriter === null) {
+    // Montado, pero inerte: va en la lista para que el arranque lo diga con
+    // las variables que faltan.
+    unmounted.push({ queue: JOB_QUEUES.discoveryRefill, why: REFILL_WITHOUT_LLM_WHY });
+  }
   if (deps.normalizationRenderer === null) {
     unmounted.push({
       queue: JOB_QUEUES.mediaNormalization,

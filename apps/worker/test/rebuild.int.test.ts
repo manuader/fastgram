@@ -441,6 +441,7 @@ describe("el cableado de createHandlers — trampa 46", () => {
       ...deps(),
       normalizationRenderer: trampa,
       brandAnalysis: { kind: "unmounted", missing: [] },
+      copywriter: null,
     });
     const rehacer = handlers[JOB_QUEUES.contentRebuild];
     if (rehacer === undefined) throw new Error("content-rebuild no se montó");
@@ -465,6 +466,7 @@ describe("el cableado de createHandlers — trampa 46", () => {
       ...deps(),
       normalizationRenderer: null,
       brandAnalysis: { kind: "unmounted", missing: [] },
+      copywriter: null,
     });
     const rehacer = handlers[JOB_QUEUES.contentRebuild];
     if (rehacer === undefined) throw new Error("content-rebuild no se montó");

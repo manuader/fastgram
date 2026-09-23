@@ -28,4 +28,8 @@ export * from "./onboarding/onboarding.js";
 export * from "./discovery/blitz-preferences.js";
 export * from "./discovery/plan-suggestion.js";
 export * from "./discovery/refill-job.js";
+export * from "./discovery/blitz-media.js";
+export * from "./discovery/blitz-build.js";
+export * from "./discovery/suggestion-copy.js";
+export * from "./discovery/plan-blitz-suggestion.js";
 export * from "./scheduling/schedule-post.js";

@@ -38,7 +38,7 @@
  * un cambio de mecanismo.
  */
 
-import { and, desc, eq, type SQL } from "drizzle-orm";
+import { and, desc, eq, sql, type SQL } from "drizzle-orm";
 
 import type { Executor } from "../client.js";
 import { suggestions } from "../schema/index.js";
@@ -107,8 +107,81 @@ export async function markSuggestionPopped(
   return filas.length > 0;
 }
 
+/**
+ * Descarta una sugerencia que no se puede construir (`DATA-007`: `discarded`).
+ *
+ * La usa `POST /blitz` **en su propia transacción**, después de que la de la
+ * aceptación volvió atrás: si se descartara dentro de ésa, el rollback la
+ * devolvería a `queued` y la próxima petición la tomaría otra vez — el deck
+ * quedaría trabado en una sugerencia que nunca se construye. Sólo pasa de
+ * `queued` a `discarded`; si otra petición ya la tomó, no la toca.
+ */
+export async function discardQueuedSuggestion(
+  exec: Executor,
+  scope: TenantScope,
+  suggestionId: string,
+): Promise<boolean> {
+  const filas = await exec
+    .update(suggestions)
+    .set({ status: "discarded" })
+    .where(
+      and(
+        eq(suggestions.companyId, scope.companyId),
+        eq(suggestions.id, suggestionId),
+        eq(suggestions.status, "queued"),
+      ),
+    )
+    .returning({ id: suggestions.id });
+  return filas.length > 0;
+}
+
+/** Una media que una sugerencia usa, tal como está **ahora**. */
+export interface LiveMediaRow {
+  readonly mediaId: string;
+  readonly url: string;
+  readonly mediaType: "image" | "video";
+}
+
+/**
+ * La media de una sugerencia que **sigue viva** (`ready`, no borrada), con
+ * `FOR SHARE`.
+ *
+ * Es lo que hace honesto el cobro de `POST /blitz`: entre planificar y aceptar
+ * el usuario pudo borrar el asset o recategorizarlo, y un build sobre una URL
+ * que ya no existe falla **después** de cobrar. El `FOR SHARE` sostiene las
+ * filas hasta el commit: un `DELETE /media/:id` concurrente (que es un
+ * `UPDATE … deleted_at`) espera a que la pieza exista, y entonces el propio
+ * `media_in_use` de `FR-100` lo rechaza.
+ *
+ * Devuelve sólo las que siguen vivas; quien llama compara contra lo que
+ * esperaba. No compara categorías a propósito: `FR-100` dice que recategorizar
+ * saca al asset de los pools **futuros**, y la sugerencia ya fue planificada.
+ */
+export async function lockLiveMedia(
+  exec: Executor,
+  scope: TenantScope,
+  mediaIds: readonly string[],
+): Promise<readonly LiveMediaRow[]> {
+  if (mediaIds.length === 0) return [];
+  const filas = (await exec.execute(sql`
+    select media_id::text as media_id, r2_url as url, media_type::text as media_type
+      from media
+     where company_id = ${scope.companyId}::uuid
+       and media_id::text in (${sql.join(
+         mediaIds.map((id) => sql`${id}`),
+         sql`, `,
+       )})
+       and deleted_at is null
+       and status = 'ready'
+     for share
+  `)) as unknown as { media_id: string; url: string; media_type: "image" | "video" }[];
+  return filas.map((f) => ({ mediaId: f.media_id, url: f.url, mediaType: f.media_type }));
+}
+
 export const blitzAcceptanceStore = {
   table: suggestions,
   claimNextQueuedSuggestion,
   markSuggestionPopped,
+  discardQueuedSuggestion,
+  lockLiveMedia,
 };

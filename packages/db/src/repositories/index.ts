@@ -263,9 +263,12 @@ export { contentBuildStore, lockContent, type ContentRow } from "./content-build
 export {
   countQueued,
   discoveryQueueStore,
+  listPlanningMedia,
   lockCompanyRefill,
   refillLockKey,
   refillQueue,
+  type InfluencerSetRow,
+  type PlanningMediaRow,
   type QueuedSuggestionDraft,
   type RefillResult,
 } from "./discovery-queue.js";
@@ -319,7 +322,10 @@ export {
 export {
   blitzAcceptanceStore,
   claimNextQueuedSuggestion,
+  discardQueuedSuggestion,
+  lockLiveMedia,
   markSuggestionPopped,
+  type LiveMediaRow,
   type SuggestionContentType,
   type SuggestionRow,
 } from "./blitz-acceptance.js";

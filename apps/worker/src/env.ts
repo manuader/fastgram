@@ -256,7 +256,13 @@ const workerEnvObject = baseEnvSchema
  */
 export const workerEnvSchema = workerEnvObject.superRefine((env, ctx) => {
   allOrNone(env, ctx, RENDER_VARS, "el servicio de render", "media-normalization");
-  allOrNone(env, ctx, LLM_VARS, "el LLM", "brand-source-analysis");
+  allOrNone(
+    env,
+    ctx,
+    LLM_VARS,
+    "el LLM",
+    "brand-source-analysis, y discovery-refill no encola",
+  );
   allOrNone(
     env,
     ctx,
@@ -330,6 +336,29 @@ export interface LlmConfig {
   readonly contextWindowTokens: number;
 }
 
+/**
+ * El LLM solo, o `null` — lo usa `discovery-refill` para la copy de `AI-002`,
+ * que a diferencia de `brand-source-analysis` no necesita extractor ni
+ * retención. El «todas o ninguna» de las cuatro variables ya lo cortó el
+ * esquema.
+ */
+export function llmFromEnv(env: WorkerEnv): LlmConfig | null {
+  if (
+    env.LLM_BASE_URL === undefined ||
+    env.LLM_API_KEY === undefined ||
+    env.LLM_MODEL === undefined ||
+    env.LLM_CONTEXT_WINDOW_TOKENS === undefined
+  ) {
+    return null;
+  }
+  return {
+    baseUrl: env.LLM_BASE_URL,
+    apiKey: env.LLM_API_KEY,
+    model: env.LLM_MODEL,
+    contextWindowTokens: env.LLM_CONTEXT_WINDOW_TOKENS,
+  };
+}
+
 /** `WebsiteReaderConfig` sin `source`: se monta una vez por `website` y otra por `other_url`. */
 export interface WebsiteReaderSettings {
   readonly timeoutMs: number;
@@ -358,18 +387,7 @@ export type BrandAnalysisConfig =
  */
 export function brandAnalysisFromEnv(env: WorkerEnv): BrandAnalysisConfig {
   const missing: string[] = [];
-  const llm =
-    env.LLM_BASE_URL !== undefined &&
-    env.LLM_API_KEY !== undefined &&
-    env.LLM_MODEL !== undefined &&
-    env.LLM_CONTEXT_WINDOW_TOKENS !== undefined
-      ? {
-          baseUrl: env.LLM_BASE_URL,
-          apiKey: env.LLM_API_KEY,
-          model: env.LLM_MODEL,
-          contextWindowTokens: env.LLM_CONTEXT_WINDOW_TOKENS,
-        }
-      : null;
+  const llm = llmFromEnv(env);
   if (llm === null) missing.push(LLM_VARS.join(" + "));
 
   const website =

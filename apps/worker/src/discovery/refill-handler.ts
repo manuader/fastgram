@@ -12,38 +12,22 @@
  * `POST /blitz` respondía «cola vacía» siempre y toda la sección de Blitz no
  * tenía nada que mostrar.
  *
- * ## La forma: leer corto, planificar fuera, escribir corto
+ * ## La forma: leer corto, planificar y escribir la copy fuera, escribir corto
  *
  * ```
- *   [tx 1]  preferencias + ángulos + influencers + conteo      ~ms
- *           planificar hasta 5 sugerencias (CPU puro)          µs
- *   [tx 2]  lock del workspace, contar e insertar              ~ms
+ *   [tx 1]  preferencias + ángulos + influencers + perfil + Media Bank + conteo   ~ms
+ *           planificar las que faltan (CPU puro)                                   µs
+ *           una copy por sugerencia (LLM, sin transacción)                         s
+ *   [tx 2]  lock del workspace, contar e insertar                                  ~ms
  * ```
  *
- * Igual que `content/build-handler.ts`, y acá el trabajo del medio es barato
- * —`planSuggestion` no hace I/O— así que la razón no es el tiempo: es que
- * **planificar depende de un estado que no se puede tener bloqueado**. Los
- * ángulos y los influencers del workspace se leen enteros; dejarlos bloqueados
- * mientras se planifica serializaría el refill contra cualquier edición de un
- * ángulo. Y cuando `AI-002` tenga su generador de copy de verdad —hoy no lo
- * tiene, ver más abajo— ese paso pasa a durar segundos y la forma ya está.
+ * Igual que `content/build-handler.ts`: el paso del medio dura segundos y
+ * **depende de un estado que no se puede tener bloqueado** mientras tanto.
  *
- * ## Se planifican 5 y la base decide cuántas entran
- *
- * Es la parte contraintuitiva y es deliberada. El conteo de la transacción 1
- * **no decide** cuántas se generan: se generan siempre hasta `target`, y la
- * sentencia de la transacción 2 —que cuenta e inserta a la vez— se queda con
- * las que falten y descarta el resto.
- *
- * Si el conteo decidiera cuántas generar, habría una ventana entre contar y
- * escribir: contás 3, generás 2, otra entrega inserta 2 mientras tanto, y
- * terminás en 7. Generando de más y dejando que el `INSERT` recorte, ese error
- * no tiene dónde ocurrir. Lo único que cuesta es planificar de más, que es
- * aritmética.
- *
- * El conteo de la transacción 1 queda igual, para dos cosas: el log, y
- * saltearse el trabajo cuando la cola ya está llena. Es un atajo, **nunca** la
- * guarda.
+ * El conteo de la transacción 1 decide cuántas se planifican (ver abajo) y
+ * permite saltearse todo con la cola llena. **Nunca** es la guarda: quien
+ * decide cuántas entran es la sentencia de la transacción 2, que cuenta e
+ * inserta a la vez y descarta las que sobran.
  *
  * ## La guarda contra la reentrega
  *
@@ -59,46 +43,75 @@
  * sentencia atómica **sola** no alcanzaría acá aunque sí alcance para el
  * reembolso de créditos.
  *
- * ## Lo que este handler NO hace, y por qué no se inventa
+ * ## Qué guarda cada fila (desde la migración `0011`)
  *
- * - **`generatedText` queda `null`.** `AI-002` dice que la sugerencia trae la
- *   copy generada, y generarla es un LLM con un prompt que todavía no existe.
- *   Escribir un texto de relleno en esa columna sería peor que dejarla vacía:
- *   el usuario lo vería en el deck como si fuera la copy propuesta.
+ * Una sugerencia **construible**: la media concreta del Media Bank y la copy,
+ * en `build_plan`, además de `generatedText` y `aiExplanation`. Antes la fila
+ * no llevaba con qué construir y `POST /blitz` creaba piezas que fallaban
+ * después de cobrar. Las piezas:
+ *
+ *  - **La selección** (`planBlitzSuggestion` de `core`): las seis tiradas de
+ *    `AI-002`, los formatos sin media afuera del sorteo, el fallback a regular
+ *    de un influencer sin media, y la media concreta. CPU pura.
+ *  - **La copy y los bullets de `Why This Content?`**: `SuggestionCopywriter`
+ *    sobre el puerto `Llm`. Segundos por sugerencia, **fuera** de las dos
+ *    transacciones.
+ *
+ * ## Sin LLM no se encola nada — y se dice una vez
+ *
+ * `AI-002`: la sugerencia *es* `contentType` + `generatedText` +
+ * `aiExplanation`, y los cuatro formatos dibujan texto (`FR-070`: `text` es
+ * obligatorio). Una sugerencia sin copy no es una pieza a medio hacer: es una
+ * que no se puede construir. Encolarla llevaría al usuario a aceptarla, pagar
+ * y recibir un video sin texto — o a nada. Sin `copywriter` el handler no
+ * planifica ni escribe, y lo loguea **una vez por proceso** (con `warn`), no
+ * una por job: `POST /blitz` pide un relleno por minuto mientras el deck está
+ * abierto.
+ *
+ * ## Ahora se planifican las que faltan, no `target`
+ *
+ * Con el dado solo, planificar de más era aritmética. Con un LLM por sugerencia
+ * son tokens y segundos: se planifican `target - queued` (el conteo de la
+ * transacción 1). **La guarda sigue siendo la sentencia de la transacción 2**,
+ * que recorta: si otra entrega llenó la cola mientras tanto, entran menos. El
+ * peor caso es haber pagado alguna copy de más, nunca una cola excedida.
+ *
+ * ## Lo que este handler sigue sin hacer, y por qué no se inventa
+ *
  * - **`remixSourceUrl` y `sourceTrendingItemId` quedan `null`** incluso cuando
- *   la tirada dice remix. *Cuánto* remix lo deciden los pesos de `FR-055`;
- *   *qué* remixar es `DP-005`/`JV-6` (PRD §25), que ordena candidatos por
- *   encaje con la marca. No hay adaptador de `Judgment` para ese punto de
- *   decisión. La explicación guardada lo dice en vez de que la sugerencia salga
- *   como si fuera original.
- * - **El influencer se persiste sólo cuando hay un único candidato elegible.**
- *   Con uno, no hay nada que juzgar y cualquier procedimiento devuelve el
- *   mismo. Con varios, elegir es el mismo `DP-005`/`JV-6`, y resolverlo con un
- *   dado sería sustituir un juicio semántico por azar — exactamente lo que
- *   `EXT-008` existe para evitar, y lo que la cabecera de `plan-suggestion.ts`
- *   prohíbe por escrito.
- * - **`isRemix`, `useOwnMedia` y `mentionBusiness` no se persisten como
- *   flags**: `DATA-007` no tiene columnas para ellos. Sobreviven dentro de
- *   `aiExplanation`, que es texto, así que el `POST /blitz` que acepte la
- *   sugerencia **no puede leerlos**. Queda reportado.
+ *   la tirada dice remix. *Qué* remixar es `DP-005`/`JV-6` (PRD §25), sin
+ *   implementación. La pieza sale original y la explicación lo dice.
+ * - **Con varios influencers candidatos no se elige ninguno**: es el mismo
+ *   `DP-005`/`JV-6`. Ver `plan-blitz-suggestion.ts`.
+ * - **La librería compartida no existe**: la media sale siempre del Media Bank,
+ *   y cuando la tirada de `ownMediaPercentage` pidió la librería, la
+ *   explicación lo dice. Ver `blitz-media.ts`.
  */
 
 import {
   DomainError,
   DEFAULT_BLITZ_PREFERENCES,
   TARGET_QUEUED_ITEMS,
-  explainSuggestion,
+  buildMediaBank,
+  composeAiExplanation,
+  finalizeBuildPlan,
+  generatedTextOf,
   parseDiscoveryRefillJob,
-  planSuggestion,
+  planBlitzSuggestion,
   reconcileAngleWeights,
+  type BlitzPlanningContext,
   type BlitzPreferences,
+  type CopyAngle,
+  type CopyBrandProfile,
   type DiscoveryRefillJob,
   type EligibleInfluencer,
-  type SuggestionPlan,
+  type PlannedBlitzSuggestion,
   type TextStylePreset,
 } from "@fastgram/core";
 import {
   blitzPreferencesRepository,
+  companyProfileRepository,
+  companyRepository,
   contentAngleRepository,
   discoveryQueueStore,
   influencerRepository,
@@ -107,9 +120,10 @@ import {
   type QueuedSuggestionDraft,
   type Transaction,
 } from "@fastgram/db";
-import type { JobContext, JobHandler, Rng } from "@fastgram/ports";
+import { PortError, type JobContext, type JobHandler, type Rng } from "@fastgram/ports";
 
 import type { BuildLogger } from "../content/build-handler.js";
+import type { SuggestionCopywriter } from "./copywriter.js";
 
 export interface DiscoveryRefillDeps {
   readonly db: Database;
@@ -125,6 +139,11 @@ export interface DiscoveryRefillDeps {
    * **una** corrida— y conviene saberlo antes de sembrarlo en producción.
    */
   readonly rng: Rng;
+  /**
+   * La copy de `AI-002` (`OpenAiCompatibleLlm` detrás), o `null` si el entorno
+   * no configura el LLM. Con `null` no se encola nada: ver la cabecera.
+   */
+  readonly copywriter: SuggestionCopywriter | null;
   /**
    * Rol para el `SET LOCAL ROLE` de cada transacción. Sin él, un proceso
    * conectado como superusuario **saltea RLS por completo** y el aislamiento
@@ -143,12 +162,19 @@ export interface DiscoveryRefillDeps {
   readonly targetQueuedItems?: number;
 }
 
+/** Por qué no se encola sin LLM. Va al log una vez por proceso. */
+export const REFILL_WITHOUT_LLM_WHY =
+  "LLM_BASE_URL + LLM_API_KEY + LLM_MODEL + LLM_CONTEXT_WINDOW_TOKENS no están " +
+  "configuradas: una sugerencia sin copy (AI-002) no se puede construir, así que " +
+  "discovery-refill no encola nada y Blitz responde «cola vacía»";
+
 /** Lo que la transacción 1 trae, ya listo para planificar. */
 interface RefillSubject {
   readonly preferences: BlitzPreferences;
-  readonly activeAngles: readonly { readonly id: string; readonly title: string }[];
-  readonly influencers: readonly EligibleInfluencer[];
-  readonly influencerNames: ReadonlyMap<string, string>;
+  readonly planning: BlitzPlanningContext;
+  readonly angles: ReadonlyMap<string, CopyAngle>;
+  readonly businessName: string;
+  readonly profile: CopyBrandProfile;
   readonly queued: number;
 }
 
@@ -167,6 +193,7 @@ export function createDiscoveryRefillHandler(
   deps: DiscoveryRefillDeps,
 ): JobHandler<unknown> {
   const target = deps.targetQueuedItems ?? TARGET_QUEUED_ITEMS;
+  let avisadoSinLlm = false;
 
   const inCompany = <T>(
     companyId: string,
@@ -179,22 +206,18 @@ export function createDiscoveryRefillHandler(
       deps.appRole === undefined ? {} : { role: deps.appRole },
     );
 
-  /** Transacción 1: leer todo lo que la selección necesita, y soltar. */
+  /** Transacción 1: leer todo lo que la selección y la copy necesitan, y soltar. */
   async function read(job: DiscoveryRefillJob): Promise<RefillSubject> {
     return inCompany(job.companyId, async (tx) => {
       const scope = { companyId: job.companyId };
 
-      const angles = await listAllPages((page) =>
+      const angleRows = await listAllPages((page) =>
         contentAngleRepository.listByPage(tx, scope, { page, limit: PAGE_SIZE }),
       );
-      const activeAngles = angles
-        .filter((row) => row.isActive)
-        .map((row) => ({ id: row.id, title: row.title }));
+      const activeAngles = angleRows.filter((row) => row.isActive);
 
       // Sólo los activos: `eligibleInfluencers` descarta el resto igual, y un
       // workspace Pro puede tener 2000 personajes creados contra 50 activos.
-      // Traer los 2000 para tirarlos en `core` sería el cuello que el cap de
-      // activos existe para evitar.
       const rows = await listAllPages((page) =>
         influencerRepository.listByPage(tx, scope, {
           page,
@@ -202,7 +225,6 @@ export function createDiscoveryRefillHandler(
           filter: { isActive: { eq: true } },
         }),
       );
-
       const influencers: EligibleInfluencer[] = rows.map((row) => ({
         id: row.id,
         isActive: row.isActive,
@@ -212,14 +234,37 @@ export function createDiscoveryRefillHandler(
         gender: row.gender,
       }));
 
+      const bankRows = await discoveryQueueStore.listPlanningMedia(tx, scope);
+      const company = await companyRepository.load(tx, scope);
+      // `company_profiles` tiene un único índice por `companyId`: la primera
+      // fila es la fila.
+      const profile = (await companyProfileRepository.list(tx, scope, { limit: 1 }))
+        .items[0];
+
       return {
         preferences: resolvePreferences(
           await blitzPreferencesRepository.findById(tx, scope, job.companyId),
           activeAngles.map((a) => a.id),
         ),
-        activeAngles,
-        influencers,
-        influencerNames: new Map(rows.map((row) => [row.id, row.name])),
+        planning: {
+          activeAngleIds: activeAngles.map((a) => a.id),
+          influencers,
+          bank: buildMediaBank(bankRows.media, bankRows.influencerSets),
+          angleTitles: new Map(activeAngles.map((a) => [a.id, a.title])),
+          influencerNames: new Map(rows.map((row) => [row.id, row.name])),
+        },
+        angles: new Map(
+          activeAngles.map((a) => [
+            a.id,
+            {
+              title: a.title,
+              description: a.description,
+              targetAudience: a.targetAudience,
+            },
+          ]),
+        ),
+        businessName: company?.name ?? "",
+        profile: profile ?? {},
         queued: await discoveryQueueStore.countQueued(tx, scope),
       };
     });
@@ -260,14 +305,19 @@ export function createDiscoveryRefillHandler(
     const job = parsed.payload;
     const base = { jobId: ctx.jobId, companyId: job.companyId };
 
+    const copywriter = deps.copywriter;
+    if (copywriter === null) {
+      if (!avisadoSinLlm) {
+        avisadoSinLlm = true;
+        deps.logger.warn({ ...base }, REFILL_WITHOUT_LLM_WHY);
+      }
+      return;
+    }
+
     let subject: RefillSubject;
     try {
       subject = await read(job);
     } catch (error: unknown) {
-      // `DomainError` acá es estado inconsistente del workspace —pesos de
-      // ángulo que no cubren a ningún activo, que `plan-suggestion.ts` declara
-      // bug de la transacción de reconcile— y no mejora reintentando. Todo lo
-      // demás sí: es la base o un bug nuestro, y la cola sabe esperar.
       if (error instanceof DomainError) {
         deps.logger.error(
           { ...base, code: error.code, reason: error.message },
@@ -280,7 +330,8 @@ export function createDiscoveryRefillHandler(
 
     // El atajo, no la guarda: quien decide cuántas entran es la sentencia de
     // `write`, que cuenta en el mismo `WITH` en el que inserta.
-    if (subject.queued >= target) {
+    const missing = target - subject.queued;
+    if (missing <= 0) {
       deps.logger.info(
         { ...base, queued: subject.queued, target },
         "refill omitido: la cola ya está en el objetivo",
@@ -288,18 +339,56 @@ export function createDiscoveryRefillHandler(
       return;
     }
 
-    let drafts: readonly QueuedSuggestionDraft[];
+    let planned: PlannedBlitzSuggestion[];
     try {
-      drafts = planDrafts(deps.rng, subject, target);
+      planned = Array.from({ length: missing }, () =>
+        planBlitzSuggestion(deps.rng, subject.preferences, subject.planning),
+      );
     } catch (error: unknown) {
+      // `DomainError` = estado del workspace (pesos de ángulo que no cubren a
+      // ningún activo, o un Media Bank sin media para ningún formato del mix).
+      // No mejora reintentando.
       if (error instanceof DomainError) {
         deps.logger.error(
-          { ...base, code: error.code, reason: error.message },
+          { ...base, code: error.code, reason: error.message, details: error.details },
           "refill imposible: la selección no pudo decidir",
         );
         return;
       }
       throw error;
+    }
+
+    const drafts: QueuedSuggestionDraft[] = [];
+    let lastRetryable: PortError | null = null;
+    for (const p of planned) {
+      try {
+        const draft = await withCopy(copywriter, subject, p);
+        if (draft.ok) {
+          drafts.push(draft.draft);
+        } else {
+          deps.logger.warn(
+            { ...base, contentType: p.plan.contentType, reason: draft.reason },
+            "sugerencia descartada: la copy del modelo no sirve",
+          );
+        }
+      } catch (error: unknown) {
+        if (!(error instanceof PortError)) throw error;
+        // El mensaje del `PortError` no lleva la API key (lo garantiza el
+        // adaptador); el código es lo que sirve para diagnosticar.
+        deps.logger.warn(
+          { ...base, contentType: p.plan.contentType, code: error.code },
+          "sugerencia descartada: el LLM falló",
+        );
+        if (error.isRetryable) lastRetryable = error;
+      }
+    }
+
+    if (drafts.length === 0) {
+      // Todas fallaron. Si alguna fue transitoria, que la cola reintente con
+      // backoff (§9.5.2); si no, no hay nada que reintentar.
+      if (lastRetryable !== null) throw lastRetryable;
+      deps.logger.error({ ...base, planned: planned.length }, "refill sin sugerencias");
+      return;
     }
 
     const { queuedBefore, inserted } = await write(job, drafts);
@@ -309,13 +398,53 @@ export function createDiscoveryRefillHandler(
         ...base,
         queuedBefore,
         inserted,
-        planned: drafts.length,
+        planned: planned.length,
+        written: drafts.length,
         target,
       },
       inserted === 0
         ? "refill sin efecto: otra entrega llenó la cola primero"
         : "cola rellenada",
     );
+  };
+}
+
+/**
+ * La copy de una sugerencia planificada, y la fila que resulta. En un
+ * slideshow el modelo puede devolver hasta tantos textos como imágenes
+ * candidatas, y quedan tantos slides como textos (`finalizeBuildPlan`).
+ */
+async function withCopy(
+  copywriter: SuggestionCopywriter,
+  subject: RefillSubject,
+  p: PlannedBlitzSuggestion,
+): Promise<
+  | { readonly ok: true; readonly draft: QueuedSuggestionDraft }
+  | { readonly ok: false; readonly reason: string }
+> {
+  const maxTexts = p.media.format === "slideshow" ? p.media.slides.length : 1;
+  const outcome = await copywriter.write({
+    contentType: p.plan.contentType,
+    mentionBusiness: p.plan.mentionBusiness,
+    businessName: subject.businessName,
+    profile: subject.profile,
+    angle: p.plan.angleId === null ? null : (subject.angles.get(p.plan.angleId) ?? null),
+    maxTexts,
+  });
+  if (!outcome.ok) return { ok: false, reason: outcome.reason };
+
+  const buildPlan = finalizeBuildPlan(p.media, outcome.copy.texts);
+  return {
+    ok: true,
+    draft: {
+      contentType: p.plan.contentType,
+      generatedText: generatedTextOf(buildPlan.texts),
+      aiExplanation: composeAiExplanation(outcome.copy.explanation, p.derivedExplanation),
+      angleId: p.plan.angleId,
+      influencerId: p.influencerId,
+      textStylePresetId: p.plan.textStylePresetId,
+      buildPlan,
+    },
   };
 }
 
@@ -377,58 +506,6 @@ function resolvePreferences(
     textStyleWeights: (row.textStyleWeights ?? {}) as Readonly<
       Record<TextStylePreset, number>
     >,
-  };
-}
-
-/** Planifica `target` sugerencias. Es CPU puro: no toca la base. */
-function planDrafts(
-  rng: Rng,
-  subject: RefillSubject,
-  target: number,
-): readonly QueuedSuggestionDraft[] {
-  const titles = new Map(subject.activeAngles.map((a) => [a.id, a.title]));
-  const context = {
-    activeAngleIds: subject.activeAngles.map((a) => a.id),
-    influencers: subject.influencers,
-  };
-
-  const drafts: QueuedSuggestionDraft[] = [];
-  for (let i = 0; i < target; i += 1) {
-    const plan = planSuggestion(rng, subject.preferences, context);
-    drafts.push(toDraft(plan, titles, subject.influencerNames));
-  }
-  return drafts;
-}
-
-function toDraft(
-  plan: SuggestionPlan,
-  angleTitles: ReadonlyMap<string, string>,
-  influencerNames: ReadonlyMap<string, string>,
-): QueuedSuggestionDraft {
-  // Con un solo candidato no hay juicio que emitir. Con varios sí, y es
-  // `DP-005`/`JV-6`: ver la cabecera.
-  const unico =
-    plan.influencer.decision === "use" && plan.influencer.candidates.length === 1
-      ? (plan.influencer.candidates[0] as string)
-      : null;
-
-  const angleTitle = plan.angleId === null ? undefined : angleTitles.get(plan.angleId);
-  const influencerName = unico === null ? undefined : influencerNames.get(unico);
-  const undecided =
-    plan.influencer.decision === "use" && unico === null
-      ? plan.influencer.candidates.length
-      : 0;
-
-  return {
-    contentType: plan.contentType,
-    aiExplanation: explainSuggestion(plan, {
-      angleTitle,
-      influencerName,
-      undecidedCandidates: undecided,
-    }),
-    angleId: plan.angleId,
-    influencerId: unico,
-    textStylePresetId: plan.textStylePresetId,
   };
 }
 

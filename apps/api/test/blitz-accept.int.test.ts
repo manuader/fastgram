@@ -24,6 +24,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { FixedClock, MemoryStorage } from "@fastgram/adapters";
+import { contentBuildPayloadSchema } from "@fastgram/contracts";
 import { JOB_QUEUES, PLANS, billingPeriodKey } from "@fastgram/core";
 import {
   APP_ROLE,
@@ -31,6 +32,7 @@ import {
   companies,
   companyProfiles,
   createDb,
+  media,
   migrateWithUrl,
   suggestions,
   users,
@@ -116,8 +118,39 @@ async function nuevoWorkspace(
   });
 }
 
-/** `n` sugerencias `queued`. Devuelve sus ids. */
+/** Un asset `ready` del Media Bank del workspace. Devuelve su id y su URL. */
+async function seedMedia(
+  ws: Workspace,
+  type: "image" | "video",
+  categories: string[],
+): Promise<{ mediaId: string; url: string }> {
+  const mediaId = randomUUID();
+  const ext = type === "image" ? "png" : "mp4";
+  const url = `https://bucket.test/media/${ws.companyId}/${mediaId}.${ext}`;
+  await withoutCompany(handle.db, async (tx) => {
+    await tx.insert(media).values({
+      mediaId,
+      companyId: ws.companyId,
+      mediaType: type,
+      filename: `${mediaId}.${ext}`,
+      r2Url: url,
+      storageKey: `media/${ws.companyId}/${mediaId}.${ext}`,
+      status: "ready",
+      sizeMb: 1,
+      categories,
+      origin: "manual_upload",
+    });
+  });
+  return { mediaId, url };
+}
+
+/**
+ * `n` sugerencias `queued` **construibles**: con el `build_plan` que escribe el
+ * refill (migración `0011`) sobre un `background-video` real del workspace.
+ * Devuelve sus ids.
+ */
 async function encolar(ws: Workspace, n: number): Promise<string[]> {
+  const video = await seedMedia(ws, "video", ["background-video"]);
   return withoutCompany(handle.db, async (tx) => {
     const filas = await tx
       .insert(suggestions)
@@ -127,10 +160,32 @@ async function encolar(ws: Workspace, n: number): Promise<string[]> {
           contentType: "wall-of-text" as const,
           generatedText: `copy ${String(i)}`,
           aiExplanation: "porque sí",
+          buildPlan: {
+            version: 1,
+            media: { format: "wall-of-text", video },
+            texts: [`copy ${String(i)}`],
+          },
         })),
       )
       .returning({ id: suggestions.id });
     return filas.map((f) => f.id);
+  });
+}
+
+/** Una sugerencia de antes de la migración `0011`: sin `build_plan`. */
+async function encolarVieja(ws: Workspace): Promise<string> {
+  return withoutCompany(handle.db, async (tx) => {
+    const [fila] = await tx
+      .insert(suggestions)
+      .values({
+        companyId: ws.companyId,
+        contentType: "wall-of-text" as const,
+        generatedText: "vieja",
+        aiExplanation: "vieja",
+      })
+      .returning({ id: suggestions.id });
+    if (fila === undefined) throw new Error("no se creó la sugerencia");
+    return fila.id;
   });
 }
 
@@ -652,5 +707,137 @@ describe("carrera: dos aceptaciones sobre la última unidad de cuota", () => {
     expect((await ledger(ws))?.content_saves_used).toBe(1);
     expect(await piezas(ws)).toHaveLength(1);
     expect(await estadoSugerencia(unica as string)).toBe("popped");
+  });
+});
+
+describe("el buildPayload sale de la sugerencia (AI-002, FR-070)", () => {
+  async function payloadDe(contentId: unknown): Promise<unknown> {
+    const filas = await handle.sql`
+      select build_payload from contents where id = ${String(contentId)}::uuid
+    `;
+    return (filas[0] as { build_payload: unknown } | undefined)?.build_payload;
+  }
+
+  it("la pieza guarda un buildPayload que pasa el schema del worker, sin audio", async () => {
+    const ws = await nuevoWorkspace();
+    await encolar(ws, 1);
+
+    const res = await aceptar(ws);
+
+    expect(res.status).toBe(202);
+    const payload = await payloadDe(res.body.data?.["_id"]);
+    // `contentBuildPayloadSchema` es el que usa `toRenderJob` en el worker.
+    expect(contentBuildPayloadSchema.safeParse(payload).success).toBe(true);
+    expect(payload).toMatchObject({
+      canvas: { width: 1080, height: 1920 },
+      text: { content: "copy 0" },
+    });
+    expect(payload).not.toHaveProperty("audio");
+    // DATA-008: nunca sale por la API.
+    expect(res.body.data).not.toHaveProperty("buildPayload");
+  });
+
+  it("slideshow: el canvas sale del aspectRatio de la petición", async () => {
+    const ws = await nuevoWorkspace();
+    const a = await seedMedia(ws, "image", ["slideshow-image"]);
+    const b = await seedMedia(ws, "image", ["slideshow-image"]);
+    await withoutCompany(handle.db, async (tx) => {
+      await tx.insert(suggestions).values({
+        companyId: ws.companyId,
+        contentType: "slideshow",
+        generatedText: "uno\n\ndos",
+        aiExplanation: "x",
+        textStylePresetId: "yellow-pop",
+        buildPlan: {
+          version: 1,
+          media: { format: "slideshow", slides: [a, b] },
+          texts: ["uno", "dos"],
+        },
+      });
+    });
+
+    const res = await aceptar(ws, { body: { aspectRatio: "1:1" } });
+
+    expect(res.status).toBe(202);
+    const payload = await payloadDe(res.body.data?.["_id"]);
+    expect(contentBuildPayloadSchema.safeParse(payload).success).toBe(true);
+    expect(payload).toMatchObject({
+      num_images: 2,
+      images: [
+        {
+          canvas: { width: 1080, height: 1080, aspectRatio: "1:1" },
+          image: { url: a.url },
+          texts: [{ content: "uno", color: "#FFD600" }],
+        },
+        { image: { url: b.url }, texts: [{ content: "dos" }] },
+      ],
+    });
+  });
+
+  it("una sugerencia vieja sin build_plan: 422, no cobra, se descarta y la siguiente sí se acepta", async () => {
+    const ws = await nuevoWorkspace();
+    await encolar(ws, 1);
+    // La cola sale por `created_at desc`: la vieja, insertada después, sale primero.
+    const vieja = await encolarVieja(ws);
+
+    const res = await aceptar(ws);
+
+    // Lo negativo primero (trampa 35): nada cobrado, nada creado, nada encolado.
+    expect(await ledger(ws)).toBeNull();
+    expect(await piezas(ws)).toEqual([]);
+    expect(jobsDeBuild(ws)).toEqual([]);
+    expect(res.status).toBe(422);
+    expect(res.body.error?.code).toBe("content_unavailable_for_type");
+    expect(res.body.error?.details).toMatchObject({
+      reason: "missing_build_plan",
+      suggestionId: vieja,
+      discarded: true,
+    });
+    expect(await estadoSugerencia(vieja)).toBe("discarded");
+    // La cola perdió una: se pide relleno.
+    expect(
+      queue
+        .forQueue(JOB_QUEUES.discoveryRefill)
+        .some((j) => (j.payload as { companyId?: string }).companyId === ws.companyId),
+    ).toBe(true);
+
+    const otra = await aceptar(ws);
+    expect(otra.status).toBe(202);
+    expect(await ledger(ws)).toMatchObject({
+      content_saves_used: 1,
+      daily_swipes_used: 1,
+    });
+  });
+
+  it("si la media se borró después de planificar: 422 media_unavailable y no cobra", async () => {
+    const ws = await nuevoWorkspace();
+    const [id] = await encolar(ws, 1);
+    await handle.sql`
+      update media set deleted_at = now() where company_id = ${ws.companyId}::uuid
+    `;
+
+    const res = await aceptar(ws);
+
+    expect(await ledger(ws)).toBeNull();
+    expect(await piezas(ws)).toEqual([]);
+    expect(res.status).toBe(422);
+    expect(res.body.error?.details).toMatchObject({ reason: "media_unavailable" });
+    expect(await estadoSugerencia(id as string)).toBe("discarded");
+  });
+
+  it("usa la URL de hoy de la media, no la copiada al planificar", async () => {
+    const ws = await nuevoWorkspace();
+    await encolar(ws, 1);
+    const nueva = `https://bucket.test/media/${ws.companyId}/renombrado.mp4`;
+    await handle.sql`
+      update media set r2_url = ${nueva} where company_id = ${ws.companyId}::uuid
+    `;
+
+    const res = await aceptar(ws);
+
+    expect(res.status).toBe(202);
+    expect(await payloadDe(res.body.data?.["_id"])).toMatchObject({
+      video: { url: nueva },
+    });
   });
 });

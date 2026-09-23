@@ -61,6 +61,23 @@
  * `blitz_quota_blocked` con `details.quotaType`, y la traducción está en
  * {@link toBlitzRejection}.
  *
+ * ### El `buildPayload` sale de la sugerencia, en la misma transacción
+ *
+ * Hasta el 2026-09-23 la pieza se creaba **sin** `buildPayload` y el worker la
+ * cerraba `FAILED` con `invalid_build_payload` después de cobrar. Ahora, antes
+ * de tocar la cuota, {@link prepareBuildPayload}: parsea `suggestions.build_plan`
+ * (media + copy, escrito por el refill), verifica con `FOR SHARE` que la media
+ * siga viva, compone el payload con `composeBlitzBuildPayload` de `core` y lo
+ * valida contra `contentBuildPayloadSchema` — el mismo schema con el que el
+ * worker lo revalida en `toRenderJob`.
+ *
+ * Una sugerencia que no pasa (vieja, sin `build_plan`; media borrada) **no se
+ * cobra**: la transacción vuelve atrás, la sugerencia se descarta en una
+ * transacción propia —si no, el rollback la devolvería a `queued` y el deck
+ * quedaría trabado en ella— y la respuesta es `422 content_unavailable_for_type`
+ * (FR-050, *"tipo válido pero no producible ahora"*) con `details.reason`. El
+ * cliente reintenta y recibe la siguiente.
+ *
  * ### `Idempotency-Key`: opcional
  *
  * FR-050 (aclaración del 2026-09-21): `POST /blitz` **no** está en la lista de §9.3
@@ -72,6 +89,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  contentBuildPayloadSchema,
   optionalIdempotencyHeaderSchema,
   runBlitzRequestSchema,
   updateBlitzPreferencesRequestSchema,
@@ -86,6 +104,10 @@ import {
   acceptBlitzSuggestionUseCase,
   assertValidBlitzRequest,
   assertValidPreferencesPatch,
+  composeBlitzBuildPayload,
+  parseSuggestionBuildPlan,
+  rebindMediaUrls,
+  selectionMediaIds,
   currentSwipesLedger,
   isBlitzContentType,
   isDomainError,
@@ -101,6 +123,8 @@ import {
   blitzPreferencesRepository,
   claimNextQueuedSuggestion,
   companyProfileRepository,
+  discardQueuedSuggestion,
+  lockLiveMedia,
   contentAngleRepository,
   contentRepository,
   markSuggestionPopped,
@@ -379,6 +403,8 @@ interface AcceptanceContext {
   readonly clock: Clock;
   /** La sugerencia ya tomada con `FOR UPDATE SKIP LOCKED` en esta transacción. */
   readonly claimed: SuggestionRow;
+  /** Ya validado contra `contentBuildPayloadSchema`. Ver `prepareBuildPayload`. */
+  readonly buildPayload: unknown;
 }
 
 /**
@@ -480,6 +506,8 @@ function acceptanceRepository(ctx: AcceptanceContext): {
             : content.generatedText,
         remixSourceUrl: content.remixSourceUrl ?? null,
         revision: content.revision,
+        // DATA-008: nunca sale por la API; es lo único que el worker lee.
+        buildPayload: ctx.buildPayload,
         // De qué bucket salió y a qué período: es lo que usa el reembolso del
         // worker si el build falla. El CHECK de la tabla exige los dos juntos.
         saveBucket: content.saveBucket,
@@ -516,6 +544,98 @@ function acceptanceRepository(ctx: AcceptanceContext): {
       return createdRow;
     },
   };
+}
+
+/** Por qué una sugerencia no se puede construir. Viaja en `details.reason`. */
+export type UnbuildableReason =
+  /** Planificada antes de la migración `0011`: no tiene media ni copy elegidas. */
+  | "missing_build_plan"
+  /** El `build_plan` no se entiende, o compone un payload que el contrato rechaza. */
+  | "invalid_build_plan"
+  /** Algún asset que eligió el refill ya no está `ready` o se borró. */
+  | "media_unavailable";
+
+/**
+ * La sugerencia tomada no se puede construir. **No** es un `ApiRejection`: el
+ * handler la reconoce, descarta la sugerencia en otra transacción y recién ahí
+ * responde. Ver la cabecera.
+ */
+class UnbuildableSuggestion extends Error {
+  override readonly name = "UnbuildableSuggestion";
+  constructor(
+    readonly suggestionId: string,
+    readonly reason: UnbuildableReason,
+    /** Para el log. Nunca sale al cliente. */
+    readonly detail: string,
+  ) {
+    super(`suggestion ${suggestionId} is not buildable: ${reason} (${detail})`);
+  }
+}
+
+/**
+ * El `buildPayload` de la sugerencia tomada, o {@link UnbuildableSuggestion}.
+ * Corre **antes** del cobro y dentro de su transacción.
+ */
+async function prepareBuildPayload(
+  tx: Transaction,
+  companyId: string,
+  claimed: SuggestionRow,
+  aspectRatio: Parameters<typeof acceptBlitzSuggestionUseCase>[1]["aspectRatio"],
+): Promise<unknown> {
+  const type = claimed.contentType;
+  const parsed = parseSuggestionBuildPlan(claimed.buildPlan, type);
+  if (!parsed.ok) {
+    throw new UnbuildableSuggestion(
+      claimed.id,
+      parsed.reason === "missing_build_plan"
+        ? "missing_build_plan"
+        : "invalid_build_plan",
+      parsed.reason,
+    );
+  }
+  const plan = parsed.plan;
+
+  // La media, viva y **retenida** hasta el commit: ver `lockLiveMedia`.
+  const ids = [...new Set(selectionMediaIds(plan.media))];
+  const live = new Map(
+    (await lockLiveMedia(tx, { companyId }, ids)).map((m) => [m.mediaId, m.url]),
+  );
+  const perdidas = ids.filter((id) => !live.has(id));
+  if (perdidas.length > 0) {
+    throw new UnbuildableSuggestion(
+      claimed.id,
+      "media_unavailable",
+      `media ${perdidas.join(", ")} deleted or not ready`,
+    );
+  }
+
+  let payload: unknown;
+  try {
+    payload = composeBlitzBuildPayload(rebindMediaUrls(plan, live), {
+      // FR-050: `aspectRatio` sólo aplica a slideshow. Si llega con otro tipo,
+      // el caso de uso lo rechaza con 400 más abajo.
+      aspectRatio: type === "slideshow" ? aspectRatio : undefined,
+      textStylePresetId: claimed.textStylePresetId,
+    });
+  } catch (error: unknown) {
+    throw new UnbuildableSuggestion(
+      claimed.id,
+      "invalid_build_plan",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+
+  // El mismo schema que revalida el worker en `toRenderJob`. Si esto falla es
+  // un bug de `composeBlitzBuildPayload`, y lo correcto es no cobrar.
+  const checked = contentBuildPayloadSchema.safeParse(payload);
+  if (!checked.success) {
+    throw new UnbuildableSuggestion(
+      claimed.id,
+      "invalid_build_plan",
+      checked.error.issues.map((i) => `${i.path.join(".")}: ${i.code}`).join("; "),
+    );
+  }
+  return checked.data;
 }
 
 /**
@@ -561,11 +681,19 @@ async function acceptNextSuggestion(
   );
   if (claimed === null) throw new EmptyQueueRejection();
 
+  const buildPayload = await prepareBuildPayload(
+    tx,
+    companyId,
+    claimed,
+    args.aspectRatio,
+  );
+
   const { repository, created } = acceptanceRepository({
     tx,
     companyId,
     clock: args.clock,
     claimed,
+    buildPayload,
   });
 
   await acceptBlitzSuggestionUseCase(
@@ -840,6 +968,38 @@ export function registerBlitzRoutes(app: ZodApp): void {
           accept,
         );
       } catch (e: unknown) {
+        if (e instanceof UnbuildableSuggestion) {
+          // La transacción de la aceptación ya volvió atrás: nada se cobró. Se
+          // descarta en una propia para que la próxima petición tome otra, y
+          // se pide relleno porque la cola acaba de perder una.
+          let discarded = false;
+          try {
+            discarded = await request.tx((tx) =>
+              discardQueuedSuggestion(tx, { companyId }, e.suggestionId),
+            );
+          } catch (error: unknown) {
+            request.log.error(
+              { error, suggestionId: e.suggestionId },
+              "no se pudo descartar la sugerencia no construible",
+            );
+          }
+          request.log.warn(
+            {
+              suggestionId: e.suggestionId,
+              reason: e.reason,
+              detail: e.detail,
+              discarded,
+            },
+            "sugerencia no construible: descartada sin cobrar",
+          );
+          await pedirRelleno(request, companyId);
+          throw new ApiRejection(
+            422,
+            "content_unavailable_for_type",
+            "That suggestion can't be built anymore, so it was skipped and nothing was charged. Try again to get the next one.",
+            { reason: e.reason, suggestionId: e.suggestionId, discarded },
+          );
+        }
         if (e instanceof EmptyQueueRejection) {
           // **Lo que hace cierto al mensaje.** Ver `pedirRelleno`: sin esto,
           // «the queue replenishes in the background» era una promesa que nada

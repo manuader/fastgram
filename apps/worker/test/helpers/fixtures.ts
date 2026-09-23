@@ -171,7 +171,7 @@ export async function seedCompany(handle: DbHandle): Promise<string> {
 }
 
 export interface SeedPieceOptions {
-  readonly type?: "wall-of-text" | "slideshow" | "custom";
+  readonly type?: "wall-of-text" | "slideshow" | "green-screen" | "video-hook" | "custom";
   readonly status?: "BUILDING" | "CREATED" | "FAILED";
   readonly buildPayload?: unknown;
   /** `null` = la pieza no cobró save (el caso de `POST /content/custom/video`). */

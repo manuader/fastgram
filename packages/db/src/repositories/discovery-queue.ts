@@ -88,6 +88,14 @@ export interface QueuedSuggestionDraft {
   readonly angleId: string | null;
   readonly influencerId: string | null;
   readonly textStylePresetId: string | null;
+  /** `AI-002`: la copy, generada al planificar y guardada con la fila. */
+  readonly generatedText: string | null;
+  /**
+   * `suggestions.build_plan` (migración `0011`): el `SuggestionBuildPlan` de
+   * `core`. Se guarda tal cual; quien lo lee lo valida con
+   * `parseSuggestionBuildPlan`.
+   */
+  readonly buildPlan: unknown;
 }
 
 export interface RefillResult {
@@ -195,6 +203,8 @@ export async function refillQueue(
       angle_id: draft.angleId,
       influencer_id: draft.influencerId,
       text_style_preset_id: draft.textStylePresetId,
+      generated_text: draft.generatedText,
+      build_plan: draft.buildPlan ?? null,
     })),
   );
 
@@ -203,7 +213,8 @@ export async function refillQueue(
       select *
         from jsonb_to_recordset(${payload}::jsonb)
           as d(ord int, content_type text, ai_explanation text,
-               angle_id uuid, influencer_id uuid, text_style_preset_id text)
+               angle_id uuid, influencer_id uuid, text_style_preset_id text,
+               generated_text text, build_plan jsonb)
     ),
     queued as (
       select count(*)::int as n
@@ -214,13 +225,15 @@ export async function refillQueue(
     inserted as (
       insert into suggestions
         (company_id, content_type, ai_explanation, angle_id, influencer_id,
-         text_style_preset_id, status)
+         text_style_preset_id, generated_text, build_plan, status)
       select ${scope.companyId}::uuid,
              drafts.content_type::suggestion_content_type,
              drafts.ai_explanation,
              drafts.angle_id,
              drafts.influencer_id,
              drafts.text_style_preset_id,
+             drafts.generated_text,
+             drafts.build_plan,
              'queued'::suggestion_status
         from drafts cross join queued
        where drafts.ord <= greatest(0, ${target}::int - queued.n)
@@ -262,10 +275,102 @@ export async function countQueued(exec: Executor, scope: TenantScope): Promise<n
   return filas[0]?.value ?? 0;
 }
 
+/** Un asset del Media Bank que puede entrar en una pieza. Forma de `PlanningMedia` de `core`. */
+export interface PlanningMediaRow {
+  readonly id: string;
+  readonly mediaType: "image" | "video";
+  readonly url: string;
+  readonly categories: readonly string[];
+}
+
+/** Un set con influencer (`DATA-011`), para los pools de `FR-083`. */
+export interface InfluencerSetRow {
+  readonly influencerId: string;
+  readonly kind: "SLIDESHOW" | "VIDEO" | "CURATED";
+  readonly mediaIds: readonly string[];
+}
+
+/**
+ * Lo que el planificador puede usar del Media Bank — `AI-002` («Media Bank del
+ * workspace»), `FR-100`, `FR-083`.
+ *
+ * - **Sólo `ready` y no borrada.** Un video `processing` todavía no está
+ *   normalizado (`FR-100`: MOV→MP4, faststart) y el motor de render podría no
+ *   leerlo; uno `failed` no se va a poder leer nunca.
+ * - **Con alguna categoría, o en un set de influencer.** `FR-100`: «lista
+ *   vacía = el asset sale de todos los pools automáticos de Blitz». Los de un
+ *   set de influencer entran igual: el set es la elección explícita.
+ * - **Orden estable** (`created_at, media_id`): con un `Rng` sembrado, el mismo
+ *   estado tiene que dar la misma media. Sin `ORDER BY` el orden lo decide el
+ *   plan de ejecución.
+ *
+ * Sin tope de filas: el Media Bank ya está acotado por la cuota de storage, y
+ * un tope acá haría que la media más vieja deje de salir sin que nadie lo sepa.
+ */
+export async function listPlanningMedia(
+  exec: Executor,
+  scope: TenantScope,
+): Promise<{
+  readonly media: readonly PlanningMediaRow[];
+  readonly influencerSets: readonly InfluencerSetRow[];
+}> {
+  const sets = (await exec.execute(sql`
+    select influencer_id::text as influencer_id, kind::text as kind,
+           coalesce(media_ids::text[], '{}'::text[]) as media_ids
+      from media_sets
+     where company_id = ${scope.companyId}::uuid
+       and influencer_id is not null
+     order by created_at, id
+  `)) as unknown as {
+    influencer_id: string;
+    kind: InfluencerSetRow["kind"];
+    media_ids: string[];
+  }[];
+
+  const media = (await exec.execute(sql`
+    select m.media_id::text as id, m.media_type::text as media_type,
+           m.r2_url as url, m.categories
+      from media m
+     where m.company_id = ${scope.companyId}::uuid
+       and m.deleted_at is null
+       and m.status = 'ready'
+       and (
+         cardinality(m.categories) > 0
+         or exists (
+           select 1 from media_sets s
+            where s.company_id = m.company_id
+              and s.influencer_id is not null
+              and m.media_id = any(s.media_ids)
+         )
+       )
+     order by m.created_at, m.media_id
+  `)) as unknown as {
+    id: string;
+    media_type: "image" | "video";
+    url: string;
+    categories: string[] | null;
+  }[];
+
+  return {
+    media: media.map((r) => ({
+      id: r.id,
+      mediaType: r.media_type,
+      url: r.url,
+      categories: r.categories ?? [],
+    })),
+    influencerSets: sets.map((r) => ({
+      influencerId: r.influencer_id,
+      kind: r.kind,
+      mediaIds: r.media_ids,
+    })),
+  };
+}
+
 export const discoveryQueueStore = {
   table: suggestions,
   lockCompanyRefill,
   refillQueue,
   countQueued,
   refillLockKey,
+  listPlanningMedia,
 };

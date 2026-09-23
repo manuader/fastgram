@@ -128,6 +128,14 @@ export const suggestions = pgTable(
     angleId: uuid().references(() => contentAngles.id, { onDelete: "set null" }),
     /** El PRD no define una entidad `TextStylePreset`; se guarda el id sin FK. */
     textStylePresetId: text(),
+    /**
+     * NO ESTÁ EN `DATA-007`: con qué se construye la pieza — la media elegida
+     * del Media Bank y los textos (`SuggestionBuildPlan` de `core`). Sin esto,
+     * `POST /blitz` creaba la pieza sin `buildPayload` y el build fallaba
+     * después de cobrar. `NULL` = sugerencia vieja, que no se construye.
+     * Migración `0011`.
+     */
+    buildPlan: jsonb(),
     status: suggestionStatusEnum().notNull().default("queued"),
     ...createdAtOnly(),
   },

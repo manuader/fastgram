@@ -8,6 +8,8 @@ import type { Database } from "@fastgram/db";
 import { describe, expect, it } from "vitest";
 
 import { createLlmBrandSynthesizer } from "./brand/synthesizer.js";
+import type { SuggestionCopywriter } from "./discovery/copywriter.js";
+import { REFILL_WITHOUT_LLM_WHY } from "./discovery/refill-handler.js";
 import {
   brandAnalysisUnmountedWhy,
   createHandlers,
@@ -24,9 +26,15 @@ const SIN_ANALISIS: BrandAnalysisMount = {
   missing: ["BRAND_SNAPSHOT_RAW_RETENTION_DAYS"],
 };
 
+/** Un copywriter que nunca se llama: construir el handler no lo invoca. */
+const COPYWRITER: SuggestionCopywriter = {
+  write: () => Promise.reject(new Error("no se llama al construir")),
+};
+
 function deps(
   normalizationRenderer: WorkerHandlerDeps["normalizationRenderer"],
   brandAnalysis: BrandAnalysisMount = SIN_ANALISIS,
+  copywriter: SuggestionCopywriter | null = COPYWRITER,
 ): WorkerHandlerDeps {
   return {
     // Ningún handler toca la base al construirse; el doble vacío lo prueba: si
@@ -39,6 +47,7 @@ function deps(
     appRole: undefined,
     logger: silent,
     brandAnalysis,
+    copywriter,
   };
 }
 
@@ -103,5 +112,17 @@ describe("createHandlers", () => {
       [...SIEMPRE, JOB_QUEUES.mediaNormalization, JOB_QUEUES.brandSourceAnalysis].sort(),
     );
     expect(unmounted).toEqual([]);
+  });
+
+  it("sin LLM: discovery-refill se monta igual (inerte) y el arranque dice por qué", () => {
+    const { handlers, unmounted } = createHandlers(
+      deps(new MemoryMediaRenderer(), SIN_ANALISIS, null),
+    );
+    expect(handlers[JOB_QUEUES.discoveryRefill]).toBeDefined();
+    expect(unmounted).toContainEqual({
+      queue: JOB_QUEUES.discoveryRefill,
+      why: REFILL_WITHOUT_LLM_WHY,
+    });
+    expect(REFILL_WITHOUT_LLM_WHY).toContain("LLM_MODEL");
   });
 });

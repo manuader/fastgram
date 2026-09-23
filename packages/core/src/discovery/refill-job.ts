@@ -33,16 +33,17 @@
  * de dónde sale la media, qué pasó con el influencer y qué preset de caption
  * quedó. Ni una palabra que no esté en el `SuggestionPlan`.
  *
- * No hay LLM de por medio y no es una omisión disimulada: redactar el prompt de
- * `AI-002` es una decisión de producto, y un texto inventado por un modelo sin
- * ese prompt sería peor que uno que dice exactamente lo que el dado decidió.
- * Cuando exista el generador real, reemplaza a esto y el resto no se entera.
+ * Desde la migración `0011` esto es **la mitad de abajo** de `aiExplanation`:
+ * arriba van los bullets del modelo (`composeAiExplanation`, generados con la
+ * copy por `suggestion-copy.ts`), que dicen *por qué* la pieza funcionaría;
+ * esto dice *de dónde salió*. Las dos son verdad y ninguna reemplaza a la otra.
  *
  * El efecto lateral bueno de derivarla: **lo que falta se ve**. Cuando la
  * selección pide influencer y no se puede elegir cuál, el texto lo dice en vez
  * de que la sugerencia salga silenciosamente sin personaje.
  */
 
+import type { BlitzContentType } from "../content/content.js";
 import type { SuggestionPlan } from "./plan-suggestion.js";
 
 /** Lo que viaja en la cola `discovery-refill`. */
@@ -112,6 +113,14 @@ export interface SuggestionNarrative {
    * entrenando un personaje, la segunda no la arregla él.
    */
   readonly undecidedCandidates?: number | undefined;
+  /**
+   * Nombre del influencer que la tirada eligió y **no** se usó porque sus sets
+   * no tienen media para este formato (`FR-083`). Cae a contenido regular,
+   * igual que sin elegible (`AI-002`, «Reintentos»).
+   */
+  readonly influencerWithoutMedia?: string | undefined;
+  /** Formatos del mix que no se pudieron planificar: sin media en el Media Bank. */
+  readonly skippedFormats?: readonly BlitzContentType[] | undefined;
 }
 
 /** Cuánto texto ajeno entra en la explicación. Un título largo no la secuestra. */
@@ -149,18 +158,31 @@ export function explainSuggestion(
     );
   }
 
+  // *Qué* remixar es `DP-005`/`JV-6` y no tiene implementación: la pieza sale
+  // original y el texto lo dice, en vez de prometer una tendencia que nadie
+  // va a elegir.
   parts.push(
     plan.isRemix
-      ? "Source: a remix of trending content. The specific trend is picked when " +
-          "you accept this suggestion."
+      ? "Source: original content. Your remix ratio drew a remix, but picking " +
+          "a trending source isn't available yet."
       : "Source: original content, not a remix.",
   );
 
+  // La librería compartida no existe en este sistema (ver `blitz-media.ts`):
+  // toda media sale del Media Bank, y cuando la tirada pidió la librería se
+  // dice.
   parts.push(
     plan.useOwnMedia
       ? "Media: from your own Media Bank."
-      : "Media: not from your own Media Bank.",
+      : "Media: from your own Media Bank — the shared library isn't available yet.",
   );
+
+  if (narrative.skippedFormats !== undefined && narrative.skippedFormats.length > 0) {
+    parts.push(
+      `Not planned: ${narrative.skippedFormats.join(", ")} — your Media Bank has ` +
+        "no media categorized for it.",
+    );
+  }
 
   parts.push(influencerLine(plan, narrative));
 
@@ -179,7 +201,29 @@ export function explainSuggestion(
   return parts.join(" ");
 }
 
+/**
+ * La explicación que se guarda: los bullets del modelo (`FR-050`, *Why This
+ * Content?*) y, debajo, lo que el dado decidió. Las dos partes son verdad y
+ * responden cosas distintas: por qué la pieza funcionaría, y de dónde salió.
+ */
+export function composeAiExplanation(
+  bullets: readonly string[],
+  derived: string,
+): string {
+  const lines = bullets.map((b) => `• ${b.replace(/\s+/gu, " ").trim()}`);
+  return [...lines, "", derived].join("\n");
+}
+
 function influencerLine(plan: SuggestionPlan, narrative: SuggestionNarrative): string {
+  if (
+    narrative.influencerWithoutMedia !== undefined &&
+    narrative.influencerWithoutMedia.trim() !== ""
+  ) {
+    return (
+      `Influencer: none — ${oneLine(narrative.influencerWithoutMedia, MAX_ANGLE_TITLE_CHARS)} ` +
+      "has no media in their sets for this format, so this is regular content."
+    );
+  }
   if (plan.influencer.decision === "none") {
     switch (plan.influencer.reason) {
       case "green_screen":

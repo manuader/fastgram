@@ -77,6 +77,13 @@ export interface SuggestionPlan {
 export interface SuggestionContext {
   readonly activeAngleIds: readonly string[];
   readonly influencers: readonly EligibleInfluencer[];
+  /**
+   * Los formatos que el Media Bank puede construir hoy (`formatsWithMedia`).
+   * Ausente = los cuatro. Un formato fuera de la lista pesa 0 en la tirada (b):
+   * `FR-050` lo llama *"tipo válido pero no producible ahora"*, y planificarlo
+   * igual dejaría en la cola una pieza que no se puede construir.
+   */
+  readonly availableFormats?: readonly BlitzContentType[] | undefined;
 }
 
 /**
@@ -130,13 +137,29 @@ export function planSuggestion(
   // (a) remix vs original
   const isRemix = roll(rng, preferences.remixPercentage);
 
-  // (b) tipo de contenido
-  const contentType = rng.weightedPick<BlitzContentType>([
-    { value: "slideshow", weight: preferences.slideshowWeight },
-    { value: "wall-of-text", weight: preferences.wallOfTextWeight },
-    { value: "green-screen", weight: preferences.greenScreenWeight },
-    { value: "video-hook", weight: preferences.videoHookWeight },
-  ]);
+  // (b) tipo de contenido — sólo entre los que tienen media
+  const available = context.availableFormats;
+  const mix = [
+    { value: "slideshow" as const, weight: preferences.slideshowWeight },
+    { value: "wall-of-text" as const, weight: preferences.wallOfTextWeight },
+    { value: "green-screen" as const, weight: preferences.greenScreenWeight },
+    { value: "video-hook" as const, weight: preferences.videoHookWeight },
+  ].map((item) =>
+    available === undefined || available.includes(item.value)
+      ? item
+      : { ...item, weight: 0 },
+  );
+  if (mix.every((item) => item.weight <= 0)) {
+    // No es un bug del workspace sino un Media Bank que no alcanza para
+    // ningún formato del mix. Grita en vez de repartir: planificar otro
+    // formato que el usuario puso en 0 sería ignorar su mix.
+    throw new DomainError(
+      "invalid_state",
+      "No content type in the mix has media available in the Media Bank.",
+      { availableFormats: available ?? [] },
+    );
+  }
+  const contentType = rng.weightedPick<BlitzContentType>(mix);
 
   // (c) ángulo
   const angleId = pickAngle(rng, preferences, context.activeAngleIds);

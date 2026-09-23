@@ -37,9 +37,18 @@ import type { MediaRenderer } from "@fastgram/ports";
 import pino from "pino";
 
 import { createLlmBrandSynthesizer } from "./brand/synthesizer.js";
+import {
+  createLlmCopywriter,
+  type SuggestionCopywriter,
+} from "./discovery/copywriter.js";
 import { createHandlers, type BrandAnalysisMount } from "./handlers.js";
 import { createHealthServer, createWorkerHealth } from "./health/server.js";
-import { brandAnalysisFromEnv, loadWorkerEnv, renderServiceFromEnv } from "./env.js";
+import {
+  brandAnalysisFromEnv,
+  llmFromEnv,
+  loadWorkerEnv,
+  renderServiceFromEnv,
+} from "./env.js";
 import { JOB_CATALOG, type JobPolicy } from "./jobs/catalog.js";
 import { createNormalizationRenderer } from "./media/normalization-renderer.js";
 
@@ -175,6 +184,22 @@ function brandAnalysisMountFromEnv(): BrandAnalysisMount {
   };
 }
 
+/**
+ * La copy de `AI-002` para `discovery-refill` — sólo con las cuatro `LLM_*`.
+ * Es otra instancia del adaptador que la de `brand-source-analysis`: no
+ * comparten estado, y así una cola se monta sin depender de que la otra tenga
+ * extractor y retención configurados.
+ */
+function copywriterFromEnv(): SuggestionCopywriter | null {
+  const config = llmFromEnv(env);
+  if (config === null) return null;
+  logger.info(
+    { baseUrl: config.baseUrl, model: config.model },
+    "LLM para discovery-refill (copy de AI-002)",
+  );
+  return createLlmCopywriter({ llm: new OpenAiCompatibleLlm(config) });
+}
+
 const { handlers: HANDLERS, unmounted } = createHandlers({
   db: handle.db,
   renderer,
@@ -184,6 +209,7 @@ const { handlers: HANDLERS, unmounted } = createHandlers({
   appRole,
   logger,
   brandAnalysis: brandAnalysisMountFromEnv(),
+  copywriter: copywriterFromEnv(),
 });
 
 for (const [name, handler] of Object.entries(HANDLERS)) {
