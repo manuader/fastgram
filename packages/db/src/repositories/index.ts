@@ -259,6 +259,7 @@ export const judgmentRecordRepository = createCompanyScopedRepository({
   createdAt: judgmentRecords.createdAt,
 });
 export { resolveApiKeyByHash, type ApiKeyBootstrapRow } from "./api-key-bootstrap.js";
+export { resolveSessionWorkspace } from "./session-workspace.js";
 export { contentBuildStore, lockContent, type ContentRow } from "./content-build.js";
 export {
   countQueued,

@@ -1,5 +1,5 @@
 {
   "extends": "@fastgram/config/tsconfig/node.json",
-  "compilerOptions": { "outDir": "dist", "rootDir": "src" },
-  "include": ["src/**/*"]
+  "compilerOptions": { "noEmit": true, "rootDir": "." },
+  "include": ["src/**/*", "test/**/*", "vitest.config.ts", "vitest.int.config.ts"]
 }

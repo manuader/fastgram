@@ -14,7 +14,11 @@
  * §9.3: *"Cambios breaking → nueva versión mayor de ruta"*; montar v2 más adelante es
  * registrar otro plugin al lado.
  */
-import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
+import Fastify, {
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest,
+} from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import {
@@ -31,8 +35,12 @@ import {
   generateRequestId,
   registerAccessLogging,
 } from "../plugins/observability.js";
+import { SESSION_UNAUTHORIZED_MESSAGE } from "@fastgram/contracts";
+
 import { INVALID_API_KEY_MESSAGE, describeRejection } from "../auth/api-keys.js";
-import { resolveScope, runScoped } from "../auth/scope.js";
+import { resolveScope, runScoped, type ScopeResolution } from "../auth/scope.js";
+import { createSessionResolver, noSessionResolver } from "../auth/session.js";
+import { registerAuthRoutes } from "../routes/auth.js";
 import { registerV1Routes } from "../routes/v1/index.js";
 import {
   createHealthChecker,
@@ -45,12 +53,24 @@ import type { ApiDeps, ZodApp } from "./types.js";
 /** §9.3 — prefijo de la versión mayor. */
 export const API_V1_PREFIX = "/api/v1";
 
+/**
+ * Sesión válida, usuario sin ninguna membresía activa. `403 forbidden`: ver
+ * `SessionRejection` en `auth/scope.ts` para por qué no es 404 ni 401.
+ */
+export const NO_WORKSPACE_MESSAGE =
+  "Your account isn't an active member of any workspace yet.";
+
 export interface BuildServerOptions {
   readonly deps: ApiDeps;
   readonly corsOrigins?: readonly string[];
   readonly logLevel?: string;
   /** `false` en tests, para que la suite no escupa una línea por request. */
   readonly enableAccessLog?: boolean;
+  /**
+   * Destino del log. Sólo para tests que necesitan **leer** lo que se loguea
+   * (que ningún token ni contraseña llegue al log). Default: stdout.
+   */
+  readonly logStream?: { write(msg: string): void };
   /**
    * TTL del cache de `/health`. Default: `HEALTH_CACHE_TTL_MS` (3 s).
    *
@@ -68,6 +88,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     logger: {
       level: options.logLevel ?? "info",
       redact: { paths: [...REDACTED_PATHS], remove: true },
+      ...(options.logStream === undefined ? {} : { stream: options.logStream }),
     },
     // P1-OBS-001: el id de request respeta el `x-request-id` entrante para que la
     // traza cruce el borde entre apps sin cortarse.
@@ -140,6 +161,30 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   // `health.ts` sobre mover una livenessProbe existente a `/health/live`.
   app.get("/health", readiness);
 
+  // ── /api/v1/auth: la única parte de la v1 SIN scope ──
+  //
+  // Plugin **hermano** del de `/api/v1`, no hijo: el hook de scope que se
+  // agrega ahí adentro no lo alcanza, que es lo que tiene que pasar con las
+  // rutas que emiten la credencial. Ver `routes/auth.ts`.
+  const sessions =
+    deps.sessions ??
+    (deps.identity === undefined
+      ? noSessionResolver
+      : createSessionResolver({ identity: deps.identity, db: deps.db }));
+  const trustedProxies = new Set(deps.authTrustedProxies ?? []);
+  await app.register(
+    async (raw) => {
+      registerAuthRoutes(raw.withTypeProvider<ZodTypeProvider>() as ZodApp, {
+        identity: deps.identity,
+        sessions,
+        limiter: deps.limiter,
+        trustedProxies,
+      });
+      await Promise.resolve();
+    },
+    { prefix: `${API_V1_PREFIX}/auth` },
+  );
+
   // ── /api/v1: todo lo de adentro pasa por el scope ──
   await app.register(
     async (raw) => {
@@ -158,27 +203,11 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
        */
       v1.addHook("onRequest", async (request, reply) => {
         const resolution = await resolveScope(
-          {
-            db: deps.db,
-            clock: deps.clock,
-            ...(deps.sessions === undefined ? {} : { sessions: deps.sessions }),
-          },
+          { db: deps.db, clock: deps.clock, sessions },
           request.headers,
         );
 
-        if (!resolution.ok) {
-          request.log.info(
-            { reason: resolution.reason },
-            describeRejection(resolution.reason),
-          );
-          // §9.1: **todas** las respuestas 401 llevan este header.
-          return reply
-            .status(401)
-            .header("WWW-Authenticate", 'Bearer realm="api"')
-            .send({
-              error: { code: "unauthorized", message: INVALID_API_KEY_MESSAGE },
-            });
-        }
+        if (!resolution.ok) return rejectScope(request, reply, resolution);
 
         request.auth = resolution.auth;
         bindCompanyToLogger(request, resolution.auth.companyId, {
@@ -186,6 +215,9 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
           ...(resolution.auth.apiKeyId === undefined
             ? {}
             : { apiKeyId: resolution.auth.apiKeyId }),
+          ...(resolution.auth.userId === undefined
+            ? {}
+            : { userId: resolution.auth.userId }),
         });
 
         request.tx = (fn) =>
@@ -199,4 +231,50 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   );
 
   return app;
+}
+
+/**
+ * La respuesta a una credencial que no autoriza.
+ *
+ * El cuerpo de un 401 de API key es **idéntico** para las ocho causas de
+ * `FR-180` (el log las distingue). El de sesión lleva el copy de §15.2, que es
+ * lo que el BFF muestra. Una sesión sin workspace es 403, y una que no se pudo
+ * comprobar es 503: ver `SessionRejection`.
+ */
+function rejectScope(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  resolution: Extract<ScopeResolution, { ok: false }>,
+): FastifyReply {
+  const { reason } = resolution;
+  if (reason === "session_unavailable") {
+    request.log.error(
+      { reason, detail: "detail" in resolution ? resolution.detail : undefined },
+      "session could not be verified",
+    );
+    return reply.status(503).send({
+      error: {
+        code: "service_unavailable",
+        message: "Authentication is temporarily unavailable",
+      },
+    });
+  }
+
+  if (reason === "session_invalid" || reason === "session_without_workspace") {
+    request.log.info({ reason }, `session rejected: ${reason}`);
+  } else {
+    request.log.info({ reason }, describeRejection(reason));
+  }
+
+  if (reason === "session_without_workspace") {
+    return reply
+      .status(403)
+      .send({ error: { code: "forbidden", message: NO_WORKSPACE_MESSAGE } });
+  }
+
+  // §9.1: **todas** las respuestas 401 llevan este header.
+  reply.header("WWW-Authenticate", 'Bearer realm="api"');
+  const message =
+    reason === "session_invalid" ? SESSION_UNAUTHORIZED_MESSAGE : INVALID_API_KEY_MESSAGE;
+  return reply.status(401).send({ error: { code: "unauthorized", message } });
 }

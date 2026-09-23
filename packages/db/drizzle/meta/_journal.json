@@ -85,6 +85,13 @@
       "when": 1790008494033,
       "tag": "0011_better_auth_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790008494034,
+      "tag": "0012_session_workspace_bootstrap",
+      "breakpoints": true
     }
   ]
 }

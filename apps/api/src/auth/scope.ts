@@ -55,6 +55,7 @@ import {
 } from "@fastgram/db";
 
 import { extractBearerToken, hashApiKey, type ApiKeyRejection } from "./api-keys.js";
+import { noSessionResolver, type SessionResolver } from "./session.js";
 
 /** Quién pide, y sobre qué workspace. Es lo único que autoriza tocar datos. */
 export interface AuthContext {
@@ -67,27 +68,30 @@ export interface AuthContext {
   readonly userId?: string;
 }
 
+/**
+ * Por qué una sesión no autoriza. Cada una tiene su respuesta (ver `app.ts`):
+ *
+ *  - `session_invalid` → 401 con el copy de §15.2.
+ *  - `session_without_workspace` → 403 `forbidden`: la sesión es buena, el
+ *    usuario no es miembro activo de ningún workspace. No es 404 porque no hay
+ *    ningún recurso ajeno cuya existencia esconder (§9.2 habla de acceso
+ *    cruzado): es el propio usuario preguntando por su workspace.
+ *  - `session_unavailable` → 503: no se pudo comprobar. Un 401 acá haría que
+ *    el BFF tire una sesión que puede estar viva.
+ */
+export type SessionRejection =
+  "session_invalid" | "session_without_workspace" | "session_unavailable";
+
 export type ScopeResolution =
   | { readonly ok: true; readonly auth: AuthContext }
-  | { readonly ok: false; readonly reason: ApiKeyRejection };
+  | { readonly ok: false; readonly reason: ApiKeyRejection }
+  | { readonly ok: false; readonly reason: SessionRejection; readonly detail?: string };
 
-/**
- * Sesiones de usuario (`apps/web`).
- *
- * Interfaz y no implementación porque el backend de sesión todavía no existe: ADR-008
- * elige Better Auth self-hosted y esa tarea es de otra épica. La costura queda
- * declarada para que montarla sea inyectar, no reescribir el middleware.
- */
-export interface SessionResolver {
-  resolve(request: {
-    readonly headers: Record<string, string | string[] | undefined>;
-  }): Promise<{ userId: string; companyId: string } | null>;
-}
-
-/** Default honesto: no hay sesiones todavía, así que no hay sesión que resolver. */
-export const noSessionResolver: SessionResolver = {
-  resolve: async () => null,
-};
+export {
+  noSessionResolver,
+  type SessionResolution,
+  type SessionResolver,
+} from "./session.js";
 
 export interface ScopeResolverOptions {
   readonly db: Database;
@@ -100,7 +104,8 @@ export interface ScopeResolverOptions {
  *
  * Orden: API key primero (es el camino de la API pública), sesión después. Un
  * `Authorization` presente pero inválido **no** cae a la sesión: sería una forma
- * silenciosa de que una key revocada siga funcionando desde un browser con cookie.
+ * silenciosa de que una key revocada siga funcionando desde el BFF. Y con los
+ * dos headers presentes gana la key: la sesión ni se consulta.
  */
 export async function resolveScope(
   options: ScopeResolverOptions,
@@ -114,14 +119,26 @@ export async function resolveScope(
   }
 
   const session = await (options.sessions ?? noSessionResolver).resolve({ headers });
-  if (session !== null) {
-    return {
-      ok: true,
-      auth: { companyId: session.companyId, kind: "session", userId: session.userId },
-    };
+  switch (session.kind) {
+    case "absent":
+      return { ok: false, reason: "missing_header" };
+    case "invalid":
+      return { ok: false, reason: "session_invalid" };
+    case "unavailable":
+      return { ok: false, reason: "session_unavailable", detail: session.reason };
+    case "valid":
+      if (session.companyId === null) {
+        return { ok: false, reason: "session_without_workspace" };
+      }
+      return {
+        ok: true,
+        auth: {
+          companyId: session.companyId,
+          kind: "session",
+          userId: session.principal.userId,
+        },
+      };
   }
-
-  return { ok: false, reason: "missing_header" };
 }
 
 async function resolveApiKey(

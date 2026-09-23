@@ -38,6 +38,12 @@ export const RATE_LIMITS = {
 
 export type RateLimitName = keyof typeof RATE_LIMITS;
 
+/** Un límite: `limit` peticiones por `windowMs`, con refill uniforme. */
+export interface RateLimitPolicy {
+  readonly limit: number;
+  readonly windowMs: number;
+}
+
 export type RateLimitDecision =
   | { outcome: "allowed"; remaining: number }
   | { outcome: "limited"; retryAfterMs: number }
@@ -103,8 +109,26 @@ export class TokenBucketLimiter {
     scopeId: string,
     cost = 1,
   ): Promise<RateLimitDecision> {
-    const { limit, windowMs } = RATE_LIMITS[name];
-    const key = `${name}:${scopeId}`;
+    return this.consumePolicy(name, RATE_LIMITS[name], scopeId, cost);
+  }
+
+  /**
+   * Lo mismo que {@link consume} con un límite que **no** es de §9.6.
+   *
+   * Existe para los límites de `/auth/*` (`auth/rate-limits.ts`): NFR-009 da el
+   * mecanismo y el PRD no da números para autenticación, así que esos números
+   * son una decisión y no pueden vivir en `RATE_LIMITS`, que es la tabla
+   * normativa. `namespace` va en la clave: dos políticas con el mismo `scopeId`
+   * no comparten bucket.
+   */
+  async consumePolicy(
+    namespace: string,
+    policy: RateLimitPolicy,
+    scopeId: string,
+    cost = 1,
+  ): Promise<RateLimitDecision> {
+    const { limit, windowMs } = policy;
+    const key = `${namespace}:${scopeId}`;
 
     for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
       const now = this.clock.nowMs();

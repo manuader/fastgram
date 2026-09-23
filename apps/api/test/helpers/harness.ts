@@ -35,8 +35,9 @@
  * rol, la conexión de desarrollo es superusuario, saltea RLS, y el archivo
  * estaría midiendo la mitad de lo que dice medir.
  */
+import { randomBytes } from "node:crypto";
 import type { FastifyInstance, InjectOptions } from "fastify";
-import { FixedClock, MemoryStorage } from "@fastgram/adapters";
+import { FixedClock, MemoryStorage, type BetterAuthIdentity } from "@fastgram/adapters";
 import { ALL_JOB_QUEUES } from "@fastgram/core";
 import { APP_ROLE, migrateWithUrl, type DbHandle } from "@fastgram/db";
 import type {
@@ -52,6 +53,8 @@ import { buildServer } from "../../src/server/app.js";
 import { IdempotencyGuard } from "../../src/http/idempotency.js";
 import { TokenBucketLimiter } from "../../src/http/rate-limit.js";
 import { createDbIdempotencyStore } from "../../src/support/idempotency-store.js";
+import { mountIdentity } from "../../src/support/identity.js";
+import type { AuthIdentity } from "../../src/auth/session.js";
 import { DATABASE_URL, bearer, openDb, seed, type Seed } from "./fixtures.js";
 
 /**
@@ -257,6 +260,43 @@ export interface StartApiOptions {
    * lo pasa explícitamente para ejercitar el nivel que consulta la base.
    */
   readonly queueSchema?: string;
+  /**
+   * Proveedor de identidad (`P1-AUTH-002`). Default: **ninguno**, que es el
+   * camino de "identidad no configurada": `/auth/*` responde 503. La suite de
+   * auth pasa uno real con {@link createTestIdentity}.
+   */
+  readonly identity?: AuthIdentity;
+  /** `AUTH_TRUSTED_PROXIES`. Default: ninguno. */
+  readonly authTrustedProxies?: readonly string[];
+  /** Para leer el log (que no se escape un token). Con esto el nivel es `debug`. */
+  readonly logStream?: { write(msg: string): void };
+}
+
+export interface TestIdentity {
+  readonly identity: BetterAuthIdentity;
+  /** Los emails de recuperación que "se enviaron", con su token. */
+  readonly resetEmails: { email: string; token: string }[];
+  close(): Promise<void>;
+}
+
+/**
+ * `BetterAuthIdentity` **real** sobre la base de test, con un secreto
+ * aleatorio por corrida. El envío del email se reemplaza por un buzón en
+ * memoria: es lo único que no existe (no hay adaptador de email) y el token
+ * hace falta para probar `password-reset/complete`.
+ */
+export function createTestIdentity(): TestIdentity {
+  const resetEmails: { email: string; token: string }[] = [];
+  const mount = mountIdentity({
+    databaseUrl: DATABASE_URL,
+    secret: randomBytes(32).toString("base64url"),
+    baseUrl: "http://localhost:3001",
+    poolMax: 4,
+    sendPasswordResetEmail: async (message) => {
+      resetEmails.push({ email: message.email, token: message.token });
+    },
+  });
+  return { identity: mount.identity, resetEmails, close: () => mount.close() };
 }
 
 /**
@@ -304,9 +344,14 @@ export async function startApi(options: StartApiOptions = {}): Promise<ApiHarnes
       appRole: APP_ROLE,
       ...((options.withQueue ?? true) ? { queue } : {}),
       ...(options.queueSchema === undefined ? {} : { queueSchema: options.queueSchema }),
+      ...(options.identity === undefined ? {} : { identity: options.identity }),
+      ...(options.authTrustedProxies === undefined
+        ? {}
+        : { authTrustedProxies: options.authTrustedProxies }),
     },
-    logLevel: "silent",
-    enableAccessLog: false,
+    logLevel: options.logStream === undefined ? "silent" : "debug",
+    ...(options.logStream === undefined ? {} : { logStream: options.logStream }),
+    enableAccessLog: options.logStream !== undefined,
     healthCacheTtlMs: options.healthCacheTtlMs ?? 0,
   });
   await app.ready();

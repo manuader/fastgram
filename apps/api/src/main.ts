@@ -21,13 +21,18 @@ import {
 import { ALL_JOB_QUEUES } from "@fastgram/core";
 import { createDb, grantQueueSchemaAccess } from "@fastgram/db";
 
-import { loadApiEnv, parseCorsOrigins } from "./env.js";
+import { identityConfigOf, loadApiEnv, parseCorsOrigins } from "./env.js";
 import { buildServer } from "./server/app.js";
 import { IdempotencyGuard } from "./http/idempotency.js";
 import { TokenBucketLimiter } from "./http/rate-limit.js";
 import { createDbIdempotencyStore } from "./support/idempotency-store.js";
 import { createMemoryBucketStore } from "./support/bucket-store.js";
 import { checkCanonicalUrlBase, createStorage } from "./support/storage.js";
+import {
+  createUnconfiguredResetSender,
+  mountIdentity,
+  type IdentityMount,
+} from "./support/identity.js";
 
 const env = loadApiEnv();
 
@@ -114,8 +119,40 @@ if (env.QUEUE_MIGRATE) {
   await grantQueueSchemaAccess(handle.db, { schema: env.QUEUE_SCHEMA });
 }
 
+/**
+ * Identidad de usuario (Better Auth) — `P1-AUTH-002`.
+ *
+ * Opcional: la API pública v1 es server-to-server con API key y no la necesita.
+ * Sin `BETTER_AUTH_SECRET` + `BETTER_AUTH_URL`, `/auth/*` responde 503 y ninguna
+ * sesión autoriza; con una sola de las dos, `loadApiEnv` ya mató el arranque.
+ *
+ * El envío del email de recuperación no existe todavía (no hay adaptador de
+ * email): el callback loguea que no se envió, sin token ni email. Ver
+ * `support/identity.ts`. El callback escribe en el logger de la app, que se
+ * crea en `buildServer`: se ata después, y antes de `listen` no llega ningún
+ * pedido que lo dispare.
+ */
+const identityConfig = identityConfigOf(env);
+const resetSenderLog: { current?: { warn(obj: object, msg: string): void } } = {};
+let identityMount: IdentityMount | undefined;
+if (identityConfig !== null) {
+  identityMount = mountIdentity({
+    databaseUrl: env.DATABASE_URL,
+    secret: identityConfig.secret,
+    baseUrl: identityConfig.baseUrl,
+    // Better Auth hace pocas consultas por petición; no compite con el pool
+    // de Drizzle por el mismo tamaño.
+    poolMax: Math.max(2, Math.ceil(env.DATABASE_POOL_MAX / 2)),
+    sendPasswordResetEmail: createUnconfiguredResetSender({
+      warn: (obj, msg) => resetSenderLog.current?.warn(obj, msg),
+    }),
+  });
+}
+
 const app = await buildServer({
   deps: {
+    ...(identityMount === undefined ? {} : { identity: identityMount.identity }),
+    authTrustedProxies: env.AUTH_TRUSTED_PROXIES,
     db: handle.db,
     clock,
     storage,
@@ -136,6 +173,27 @@ const app = await buildServer({
   corsOrigins: parseCorsOrigins(env.API_CORS_ORIGINS),
   logLevel: env.LOG_LEVEL,
 });
+
+resetSenderLog.current = app.log;
+
+if (identityMount === undefined) {
+  app.log.warn(
+    "identidad no configurada (BETTER_AUTH_SECRET/BETTER_AUTH_URL): /api/v1/auth/* " +
+      "responde 503 y ninguna sesión X-Fastgram-Session autoriza",
+  );
+} else {
+  app.log.warn(
+    "no hay adaptador de email: los pedidos de recuperación de contraseña se aceptan " +
+      "(202) pero el email no se envía",
+  );
+  if (env.AUTH_TRUSTED_PROXIES.length === 0) {
+    app.log.warn(
+      "AUTH_TRUSTED_PROXIES vacío: no se confía en X-Forwarded-For, la IP del cliente " +
+        "no se conoce y los límites por IP de /auth/* están apagados (queda el límite " +
+        "por email). Detrás del BFF, configurar la IP del servidor de apps/web",
+    );
+  }
+}
 
 /**
  * El hueco del CDN, dicho en voz alta.
@@ -172,6 +230,7 @@ try {
 } catch (err: unknown) {
   app.log.error(err, "no se pudo abrir el puerto");
   await queue.stop();
+  await identityMount?.close();
   await handle.close();
   process.exit(1);
 }
@@ -198,6 +257,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
         // La cola después del servidor y antes de la base, por el mismo motivo
         // que el resto del orden: una request en vuelo puede estar encolando.
         await queue.stop();
+        await identityMount?.close();
         await handle.close();
         process.exit(0);
       } catch (err: unknown) {

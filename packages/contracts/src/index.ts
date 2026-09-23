@@ -37,6 +37,7 @@ export * from "./resources/audio.js";
 export * from "./resources/tiktok-sounds.js";
 export * from "./resources/brand.js";
 export * from "./resources/onboarding.js";
+export * from "./resources/auth.js";
 
 // OpenAPI
 export * from "./openapi.js";

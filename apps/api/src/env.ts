@@ -20,6 +20,7 @@ import {
   z,
 } from "@fastgram/config/env";
 import { APP_ROLE } from "@fastgram/db";
+import { isIP } from "node:net";
 
 export const apiEnvSchema = baseEnvSchema
   .merge(postgresEnvSchema)
@@ -121,9 +122,79 @@ export const apiEnvSchema = baseEnvSchema
       .enum(["true", "false"])
       .default("false")
       .transform((v) => v === "true"),
+
+    /**
+     * Identidad de usuario (Better Auth, ADR-008) — `P1-AUTH-002`.
+     *
+     * **Las dos o ninguna** (más `DATABASE_URL`, que ya es obligatoria). Sin
+     * ellas la API arranca igual —la API pública v1 no las necesita: es
+     * server-to-server con API key— y las rutas de `/auth/*` responden
+     * `503 service_unavailable`. Con una sola, el arranque muere: es una
+     * configuración a medias, y a medias es como falla tres horas después.
+     *
+     * Cadena vacía = ausente, porque `.env.example` las trae vacías.
+     * La validación de fondo (≥ 32 caracteres, URL absoluta, sin el placeholder
+     * público) la hace el constructor de `BetterAuthIdentity` y también mata
+     * el arranque; no se duplica acá.
+     */
+    BETTER_AUTH_SECRET: z.string().default(""),
+    BETTER_AUTH_URL: z.string().default(""),
+
+    /**
+     * IPs (exactas, separadas por coma) de los proxies cuyo `X-Forwarded-For`
+     * se cree **para los límites de `/auth/*`**. En el despliegue previsto es
+     * la IP del servidor de `apps/web` (el BFF).
+     *
+     * Vacío (default) = no se confía en ningún `X-Forwarded-For`, y entonces la
+     * IP del cliente **no se conoce**: detrás del BFF todas las peticiones
+     * llegan desde la web. En ese caso los límites por IP de `/auth/*` se
+     * apagan (un bucket por IP sería un bucket global: 20 logins por minuto
+     * para todo el producto) y queda sólo el límite por email. Ver
+     * `auth/rate-limits.ts`.
+     */
+    AUTH_TRUSTED_PROXIES: z
+      .string()
+      .default("")
+      .transform((raw, ctx) => {
+        const ips = raw
+          .split(",")
+          .map((ip) => ip.trim())
+          .filter((ip) => ip.length > 0);
+        for (const ip of ips) {
+          if (isIP(ip) === 0) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `AUTH_TRUSTED_PROXIES: "${ip}" no es una IP (se aceptan IPs exactas, no rangos)`,
+            });
+          }
+        }
+        return ips;
+      }),
+  })
+  .superRefine((env, ctx) => {
+    const secret = env.BETTER_AUTH_SECRET !== "";
+    const url = env.BETTER_AUTH_URL !== "";
+    if (secret !== url) {
+      // El mensaje nombra la variable que falta, nunca el valor de la otra.
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [secret ? "BETTER_AUTH_URL" : "BETTER_AUTH_SECRET"],
+        message:
+          "BETTER_AUTH_SECRET y BETTER_AUTH_URL van las dos o ninguna: " +
+          "sin las dos, /auth/* responde 503; con una sola, la configuración está a medias",
+      });
+    }
   });
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;
+
+/** La configuración de identidad, si está completa. `null` = no configurada. */
+export function identityConfigOf(
+  env: Pick<ApiEnv, "BETTER_AUTH_SECRET" | "BETTER_AUTH_URL">,
+): { readonly secret: string; readonly baseUrl: string } | null {
+  if (env.BETTER_AUTH_SECRET === "" || env.BETTER_AUTH_URL === "") return null;
+  return { secret: env.BETTER_AUTH_SECRET, baseUrl: env.BETTER_AUTH_URL };
+}
 
 export function loadApiEnv(
   source: Record<string, string | undefined> = process.env,

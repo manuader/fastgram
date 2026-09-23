@@ -32,9 +32,10 @@ import {
   type BetterAuthIdentityConfig,
   type IdentityEmailMessage,
 } from "./better-auth-identity.js";
+import { identityDatabaseUrl } from "../../test/identity-db.js";
 
-const CONNECTION_STRING =
-  process.env["DATABASE_URL"] ?? "postgres://fastgram:fastgram@localhost:5432/fastgram";
+// Base propia (`…_adapters`): la de `apps/api` trunca `users` en paralelo.
+const CONNECTION_STRING = identityDatabaseUrl();
 
 async function probe(): Promise<string | null> {
   const client = new pg.Client({ connectionString: CONNECTION_STRING });

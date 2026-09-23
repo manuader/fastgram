@@ -16,6 +16,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.int.test.ts", "test/**/*.int.test.ts"],
+    // Base propia para identidad: ver `test/identity-db.ts`.
+    globalSetup: ["./test/setup-identity-db.ts"],
     testTimeout: 120_000,
     hookTimeout: 180_000,
     pool: "forks",

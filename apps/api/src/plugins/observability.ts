@@ -15,7 +15,10 @@
  *
  * ## Qué NO se loguea
  *
- * - El header `authorization` completo (`redact` en la config de pino).
+ * - El header `authorization` completo ni `x-fastgram-session` (`redact` en la
+ *   config de pino). Ojo: el serializador de request por defecto de Fastify no
+ *   loguea headers; esto es la red para el día que alguien loguee `request`
+ *   entero. Las rutas de `/auth/*` además no loguean cuerpos ni emails.
  * - Las URLs firmadas de storage: NFR-008 dice literalmente *"no persistir, no loguear"*.
  *   Son capacidades bearer; una URL de playback en un log es acceso al objeto para
  *   quien lea el log durante la hora siguiente.
@@ -27,6 +30,8 @@ import { randomUUID } from "node:crypto";
 export const REDACTED_PATHS = [
   "req.headers.authorization",
   "req.headers.cookie",
+  // `P1-AUTH-002`: la sesión del BFF es una credencial bearer igual que la key.
+  'req.headers["x-fastgram-session"]',
   "res.headers['set-cookie']",
 ] as const;
 

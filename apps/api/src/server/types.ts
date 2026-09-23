@@ -33,7 +33,8 @@ export type ZodApp = FastifyInstance<
 
 import type { IdempotencyGuard } from "../http/idempotency.js";
 import type { TokenBucketLimiter } from "../http/rate-limit.js";
-import type { AuthContext, SessionResolver } from "../auth/scope.js";
+import type { AuthContext } from "../auth/scope.js";
+import type { AuthIdentity, SessionResolver } from "../auth/session.js";
 
 /**
  * Generador de ángulos (AI-005).
@@ -59,7 +60,19 @@ export interface ApiDeps {
   readonly idempotency: IdempotencyGuard;
   /** Ver `env.ts` → `DATABASE_APP_ROLE`. Sin esto RLS no se aplica. */
   readonly appRole: string | undefined;
+  /**
+   * Proveedor de identidad (Better Auth, `P1-AUTH-002`). Sin él, `/auth/*`
+   * responde `503 service_unavailable` y ninguna sesión autoriza.
+   */
+  readonly identity?: AuthIdentity;
+  /**
+   * Resolución de `X-Fastgram-Session`. Default: la que se arma sobre
+   * `identity` (`createSessionResolver`), o `noSessionResolver` sin identidad.
+   * Se deja inyectable para los tests de scope.
+   */
   readonly sessions?: SessionResolver;
+  /** `AUTH_TRUSTED_PROXIES`. Ver `auth/client-ip.ts`. Default: ninguno. */
+  readonly authTrustedProxies?: readonly string[];
   readonly angleGenerator?: AngleGenerator;
   /**
    * Cola de trabajos (`ADR-005`).

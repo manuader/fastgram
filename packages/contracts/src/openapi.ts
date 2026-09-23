@@ -38,6 +38,7 @@ import * as audio from "./resources/audio.js";
 import * as sounds from "./resources/tiktok-sounds.js";
 import * as brand from "./resources/brand.js";
 import * as onboarding from "./resources/onboarding.js";
+import * as auth from "./resources/auth.js";
 import {
   imageUploadReservationRequestSchema,
   mediaUploadReservationRequestSchema,
@@ -205,6 +206,16 @@ type ParameterObject = {
 type OperationObject = {
   operationId: string;
   summary: string;
+  /**
+   * `[]` anula el `security` global (la API key). Sólo lo llevan las rutas de
+   * `/auth/*`, que el BFF llama **antes** de tener credencial.
+   */
+  security?: Record<string, string[]>[];
+  /**
+   * Extensión de OpenAPI: la operación existe pero no es superficie pública v1
+   * (§9.3 no la enumera). Un generador de SDK público debería saltearla.
+   */
+  "x-internal"?: true;
   parameters?: ParameterObject[];
   requestBody?: { required: boolean; content: Record<string, { schema: JsonSchema }> };
   responses: Record<
@@ -358,6 +369,142 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
       },
     },
     paths: {
+      /**
+       * `/auth/*` — **internas** (`x-internal`), sin API key (`security: []`).
+       *
+       * Las llama sólo el servidor de `apps/web` (BFF): la API emite el token
+       * de sesión en el cuerpo, el BFF lo guarda en su cookie httpOnly y lo
+       * reenvía en `X-Fastgram-Session`. §9.3 no las enumera; están acá para
+       * que `apps/api/test/openapi-routes.test.ts` siga comparando el documento
+       * contra **todo** lo registrado, sin una lista de excepciones que crezca.
+       */
+      "/auth/signup": {
+        post: {
+          operationId: "authSignUp",
+          summary: "Alta con email y contraseña (F-001). Abre sesión.",
+          security: [],
+          "x-internal": true,
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(auth.signUpRequestSchema)),
+          },
+          responses: {
+            "201": ok(
+              "Cuenta creada y sesión abierta",
+              dataOf(toJsonSchema(auth.authSessionSchema)),
+            ),
+            "400": errorResponse("bad_request — email, contraseña o nombre inválidos"),
+            "409": errorResponse("conflict — ya existe una cuenta con ese email"),
+            "429": errorResponse("rate_limited"),
+            "503": errorResponse(
+              "service_unavailable — identidad no configurada o caída",
+            ),
+          },
+        },
+      },
+      "/auth/login": {
+        post: {
+          operationId: "authLogin",
+          summary: "Login con email y contraseña (F-002)",
+          security: [],
+          "x-internal": true,
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(auth.loginRequestSchema)),
+          },
+          responses: {
+            "200": ok("Sesión abierta", dataOf(toJsonSchema(auth.authSessionSchema))),
+            "400": errorResponse("bad_request"),
+            "401": errorResponse(
+              "unauthorized — mensaje neutro: no dice si el email existe",
+            ),
+            "429": errorResponse("rate_limited"),
+            "503": errorResponse("service_unavailable"),
+          },
+        },
+      },
+      "/auth/logout": {
+        post: {
+          operationId: "authLogout",
+          summary:
+            "Cierra la sesión del header X-Fastgram-Session (F-003). Idempotente: token inválido también es 204.",
+          security: [],
+          "x-internal": true,
+          parameters: [
+            {
+              name: auth.SESSION_HEADER,
+              in: "header",
+              required: false,
+              schema: { type: "string" },
+            },
+          ],
+          responses: {
+            "204": { description: "Sesión cerrada (o ya no existía)" },
+            "503": errorResponse("service_unavailable"),
+          },
+        },
+      },
+      "/auth/session": {
+        get: {
+          operationId: "authSession",
+          summary:
+            "Quién es la sesión de X-Fastgram-Session y sobre qué workspace opera (null = sin workspace)",
+          security: [],
+          "x-internal": true,
+          parameters: [
+            {
+              name: auth.SESSION_HEADER,
+              in: "header",
+              required: true,
+              schema: { type: "string", minLength: 1 },
+            },
+          ],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(auth.sessionInfoSchema))),
+            "401": errorResponse("unauthorized — copy literal de §15.2"),
+            "503": errorResponse("service_unavailable"),
+          },
+        },
+      },
+      "/auth/password-reset": {
+        post: {
+          operationId: "authRequestPasswordReset",
+          summary: "Pide el email de recuperación (§15.3). 202 exista o no la cuenta.",
+          security: [],
+          "x-internal": true,
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(auth.passwordResetRequestSchema)),
+          },
+          responses: {
+            "202": { description: "Aceptado. No revela si la cuenta existe." },
+            "400": errorResponse("bad_request"),
+            "429": errorResponse("rate_limited"),
+            "503": errorResponse("service_unavailable"),
+          },
+        },
+      },
+      "/auth/password-reset/complete": {
+        post: {
+          operationId: "authCompletePasswordReset",
+          summary:
+            "Consume el token del email y fija la contraseña nueva. Cierra las sesiones abiertas.",
+          security: [],
+          "x-internal": true,
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(auth.passwordResetCompleteRequestSchema)),
+          },
+          responses: {
+            "204": { description: "Contraseña cambiada" },
+            "400": errorResponse(
+              "bad_request — token inválido o vencido, o contraseña fuera de política",
+            ),
+            "429": errorResponse("rate_limited"),
+            "503": errorResponse("service_unavailable"),
+          },
+        },
+      },
       "/blitz": {
         post: {
           operationId: "runBlitz",
