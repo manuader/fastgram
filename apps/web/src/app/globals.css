@@ -1619,6 +1619,23 @@ body {
   gap: var(--fg-space-3);
 }
 
+/* El paso que crea el workspace: campo = label + input + error + pista. */
+.fgw-onb__field {
+  display: grid;
+  gap: var(--fg-space-2);
+}
+
+.fgw-onb__label {
+  font-size: var(--fg-text-sm);
+  font-weight: var(--fg-weight-medium);
+}
+
+.fgw-onb__field-error {
+  margin: 0;
+  color: var(--fg-color-danger-text);
+  font-size: var(--fg-text-sm);
+}
+
 /* Seis chips no caben en 375 px en una fila: se parten, no se desbordan. */
 .fgw-onb__chips {
   display: flex;

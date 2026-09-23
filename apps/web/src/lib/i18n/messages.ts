@@ -654,6 +654,25 @@ export const webEn = {
   "onboarding.step.profiling": "Profiling", // literal PRD:747
   "onboarding.step.processing": "Processing", // literal PRD:748
   "onboarding.step.ready": "Path hint", // literal PRD:749
+
+  /* ------------- Onboarding · crear el workspace · FR-010, §15.4 (P1-TENANT-001) */
+  // FR-010 no tiene un paso "crear workspace": en Fastlane nace al enviar la web.
+  // Acá hace falta antes del paso 1 (sin workspace, todo es 403), así que la
+  // cáscara es `nuevo` y los campos y las validaciones son literales.
+  "onboarding.workspace.title": "Create your workspace", // nuevo
+  "onboarding.workspace.subtitle":
+    "Tell us your company's name. Next, you'll show us where to learn about your brand.", // nuevo
+  "onboarding.workspace.nameLabel": "Company Name", // literal PRD:750
+  // `Company Website` es literal (PRD:748); el sufijo, el de `Company Logo (optional)` (PRD:750).
+  "onboarding.workspace.websiteLabel": "Company Website (optional)", // literal PRD:748 + PRD:750
+  "onboarding.workspace.websiteHint":
+    "No website? Leave it empty — you can add a social profile in the next step.", // nuevo · EXT-001
+  "onboarding.workspace.submit": "Continue", // nuevo
+  "onboarding.workspace.creating": "Creating Workspace...", // literal PRD:752
+  "onboarding.workspace.nameRequired": "Company name is required", // literal PRD:773
+  "onboarding.workspace.nameTooShort": "Company name must be at least 2 characters", // literal PRD:773
+  "onboarding.workspace.websiteInvalid": "Please enter a valid website URL", // literal PRD:771
+  "onboarding.workspace.websiteTaken": "This website is already registered.", // literal PRD:771
   /* ------------------------------------ Autenticación · PRD §15.1–15.3, F-001…F-003 */
   "auth.login.title": "Welcome back", // literal PRD §15.2
   "auth.login.submit": "Sign in", // nuevo

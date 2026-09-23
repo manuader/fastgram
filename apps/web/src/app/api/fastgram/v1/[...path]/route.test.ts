@@ -318,6 +318,78 @@ describe("proxy · GET sigue igual", () => {
   });
 });
 
+describe("proxy · POST /onboarding/workspace (P1-TENANT-001)", () => {
+  /**
+   * La única ruta de `/api/v1` que acepta una sesión **sin** workspace. No es
+   * `/auth/*`, así que la regla 3 no la toca; y como la API responde `403` si
+   * le llega un `Authorization`, importa que el del cliente no cruce.
+   */
+  it("se reenvía con la sesión de la cookie y sin el Authorization del cliente", async () => {
+    const created = {
+      data: {
+        id: "c1",
+        name: "Mi Marca",
+        websiteUrl: null,
+        status: "draft",
+        planId: "free",
+        subscriptionStatus: "trialing",
+        timezone: "UTC",
+        createdAt: "2026-09-23T12:00:00.000Z",
+      },
+    };
+    upstream.mockResolvedValueOnce(
+      new Response(JSON.stringify(created), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const body = JSON.stringify({ name: "Mi Marca", websiteUrl: null });
+    const res = await POST(
+      writeRequest("POST", { "idempotency-key": null }, body),
+      context(["onboarding", "workspace"]),
+    );
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual(created);
+
+    const [target] = upstream.mock.calls[0] as [string];
+    expect(target).toBe("http://api.internal:3001/api/v1/onboarding/workspace");
+    const init = sentInit();
+    expect(init.method).toBe("POST");
+    expect(new TextDecoder().decode(init.body as ArrayBuffer)).toBe(body);
+    const headers = new Headers(init.headers);
+    expect(headers.get("x-fastgram-session")).toBe(TOKEN);
+    expect(headers.get("authorization")).toBeNull();
+  });
+
+  it("los 409 suben con su details.reason intacto", async () => {
+    const conflict = {
+      error: {
+        code: "conflict",
+        message: "You already have a workspace.",
+        details: { reason: "workspace_already_exists" },
+      },
+    };
+    upstream.mockResolvedValueOnce(
+      new Response(JSON.stringify(conflict), {
+        status: 409,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const res = await POST(writeRequest("POST"), context(["onboarding", "workspace"]));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual(conflict);
+  });
+
+  it("sin el header anti-CSRF → 403 y no llega a la API", async () => {
+    const res = await POST(
+      writeRequest("POST", { "x-fastgram-csrf": null }),
+      context(["onboarding", "workspace"]),
+    );
+    expect(res.status).toBe(403);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
 describe("proxy · /auth/* no se reenvía nunca", () => {
   /**
    * Los endpoints de identidad de la API devuelven `sessionToken` en el
