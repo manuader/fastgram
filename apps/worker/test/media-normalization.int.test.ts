@@ -16,6 +16,7 @@
  * `packages/db/test/media-normalization.int.test.ts`.
  */
 import { FixedClock, MemoryStorage, canonicalObjectUrl } from "@fastgram/adapters";
+import { JOB_QUEUES } from "@fastgram/core";
 import {
   APP_ROLE,
   media,
@@ -357,5 +358,39 @@ describe("fallos", () => {
     await handler()(ctx({ companyId: alpha, mediaId }, 3, 3));
 
     expect((await fila(mediaId)).status).toBe("failed");
+  });
+});
+
+describe("el cableado de createHandlers", () => {
+  /**
+   * La razón de ser de `normalizationRenderer` es que la normalización NO use
+   * el renderer de `content-build`, que hoy es el de memoria y marcaría
+   * `failed` cada video real. Cambiar una línea en `handlers.ts` para pasarle
+   * `deps.renderer` dejaba verdes los tests de `handlers.test.ts` (sólo miran
+   * qué colas se montan): éste es el que lo ve.
+   */
+  it("media-normalization usa el renderer de normalización, nunca el de content-build", async () => {
+    const { createHandlers } = await import("../src/handlers.js");
+    const { mediaId } = await videoSubido(alpha);
+    const trampa = new FakeRenderer();
+    trampa.probeError = new Error("usó el renderer de content-build");
+
+    const { handlers } = createHandlers({
+      db: handle.db,
+      renderer: trampa,
+      normalizationRenderer: renderer,
+      storage,
+      clock,
+      appRole: APP_ROLE,
+      logger: silencioso,
+    });
+    const normalizar = handlers[JOB_QUEUES.mediaNormalization];
+    if (normalizar === undefined) throw new Error("media-normalization no se montó");
+
+    await normalizar(ctx({ companyId: alpha, mediaId }));
+
+    expect(trampa.probes).toHaveLength(0);
+    expect(renderer.probes).toHaveLength(1);
+    expect((await fila(mediaId)).status).toBe("ready");
   });
 });

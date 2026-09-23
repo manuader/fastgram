@@ -17,6 +17,10 @@
  *   `409` para siempre sin decir nada. Morir al arrancar nombrando
  *   `S3_ENDPOINT` cuesta un minuto; el otro camino cuesta una tarde y una
  *   llamada de un cliente.
+ * - **Las dos del servicio de render van juntas o no van**
+ *   (`RENDER_SERVICE_URL` y `RENDER_MEDIA_GRANT_SECRET`). Ninguna = la cola
+ *   `media-normalization` no se monta y el arranque lo dice. Una sola = el
+ *   proceso no levanta. Ver {@link renderServiceFromEnv}.
  */
 import {
   baseEnvSchema,
@@ -27,7 +31,21 @@ import {
 } from "@fastgram/config/env";
 import { APP_ROLE } from "@fastgram/db";
 
-export const workerEnvSchema = baseEnvSchema
+/**
+ * `X=` en un `.env` llega como `""`, no como ausente. Para estas dos variables
+ * vacío **es** «no configurado»: el `.env.example` las trae así, y tratar `""`
+ * como un valor inválido haría que copiarlo tal cual tire abajo el worker por
+ * una cola que nadie pidió.
+ */
+const unsetIfEmpty = (value: unknown): unknown => (value === "" ? undefined : value);
+
+/** Mismo mínimo que `services/render/src/config.ts`: un secreto que el servicio
+ * rechazaría al arrancar no tiene por qué pasar acá. */
+const GRANT_SECRET_MIN_LENGTH = 32;
+
+const RENDER_VARS = ["RENDER_SERVICE_URL", "RENDER_MEDIA_GRANT_SECRET"] as const;
+
+const workerEnvObject = baseEnvSchema
   .merge(postgresEnvSchema)
   .merge(storageEnvSchema)
   .extend({
@@ -67,9 +85,97 @@ export const workerEnvSchema = baseEnvSchema
       .enum(["true", "false"])
       .default("true")
       .transform((v) => v === "true"),
+
+    /**
+     * Base de `services/render` (p. ej. `http://render:3002`), del lado cliente.
+     *
+     * **Sin default, a propósito.** Hoy la usa una sola cola,
+     * `media-normalization`, con su propia instancia de `HttpMediaRenderer`
+     * (`content-build` sigue en memoria, ver `main.ts`). Un default a
+     * `localhost` montaría esa cola en cualquier despliegue que no la pidió, y
+     * cada video terminaría en reintentos contra un puerto cerrado.
+     */
+    RENDER_SERVICE_URL: z.preprocess(
+      unsetIfEmpty,
+      z
+        .string()
+        .url()
+        .refine((v) => /^https?:\/\//.test(v), "tiene que ser http:// o https://")
+        .optional(),
+    ),
+
+    /**
+     * El secreto HMAC del grant de media (`NFR-006`). **Es la MISMA variable que
+     * lee `services/render`** y tiene que tener el mismo valor: el worker firma,
+     * el servicio verifica. Con valores distintos cada pedido da
+     * `media_grant_invalid`.
+     */
+    RENDER_MEDIA_GRANT_SECRET: z.preprocess(
+      unsetIfEmpty,
+      z
+        .string()
+        .min(
+          GRANT_SECRET_MIN_LENGTH,
+          `mínimo ${GRANT_SECRET_MIN_LENGTH} caracteres, igual que en services/render`,
+        )
+        .optional(),
+    ),
   });
 
+/**
+ * Todas o ninguna.
+ *
+ * Una mitad configurada es el peor estado posible, porque **parece andar**: con
+ * URL y sin secreto el worker mandaría pedidos sin grant, el servicio (con
+ * `RENDER_REQUIRE_GRANT=true`, su default) rechazaría
+ * cada pedido y cada video terminaría `failed` después de tres intentos. Con
+ * secreto y sin URL, la cola no se montaría y nadie sabría que alguien quiso
+ * montarla. Las dos cosas se ven recién mirando la base; morir acá nombrando la
+ * variable que falta se ve en el primer segundo.
+ *
+ * Un servicio que sólo aplica prefijos globales (`RENDER_REQUIRE_GRANT=false`)
+ * es una topología que el adaptador admite, y **este worker no la acepta**: sin
+ * grant no hay aislamiento por workspace. Si hiciera falta en desarrollo, es una
+ * bandera explícita, no la ausencia de una variable.
+ */
+export const workerEnvSchema = workerEnvObject.superRefine((env, ctx) => {
+  const present = RENDER_VARS.filter((name) => env[name] !== undefined);
+  if (present.length === 0 || present.length === RENDER_VARS.length) return;
+  for (const name of RENDER_VARS) {
+    if (env[name] !== undefined) continue;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [name],
+      message:
+        `falta, y ${present.join(", ")} sí está: el servicio de render se ` +
+        `configura con ${RENDER_VARS.join(" + ")} juntas, o sin ninguna ` +
+        "(la cola media-normalization no se monta)",
+    });
+  }
+});
+
 export type WorkerEnv = z.infer<typeof workerEnvSchema>;
+
+/** Lo que hace falta para hablar con `services/render`. */
+export interface RenderServiceConfig {
+  readonly baseUrl: string;
+  readonly grantSecret: string;
+}
+
+/**
+ * `null` = no configurado. El «todas o ninguna» ya lo garantizó el esquema, así
+ * que acá una sola presente no puede llegar; si llegara (alguien armó un
+ * `WorkerEnv` a mano), se trata como no configurado en vez de a medias.
+ */
+export function renderServiceFromEnv(env: WorkerEnv): RenderServiceConfig | null {
+  if (
+    env.RENDER_SERVICE_URL === undefined ||
+    env.RENDER_MEDIA_GRANT_SECRET === undefined
+  ) {
+    return null;
+  }
+  return { baseUrl: env.RENDER_SERVICE_URL, grantSecret: env.RENDER_MEDIA_GRANT_SECRET };
+}
 
 export function loadWorkerEnv(
   source: Record<string, string | undefined> = process.env,
