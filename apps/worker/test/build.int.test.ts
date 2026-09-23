@@ -294,7 +294,10 @@ describe("el fallo devuelve el save — FR-050", () => {
 
     const row = await pieza(contentId);
     expect(row.last_edit).toMatchObject({ outcome: "failed" });
-    expect(String(row.last_edit?.["failureReason"])).toContain("bad_request");
+    // Sólo el código estable: `lastEdit` sale por la API, y el mensaje del
+    // proveedor no puede salir hacia afuera (CLAUDE.md, reglas que rompen el build).
+    expect(row.last_edit?.["failureReason"]).toBe("bad_request");
+    expect(JSON.stringify(row.last_edit)).not.toContain("el motor dijo que no");
   });
 
   it("reejecutar el mismo job NO devuelve dos veces", async () => {
@@ -513,7 +516,7 @@ describe("piezas que este handler todavía no sabe construir", () => {
 
     const row = await pieza(contentId);
     expect(row.status).toBe("FAILED");
-    expect(String(row.last_edit?.["failureReason"])).toContain("normalización");
+    expect(row.last_edit?.["failureReason"]).toBe("custom_not_renderable");
   });
 });
 

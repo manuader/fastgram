@@ -647,7 +647,10 @@ export function createContentRenderHandler(
     const resultado =
       mode === "rebuild"
         ? await revertRebuild(job, failure.code)
-        : await failBuild(job, failure.reason);
+        : // El código, no `reason`: `lastEdit` sale tal cual por la API
+          // (`toContent`), y `reason` lleva el mensaje del proveedor. El
+          // mensaje queda en el log de abajo.
+          await failBuild(job, failure.code);
     deps.logger.error(
       { ...base, attempt: ctx.attempt, reason: failure.reason, resultado },
       "build fallido definitivamente",
