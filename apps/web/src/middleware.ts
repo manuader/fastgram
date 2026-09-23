@@ -1,35 +1,43 @@
 /**
- * Guards de navegación · `P1-UI-004`.
+ * Guards de navegación · `P1-UI-004`, `P1-AUTH-002`.
  *
  * El middleware es el **único** sitio donde se redirige. Repetir la regla en
  * cada layout es lo que produce bucles: dos copias de la misma regla siempre
  * acaban discrepando en un caso borde.
  *
- * La decisión en sí vive en `lib/auth/route-policy.ts` y es pura.
+ * La decisión vive en `lib/auth/route-policy.ts` y es pura. Lo que hace este
+ * archivo es conseguirle el **estado** de la sesión: con cookie, se lo
+ * pregunta a la API (`GET /auth/session`). Es una llamada por navegación; los
+ * assets y los route handlers (`/api/*`) no pagan ninguna.
  */
 import { NextResponse, type NextRequest } from "next/server";
-import { resolveGuard } from "./lib/auth/route-policy";
+import { API_ROUTE_PREFIX, resolveNavigation } from "./lib/auth/route-policy";
 import {
-  DEV_SESSION,
-  devSessionAllowed,
-  parseSessionCookie,
+  clearedSessionCookieOptions,
   SESSION_COOKIE,
+  verifySessionToken,
 } from "./lib/auth/session";
-import type { Session } from "./lib/auth/session";
 
-function sessionFrom(request: NextRequest): Session | null {
-  const session = parseSessionCookie(request.cookies.get(SESSION_COOKIE)?.value);
-  if (session !== null) return session;
-  return devSessionAllowed() ? DEV_SESSION : null;
-}
+export async function middleware(request: NextRequest): Promise<NextResponse> {
+  const pathname = request.nextUrl.pathname;
+  // Antes de verificar: un `fetch` del cliente al proxy no paga una segunda
+  // ida a la API — el proxy reenvía el token y la API lo valida ahí.
+  if (pathname.startsWith(API_ROUTE_PREFIX)) return NextResponse.next();
 
-export function middleware(request: NextRequest): NextResponse {
-  const decision = resolveGuard({
-    pathname: request.nextUrl.pathname,
-    session: sessionFrom(request),
-  });
-  if (decision === null) return NextResponse.next();
-  return NextResponse.redirect(new URL(decision.redirectTo, request.url));
+  const state = await verifySessionToken(
+    request.cookies.get(SESSION_COOKIE)?.value,
+    process.env,
+  );
+  const decision = resolveNavigation(pathname, state);
+
+  const response =
+    decision.redirectTo === null
+      ? NextResponse.next()
+      : NextResponse.redirect(new URL(decision.redirectTo, request.url));
+  if (decision.clearSessionCookie) {
+    response.cookies.set(SESSION_COOKIE, "", clearedSessionCookieOptions(process.env));
+  }
+  return response;
 }
 
 export const config = {
@@ -39,4 +47,10 @@ export const config = {
    * protegerla.
    */
   matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.[\\w]+$).*)"],
+  /**
+   * Node, no Edge (estable desde `next@15.5`): la URL de la API se lee de
+   * `process.env` **en ejecución**, y en Edge una variable sin `NEXT_PUBLIC_`
+   * depende de cómo se despliegue. Es el mismo runtime que los route handlers.
+   */
+  runtime: "nodejs",
 };

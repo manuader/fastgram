@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import { RoutePlaceholder } from "@/components/placeholder/RoutePlaceholder";
+import { LogoutScreen } from "@/components/auth/LogoutScreen";
 
 export const metadata: Metadata = { title: "Logout · FastGram" };
 
+/** `/logout` · F-003. */
 export default function Page() {
-  return <RoutePlaceholder screen="Logout" spec="PRD §3.1 · F-003" task="P1-AUTH-002" />;
+  return <LogoutScreen />;
 }

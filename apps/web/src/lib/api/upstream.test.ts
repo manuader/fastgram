@@ -2,13 +2,12 @@
  * Lo que se prueba acá es lo que el route handler no puede probar sin levantar
  * Next: la lectura del entorno y la composición de la URL de salida.
  *
- * El caso que importa de verdad es el del `..`. El reenvío lleva la API key
- * puesta, así que salirse del prefijo `/api/v1` es salirse **con la credencial
- * del workspace**. Un test de "arma bien la URL" no lo habría encontrado.
+ * El caso que importa de verdad es el del `..`. El reenvío lleva el token de
+ * sesión del usuario, así que salirse del prefijo `/api/v1` es salirse **con
+ * su credencial**. Un test de "arma bien la URL" no lo habría encontrado.
  */
 import { describe, expect, it } from "vitest";
 import {
-  API_KEY_ENV,
   API_URL_ENV,
   DEFAULT_UPSTREAM_BASE,
   readUpstreamConfig,
@@ -16,35 +15,36 @@ import {
 } from "./upstream";
 
 describe("readUpstreamConfig", () => {
-  it("sin key no hay configuración, y dice cuál falta", () => {
-    expect(readUpstreamConfig({})).toEqual({ ok: false, missing: API_KEY_ENV });
+  it("fuera de producción, sin URL apunta a la API de desarrollo", () => {
+    expect(readUpstreamConfig({})).toEqual({
+      ok: true,
+      config: { base: DEFAULT_UPSTREAM_BASE },
+    });
   });
 
-  it("una key en blanco es una key que falta, no una key vacía", () => {
-    // Un `FASTGRAM_API_KEY=` en un `.env` produce `""`, y mandar
-    // `Authorization: Bearer ` es un 401 confuso en vez de un 503 claro.
-    expect(readUpstreamConfig({ [API_KEY_ENV]: "   " })).toEqual({
+  it("en producción la URL es obligatoria: no cae en silencio a localhost", () => {
+    expect(readUpstreamConfig({ NODE_ENV: "production" })).toEqual({
       ok: false,
-      missing: API_KEY_ENV,
+      missing: API_URL_ENV,
+    });
+    expect(readUpstreamConfig({ NODE_ENV: "production", [API_URL_ENV]: "  " })).toEqual({
+      ok: false,
+      missing: API_URL_ENV,
     });
   });
 
-  it("con key y sin URL, apunta a la API de desarrollo", () => {
-    expect(readUpstreamConfig({ [API_KEY_ENV]: "fsln_live_x" })).toEqual({
-      ok: true,
-      config: { base: DEFAULT_UPSTREAM_BASE, apiKey: "fsln_live_x" },
-    });
+  it("la URL del entorno gana, sin barra final", () => {
+    expect(
+      readUpstreamConfig({
+        NODE_ENV: "production",
+        [API_URL_ENV]: "https://api.example.test/api/v1/",
+      }),
+    ).toEqual({ ok: true, config: { base: "https://api.example.test/api/v1" } });
   });
 
-  it("la URL del entorno gana", () => {
-    const result = readUpstreamConfig({
-      [API_KEY_ENV]: "fsln_live_x",
-      [API_URL_ENV]: "https://api.example.test/api/v1",
-    });
-    expect(result).toMatchObject({
-      ok: true,
-      config: { base: "https://api.example.test/api/v1" },
-    });
+  it("ya no pide ni lee la API key del servidor", () => {
+    const result = readUpstreamConfig({ FASTGRAM_API_KEY: "fsln_live_x" });
+    expect(JSON.stringify(result)).not.toContain("fsln_live_x");
   });
 });
 
@@ -63,7 +63,7 @@ describe("resolveUpstreamUrl", () => {
     );
   });
 
-  it("rechaza `..`: con la key puesta, salir del prefijo es salir con la credencial", () => {
+  it("rechaza `..`: con el token puesto, salir del prefijo es salir con la credencial", () => {
     expect(resolveUpstreamUrl(base, ["content", "..", "..", "admin"], "")).toBeNull();
     expect(resolveUpstreamUrl(base, [".."], "")).toBeNull();
   });

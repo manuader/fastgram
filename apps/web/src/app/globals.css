@@ -2197,3 +2197,78 @@ body {
   margin: 0;
   font-size: var(--fg-text-base);
 }
+
+/* ------------------------------------------ identidad · PRD §15.1–15.3 */
+
+.fgw-auth {
+  display: grid;
+  gap: var(--fg-space-4);
+  width: 100%;
+  max-width: 400px;
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-xl);
+  background: var(--fg-color-surface);
+  padding: var(--fg-space-6);
+}
+
+.fgw-auth__title {
+  margin: 0;
+  font-size: var(--fg-text-xl);
+  font-weight: var(--fg-weight-semibold);
+}
+
+.fgw-auth__form,
+.fgw-auth__field {
+  display: grid;
+  gap: var(--fg-space-2);
+}
+
+.fgw-auth__form {
+  gap: var(--fg-space-3);
+}
+
+.fgw-auth__label {
+  font-size: var(--fg-text-sm);
+  font-weight: var(--fg-weight-medium);
+}
+
+.fgw-auth__hint,
+.fgw-auth__body {
+  margin: 0;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-auth__alert {
+  display: grid;
+  gap: var(--fg-space-1);
+  justify-items: start;
+  border-radius: var(--fg-radius-md);
+  background: var(--fg-color-danger-subtle);
+  padding: var(--fg-space-3);
+  color: var(--fg-color-danger-text);
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-auth__alert p {
+  margin: 0;
+}
+
+.fgw-auth__links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--fg-space-2);
+  margin: 0;
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-auth__linkbutton {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}

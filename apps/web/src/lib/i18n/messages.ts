@@ -654,6 +654,50 @@ export const webEn = {
   "onboarding.step.profiling": "Profiling", // literal PRD:747
   "onboarding.step.processing": "Processing", // literal PRD:748
   "onboarding.step.ready": "Path hint", // literal PRD:749
+  /* ------------------------------------ Autenticación · PRD §15.1–15.3, F-001…F-003 */
+  "auth.login.title": "Welcome back", // literal PRD §15.2
+  "auth.login.submit": "Sign in", // nuevo
+  "auth.login.submitting": "Signing in…", // nuevo
+  "auth.login.toSignup": "Create an account", // literal PRD §15.1
+  "auth.login.forgot": "Forgot your password?", // nuevo · §15.3 es INFERRED
+  "auth.signup.title": "Create your account", // nuevo · el PRD sólo da el enlace
+  "auth.signup.submit": "Sign up", // nuevo
+  "auth.signup.submitting": "Creating your account…", // nuevo
+  "auth.signup.toLogin": "Already have an account?", // literal PRD §15.1
+  "auth.field.email": "Email", // nuevo
+  "auth.field.password": "Password", // nuevo
+  "auth.field.newPassword": "New password", // nuevo
+  "auth.field.fullName": "Full name", // nuevo
+  // Supone el mínimo por defecto de Better Auth (8). La regla la decide la API.
+  "auth.field.passwordHint": "Use at least 8 characters.", // nuevo
+  "auth.session.unverified":
+    "We couldn't verify your session. Try again, or sign in again if this continues.", // literal PRD §15.2
+  // 401 del login: neutro a propósito — no dice cuál de los dos falló.
+  "auth.error.invalidCredentials": "That email and password don't match an account.", // nuevo
+  "auth.error.emailTaken": "An account with this email already exists.", // nuevo
+  "auth.error.emailTakenAction": "Sign in instead", // nuevo
+  "auth.error.rateLimitedFor": "Too many attempts. Try again in {seconds} seconds.", // nuevo
+  "auth.error.rateLimited": "Too many attempts. Wait a moment and try again.", // nuevo
+  "auth.error.missingFields": "Fill in every field.", // nuevo
+  "auth.logout.title": "Signing you out…", // nuevo
+  "auth.logout.done": "You're signed out.", // nuevo
+  "auth.logout.toLogin": "Sign in again", // nuevo
+  "auth.forgot.title": "Reset your password", // nuevo
+  "auth.forgot.body":
+    "Enter your email and we'll send you a link to choose a new password.", // nuevo
+  "auth.forgot.submit": "Send reset link", // nuevo
+  "auth.forgot.submitting": "Sending…", // nuevo
+  // 202 siempre: no confirma si la cuenta existe.
+  "auth.forgot.sent":
+    "If an account exists for that email, we've sent a link to reset your password.", // nuevo
+  "auth.forgot.toLogin": "Back to sign in", // nuevo
+  "auth.reset.title": "Choose a new password", // nuevo
+  "auth.reset.submit": "Update password", // nuevo
+  "auth.reset.submitting": "Updating…", // nuevo
+  "auth.reset.invalidLink":
+    "This reset link is invalid or has expired. Request a new one.", // nuevo
+  "auth.reset.requestNew": "Request a new link", // nuevo
+  "auth.reset.done": "Your password was updated. Sign in with your new password.", // nuevo
 } as const;
 
 export type WebMessageKey = keyof typeof webEn;

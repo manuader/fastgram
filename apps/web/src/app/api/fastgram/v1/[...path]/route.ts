@@ -1,64 +1,58 @@
 /**
- * El puente entre el navegador y `apps/api` · `P1-UI-012`.
+ * El puente entre el navegador y `apps/api` · `P1-UI-012`, `P1-AUTH-002`.
  *
- * Existe por una razón y sólo una: **la credencial**. El porqué completo —y por
- * qué esto es provisorio— está en la cabecera de `lib/api/upstream.ts`. Acá van
- * las reglas de reenvío; cada una tapa un agujero concreto:
+ * Existe por una razón: **la credencial no vive en el navegador**. El token de
+ * sesión está en una cookie `httpOnly` (`lib/auth/session.ts`); este handler
+ * la lee y la reenvía en `X-Fastgram-Session`. El porqué completo está en la
+ * cabecera de `lib/api/upstream.ts`. Acá van las reglas de reenvío; cada una
+ * tapa un agujero concreto:
  *
  * 1. **Escrituras (`POST`/`PUT`/`PATCH`/`DELETE`) sólo desde esta misma app.**
- *    Antes esta regla era "sólo `GET`", porque sin anti-CSRF cualquier página
- *    de internet podría haber disparado un `DELETE /content/:id` con la key del
- *    servidor. Ahora cada escritura pasa por `lib/api/csrf.ts` **antes** de
- *    leer la sesión o el cuerpo: `Origin` idéntico al origen propio, `Sec-Fetch-Site`
- *    `same-origin` si viene, y el header `x-fastgram-csrf` que fuerza preflight.
- *    Fallar cualquiera es `403 forbidden` con `details.reason`. Qué protege cada
- *    guarda, cómo se decide el origen propio detrás de un proxy y **qué queda
- *    abierto** (DNS rebinding sin `FASTGRAM_APP_ORIGIN`) está en ese módulo.
+ *    Cada escritura pasa por `lib/api/csrf.ts` **antes** de leer la sesión o
+ *    el cuerpo: `Origin` idéntico al origen propio, `Sec-Fetch-Site`
+ *    `same-origin` si viene, y el header `x-fastgram-csrf` que fuerza
+ *    preflight. Fallar cualquiera es `403 forbidden` con `details.reason`.
  *    `GET` no pasa por la guarda: no escribe, y el navegador no deja a una
  *    página ajena **leer** la respuesta cross-origin.
- * 2. **Exige la sesión de la shell**, en lectura y en escritura por igual. Es
- *    la misma costura que usan las guards (`lib/auth/session.ts`), **no** una
- *    autenticación de verdad: hoy la cookie no está firmada y fuera de
- *    producción hay una sesión de desarrollo por defecto. La autenticación real
- *    es P1-AUTH-002. La guarda CSRF de la regla 1 dice "esto salió de nuestra
- *    página", no "esto lo pidió quien dice ser".
- * 3. **Los headers que salen son una lista blanca.** Nada de reenviar lo que
- *    entra: un `Authorization` del cliente llegaría a `apps/api` como si fuera
- *    una key válida —dejándole elegir credencial a quien llama— y una `Cookie`
- *    nuestra no tiene ningún sentido ahí. En escrituras se suman sólo
- *    `Content-Type` (la API parsea por él) e `Idempotency-Key` (NFR-004; el
- *    nombre es el que lee `apps/api/src/routes/v1/shared.ts`).
- * 4. **El cuerpo se reenvía tal cual, en los dos sentidos, con su status.** El
+ * 2. **Una credencial, la del usuario.** Sin cookie de sesión → `401` acá, sin
+ *    llamar a la API. Con cookie → `X-Fastgram-Session: <token>` y **nada
+ *    más**: la API key del servidor (`FASTGRAM_API_KEY`) se retiró de la web.
+ *    El proxy **no** verifica el token antes de reenviarlo — la API lo valida
+ *    en la misma llamada, y un `401` suyo sube tal cual. Verificar acá sería
+ *    una segunda ida a la API por cada petición para saber lo mismo.
+ * 3. **`/auth/*` no se reenvía.** Los endpoints de identidad de la API
+ *    devuelven `sessionToken` en el cuerpo, y este proxy devuelve el cuerpo tal
+ *    cual (regla 5): un `POST /api/fastgram/v1/auth/login` le entregaría el
+ *    token al JavaScript de la página, que es justo lo que la cookie `httpOnly`
+ *    evita. Entrar y salir va por `/api/fastgram/auth/*`, que no lo devuelve.
+ * 4. **Los headers que salen son una lista blanca.** Nada de reenviar lo que
+ *    entra: un `Authorization` o un `X-Fastgram-Session` del cliente llegaría a
+ *    `apps/api` como credencial —dejándole elegir identidad a quien llama— y
+ *    una `Cookie` nuestra no tiene ningún sentido ahí. En escrituras se suman
+ *    sólo `Content-Type` e `Idempotency-Key` (NFR-004; el nombre es el que lee
+ *    `apps/api/src/routes/v1/shared.ts`). **El token no se loguea nunca.**
+ * 5. **El cuerpo se reenvía tal cual, en los dos sentidos, con su status.** El
  *    `402` de cuota tiene copy distinta del `500` (§19), y el cliente distingue
- *    por el `code` del sobre. Reempaquetar la respuesta acá sería perder justo
- *    eso. El proxy **no pone límite de tamaño**: el techo es el `bodyLimit` de
- *    `apps/api` (1 MiB), y los bytes de video no pasan por acá (van directo al
- *    storage con la URL firmada).
- * 5. **Nunca reintenta** (NFR-005). Un timeout en una escritura no dice si la
+ *    por el `code` del sobre. El proxy **no pone límite de tamaño**: el techo es
+ *    el `bodyLimit` de `apps/api` (1 MiB), y los bytes de video no pasan por
+ *    acá (van directo al storage con la URL firmada).
+ * 6. **Nunca reintenta** (NFR-005). Un timeout en una escritura no dice si la
  *    API la aplicó; reintentar acá la duplicaría en los endpoints sin
  *    `Idempotency-Key`. El `502` sube al cliente, que decide — y si reintenta,
  *    lo hace con la misma key.
  */
 import { type NextRequest } from "next/server";
-import { readSession } from "@/lib/auth/server-session";
+import { SESSION_COOKIE, SESSION_HEADER } from "@/lib/auth/session";
+import { rejectCrossSiteWrite, type WriteMethod } from "@/lib/api/csrf";
+import { errorEnvelope } from "@/lib/api/envelope";
 import {
-  APP_ORIGIN_ENV,
-  checkCsrf,
-  CSRF_HEADER,
-  expectedOrigin,
-  type WriteMethod,
-} from "@/lib/api/csrf";
-import {
-  API_KEY_ENV,
+  API_URL_ENV,
   readUpstreamConfig,
   resolveUpstreamUrl,
   UPSTREAM_TIMEOUT_MS,
 } from "@/lib/api/upstream";
 
-/**
- * Node, no Edge: `readSession` usa `next/headers` y el reenvío usa `fetch` con
- * `AbortSignal.timeout`. Y sobre todo, la key se lee de `process.env`.
- */
+/** Node, no Edge: el reenvío usa `fetch` con `AbortSignal.timeout` y lee `process.env`. */
 export const runtime = "nodejs";
 
 /**
@@ -74,22 +68,8 @@ const REQUEST_ID_HEADER = "x-request-id";
 /** NFR-004. El nombre exacto es el que lee `apps/api` (`routes/v1/shared.ts`). */
 const IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
 
-/** §9.3 — el mismo sobre de error que emite `apps/api`, para que el cliente no note la diferencia. */
-function errorEnvelope(
-  status: number,
-  code: string,
-  message: string,
-  details?: Readonly<Record<string, unknown>>,
-): Response {
-  const error = details === undefined ? { code, message } : { code, message, details };
-  return new Response(JSON.stringify({ error }), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-    },
-  });
-}
+/** Regla 3: el primer segmento que este proxy no reenvía nunca. */
+const AUTH_SEGMENT = "auth";
 
 interface RouteContext {
   /** Next 15: los params de una ruta dinámica son asíncronos. */
@@ -98,62 +78,32 @@ interface RouteContext {
 
 type ForwardMethod = "GET" | WriteMethod;
 
-/**
- * Regla 1. Devuelve la respuesta de rechazo, o `null` si la escritura pasa.
- *
- * Corre antes de la sesión a propósito: una petición cross-site no tiene por
- * qué enterarse de si el navegador de la víctima tenía sesión.
- */
-function rejectCrossSiteWrite(request: NextRequest): Response | null {
-  const expected = expectedOrigin(process.env, request.headers.get("host"));
-  if (!expected.ok) {
-    console.error(
-      expected.reason === "app_origin_required"
-        ? `[api-proxy] ${APP_ORIGIN_ENV} no está configurada: en producción las escrituras no se aceptan sin un origen público explícito.`
-        : `[api-proxy] ${APP_ORIGIN_ENV} no es una URL http(s) válida.`,
-    );
-    return errorEnvelope(
-      503,
-      "service_unavailable",
-      "The API is not configured on this server.",
-    );
-  }
-  const rejection = checkCsrf({
-    origin: request.headers.get("origin"),
-    secFetchSite: request.headers.get("sec-fetch-site"),
-    csrfHeader: request.headers.get(CSRF_HEADER),
-    expected: expected.origin,
-  });
-  if (rejection === null) return null;
-  return errorEnvelope(403, "forbidden", "Cross-site request rejected.", {
-    reason: rejection,
-  });
-}
-
 async function forward(
   method: ForwardMethod,
   request: NextRequest,
   context: RouteContext,
 ): Promise<Response> {
   if (method !== "GET") {
-    const rejected = rejectCrossSiteWrite(request);
+    const rejected = rejectCrossSiteWrite(request.headers, process.env, "[api-proxy]");
     if (rejected !== null) return rejected;
   }
 
-  const session = await readSession();
-  if (session === null) {
+  const { path } = await context.params;
+  if (path[0]?.toLowerCase() === AUTH_SEGMENT) {
+    return errorEnvelope(404, "not_found", "Not found.");
+  }
+
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  if (token === undefined || token === "") {
     return errorEnvelope(401, "unauthorized", "Sign in to continue.");
   }
 
-  const { path } = await context.params;
   const env = readUpstreamConfig(process.env);
   if (!env.ok) {
     // Un log, no un throw: el desarrollador tiene que leer qué falta, y el
     // usuario tiene que ver "el servicio no responde" y no una pantalla vacía
     // que se confunde con "no hay contenido".
-    console.error(
-      `[api-proxy] ${API_KEY_ENV} no está configurada: no hay credencial con la que llamar a la API.`,
-    );
+    console.error(`[api-proxy] ${API_URL_ENV} no está configurada.`);
     return errorEnvelope(
       503,
       "service_unavailable",
@@ -168,7 +118,7 @@ async function forward(
 
   const headers: Record<string, string> = {
     Accept: "application/json",
-    Authorization: `Bearer ${env.config.apiKey}`,
+    [SESSION_HEADER]: token,
   };
   // Si el navegador trae un id de traza, que la traza cruce el puente.
   const requestId = request.headers.get(REQUEST_ID_HEADER);
@@ -182,13 +132,13 @@ async function forward(
   };
 
   if (method !== "GET") {
-    // Regla 3: sólo lo que la API necesita para escribir.
+    // Regla 4: sólo lo que la API necesita para escribir.
     const contentType = request.headers.get("content-type");
     if (contentType !== null) headers["Content-Type"] = contentType;
     const idempotencyKey = request.headers.get(IDEMPOTENCY_KEY_HEADER);
     if (idempotencyKey !== null) headers[IDEMPOTENCY_KEY_HEADER] = idempotencyKey;
 
-    // Regla 4: los bytes tal cual. Se bufferiza en vez de reenviar el stream
+    // Regla 5: los bytes tal cual. Se bufferiza en vez de reenviar el stream
     // porque un cuerpo de `ReadableStream` exige `duplex: "half"` en `fetch`
     // de Node y lo que cruza por acá es JSON chico (el video va al storage).
     const body = await request.arrayBuffer();
@@ -197,13 +147,13 @@ async function forward(
 
   let upstream: Response;
   try {
-    // Regla 5: un intento, sin reintento.
+    // Regla 6: un intento, sin reintento.
     upstream = await fetch(target, init);
-  } catch (cause) {
+  } catch {
     // Que `apps/api` no esté levantada es el caso más común en desarrollo y no
-    // debe salir como un 500 opaco. El mensaje del error no se reenvía: puede
-    // llevar hostnames internos.
-    console.error("[api-proxy] la API no respondió", cause);
+    // debe salir como un 500 opaco. El error **no** se imprime: su `cause`
+    // puede arrastrar el request —con el token— o hostnames internos.
+    console.error(`[api-proxy] la API no respondió (${method} /${path.join("/")})`);
     return errorEnvelope(
       502,
       "service_unavailable",
@@ -215,14 +165,15 @@ async function forward(
   // lanza, así que se pasa `null`.
   const body =
     upstream.status === 204 || upstream.status === 304 ? null : await upstream.text();
-  const contentType = upstream.headers.get("content-type");
-  return new Response(body, {
-    status: upstream.status,
-    headers: {
-      "content-type": contentType ?? "application/json; charset=utf-8",
-      "cache-control": "no-store",
-    },
-  });
+  const responseHeaders: Record<string, string> = {
+    "content-type":
+      upstream.headers.get("content-type") ?? "application/json; charset=utf-8",
+    "cache-control": "no-store",
+  };
+  // ERR-R01: sin `Retry-After` el cliente no sabe cuándo volver a intentar.
+  const retryAfter = upstream.headers.get("retry-after");
+  if (retryAfter !== null) responseHeaders["retry-after"] = retryAfter;
+  return new Response(body, { status: upstream.status, headers: responseHeaders });
 }
 
 export async function GET(

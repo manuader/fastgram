@@ -1,57 +1,34 @@
 /**
- * El lado servidor del cliente de API: dónde está `apps/api` y con qué
- * credencial se le habla.
+ * El lado servidor del cliente de API: dónde está `apps/api`.
  *
- * ## Por qué existe este módulo — el problema de la credencial
+ * ## Por qué el navegador no habla directo con `apps/api`
  *
- * La API v1 hoy acepta **una sola** forma de autenticación: `Authorization:
- * Bearer fsln_live_<32>` (FR-180, PRD:1851-1872). Es una **API key de máquina,
- * workspace-scoped**. No hay login de usuario: el único adaptador de identidad
- * del repo es el de memoria, y `apps/api` levanta `deps.sessions` como opcional.
+ * La web es un **BFF**. El navegador habla con route handlers de esta misma
+ * app (`/api/fastgram/auth/*` para entrar y salir, `/api/fastgram/v1/*` para
+ * todo lo demás); ellos leen el token de sesión de una cookie `httpOnly` y lo
+ * reenvían a `apps/api` en `X-Fastgram-Session`. El token no existe para el
+ * JavaScript de la página, y la API no tiene que saber nada de cookies ni de
+ * CORS.
  *
- * Una API key no puede vivir en el navegador. Ni en el bundle, ni en una
- * cookie legible, ni en `NEXT_PUBLIC_*` — cualquiera de las tres la publica, y
- * una key filtrada es el workspace entero, porque no hay scopes por ruta.
+ * ## La API key del servidor se retiró de la web
  *
- * La salida honesta con lo que hay: **el navegador no habla con `apps/api`**.
- * Habla con un route handler de esta misma app (`/api/fastgram/v1/*`) que corre
- * en el servidor de Next, pone la credencial y reenvía la respuesta tal cual.
- * La key se queda en el proceso de Next y no cruza nunca al cliente.
- *
- * ## Por qué esto es PROVISORIO, y qué lo reemplaza
- *
- * Tres cosas que no están bien y no se pueden arreglar desde `apps/web`:
- *
- * 1. **Una key por despliegue es un workspace para todo el mundo.** Quien
- *    llegue a la app ve el contenido de *ese* workspace. Mientras la sesión sea
- *    la costura de desarrollo de `lib/auth/session.ts` da igual; el día que
- *    haya usuarios de verdad, no. Lo que corresponde es que la API acepte la
- *    sesión del usuario y que el handler reenvíe **esa** identidad — es trabajo
- *    de P1-AUTH, no de una pantalla.
- * 2. **Las escrituras se defienden con anti-CSRF, no con identidad.** El
- *    proxy reenvía `POST`/`PUT`/`PATCH`/`DELETE` sólo si salen de una página de
- *    esta misma app (`lib/api/csrf.ts`: `Origin`, `Sec-Fetch-Site` y un header
- *    custom que fuerza preflight). Eso cierra el "cualquier página de internet
- *    dispara un `DELETE` con la key del servidor"; **no** dice quién es el
- *    usuario — eso sigue siendo la costura de sesión, sin firma, hasta
- *    P1-AUTH-002.
- * 3. **La key no está en `.env.example`.** Esa tarea no puede tocar la raíz del
- *    repo. Queda reportada; mientras tanto el handler responde `503` con un
- *    código estable y un log que dice qué falta, en vez de fallar de una forma
- *    que se confunda con "no hay contenido".
+ * Hasta P1-AUTH-002 el proxy llamaba a la API con **una** `FASTGRAM_API_KEY`
+ * por despliegue: un workspace para todo el que llegara a la app. Con
+ * identidad real eso se acabó, y no queda como fallback: una key de workspace
+ * detrás de una sesión de usuario son **dos credenciales en el mismo
+ * request**, y la API tendría que adivinar cuál manda. La key (FR-180) vuelve
+ * a ser lo que el PRD dice que es — una credencial de máquina, para
+ * integraciones —, y la web no la lee.
  *
  * **Nunca un secreto acá.** Este módulo lee nombres de variables; los valores
  * viven en el entorno del proceso.
  */
 
-/** Variable de entorno con la API key. **Sin `NEXT_PUBLIC_`**, y a propósito. */
-export const API_KEY_ENV = "FASTGRAM_API_KEY";
-
-/** Variable de entorno con la base de `apps/api`, si no es la de desarrollo. */
+/** Variable de entorno con la base de `apps/api`. */
 export const API_URL_ENV = "FASTGRAM_API_URL";
 
 /**
- * Base por defecto de `apps/api`.
+ * Base por defecto de `apps/api` **fuera de producción**.
  *
  * `API_PORT=3001` es lo que declara `.env.example` para `apps/api`, y `/api/v1`
  * es el prefijo de versión que monta `apps/api/src/server/app.ts`.
@@ -74,36 +51,34 @@ export const DEFAULT_UPSTREAM_BASE = "http://localhost:3001/api/v1";
 export const UPSTREAM_TIMEOUT_MS = 10_000;
 
 export interface UpstreamConfig {
+  /** Sin barra final. */
   readonly base: string;
-  readonly apiKey: string;
 }
 
 export type UpstreamConfigResult =
   | { readonly ok: true; readonly config: UpstreamConfig }
-  | { readonly ok: false; readonly missing: typeof API_KEY_ENV };
+  | { readonly ok: false; readonly missing: typeof API_URL_ENV };
 
 /**
  * Lee la configuración del entorno.
  *
- * Recibe el entorno en vez de tocar `process.env` directamente para poder
- * probarlo sin ensuciar el del proceso — y porque un módulo que lee globals
- * escondidos es justo lo que después no se puede testear.
+ * **En producción `FASTGRAM_API_URL` es obligatoria.** Antes la obligatoria
+ * era la key, y su ausencia daba un `503` claro; sin key, lo único que queda
+ * por configurar es la URL, y caer en silencio a `localhost:3001` en
+ * producción sería un "la API no respondió" que no dice qué falta.
+ *
+ * Recibe el entorno en vez de tocar `process.env` para poder probarlo sin
+ * ensuciar el del proceso.
  */
 export function readUpstreamConfig(
   env: Readonly<Record<string, string | undefined>>,
 ): UpstreamConfigResult {
-  const apiKey = env[API_KEY_ENV];
-  if (apiKey === undefined || apiKey.trim() === "") {
-    return { ok: false, missing: API_KEY_ENV };
+  const raw = env[API_URL_ENV]?.trim() ?? "";
+  if (raw === "") {
+    if (env["NODE_ENV"] === "production") return { ok: false, missing: API_URL_ENV };
+    return { ok: true, config: { base: DEFAULT_UPSTREAM_BASE } };
   }
-  const base = env[API_URL_ENV];
-  return {
-    ok: true,
-    config: {
-      base: base === undefined || base.trim() === "" ? DEFAULT_UPSTREAM_BASE : base,
-      apiKey,
-    },
-  };
+  return { ok: true, config: { base: raw.replace(/\/+$/, "") } };
 }
 
 /**
@@ -114,8 +89,8 @@ export function readUpstreamConfig(
  * sea un segmento: vacío, con `/`, o `..`. **Esto no es paranoia de más**: el
  * catch-all de Next entrega los segmentos ya decodificados, así que un
  * `%2E%2E` llega como `..`, y `new URL("../../admin", base)` sale del prefijo
- * `/api/v1` sin que nada más lo note. El reenvío lleva credencial: escaparse
- * del prefijo es escaparse con la key puesta.
+ * `/api/v1` sin que nada más lo note. El reenvío lleva la sesión del usuario:
+ * escaparse del prefijo es escaparse con su credencial puesta.
  */
 export function resolveUpstreamUrl(
   base: string,

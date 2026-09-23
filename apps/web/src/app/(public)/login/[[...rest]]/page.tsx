@@ -1,10 +1,26 @@
 import type { Metadata } from "next";
-import { RoutePlaceholder } from "@/components/placeholder/RoutePlaceholder";
+import { LoginForm } from "@/components/auth/LoginForm";
+import {
+  REASON_PARAM,
+  RETURN_TO_PARAM,
+  safeReturnTo,
+  SESSION_UNVERIFIED_REASON,
+} from "@/lib/auth/route-policy";
+import { firstParam, type SearchParams } from "@/lib/auth/search-params";
 
 export const metadata: Metadata = { title: "Login · FastGram" };
 
-export default function Page() {
+/** `/login` y `/login/*` · F-002, PRD §15.2. */
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const params = await searchParams;
   return (
-    <RoutePlaceholder screen="Login" spec="PRD §3.1 · F-001…F-003" task="P1-AUTH-002" />
+    <LoginForm
+      returnTo={safeReturnTo(firstParam(params[RETURN_TO_PARAM]))}
+      sessionUnverified={firstParam(params[REASON_PARAM]) === SESSION_UNVERIFIED_REASON}
+    />
   );
 }

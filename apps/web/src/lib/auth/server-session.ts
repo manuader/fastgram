@@ -3,24 +3,30 @@
 // aquí es `next/headers`, que ya falla en compilación si alguien importa este
 // módulo desde un componente cliente.
 import { cookies } from "next/headers";
-import {
-  DEV_SESSION,
-  devSessionAllowed,
-  parseSessionCookie,
-  SESSION_COOKIE,
-} from "./session";
-import type { Session } from "./session";
+import { cache } from "react";
+import { SESSION_COOKIE, verifySessionToken } from "./session";
+import type { Session, SessionState } from "./session";
 
 /**
- * Lee la sesión en un Server Component.
+ * El estado de la sesión en un Server Component.
  *
- * Usa `cookies()`, que en Next 15 es asíncrono y marca la ruta como dinámica.
- * Es lo correcto: una pantalla de la app **no** se puede prerenderizar en
- * estático sin saber quién la mira.
+ * **Cacheado por request, no por proceso.** `cache()` de React memoiza durante
+ * *un* render de servidor: el layout y la página que piden la sesión en la
+ * misma navegación hacen **una** llamada a `GET /auth/session`, y la siguiente
+ * navegación vuelve a preguntar. Un cache de módulo (un `Map` global) serviría
+ * la sesión de un usuario a otro y seguiría aceptando un token revocado.
+ *
+ * Fuera de un render (route handlers, tests) `cache()` no memoiza: cada
+ * llamada verifica. Es lo seguro, y los route handlers no la usan (el proxy
+ * reenvía el token y deja que la API lo valide en la misma llamada).
  */
-export async function readSession(): Promise<Session | null> {
+export const readSessionState = cache(async (): Promise<SessionState> => {
   const store = await cookies();
-  const session = parseSessionCookie(store.get(SESSION_COOKIE)?.value);
-  if (session !== null) return session;
-  return devSessionAllowed() ? DEV_SESSION : null;
+  return verifySessionToken(store.get(SESSION_COOKIE)?.value, process.env);
+});
+
+/** Atajo para quien sólo necesita "hay sesión válida o no". */
+export async function readSession(): Promise<Session | null> {
+  const state = await readSessionState();
+  return state.kind === "authenticated" ? state.session : null;
 }

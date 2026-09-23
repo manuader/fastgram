@@ -1,10 +1,16 @@
 import type { Metadata } from "next";
-import { RoutePlaceholder } from "@/components/placeholder/RoutePlaceholder";
+import { SignupForm } from "@/components/auth/SignupForm";
+import { RETURN_TO_PARAM, safeReturnTo } from "@/lib/auth/route-policy";
+import { firstParam, type SearchParams } from "@/lib/auth/search-params";
 
 export const metadata: Metadata = { title: "Sign up · FastGram" };
 
-export default function Page() {
-  return (
-    <RoutePlaceholder screen="Sign up" spec="PRD §3.1 · F-001…F-003" task="P1-AUTH-002" />
-  );
+/** `/signup` y `/signup/*` · F-001, PRD §15.1. */
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const params = await searchParams;
+  return <SignupForm returnTo={safeReturnTo(firstParam(params[RETURN_TO_PARAM]))} />;
 }

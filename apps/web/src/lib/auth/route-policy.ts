@@ -10,7 +10,7 @@
  *   3. Las reglas se leen juntas, que es como hay que revisarlas.
  */
 import { ROUTES } from "../nav/routes";
-import type { Session } from "./session";
+import type { Session, SessionState } from "./session";
 
 /**
  * Rutas accesibles **sin** sesión. Todo lo que no esté aquí exige una.
@@ -21,6 +21,8 @@ import type { Session } from "./session";
 const PUBLIC_PREFIXES: readonly string[] = [
   ROUTES.login,
   ROUTES.signup,
+  ROUTES.forgotPassword,
+  ROUTES.resetPassword,
   ROUTES.ssoCallback,
   ROUTES.status,
   "/auth/", // callbacks OAuth por plataforma (PRD:287-291)
@@ -35,6 +37,8 @@ const PUBLIC_PREFIXES: readonly string[] = [
 const ONBOARDING_EXEMPT_PREFIXES: readonly string[] = [
   ROUTES.onboarding,
   ROUTES.logout,
+  ROUTES.forgotPassword,
+  ROUTES.resetPassword,
   ROUTES.upgrade,
   ROUTES.status,
   "/auth/",
@@ -109,4 +113,96 @@ export function resolveGuard({ pathname, session }: GuardInput): GuardDecision {
   }
 
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// La sesión verificada contra la API · P1-AUTH-002
+// ---------------------------------------------------------------------------
+
+/**
+ * `/login?reason=session_unverified` pinta el copy literal de §15.2. Es la
+ * única forma de que la pantalla sepa **por qué** llegó el usuario: el
+ * middleware no puede renderizar nada, sólo redirigir.
+ */
+export const REASON_PARAM = "reason";
+export const SESSION_UNVERIFIED_REASON = "session_unverified";
+
+export interface NavigationDecision {
+  /** `null` = puede quedarse. */
+  readonly redirectTo: string | null;
+  /** La API rechazó el token: la cookie es basura y se borra en la misma respuesta. */
+  readonly clearSessionCookie: boolean;
+}
+
+/**
+ * La decisión del middleware, sobre el **estado** de la sesión y no sólo
+ * sobre "hay o no hay".
+ *
+ * · `rejected` (401 de la API) se comporta como sin sesión **y** borra la
+ *   cookie: si no, cada navegación volvería a preguntar por un token muerto.
+ * · `unverifiable` (la API no contestó) **no** borra nada y **no** manda al
+ *   login como si no hubiera sesión: lleva al login con el motivo, que pinta
+ *   §15.2 (`Try again, or sign in again…`). Las rutas públicas y `/logout`
+ *   siguen accesibles — salir no puede depender de que la API esté arriba.
+ */
+export function resolveNavigation(
+  pathname: string,
+  state: SessionState,
+): NavigationDecision {
+  if (pathname.startsWith(API_ROUTE_PREFIX)) {
+    return { redirectTo: null, clearSessionCookie: false };
+  }
+  switch (state.kind) {
+    case "authenticated":
+      return {
+        redirectTo:
+          resolveGuard({ pathname, session: state.session })?.redirectTo ?? null,
+        clearSessionCookie: false,
+      };
+    case "anonymous":
+      return {
+        redirectTo: resolveGuard({ pathname, session: null })?.redirectTo ?? null,
+        clearSessionCookie: false,
+      };
+    case "rejected":
+      return {
+        redirectTo: resolveGuard({ pathname, session: null })?.redirectTo ?? null,
+        clearSessionCookie: true,
+      };
+    case "unverifiable": {
+      if (isPublicRoute(pathname) || matches(pathname, [ROUTES.logout])) {
+        return { redirectTo: null, clearSessionCookie: false };
+      }
+      const params = new URLSearchParams({ [REASON_PARAM]: SESSION_UNVERIFIED_REASON });
+      if (pathname !== ROUTES.root) params.set(RETURN_TO_PARAM, pathname);
+      return {
+        redirectTo: `${ROUTES.login}?${params.toString()}`,
+        clearSessionCookie: false,
+      };
+    }
+  }
+}
+
+/**
+ * El destino tras el login, saneado. Sólo rutas **relativas de esta app**:
+ * `redirect_url=https://evil.test` o `//evil.test` (que el navegador lee como
+ * otro host) convertirían el login en un redirector abierto — el usuario pone
+ * su contraseña en nuestra página y termina en la de otro.
+ */
+export function safeReturnTo(raw: string | null | undefined): string | null {
+  if (raw === null || raw === undefined) return null;
+  if (!raw.startsWith("/")) return null;
+  if (raw.startsWith("//")) return null;
+  // Una barra invertida o un control (tab, salto) hacen que el parser de URL
+  // del navegador lea otra cosa: `/\evil.test` y `/\t/evil.test` son hosts.
+  for (const char of raw) {
+    if (char === "\\" || char.charCodeAt(0) < 0x20 || char.charCodeAt(0) === 0x7f) {
+      return null;
+    }
+  }
+  // Volver al login o al signup tras entrar es un bucle con un paso de más.
+  if (matches(raw.split("?")[0] ?? "", [ROUTES.login, ROUTES.signup, ROUTES.logout])) {
+    return null;
+  }
+  return raw;
 }

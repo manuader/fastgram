@@ -3,12 +3,14 @@
  *
  * ## Qué problema tapa
  *
- * El proxy pone **la credencial del servidor** en cada petición que reenvía
- * (`lib/api/upstream.ts`). Con `POST`/`PATCH`/`DELETE` abiertos y sin esto,
- * cualquier página de internet que un usuario con sesión visite podría hacer
- * un `<form method=post action=".../api/fastgram/v1/content/…">` —o un `fetch`
- * con `mode: "no-cors"`— y la escritura saldría hacia `apps/api` con la key
- * puesta. El navegador manda la cookie de la shell sola; eso es CSRF.
+ * El proxy reenvía **el token de sesión del usuario** (que el navegador manda
+ * solo, en la cookie) en cada petición. Con `POST`/`PATCH`/`DELETE` abiertos y
+ * sin esto, cualquier página de internet que un usuario con sesión visite
+ * podría hacer un `<form method=post action=".../api/fastgram/v1/content/…">`
+ * —o un `fetch` con `mode: "no-cors"`— y la escritura saldría hacia
+ * `apps/api` como si la hubiera pedido él. `SameSite=Lax` frena la mayoría de
+ * esos casos, pero no un subdominio hermano (mismo *site*); eso es CSRF, y
+ * esta es la defensa.
  *
  * ## Las tres guardas, y qué cubre cada una
  *
@@ -69,10 +71,10 @@
  *   variable puesta, no. Sólo afecta al modo sin configurar (desarrollo), y ahí
  *   el `GET` ya estaba igual de expuesto.
  * - **Esto no es autenticación.** Sólo garantiza que la petición salió de una
- *   página de esta app. Quién es el usuario lo sigue diciendo la costura de
- *   `lib/auth/session.ts`, que hoy acepta una cookie **sin firma** — cualquiera
- *   que alcance el puerto se fabrica la suya. Eso es P1-AUTH-002.
+ *   página de esta app. Quién es el usuario lo dice el token de sesión, que
+ *   valida `apps/api` (`lib/auth/session.ts`).
  */
+import { errorEnvelope } from "./envelope";
 
 /** Header custom que exige el proxy en escrituras. Lo pone `lib/api/client.ts`. */
 export const CSRF_HEADER = "x-fastgram-csrf";
@@ -154,4 +156,48 @@ export function checkCsrf(input: CsrfInput): CsrfRejection | null {
   }
   if (input.csrfHeader !== CSRF_HEADER_VALUE) return "missing_csrf_header";
   return null;
+}
+
+/**
+ * La guarda completa para un route handler: origen propio + las tres guardas.
+ * Devuelve la respuesta de rechazo (`403`, o `503` si en producción falta
+ * `FASTGRAM_APP_ORIGIN`), o `null` si la escritura pasa.
+ *
+ * La usan el proxy (`/api/fastgram/v1/*`) y los handlers de auth
+ * (`/api/fastgram/auth/*`). En los de auth protege algo distinto y igual de
+ * real: el **login CSRF** — una página ajena que hace `POST` al login con las
+ * credenciales **del atacante** deja a la víctima dentro de la cuenta del
+ * atacante, y lo que suba ahí (una marca, un video) lo ve el atacante.
+ *
+ * Corre antes de leer sesión o cuerpo: una petición cross-site no tiene por
+ * qué enterarse de nada.
+ */
+export function rejectCrossSiteWrite(
+  headers: Headers,
+  env: Readonly<Record<string, string | undefined>>,
+  logPrefix: string,
+): Response | null {
+  const expected = expectedOrigin(env, headers.get("host"));
+  if (!expected.ok) {
+    console.error(
+      expected.reason === "app_origin_required"
+        ? `${logPrefix} ${APP_ORIGIN_ENV} no está configurada: en producción las escrituras no se aceptan sin un origen público explícito.`
+        : `${logPrefix} ${APP_ORIGIN_ENV} no es una URL http(s) válida.`,
+    );
+    return errorEnvelope(
+      503,
+      "service_unavailable",
+      "The API is not configured on this server.",
+    );
+  }
+  const rejection = checkCsrf({
+    origin: headers.get("origin"),
+    secFetchSite: headers.get("sec-fetch-site"),
+    csrfHeader: headers.get(CSRF_HEADER),
+    expected: expected.origin,
+  });
+  if (rejection === null) return null;
+  return errorEnvelope(403, "forbidden", "Cross-site request rejected.", {
+    reason: rejection,
+  });
 }

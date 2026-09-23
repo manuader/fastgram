@@ -12,6 +12,13 @@ export const ROUTES = {
   login: "/login",
   signup: "/signup",
   logout: "/logout",
+  /**
+   * §15.3 dice "delegado al proveedor de identidad" (INFERRED). El proveedor
+   * ahora es Better Auth dentro de `apps/api`, que no trae UI: estas dos rutas
+   * son lo mínimo para que el flujo exista. No están en el sitemap §3.1.
+   */
+  forgotPassword: "/forgot-password",
+  resetPassword: "/reset-password",
   ssoCallback: "/auth/sso-callback",
   onboarding: "/onboarding",
 

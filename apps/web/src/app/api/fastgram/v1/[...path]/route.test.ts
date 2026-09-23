@@ -1,8 +1,8 @@
 // @vitest-environment node
 /**
- * El proxy es la única puerta con la key del servidor puesta. Estos tests
- * fijan lo que el handler hace con las **escrituras**: qué rechaza antes de
- * tocar nada, y qué reenvía cuando pasa.
+ * El proxy es la única puerta por la que el token de sesión del usuario llega
+ * a la API. Estos tests fijan qué credencial sale (la del usuario, y sólo
+ * ésa), qué rechaza antes de tocar nada, y qué reenvía cuando pasa.
  *
  * Entorno `node` a propósito (el default de `src/app/**` es jsdom): el handler
  * corre en el servidor de Next, y bajo jsdom `Request`/`Response` no son los
@@ -12,32 +12,20 @@
  */
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Session } from "@/lib/auth/session";
-
-const readSession = vi.fn<() => Promise<Session | null>>();
-vi.mock("@/lib/auth/server-session", () => ({
-  readSession: () => readSession(),
-}));
 
 const { GET, POST, PATCH, PUT, DELETE } = await import("./route");
 
-const SESSION: Session = {
-  userId: "u1",
-  companyId: "c1",
-  onboardingComplete: true,
-  isStaff: false,
-};
-
 const HOST = "localhost:3000";
 const SELF = `http://${HOST}`;
+/** Una key de servidor puesta en el entorno, para probar que **no** sale. */
 const API_KEY = "fsln_live_test_key_not_a_secret";
+const TOKEN = "session-token-of-the-user";
 
 type Handler = typeof GET;
 
 let upstream: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
-  readSession.mockResolvedValue(SESSION);
   vi.stubEnv("FASTGRAM_API_KEY", API_KEY);
   vi.stubEnv("FASTGRAM_API_URL", "http://api.internal:3001/api/v1");
   vi.stubEnv("FASTGRAM_APP_ORIGIN", "");
@@ -74,8 +62,9 @@ function writeRequest(
     "x-fastgram-csrf": "1",
     "content-type": "application/json; charset=utf-8",
     "idempotency-key": "idem-123",
-    cookie: "fg_session=abc",
+    cookie: `fg_session=${TOKEN}; other=1`,
     authorization: "Bearer attacker_chosen_key",
+    "x-fastgram-session": "attacker-chosen-session",
     ...overrides,
   };
   const headers = new Headers();
@@ -192,7 +181,7 @@ describe("proxy · escrituras rechazadas por CSRF", () => {
 });
 
 describe("proxy · escritura same-origin válida", () => {
-  it("reenvía método, cuerpo, Content-Type e Idempotency-Key; no Cookie ni el Authorization del cliente", async () => {
+  it("reenvía método, cuerpo, Content-Type, Idempotency-Key y la sesión de la cookie; nada más", async () => {
     const res = await PATCH(writeRequest("PATCH"), context(["blitz", "preferences"]));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ data: { ok: true } });
@@ -208,7 +197,10 @@ describe("proxy · escritura same-origin válida", () => {
     const headers = new Headers(init.headers);
     expect(headers.get("content-type")).toBe("application/json; charset=utf-8");
     expect(headers.get("idempotency-key")).toBe("idem-123");
-    expect(headers.get("authorization")).toBe(`Bearer ${API_KEY}`);
+    // Una credencial y una sola: la del usuario, sacada de la cookie — no la
+    // key del servidor, no el `Authorization` ni el header que mandó el cliente.
+    expect(headers.get("authorization")).toBeNull();
+    expect(headers.get("x-fastgram-session")).toBe(TOKEN);
     expect(headers.get("cookie")).toBeNull();
     expect(headers.get("x-fastgram-csrf")).toBeNull();
     expect(headers.get("origin")).toBeNull();
@@ -246,8 +238,7 @@ describe("proxy · escritura same-origin válida", () => {
   });
 
   it("sin sesión → 401, aun con las guardas CSRF en orden", async () => {
-    readSession.mockResolvedValue(null);
-    const res = await POST(writeRequest("POST"), context(["content"]));
+    const res = await POST(writeRequest("POST", { cookie: null }), context(["content"]));
     expect(res.status).toBe(401);
     expect(await errorOf(res)).toMatchObject({ code: "unauthorized" });
     expect(upstream).not.toHaveBeenCalled();
@@ -265,7 +256,7 @@ describe("proxy · GET sigue igual", () => {
 
   it("no exige Origin ni header custom, y reenvía sin cuerpo ni Content-Type", async () => {
     const res = await get(
-      getRequest({ cookie: "fg_session=abc", authorization: "Bearer x" }),
+      getRequest({ cookie: `fg_session=${TOKEN}`, authorization: "Bearer x" }),
       context(["content"]),
     );
     expect(res.status).toBe(200);
@@ -275,15 +266,83 @@ describe("proxy · GET sigue igual", () => {
     expect(init.method).toBe("GET");
     expect(init.body).toBeUndefined();
     const headers = new Headers(init.headers);
-    expect(headers.get("authorization")).toBe(`Bearer ${API_KEY}`);
+    expect(headers.get("authorization")).toBeNull();
+    expect(headers.get("x-fastgram-session")).toBe(TOKEN);
     expect(headers.get("cookie")).toBeNull();
     expect(headers.get("content-type")).toBeNull();
   });
 
-  it("sin sesión → 401", async () => {
-    readSession.mockResolvedValue(null);
-    const res = await get(getRequest(), context(["content"]));
+  it("sin sesión → 401, y la key del servidor no la reemplaza", async () => {
+    const res = await get(
+      getRequest({ authorization: "Bearer x" }),
+      context(["content"]),
+    );
     expect(res.status).toBe(401);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it("una cookie vacía no es una sesión", async () => {
+    const res = await get(getRequest({ cookie: "fg_session=" }), context(["content"]));
+    expect(res.status).toBe(401);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it("un 401 de la API (token vencido) sube tal cual", async () => {
+    upstream.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: { code: "unauthorized", message: "no" } }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const res = await get(
+      getRequest({ cookie: `fg_session=${TOKEN}` }),
+      context(["content"]),
+    );
+    expect(res.status).toBe(401);
+    expect(await errorOf(res)).toMatchObject({ code: "unauthorized" });
+  });
+
+  it("Retry-After de un 429 cruza el puente", async () => {
+    upstream.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: { code: "rate_limited", message: "slow" } }), {
+        status: 429,
+        headers: { "content-type": "application/json", "retry-after": "12" },
+      }),
+    );
+    const res = await get(
+      getRequest({ cookie: `fg_session=${TOKEN}` }),
+      context(["content"]),
+    );
+    expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).toBe("12");
+  });
+});
+
+describe("proxy · /auth/* no se reenvía nunca", () => {
+  /**
+   * Los endpoints de identidad de la API devuelven `sessionToken` en el
+   * cuerpo, y el proxy devuelve el cuerpo tal cual: reenviarlos le daría el
+   * token al JavaScript de la página.
+   */
+  it("POST /auth/login por el proxy → 404, sin llegar a la API", async () => {
+    const res = await POST(
+      writeRequest("POST", {}, JSON.stringify({ email: "a@b.test", password: "x" })),
+      context(["auth", "login"]),
+    );
+    expect(res.status).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it("GET /auth/session tampoco, ni con mayúsculas", async () => {
+    for (const first of ["auth", "AUTH", "Auth"]) {
+      const res = await GET(
+        new NextRequest(`${SELF}/api/fastgram/v1/${first}/session`, {
+          headers: { host: HOST, cookie: `fg_session=${TOKEN}` },
+        }),
+        context([first, "session"]),
+      );
+      expect(res.status).toBe(404);
+    }
     expect(upstream).not.toHaveBeenCalled();
   });
 });
