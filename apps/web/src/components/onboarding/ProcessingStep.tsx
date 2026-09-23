@@ -16,16 +16,18 @@ import { SourceAnalysisList } from "./SourceAnalysisList";
  * El PRD pide `Analyzing company profile...` → `Processing with AI...` →
  * `Creating Workspace...` → `Setting up your workspace...` → `Preparing
  * workspace` → `Workspace ready!` → `Completing Setup...` → `Continue to
- * Dashboard`. De esos ocho, lo único que la API puede afirmar es el primero:
- * el estado de cada fuente. Crear el workspace no tiene ejecutor
- * (`companyRepository` es de sólo lectura) y `POST /onboarding/complete`
- * devuelve `step: "processing"`, no `ready`, justamente para no mentir (ver su
- * nota en `apps/api/src/routes/v1/onboarding.ts`).
+ * Dashboard`. De esos ocho, lo único que **este paso** puede afirmar es el
+ * primero: el estado de cada fuente. El workspace ya existe (lo crea
+ * `POST /onboarding/workspace` antes del paso 1) y el paso a `ready` ocurre al
+ * cerrar el wizard, no acá: `POST /onboarding/complete` pasa el workspace de
+ * `draft` a `active` y devuelve `step: "ready"` (ver su nota en
+ * `apps/api/src/routes/v1/onboarding.ts`). Sembrar ángulos sigue sin ejecutor.
  *
  * Así que esta pantalla muestra `Analyzing company profile...` mientras alguna
  * fuente siga en curso y, cuando terminan, **que terminó el análisis** — no
- * `Workspace ready!`. Encadenar los otros seis textos con temporizadores sería
- * una animación de un trabajo que nadie hace.
+ * `Workspace ready!`, que todavía no es cierto en este paso. Encadenar los
+ * otros textos con temporizadores sería una animación de un trabajo que nadie
+ * hace en este momento.
  *
  * El cierre del wizard (`POST /onboarding/complete` y `Continue to
  * Dashboard`) es del wizard (`P1-ONB-001`), no de este paso.

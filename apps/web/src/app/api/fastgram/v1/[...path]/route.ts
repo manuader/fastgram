@@ -32,8 +32,8 @@
  *    sólo `Content-Type` e `Idempotency-Key` (NFR-004; el nombre es el que lee
  *    `apps/api/src/routes/v1/shared.ts`). **El token no se loguea nunca.**
  * 5. **El cuerpo se reenvía tal cual, en los dos sentidos, con su status.** El
- *    `402` de cuota tiene copy distinta del `500` (§19), y el cliente distingue
- *    por el `code` del sobre. El proxy **no pone límite de tamaño**: el techo es
+ *    `429` de cuota tiene copy distinta del `500` (§19) —y del `429` de rate
+ *    limit—, y el cliente distingue por el `code` del sobre. El proxy **no pone límite de tamaño**: el techo es
  *    el `bodyLimit` de `apps/api` (1 MiB), y los bytes de video no pasan por
  *    acá (van directo al storage con la URL firmada).
  * 6. **Nunca reintenta** (NFR-005). Un timeout en una escritura no dice si la

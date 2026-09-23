@@ -1,6 +1,6 @@
 /**
- * El test que importa acá es el primero: **un 402 y un 500 no pueden verse
- * igual**. Ese es el requisito de §19 y es exactamente lo que se pierde cuando
+ * El test que importa acá es el primero: **una cuota agotada y un 500 no pueden
+ * verse igual**. Ese es el requisito de §19 y es exactamente lo que se pierde cuando
  * una pantalla pone `<ErrorState onRetry={refetch}/>` para todo.
  */
 import { describe, expect, it } from "vitest";
@@ -16,7 +16,7 @@ const failure = (
 
 describe("presentError", () => {
   it("cuota agotada y fallo del servidor NO ofrecen la misma salida", () => {
-    const quota = presentError(failure("content_quota_exceeded", 402));
+    const quota = presentError(failure("content_quota_exceeded", 429));
     const boom = presentError(failure("service_unavailable", 503));
 
     expect(quota.remedy).toBe("upgrade");
@@ -32,26 +32,64 @@ describe("presentError", () => {
    * usaba la zona de la máquina y el instante es 00:00 UTC, así que al oeste de
    * Greenwich la fecha se corría un día. Es un fallo que en CI (UTC) no se ve.
    */
-  it("el 402 publica cuándo vuelve la cuota, en UTC (§16.2)", () => {
+  it("la cuota se reconoce por el `code`: un 429 de cuota NO es un rate limit", () => {
+    // ERR-R01 y ERR-R03 comparten status. Hasta el 2026-09-23 la API mandaba
+    // la cuota como 402 y "402 = cuota" parecía una regla; con el 429 correcto,
+    // decidir por status ofrecería `Try again` sobre una cuota agotada.
+    const quota = presentError(
+      failure("content_quota_exceeded", 429, { count: 20, limit: 20, resetAt: 1 }),
+    );
+    const rate = presentError(failure("rate_limited", 429, { retryAfterMs: 1000 }));
+    expect(quota.remedy).toBe("upgrade");
+    expect(quota.titleKey).toBe("error.contentQuota.title");
+    expect(rate.remedy).toBe("retry");
+    // Y el status no pesa: el mismo código con cualquier status da lo mismo.
+    expect(presentError(failure("content_quota_exceeded", 402)).remedy).toBe("upgrade");
+    expect(presentError(failure("blitz_quota_exceeded", 429)).remedy).toBe("upgrade");
+  });
+
+  it("trial agotado (ERR-R04): sin `resetAt` pero con count/limit, copy de trial", () => {
+    const shown = presentError(
+      failure("content_quota_exceeded", 429, { count: 3, limit: 3 }),
+    );
+    expect(shown.titleKey).toBe("error.trialQuota.title");
+    expect(shown.remedy).toBe("upgrade");
+    expect(shown.descriptionKey).toBeUndefined();
+  });
+
+  it("sin `details` no se asume trial: la falta de datos no es evidencia", () => {
+    const shown = presentError(failure("content_quota_exceeded", 429));
+    expect(shown.titleKey).toBe("error.contentQuota.title");
+  });
+
+  it("el 429 de cuota publica cuándo vuelve, en UTC (§16.2)", () => {
     const resetAt = Date.UTC(2026, 9, 15);
-    const shown = presentError(failure("content_quota_exceeded", 402, { resetAt }));
+    const shown = presentError(
+      failure("content_quota_exceeded", 429, { count: 20, limit: 20, resetAt }),
+    );
     expect(shown.descriptionKey).toBe("error.quota.resetsAt");
     expect(shown.vars).toEqual({ date: "Oct 15" });
   });
 
   it("sin `resetAt` no se inventa una fecha", () => {
-    const shown = presentError(failure("content_quota_exceeded", 402));
+    const shown = presentError(failure("content_quota_exceeded", 429));
     expect(shown.descriptionKey).toBeUndefined();
   });
 
   it("un `resetAt` que no es un instante se ignora", () => {
     // Llega como `Record<string, unknown>`: creerle produciría `Invalid Date`.
     expect(
-      quotaResetAt(failure("content_quota_exceeded", 402, { resetAt: "soon" })),
+      quotaResetAt(failure("content_quota_exceeded", 429, { resetAt: "soon" })),
     ).toBe(null);
-    expect(quotaResetAt(failure("content_quota_exceeded", 402, { resetAt: -1 }))).toBe(
+    expect(quotaResetAt(failure("content_quota_exceeded", 429, { resetAt: -1 }))).toBe(
       null,
     );
+    // El ISO que la API mandaba antes del 2026-09-23 tampoco es un instante acá.
+    expect(
+      quotaResetAt(
+        failure("content_quota_exceeded", 429, { resetAt: "2026-10-15T00:00:00.000Z" }),
+      ),
+    ).toBe(null);
   });
 
   it("`stale_revision` manda a recargar, no a reintentar (ERR-P04)", () => {

@@ -150,7 +150,8 @@ export const webEn = {
   // cada error, pero no da un label de botón suelto para reutilizar.
   "action.reload": "Reload", // nuevo
   "action.goToBrand": "Go to Brand", // nuevo · ERR-P08 manda al perfil de empresa
-  // El `resetAt` del 402 (§16.2) es lo que separa "no podés" de "podés el 15".
+  // El `resetAt` del 429 de cuota (§16.2, ERR-R02/R03) es lo que separa "no
+  // podés" de "podés el 15".
   "error.quota.resetsAt": "Your quota resets on {date}.", // nuevo
 
   /* ------------------------------------------------- Library · FR-100 §3.3 */

@@ -179,12 +179,16 @@ export type SubmitOnboardingProfilingRequest = z.infer<
  * queue** y marcar onboarding como completo."* Lo mismo dicen `FLOW-001`
  * (PRD:1890) y `FLOW-009` (PRD:2006).
  *
- * `discoveryRefillQueued` es el único de los cuatro efectos que hoy se puede
- * ejecutar, y por eso se publica: un cliente que recibe `false` sabe que la
- * cola de discovery **no** se va a rellenar sola y que `/home` va a llegar
- * vacío. Los otros tres —crear el workspace, sembrar ángulos, marcar completo—
- * no tienen ejecutor todavía; publicar un `true` fijo por ellos sería la clase
- * de promesa que este documento existe para no hacer.
+ * De los cuatro efectos, hoy se ejecutan tres: el workspace lo crea antes
+ * `POST /onboarding/workspace`; marcar completo es la transición
+ * `draft → active` de este mismo cierre (que por eso devuelve `step: "ready"`);
+ * y el relleno se encola en la misma transacción. Sembrar ángulos **no** tiene
+ * ejecutor todavía (necesita el generador de `AI-005`).
+ *
+ * `discoveryRefillQueued` dice si **esta** llamada encoló el relleno. El cierre
+ * es idempotente: repetirlo sobre un alta ya cerrada devuelve `202` con el
+ * mismo `ready` y `false`, porque el relleno ya lo pidió el primero. No es un
+ * `true` fijo: un `false` en el primer cierre diría que `/home` va a llegar vacío.
  */
 export const onboardingCompletionSchema = onboardingStateSchema
   .extend({ discoveryRefillQueued: z.boolean() })

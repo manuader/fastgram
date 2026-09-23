@@ -5,12 +5,20 @@
  * alcanza para una pantalla: el PRD le da a cada familia de error una salida
  * distinta, y ofrecer la salida equivocada es casi peor que no ofrecer ninguna.
  *
- * El caso que obliga a que este módulo exista es el **402**. `Monthly content
- * quota reached for your plan` (ERR-R03, PRD:3213) con un botón `Try again` es
- * una mentira con forma de botón: reintentar no devuelve cuota, y el usuario
- * aprende que el botón no sirve. Lo que corresponde ahí es `Upgrade`, y el
- * `resetAt` que el servidor se molesta en publicar (§16.2) para decir **cuándo**
- * vuelve. Un 500, en cambio, sí se reintenta.
+ * El caso que obliga a que este módulo exista es la **cuota agotada**.
+ * `Monthly content quota reached for your plan` (ERR-R03, PRD:3213) con un botón
+ * `Try again` es una mentira con forma de botón: reintentar no devuelve cuota, y
+ * el usuario aprende que el botón no sirve. Lo que corresponde ahí es `Upgrade`,
+ * y el `resetAt` que el servidor se molesta en publicar (§16.2) para decir
+ * **cuándo** vuelve. Un 500, en cambio, sí se reintenta.
+ *
+ * ## Por el `code`, nunca por el status
+ *
+ * La cuota viaja como **`429`** (ERR-R02/R03) — el mismo status que
+ * `rate_limited` (ERR-R01), que **sí** se reintenta. Hasta el 2026-09-23 la API
+ * respondía 402 para la cuota de saves, y era fácil leer "402 = cuota": con el
+ * status correcto esa lectura ofrecería `Try again` sobre una cuota agotada. Todo
+ * lo de acá se decide por `error.code`; el status no se mira.
  *
  * El `Record` es **exhaustivo** por la misma razón que el de `errors.ts`: un
  * código nuevo en `packages/contracts` rompe la compilación y obliga a alguien
@@ -112,13 +120,14 @@ export interface ErrorPresentation {
 }
 
 /**
- * Lee el `resetAt` de los detalles de un 402.
+ * Lee el `resetAt` de los detalles de un error de cuota.
  *
- * El servidor lo publica en ms de epoch para `content_quota_exceeded` y
- * `blitz_quota_blocked` (`apps/api/src/http/errors.ts`), y es el único dato que
+ * El servidor lo publica en ms de epoch en `429 content_quota_exceeded`
+ * (ERR-R03) y `429 blitz_quota_exceeded` (ERR-R02) —`contentQuotaExceededDetailsSchema`
+ * y `blitzQuotaExceededDetailsSchema` del contrato—, y es el único dato que
  * convierte "no podés" en "podés el día 15". Se valida en vez de confiar: los
  * `details` son un `Record<string, unknown>` y un número negativo o un string
- * darían una fecha inventada.
+ * (el ISO que la API mandaba antes) darían una fecha inventada.
  */
 export function quotaResetAt(error: unknown): number | null {
   if (!isApiRequestError(error)) return null;
@@ -276,6 +285,25 @@ function presentBrandError(error: ApiRequestError): ErrorPresentation | null {
     : { titleKey: entry.titleKey, titleVars: vars, remedy: entry.remedy };
 }
 
+/**
+ * ¿Es el trial agotado (ERR-R04) y no la cuota mensual (ERR-R03)?
+ *
+ * Los dos viajan como `429 content_quota_exceeded`; el PRD los distingue por
+ * **la falta de `resetAt`** — el trial no se reinicia nunca. Se exige además que
+ * vengan `count` y `limit` (el schema del contrato los pide en los dos casos):
+ * un `details` ausente o roto no es evidencia de trial, y confundir un cupo
+ * mensual con uno de por vida le diría al usuario que no va a volver nunca.
+ */
+function isTrialExhausted(error: ApiRequestError): boolean {
+  if (error.code !== "content_quota_exceeded") return false;
+  const details = error.details ?? {};
+  return (
+    !("resetAt" in details) &&
+    typeof details["count"] === "number" &&
+    typeof details["limit"] === "number"
+  );
+}
+
 /** Qué enseña una pantalla cuando una petición falla. */
 export function presentError(error: unknown): ErrorPresentation {
   const titleKey = copyKeyForError(error);
@@ -283,6 +311,11 @@ export function presentError(error: unknown): ErrorPresentation {
 
   const brand = presentBrandError(error);
   if (brand !== null) return brand;
+
+  // ERR-R04: `Trial content allowance reached`, sin fecha — no hay ninguna.
+  if (isTrialExhausted(error)) {
+    return { titleKey: "error.trialQuota.title", remedy: "upgrade" };
+  }
 
   const remedy = REMEDIES[error.code];
   const resetAt = quotaResetAt(error);
