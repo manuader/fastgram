@@ -24,23 +24,13 @@
  *    que `POST /onboarding/complete` ya corrió. Las dos están abajo, cada una
  *    en su sitio, y en el reporte.
  *
- * **No crea el workspace.** `FR-010` lo pide (`F-008`, PRD:436) y
- * `assertCanCreateWorkspace` está escrito y testeado en `core`. No se puede
- * llamar desde acá y son **dos** bloqueos distintos, no uno:
- *
- *  1. `companyRepository` de `packages/db` es **sólo de lectura** —lo dice su
- *     cabecera: *"Crear un workspace es `P1-TENANT-001`"*— así que no hay
- *     `INSERT` en `companies` ni forma de mover `status` de `draft` a `active`.
- *  2. Aunque lo hubiera, `assertCanCreateWorkspace(plan, currentCount)` pide
- *     **cuántos workspaces tiene ya el usuario**, y eso es una consulta *sin*
- *     scope de company: los 28 repositorios exigen `TenantScope` por diseño y
- *     RLS taparía la lectura igual. Falta un
- *     `companyRepository.countOwnedBy(exec, userId)` deliberadamente sin scope,
- *     documentado como el bootstrap de `resolveApiKeyByHash`.
- *
- * Y hay un tercer problema, que es de especificación y está en el reporte: el
- * PRD dice que el límite es **por usuario** (`F-008`) y lo implementado es
- * **por plan** (`PLANS[plan].workspaces`). No se elige ninguno acá.
+ * **No crea el workspace.** Lo crea `POST /onboarding/workspace`
+ * (`routes/workspace.ts`, `P1-TENANT-001`), que vive **fuera** de este plugin
+ * porque es la única ruta que acepta una sesión sin workspace. Todo lo de este
+ * archivo corre sobre un workspace que ya existe (en `draft` hasta el cierre).
+ * El límite por plan (`assertCanCreateWorkspace`) sigue sin llamarse: la
+ * decisión de PRD §2.4 dice que el primero no lo consulta, y los adicionales
+ * todavía no existen.
  *
  * **No tiene paso de detalles.** El paso 2 del wizard escribe `Company Name` y
  * `Company Logo`, que son columnas de `companies` — la tabla sin escritura. Un

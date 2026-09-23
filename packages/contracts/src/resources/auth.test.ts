@@ -116,8 +116,12 @@ describe("/auth en el OpenAPI", () => {
   });
 
   it("ninguna ruta de negocio quedó marcada interna ni sin seguridad", () => {
+    // La única excepción fuera de `/auth/*`, nombrada: `P1-TENANT-001` crea el
+    // workspace con la sesión de un usuario que todavía no tiene ninguno.
+    // Sumar otra acá es una decisión, no un arreglo del test.
+    const INTERNAL_OUTSIDE_AUTH = new Set(["/onboarding/workspace"]);
     for (const [path, operations] of Object.entries(doc.paths)) {
-      if (path.startsWith("/auth/")) continue;
+      if (path.startsWith("/auth/") || INTERNAL_OUTSIDE_AUTH.has(path)) continue;
       for (const op of Object.values(operations)) {
         expect(op["x-internal"], path).toBeUndefined();
         expect(op.security, path).toBeUndefined();

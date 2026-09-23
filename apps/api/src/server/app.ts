@@ -41,6 +41,7 @@ import { INVALID_API_KEY_MESSAGE, describeRejection } from "../auth/api-keys.js"
 import { resolveScope, runScoped, type ScopeResolution } from "../auth/scope.js";
 import { createSessionResolver, noSessionResolver } from "../auth/session.js";
 import { registerAuthRoutes } from "../routes/auth.js";
+import { registerWorkspaceRoutes } from "../routes/workspace.js";
 import { registerV1Routes } from "../routes/v1/index.js";
 import {
   createHealthChecker,
@@ -183,6 +184,27 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
       await Promise.resolve();
     },
     { prefix: `${API_V1_PREFIX}/auth` },
+  );
+
+  // ── POST /api/v1/onboarding/workspace: sesión SIN workspace (P1-TENANT-001) ──
+  //
+  // Otro plugin hermano, por la misma razón que `/auth`: es la ruta que crea
+  // lo que el hook de scope exige, así que ese hook la rechazaría siempre. En
+  // vez de una lista de exenciones adentro del hook, un plugin que registra
+  // **una** ruta con su propio `onRequest` (sesión obligatoria, API key 403).
+  // Ver `routes/workspace.ts`.
+  await app.register(
+    async (raw) => {
+      registerWorkspaceRoutes(raw.withTypeProvider<ZodTypeProvider>() as ZodApp, {
+        db: deps.db,
+        clock: deps.clock,
+        appRole: deps.appRole,
+        identityConfigured: deps.identity !== undefined,
+        sessions,
+      });
+      await Promise.resolve();
+    },
+    { prefix: `${API_V1_PREFIX}/onboarding` },
   );
 
   // ── /api/v1: todo lo de adentro pasa por el scope ──

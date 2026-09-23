@@ -39,6 +39,7 @@ import * as sounds from "./resources/tiktok-sounds.js";
 import * as brand from "./resources/brand.js";
 import * as onboarding from "./resources/onboarding.js";
 import * as auth from "./resources/auth.js";
+import * as workspaces from "./resources/workspaces.js";
 import {
   imageUploadReservationRequestSchema,
   mediaUploadReservationRequestSchema,
@@ -1231,6 +1232,52 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
               "bad_request — copy literal de FR-010 por campo, con details.field",
             ),
             "429": errorResponse("rate_limited"),
+          },
+        },
+      },
+      /**
+       * `P1-TENANT-001` — **interna** (`x-internal`, `security: []`): la llama
+       * el BFF con la sesión del usuario, y es la única ruta de la v1 que
+       * acepta una sesión **sin** workspace. Sin `Idempotency-Key`: ver la
+       * cabecera de `resources/workspaces.ts`.
+       */
+      "/onboarding/workspace": {
+        post: {
+          operationId: "createFirstWorkspace",
+          summary:
+            "Crea el primer workspace del usuario de la sesión (Free + trialing, PRD §2.4). Un usuario con workspace recibe 409",
+          security: [],
+          "x-internal": true,
+          parameters: [
+            {
+              name: auth.SESSION_HEADER,
+              in: "header",
+              required: true,
+              schema: { type: "string", minLength: 1 },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(workspaces.createWorkspaceRequestSchema)),
+          },
+          responses: {
+            "201": ok(
+              "Workspace creado; la sesión ya resuelve a él",
+              dataOf(toJsonSchema(workspaces.workspaceSchema)),
+            ),
+            "400": errorResponse(
+              "bad_request — copy literal de FR-010 (nombre, web, SSRF), con details.field",
+            ),
+            "401": errorResponse("unauthorized — sin sesión, o sesión inválida"),
+            "403": errorResponse(
+              "forbidden — con API key: sólo una sesión crea workspaces",
+            ),
+            "409": errorResponse(
+              "conflict — details.reason: workspace_already_exists | website_already_registered",
+            ),
+            "503": errorResponse(
+              "service_unavailable — identidad no configurada o no se pudo comprobar la sesión",
+            ),
           },
         },
       },

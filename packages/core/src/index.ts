@@ -19,6 +19,7 @@ export * from "./workspace/caps.js";
 export * from "./workspace/create-content-angle.js";
 export * from "./workspace/ai-studio.js";
 export * from "./workspace/influencers.js";
+export * from "./workspace/first-workspace.js";
 export * from "./brand/source-input.js";
 export * from "./brand/acquisition.js";
 export * from "./brand/brand-source.js";

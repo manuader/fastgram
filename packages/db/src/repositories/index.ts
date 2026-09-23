@@ -317,3 +317,9 @@ export {
   type OtherSourceSnapshot,
   type SaveMaterializedProfileInput,
 } from "./brand-analysis.js";
+export {
+  COMPANY_WEBSITE_UNIQUE_CONSTRAINT,
+  createFirstWorkspace,
+  type CreateFirstWorkspaceResult,
+  type NewFirstWorkspace,
+} from "./first-workspace.js";

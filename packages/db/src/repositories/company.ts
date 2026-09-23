@@ -28,8 +28,9 @@
  *
  * ## Qué NO hay acá
  *
- * Escritura. Crear un workspace es `P1-TENANT-001` y arrastra el límite por
- * usuario, la membresía del dueño y el estado inicial; cambiar el plan es
+ * Escritura genérica. Crear el **primer** workspace es `createFirstWorkspace`
+ * (`first-workspace.ts`, `P1-TENANT-001`), con la membresía del dueño y el
+ * estado inicial en la misma transacción; cambiar el plan es
  * `P3` y pasa por el puerto `Payments`. Un `update` genérico acá dejaría a
  * cualquiera moverse de plan con un `PATCH`, que es exactamente el tipo de
  * escritura que tiene que costar una decisión y no un método.
