@@ -28,11 +28,13 @@
  *    haya usuarios de verdad, no. Lo que corresponde es que la API acepte la
  *    sesión del usuario y que el handler reenvíe **esa** identidad — es trabajo
  *    de P1-AUTH, no de una pantalla.
- * 2. **Sólo se reenvía `GET`.** Un proxy same-origin sin token de CSRF que
- *    aceptara `POST`/`PATCH`/`DELETE` dejaría que cualquier página de internet
- *    disparara escrituras con la credencial del servidor. Hasta que haya sesión
- *    de verdad (y con ella un anti-CSRF), esta ventana es de lectura. La regla
- *    está en el handler, no acá, pero se decide acá.
+ * 2. **Las escrituras se defienden con anti-CSRF, no con identidad.** El
+ *    proxy reenvía `POST`/`PUT`/`PATCH`/`DELETE` sólo si salen de una página de
+ *    esta misma app (`lib/api/csrf.ts`: `Origin`, `Sec-Fetch-Site` y un header
+ *    custom que fuerza preflight). Eso cierra el "cualquier página de internet
+ *    dispara un `DELETE` con la key del servidor"; **no** dice quién es el
+ *    usuario — eso sigue siendo la costura de sesión, sin firma, hasta
+ *    P1-AUTH-002.
  * 3. **La key no está en `.env.example`.** Esa tarea no puede tocar la raíz del
  *    repo. Queda reportada; mientras tanto el handler responde `503` con un
  *    código estable y un log que dice qué falta, en vez de fallar de una forma
@@ -60,9 +62,13 @@ export const DEFAULT_UPSTREAM_BASE = "http://localhost:3001/api/v1";
  * Techo de espera contra `apps/api`.
  *
  * El PRD no fija un timeout de cliente. Se elige un número **corto** porque
- * todo lo que cruza por acá son lecturas: un `GET /content` que tarda 10 s ya
- * es un incidente, y dejar la petición colgada sólo convierte un error rápido
- * en una pantalla en blanco larga. Los trabajos largos (builds) no se esperan,
+ * lo que cruza por acá son lecturas y escrituras chicas de JSON: un
+ * `GET /content` que tarda 10 s ya es un incidente, y dejar la petición
+ * colgada sólo convierte un error rápido en una pantalla en blanco larga. Los
+ * bytes de video no pasan por el proxy (van directo al storage). Ojo con las
+ * escrituras: un timeout **no** dice si la API la aplicó, y el proxy no
+ * reintenta (NFR-005) — el cliente reintenta, si quiere, con la misma
+ * `Idempotency-Key`. Los trabajos largos (builds) no se esperan,
  * se consultan por polling (ADR-014).
  */
 export const UPSTREAM_TIMEOUT_MS = 10_000;

@@ -17,6 +17,7 @@
  */
 import { errorEnvelopeSchema } from "@fastgram/contracts";
 import type { z } from "zod";
+import { CSRF_HEADER, CSRF_HEADER_VALUE } from "./csrf";
 import { ApiRequestError } from "./errors";
 
 /**
@@ -84,7 +85,7 @@ export type QueryParams = Readonly<Record<string, QueryValue>>;
  * error de varianza por el `ZodType<T>`.
  */
 export interface SendOptions {
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   query?: QueryParams;
   body?: unknown;
   signal?: AbortSignal;
@@ -144,6 +145,11 @@ async function send(path: string, options: SendOptions): Promise<RawResponse> {
   }
   if (idempotencyKey !== undefined) {
     requestHeaders["Idempotency-Key"] = idempotencyKey;
+  }
+  if (method !== "GET") {
+    // El proxy rechaza con `403` toda escritura sin este header (`lib/api/csrf.ts`).
+    // Va después de `headers` a propósito: quien llama no puede quitarlo.
+    requestHeaders[CSRF_HEADER] = CSRF_HEADER_VALUE;
   }
 
   const init: RequestInit = {

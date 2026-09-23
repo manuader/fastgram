@@ -164,3 +164,30 @@ describe("base del API", () => {
     expect(lastFetchedUrl()).toContain("/api/fastgram/v1/content/abc");
   });
 });
+
+describe("header anti-CSRF del proxy", () => {
+  function sentHeaders(): Headers {
+    const mock = fetch as unknown as ReturnType<typeof vi.fn>;
+    const init = (mock.mock.calls[0] as [string, RequestInit])[1];
+    return new Headers(init.headers);
+  }
+
+  it.each(["POST", "PUT", "PATCH", "DELETE"] as const)(
+    "%s lleva `x-fastgram-csrf: 1`, y quien llama no lo puede pisar",
+    async (method) => {
+      respondWith({ data: {} });
+      await apiRequest("/content", {
+        method,
+        body: { a: 1 },
+        headers: { "x-fastgram-csrf": "0" },
+      });
+      expect(sentHeaders().get("x-fastgram-csrf")).toBe("1");
+    },
+  );
+
+  it("GET no lo lleva: no hace falta y fuerza un preflight inútil", async () => {
+    respondWith({ data: {} });
+    await apiRequest("/content");
+    expect(sentHeaders().get("x-fastgram-csrf")).toBeNull();
+  });
+});
