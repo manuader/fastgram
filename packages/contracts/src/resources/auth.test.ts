@@ -80,11 +80,13 @@ describe("responses de /auth", () => {
   });
 
   it("GET /auth/session admite companyId null (sesión sin workspace)", () => {
-    expect(sessionInfoSchema.parse({ user, companyId: null })).toEqual({
-      user,
-      companyId: null,
-    });
+    expect(
+      sessionInfoSchema.parse({ user, companyId: null, onboardingComplete: false }),
+    ).toEqual({ user, companyId: null, onboardingComplete: false });
     expect(sessionInfoSchema.safeParse({ user }).success).toBe(false);
+    // `onboardingComplete` es obligatorio: sin él la web volvía a deducirlo del
+    // `companyId` y mandaba a /home a mitad del alta.
+    expect(sessionInfoSchema.safeParse({ user, companyId: null }).success).toBe(false);
   });
 
   it("el copy del 401 de sesión es el literal de §15.2", () => {
