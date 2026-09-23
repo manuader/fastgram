@@ -12,64 +12,111 @@
  * desde acá y `angles.ts` las importa: la dependencia va en una sola dirección y no
  * hay dos sitios que sepan cómo se materializa la fila de preferencias.
  *
- * ## Lo que `POST /blitz` NO puede hacer hoy, y por qué no se inventa
+ * ## `POST /blitz` — aceptar una sugerencia (`P2-BLITZ-014`)
  *
- * FR-050 dice que aceptar una sugerencia *"descuenta 1 swipe diario y 1 content
- * save"*, y `packages/core` ya tiene el gate (`acceptBlitzSuggestion` en
- * `quota/content-saves.ts`) y el caso de uso completo
- * (`acceptBlitzSuggestionUseCase`). **No se pueden llamar desde acá**, y no por una
- * omisión de esta ruta: faltan cuatro datos, cada uno documentado como pendiente en
- * su propio sitio.
+ * FR-050: aceptar *"descuenta **1 swipe diario** y **1 content save**, y lanza un
+ * build asíncrono"*. Lo hace `acceptBlitzSuggestionUseCase` de `packages/core`,
+ * que ya existía; esta ruta le da lo que le faltaba, y la cabecera anterior
+ * listaba cuatro bloqueos que hoy están así:
  *
- *  1. `SavesLedger.plan` y `overageEnabled` salen de `companies.planId` y
- *     `companies.apiOverageEnabled`. **`packages/db` no expone ningún repositorio de
- *     `companies`** — la tabla no tiene columna `companyId`, su PK *es* el id, y
- *     `createCompanyScopedRepository` no la cubre.
- *  2. `SavesLedger.resetAt` necesita `companies.billingAnchorDay` (mismo hueco).
- *  3. `quota_ledgers.period` no tiene formato decidido: el schema lo dice literal
- *     (*"PENDIENTE — el formato tiene que decidirlo la tarea de cuotas"*). Sin
- *     formato no hay fila que leer ni que escribir.
- *  4. `SwipesLedger.dailyLimit` **no está en el PRD**: §2 lo lista entre lo que falta
- *     (*"límites exactos de swipes diarios por plan"*).
+ *  1–2. **Plan, overage y ancla** salen de `companyRepository.billing`, a través de
+ *       `lockLedger` (`support/quota.ts`), el mismo camino que usa `POST /content`
+ *       para cobrar. No hay una segunda copia de los defaults del período.
+ *  3.   **`quota_ledgers.period`** es `YYYY-MM-DD`, el inicio del ciclo:
+ *       `billingPeriodKey` en `core/quota/reset.ts`, que lo decide y lo argumenta.
+ *       El comentario del schema que dice *"PENDIENTE"* quedó viejo.
+ *  4.   **`SwipesLedger.dailyLimit`**: *sin límite por ahora* — decisión del dueño
+ *       del producto, PRD §2.4 (2026-09-23). Es `BLITZ_DAILY_SWIPE_LIMIT = null`
+ *       en `core`: el swipe **se cuenta** (`quota_ledgers.daily_swipes_used`) y no
+ *       se corta.
  *
- * Elegir cualquiera de los cuatro desde una ruta sería fijar para todo el sistema un
- * número o un formato que nadie decidió. La restricción del proyecto es explícita:
- * *"no inventes … precios; límites; comportamiento backend; si no existe evidencia
- * suficiente"*.
+ * ### Lo que queda sin poder comprobarse: el trial
  *
- * Así que la ruta hace **todo lo que sí está soportado** —validación, perfil listo,
- * cola vacía— y se detiene en el gate de facturación con `503 service_unavailable`,
- * **antes de escribir nada**. El precedente del código es el de
- * `POST /blitz/angles/generate`, y el del PRD es §9.6: *"Si el sistema no puede
- * comprobar el límite de forma segura, devuelve `503 service_unavailable` (no 429) —
- * esto **no** significa cuota agotada"*. La alternativa —crear el `Content` y encolar
- * el build sin cobrar— regala el driver de costo #1 del producto y el PRD la prohíbe
- * en su criterio de aceptación 2.
+ * Un workspace Free no tiene cupo mensual: su contenido es el *trial allowance*
+ * de por vida (§16.2, §16.7; la cabecera de `PLANS.free` en `core`), y §16.1 no
+ * da el número (*"Limited content"*). Sin número no hay límite que comprobar, así
+ * que para Free la ruta responde el `503 service_unavailable` de §9.6 / ERR-R06
+ * con `details.quotaExhausted: false` — *"esto **no** significa cuota agotada"* —
+ * **antes de escribir nada**. Cobrarle del cupo mensual (que para Free es 0)
+ * daría un `429` falso; no cobrarle regalaría el driver de costo #1.
+ *
+ * ### Lo que va en una transacción, y en qué orden
+ *
+ *   perfil listo → sacar la sugerencia (`FOR UPDATE SKIP LOCKED`)
+ *     → bloquear el ledger → gate de **saves y después swipes** (§16.2)
+ *       → `Content` en `BUILDING` + contadores + `popped`
+ *         → encolar `content-build` **en la misma transacción** (ADR-005)
+ *
+ * Si algo falla —cuota, cola, validación— la transacción entera vuelve atrás: ni
+ * swipe ni save ni pieza. El reembolso del save cuando el **build** falla ya lo
+ * hace el worker (`apps/worker/src/content/build-handler.ts`), con el
+ * `saveBucket`/`savePeriod` que se escriben acá.
+ *
+ * ### Códigos de error
+ *
+ * El PRD fija `429` para los dos cortes de cuota de esta ruta — FR-050 *States*
+ * (`blocked: swipes` / `blocked: saves`), ERR-R02, ERR-R03 y el OpenAPI de
+ * `/blitz` del contrato—, con `count`/`limit`/`resetAt` para saves y `resetAt`
+ * para swipes, en ms de epoch (`contentQuotaExceededDetailsSchema`). `core` lanza
+ * `blitz_quota_blocked` con `details.quotaType`, y la traducción está en
+ * {@link toBlitzRejection}.
+ *
+ * ### `Idempotency-Key`: opcional
+ *
+ * FR-050 (aclaración del 2026-09-21): `POST /blitz` **no** está en la lista de §9.3
+ * de key obligatoria, pero `NFR-004` la acepta en toda operación facturable. Sin
+ * key no es idempotente —reintentar a ciegas cobra dos veces—; con key sí. Se usa
+ * el `withIdempotency` de las demás rutas, no la reserva interna del caso de uso:
+ * dos mecanismos de idempotencia sobre la misma petición serían dos verdades.
  */
+import { randomUUID } from "node:crypto";
+
 import {
+  optionalIdempotencyHeaderSchema,
   runBlitzRequestSchema,
   updateBlitzPreferencesRequestSchema,
+  type BlitzQuotaExceededDetails,
+  type ContentQuotaExceededDetails,
 } from "@fastgram/contracts";
 import {
+  BLITZ_DAILY_SWIPE_LIMIT,
   DomainError,
   JOB_QUEUES,
+  TRIAL_CONTENT_ALLOWANCE,
+  acceptBlitzSuggestionUseCase,
   assertValidBlitzRequest,
   assertValidPreferencesPatch,
+  currentSwipesLedger,
+  isBlitzContentType,
+  isDomainError,
+  nextBillingResetUtc,
+  trialAllowanceGoverns,
   type AngleWeights,
+  type BlitzAcceptanceRepository,
+  type BlitzQuotaSnapshot,
   type DiscoveryRefillJob,
+  type Suggestion,
 } from "@fastgram/core";
 import {
   blitzPreferencesRepository,
+  claimNextQueuedSuggestion,
   companyProfileRepository,
   contentAngleRepository,
-  suggestionRepository,
+  contentRepository,
+  markSuggestionPopped,
+  quotaLedgerStore,
+  type ContentRow,
+  type SuggestionRow,
   type Transaction,
   type contentAngles,
 } from "@fastgram/db";
+import type { Clock, Queue } from "@fastgram/ports";
 
+import { ApiRejection } from "../../http/errors.js";
 import { rateLimit } from "../../plugins/rate-limit.js";
-import { toBlitzPreferences } from "../../support/serializers.js";
-import { data } from "./shared.js";
+import { lockLedger } from "../../support/quota.js";
+import { toBlitzPreferences, toContent } from "../../support/serializers.js";
+import { data, idempotencyKeyOf, withIdempotency } from "./shared.js";
 import type { ZodApp } from "../../server/types.js";
 
 export type AngleRow = (typeof contentAngles)["$inferSelect"];
@@ -208,8 +255,342 @@ function assertStorableInfluencerChance(value: number | undefined): void {
   );
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// POST /blitz — aceptar una sugerencia (`P2-BLITZ-014`). Ver la cabecera.
+// ───────────────────────────────────────────────────────────────────────────
+
+/** Mensaje literal de FR-050, estado `empty`. La UI lo usa para esperar y reintentar. */
+const EMPTY_QUEUE_MESSAGE =
+  "discovery queue has no ready items yet. Try again shortly; the queue replenishes in the background.";
+
+/**
+ * La cola del workspace está vacía. Es un `ApiRejection` con nombre propio porque
+ * el handler tiene que **reconocerlo** para pedir el relleno antes de devolverlo,
+ * y comparar mensajes para eso sería frágil.
+ */
+class EmptyQueueRejection extends ApiRejection {
+  constructor() {
+    super(404, "not_found", EMPTY_QUEUE_MESSAGE);
+  }
+}
+
+/**
+ * §9.6 / ERR-R06: el límite **no se puede comprobar**. `quotaExhausted: false` lo
+ * dice explícito, para que el cliente no lo trate como cuota agotada.
+ */
+function quotaUncheckable(message: string): ApiRejection {
+  return new ApiRejection(503, "service_unavailable", message, {
+    quotaExhausted: false,
+  });
+}
+
+/**
+ * `blitz_quota_blocked` de `core` → los dos códigos que el PRD fija para esta ruta.
+ *
+ * - `quotaType: "saves"` → `429 content_quota_exceeded` + `count`, `limit`, `resetAt`
+ *   (FR-050 `blocked: saves`, ERR-R03; copy literal de ERR-R03).
+ * - `quotaType: "swipes"` → `429 blitz_quota_exceeded` + `resetAt` (FR-050
+ *   `blocked: swipes`, ERR-R02; copy literal de ERR-R02). Con
+ *   `BLITZ_DAILY_SWIPE_LIMIT = null` hoy no se alcanza, y está igual: el día que
+ *   haya un número, el error tiene que salir bien sin tocar esta ruta.
+ *
+ * `resetAt` viaja en **ms de epoch**, que es lo que tipan
+ * `contentQuotaExceededDetailsSchema`/`blitzQuotaExceededDetailsSchema` y lo que lee
+ * `quotaResetAt` en `apps/web`. `core` lo da en ISO: se convierte acá.
+ *
+ * Todo lo demás pasa sin tocar.
+ */
+export function toBlitzRejection(e: unknown): unknown {
+  if (!isDomainError(e) || e.code !== "blitz_quota_blocked") return e;
+  const details = e.details ?? {};
+  const resetAtMs = Date.parse(String(details["resetAt"]));
+
+  if (details["quotaType"] === "saves") {
+    const publicDetails: ContentQuotaExceededDetails = {
+      count: Number(details["count"]),
+      limit: Number(details["limit"]),
+      resetAt: resetAtMs,
+    };
+    return new ApiRejection(
+      429,
+      "content_quota_exceeded",
+      "Monthly content quota reached for your plan",
+      { ...publicDetails },
+    );
+  }
+
+  if (details["quotaType"] === "swipes") {
+    const publicDetails: BlitzQuotaExceededDetails = { resetAt: resetAtMs };
+    return new ApiRejection(
+      429,
+      "blitz_quota_exceeded",
+      "Daily blitz swipe limit reached",
+      {
+        ...publicDetails,
+      },
+    );
+  }
+
+  // Un `blitz_quota_blocked` sin `quotaType` es un cambio en `core` que no pasó por
+  // acá. Se deja salir como lo mapea `http/errors.ts` (402) en vez de adivinar cuál
+  // de los dos cortes fue.
+  return e;
+}
+
+/**
+ * La fila de `suggestions` en la forma que pide el caso de uso.
+ *
+ * Tres campos de `Suggestion` **no tienen columna** y se completan con lo único
+ * que no inventa nada:
+ *
+ *  - `textBoxes: []` y `slideCount: 1`. El caso de uso sólo los usa para validar y
+ *    para armar el `Content` de dominio; `contents` no los persiste (las cajas viven
+ *    en `content_text_boxes`, que se escriben al editar). La cola de discovery no
+ *    produce ninguno de los dos.
+ *  - `generatedText`/`aiExplanation` vacíos cuando la columna es `null`: el tipo de
+ *    dominio los pide `string`, y al persistir un vacío vuelve a ser `null`.
+ */
+function toDomainSuggestion(row: SuggestionRow): Suggestion {
+  if (!isBlitzContentType(row.contentType)) {
+    // El enum de la base y el de `core` son los mismos cuatro valores; si divergen,
+    // es un cambio de schema que no pasó por acá.
+    throw new Error(`La sugerencia ${row.id} tiene un contentType desconocido.`);
+  }
+  return {
+    id: row.id,
+    companyId: row.companyId,
+    contentType: row.contentType,
+    generatedText: row.generatedText ?? "",
+    aiExplanation: row.aiExplanation ?? "",
+    remixSourceUrl: row.remixSourceUrl ?? undefined,
+    sourceTrendingItemId: row.sourceTrendingItemId ?? undefined,
+    influencerId: row.influencerId ?? undefined,
+    angleId: row.angleId ?? undefined,
+    textStylePresetId: row.textStylePresetId ?? undefined,
+    status: row.status,
+    textBoxes: [],
+    slideCount: 1,
+  };
+}
+
+interface AcceptanceContext {
+  readonly tx: Transaction;
+  readonly companyId: string;
+  readonly clock: Clock;
+  /** La sugerencia ya tomada con `FOR UPDATE SKIP LOCKED` en esta transacción. */
+  readonly claimed: SuggestionRow;
+}
+
+/**
+ * El puerto `BlitzAcceptanceRepository` de `core`, sobre **la** transacción de la
+ * petición.
+ *
+ * Se construye por petición y cierra sobre `tx`: el parámetro `transaction` que
+ * pasa el caso de uso tiene que ser esa misma, y se comprueba en vez de usarse. Un
+ * método que escribiera sobre otra transacción sería exactamente la escritura
+ * fuera de la transacción que ADR-005 existe para impedir.
+ *
+ * Devuelve además `created()`: la fila de `contents` que se insertó, que es lo que
+ * serializa la respuesta. El `Content` de dominio no tiene la forma del contrato.
+ */
+function acceptanceRepository(ctx: AcceptanceContext): {
+  repository: BlitzAcceptanceRepository;
+  created: () => ContentRow;
+} {
+  const scope = { companyId: ctx.companyId };
+  let period: string | undefined;
+  let createdRow: ContentRow | undefined;
+
+  const sameTx = (transaction: unknown): void => {
+    if (transaction !== ctx.tx) {
+      throw new Error(
+        "acceptBlitzSuggestionUseCase pasó una transacción distinta de la de la " +
+          "petición. Todo —cobro, pieza y encolado— tiene que ir en una sola.",
+      );
+    }
+  };
+
+  const repository: BlitzAcceptanceRepository = {
+    async findSuggestion(companyId, suggestionId, transaction) {
+      sameTx(transaction);
+      if (companyId !== ctx.companyId || suggestionId !== ctx.claimed.id) return null;
+      return toDomainSuggestion(ctx.claimed);
+    },
+
+    async loadQuota(companyId, transaction): Promise<BlitzQuotaSnapshot> {
+      sameTx(transaction);
+      const locked = await lockLedger(ctx.tx, { companyId }, ctx.clock);
+
+      // Ver la cabecera: para Free el cupo es el trial allowance, y su tope no está
+      // en el PRD. Se corta **antes** de decidir nada; la transacción vuelve atrás
+      // y no queda ni el lock.
+      if (trialAllowanceGoverns(locked.plan) && TRIAL_CONTENT_ALLOWANCE === null) {
+        throw quotaUncheckable(
+          "Blitz acceptance is temporarily unavailable: the trial content allowance can't be checked right now.",
+        );
+      }
+
+      period = locked.period;
+      return {
+        saves: {
+          plan: locked.plan,
+          includedUsed: locked.row.contentSavesUsed,
+          purchasedRemaining: locked.row.contentSavesPurchased,
+          overageUsed: locked.row.overageUnits,
+          overageEnabled: locked.company.apiOverageEnabled,
+          resetAt: nextBillingResetUtc(locked.now, locked.company.billingAnchorDay),
+        },
+        swipes: currentSwipesLedger({
+          storedUsed: locked.row.dailySwipesUsed,
+          storedResetAt: locked.row.dailySwipeResetAt,
+          now: locked.now,
+          dailyLimit: BLITZ_DAILY_SWIPE_LIMIT,
+        }),
+      };
+    },
+
+    async saveQuota(companyId, quota, transaction) {
+      sameTx(transaction);
+      if (period === undefined) throw new Error("saveQuota antes de loadQuota.");
+      await quotaLedgerStore.writeCounters(ctx.tx, { companyId }, period, {
+        contentSavesUsed: quota.saves.includedUsed,
+        contentSavesPurchased: quota.saves.purchasedRemaining,
+        overageUnits: quota.saves.overageUsed,
+      });
+      // El contador y su instante de reset juntos: ver `writeDailySwipes`.
+      await quotaLedgerStore.writeDailySwipes(
+        ctx.tx,
+        { companyId },
+        period,
+        quota.swipes.used,
+        quota.swipes.resetAt,
+      );
+    },
+
+    async insertContent(content, transaction) {
+      sameTx(transaction);
+      if (period === undefined) throw new Error("insertContent antes de loadQuota.");
+      createdRow = await contentRepository.create(ctx.tx, scope, {
+        id: content.id,
+        type: content.type,
+        status: content.status,
+        generatedText:
+          content.generatedText === undefined || content.generatedText === ""
+            ? null
+            : content.generatedText,
+        remixSourceUrl: content.remixSourceUrl ?? null,
+        revision: content.revision,
+        // De qué bucket salió y a qué período: es lo que usa el reembolso del
+        // worker si el build falla. El CHECK de la tabla exige los dos juntos.
+        saveBucket: content.saveBucket,
+        savePeriod: period,
+      });
+    },
+
+    async markSuggestionPopped(companyId, suggestionId, transaction) {
+      sameTx(transaction);
+      const popped = await markSuggestionPopped(ctx.tx, { companyId }, suggestionId);
+      if (!popped) {
+        throw new Error(
+          `La sugerencia ${suggestionId} no estaba \`queued\` al marcarla: el ` +
+            "`FOR UPDATE` de `claimNextQueuedSuggestion` tenía que impedirlo.",
+        );
+      }
+    },
+
+    // La idempotencia la resuelve `withIdempotency` en el borde (ver la cabecera),
+    // así que el caso de uso se llama **sin** key y estos dos no se alcanzan.
+    async findIdempotencyRecord() {
+      throw new Error("La idempotencia de POST /blitz vive en withIdempotency.");
+    },
+    async putIdempotencyRecord() {
+      throw new Error("La idempotencia de POST /blitz vive en withIdempotency.");
+    },
+  };
+
+  return {
+    repository,
+    created: () => {
+      if (createdRow === undefined)
+        throw new Error("El caso de uso no insertó la pieza.");
+      return createdRow;
+    },
+  };
+}
+
+/**
+ * Una aceptación entera, dentro de `tx`. Lanza `ApiRejection` para los rechazos
+ * de la ruta (perfil, cola vacía, trial) y deja pasar los del dominio.
+ */
+async function acceptNextSuggestion(
+  tx: Transaction,
+  args: {
+    readonly companyId: string;
+    readonly actorId: string;
+    readonly contentType: SuggestionRow["contentType"] | undefined;
+    readonly aspectRatio: Parameters<
+      typeof acceptBlitzSuggestionUseCase
+    >[1]["aspectRatio"];
+    readonly queue: Queue;
+    readonly clock: Clock;
+  },
+): Promise<ContentRow> {
+  const { companyId } = args;
+
+  // PRD:1023 — *"Perfil incompleto/fallido → Blitz devuelve
+  // `409 company_profile_not_ready`"*. `company_profiles` tiene un único índice
+  // por `companyId`, así que la primera fila del listado es la fila.
+  //
+  // `partial` (AI-016, análisis sin OCR) se trata como no listo. El PRD no
+  // distingue "incompleto por el usuario" de "parcial por un motor ausente";
+  // queda anotado como abierto.
+  const profiles = await companyProfileRepository.list(tx, { companyId }, { limit: 1 });
+  const profile = profiles.items[0];
+  if (profile === undefined || profile.status !== "ready") {
+    throw new ApiRejection(
+      409,
+      "company_profile_not_ready",
+      "Finish your brand profile before running Blitz.",
+    );
+  }
+
+  const claimed = await claimNextQueuedSuggestion(
+    tx,
+    { companyId },
+    { contentType: args.contentType },
+  );
+  if (claimed === null) throw new EmptyQueueRejection();
+
+  const { repository, created } = acceptanceRepository({
+    tx,
+    companyId,
+    clock: args.clock,
+    claimed,
+  });
+
+  await acceptBlitzSuggestionUseCase(
+    {
+      clock: args.clock,
+      queue: args.queue,
+      // `contents.id` es `uuid`: el prefijo del `IdGenerator` de `core` (`cnt_…`)
+      // no entra en la columna. El prefijo es una ayuda de lectura, no un contrato.
+      ids: { newId: () => randomUUID() },
+      repository,
+    },
+    {
+      companyId,
+      actorId: args.actorId,
+      suggestionId: claimed.id,
+      transaction: tx,
+      aspectRatio: args.aspectRatio,
+    },
+  );
+
+  return created();
+}
+
 export function registerBlitzRoutes(app: ZodApp): void {
-  const { limiter, queue, clock } = app.deps;
+  const { limiter, queue, clock, idempotency } = app.deps;
 
   /**
    * Pide que se rellene la cola de descubrimiento de este workspace.
@@ -397,14 +778,20 @@ export function registerBlitzRoutes(app: ZodApp): void {
   // ── POST /blitz ──
   app.post(
     "/blitz",
-    { schema: { body: runBlitzRequestSchema } },
+    {
+      schema: {
+        body: runBlitzRequestSchema,
+        // Opcional: FR-050 (aclaración del 2026-09-21) y NFR-004. Ver la cabecera.
+        headers: optionalIdempotencyHeaderSchema,
+      },
+    },
     async (request, reply) => {
       const companyId = request.auth.companyId;
       const body = request.body;
 
       // FR-050 Validation: `aspectRatio` sólo aplica a slideshow. Sólo se puede
-      // comprobar cuando el cliente fijó el tipo; sin `contentType` lo elige la cola
-      // según los pesos y la combinación se resuelve al popear, no acá.
+      // comprobar cuando el cliente fijó el tipo; sin `contentType` lo elige la cola,
+      // y el caso de uso lo vuelve a comprobar contra la sugerencia que sale.
       if (body.contentType !== undefined) {
         assertValidBlitzRequest({
           contentType: body.contentType,
@@ -425,90 +812,42 @@ export function registerBlitzRoutes(app: ZodApp): void {
         });
       }
 
-      const outcome = await request.tx(async (tx) => {
-        // PRD:1023 — *"Perfil incompleto/fallido → Blitz devuelve
-        // `409 company_profile_not_ready`"*. `company_profiles` tiene un único índice
-        // por `companyId`, así que la primera fila del listado es la fila.
-        //
-        // `partial` (AI-016, análisis sin OCR) se trata como no listo. El PRD no
-        // distingue "incompleto por el usuario" de "parcial por un motor ausente";
-        // queda anotado como abierto en el reporte.
-        const profiles = await companyProfileRepository.list(
-          tx,
-          { companyId },
-          {
-            limit: 1,
-          },
+      const accept = (): Promise<ReturnType<typeof toContent>> =>
+        request.tx(async (tx) =>
+          toContent(
+            await acceptNextSuggestion(tx, {
+              companyId,
+              actorId: request.auth.userId ?? request.auth.apiKeyId ?? "unknown",
+              contentType: body.contentType,
+              aspectRatio: body.aspectRatio,
+              queue,
+              clock,
+            }),
+          ),
         );
-        const profile = profiles.items[0];
-        if (profile === undefined || profile.status !== "ready") {
-          return { kind: "profile_not_ready" as const };
+
+      const key = idempotencyKeyOf(request.headers);
+      try {
+        if (key === "") return reply.status(202).send(data(await accept()));
+        // Un rechazo (cuota, cola vacía, perfil) se lanza **dentro** de
+        // `withIdempotency`, que libera la key en su `catch` (§9.3, regla 3): un
+        // rechazo determinista nunca quema la key.
+        return await withIdempotency(
+          idempotency,
+          request,
+          reply,
+          { key, route: "POST /blitz", body, successStatus: 202 },
+          accept,
+        );
+      } catch (e: unknown) {
+        if (e instanceof EmptyQueueRejection) {
+          // **Lo que hace cierto al mensaje.** Ver `pedirRelleno`: sin esto,
+          // «the queue replenishes in the background» era una promesa que nada
+          // cumplía. Va fuera de la transacción, que ya volvió atrás.
+          await pedirRelleno(request, companyId);
         }
-
-        // El orden es el del repositorio (`createdAt` desc, más nueva primero). El
-        // PRD no dice en qué orden sale la cola, así que no se elige uno: se usa el
-        // único que el repositorio sabe dar.
-        const queued = await suggestionRepository.list(
-          tx,
-          { companyId },
-          {
-            limit: 1,
-            filter: {
-              status: { eq: "queued" },
-              contentType:
-                body.contentType === undefined ? undefined : { eq: body.contentType },
-            },
-          },
-        );
-        const suggestion = queued.items[0];
-        if (suggestion === undefined) return { kind: "empty_queue" as const };
-
-        // Acá iría `acceptBlitzSuggestionUseCase`. Ver la cabecera: el gate de
-        // facturación no se puede evaluar todavía. **No se escribe nada**: la
-        // transacción termina sin mutaciones.
-        return { kind: "quota_unavailable" as const, suggestionId: suggestion.id };
-      });
-
-      if (outcome.kind === "profile_not_ready") {
-        return reply.status(409).send({
-          error: {
-            code: "company_profile_not_ready",
-            message: "Finish your brand profile before running Blitz.",
-          },
-        });
+        throw toBlitzRejection(e);
       }
-
-      if (outcome.kind === "empty_queue") {
-        // **Lo que hace cierto al mensaje de abajo.** Ver `pedirRelleno`: hasta
-        // esta línea, «the queue replenishes in the background» era una promesa
-        // que nada cumplía.
-        await pedirRelleno(request, companyId);
-
-        // Mensaje literal de FR-050 (estado `empty`). La UI lo usa para mostrar el
-        // estado de espera y reintentar sin recargar.
-        return reply.status(404).send({
-          error: {
-            code: "not_found",
-            message:
-              "discovery queue has no ready items yet. Try again shortly; the queue replenishes in the background.",
-          },
-        });
-      }
-
-      request.log.error(
-        { suggestionId: outcome.suggestionId, route: "POST /blitz" },
-        "blitz acceptance blocked: the content-save and swipe ledgers cannot be read yet",
-      );
-      return reply.status(503).send({
-        error: {
-          code: "service_unavailable",
-          message:
-            "Blitz acceptance is temporarily unavailable: the content-save and daily-swipe allowances cannot be checked right now.",
-          // §9.6 lo pide explícito para el caso análogo de rate limiting: un 503 acá
-          // **no** significa cuota agotada, y el cliente no debe tratarlo como tal.
-          details: { quotaExhausted: false },
-        },
-      });
     },
   );
 }

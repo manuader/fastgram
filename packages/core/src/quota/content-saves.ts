@@ -23,7 +23,14 @@
  *    medir almacenamiento.
  */
 import { DomainError } from "../errors.js";
-import { AI_STUDIO_COST, PLANS, type AiStudioOperation, type PlanId } from "./plans.js";
+import {
+  AI_STUDIO_COST,
+  PLANS,
+  UNKNOWN_LIMITS,
+  type AiStudioOperation,
+  type PlanId,
+} from "./plans.js";
+import { nextDailyResetUtc } from "./reset.js";
 
 /** De dónde salió un save. El orden de este array ES el orden de consumo. */
 export const SAVE_BUCKETS = ["included", "purchased", "overage"] as const;
@@ -121,11 +128,69 @@ export function savesRemaining(ledger: SavesLedger): number | null {
 // Blitz swipes — PRD §16.2
 // ───────────────────────────────────────────────────────────────────────────
 
+/**
+ * Límite diario de swipes de Blitz. **`null` = sin límite.**
+ *
+ * ## De dónde sale, y por qué es `null` y no un número grande
+ *
+ * El PRD no tenía el número: §2.4 lo listaba entre lo desconocido (*"límites
+ * exactos de swipes diarios por plan"*). El dueño del producto lo decidió el
+ * 2026-09-23 y quedó escrito en PRD §2.4:
+ *
+ *   *"Límite diario de swipes: sin límite por ahora. El swipe se cuenta pero no
+ *    se limita. Es provisorio y se cambia por configuración; no es un número
+ *    del producto original."*
+ *
+ * Por eso esto es `null` —la misma convención de {@link PLANS}, donde `null`
+ * significa **ilimitado** y no "sin definir"— y no `Number.MAX_SAFE_INTEGER` ni
+ * `999`. Un número grande se lee como un límite que alguien eligió; dentro de un
+ * año nadie sabría si `999` era una decisión o un parche. `null` dice
+ * exactamente lo que se decidió.
+ *
+ * **Se cuenta igual.** El contador `quota_ledgers.daily_swipes_used` sube con
+ * cada aceptación aunque no corte nada: el día que haya un número, el dato para
+ * calibrarlo ya existe, y cambiar este valor alcanza para que empiece a cortar.
+ *
+ * Es un valor único y no uno por plan porque la decisión es una sola para todos.
+ * Cuando sea por plan, esto pasa a ser un mapa indexado por `PlanId`, como
+ * {@link PLANS}.
+ */
+export const BLITZ_DAILY_SWIPE_LIMIT: number | null = null;
+
 export interface SwipesLedger {
-  readonly dailyLimit: number;
+  /** `null` = sin límite (PRD §2.4, 2026-09-23). Ver {@link BLITZ_DAILY_SWIPE_LIMIT}. */
+  readonly dailyLimit: number | null;
   readonly used: number;
   readonly resetAt: Date;
 }
+
+/**
+ * El ledger de swipes **vigente**, a partir de lo que quedó guardado.
+ *
+ * El reset diario (00:00 UTC, §16.2) se calcula en lectura, igual que el de
+ * saves (decisión 7 del handoff): si el instante guardado ya pasó —o nunca se
+ * guardó uno— el contador vale 0, haya corrido o no el barrido de
+ * `quota-reset`. El `resetAt` que devuelve es siempre el **próximo** 00:00 UTC,
+ * que es el que hay que escribir junto con el contador nuevo.
+ */
+export function currentSwipesLedger(params: {
+  readonly storedUsed: number;
+  readonly storedResetAt: Date | null;
+  readonly now: Date;
+  readonly dailyLimit: number | null;
+}): SwipesLedger {
+  const vigente =
+    params.storedResetAt !== null &&
+    params.storedResetAt.getTime() > params.now.getTime();
+  return {
+    dailyLimit: params.dailyLimit,
+    used: vigente ? params.storedUsed : 0,
+    resetAt: nextDailyResetUtc(params.now),
+  };
+}
+
+/** Qué cuota cortó una aceptación. Es el `quota_type` del evento de §22 (PRD:3043). */
+export type BlitzQuotaType = "saves" | "swipes";
 
 /**
  * Aceptar una sugerencia en Blitz.
@@ -135,6 +200,17 @@ export interface SwipesLedger {
  * saves la acción no puede completarse. Cobrar el swipe primero le gastaría al
  * usuario un swipe diario por una operación que igual va a fallar, y el swipe
  * no se recupera hasta mañana.
+ *
+ * ## El código de error y `details.quotaType`
+ *
+ * Los dos cortes salen como `blitz_quota_blocked` —el nombre del evento de
+ * analítica de §22, cuyo prop `quota_type` distingue `swipes` de `saves`—, y
+ * `details.quotaType` lleva esa distinción. **No** son los códigos del cable: el
+ * PRD fija `429 content_quota_exceeded` (con `count`, `limit`, `resetAt`) para
+ * los saves y `429 blitz_quota_exceeded` (con `resetAt`) para los swipes
+ * (FR-050 *States*, ERR-R02/R03). La traducción la hace el borde
+ * (`apps/api/src/routes/v1/blitz.ts`), que sin `quotaType` no tendría cómo
+ * elegir entre los dos: el `resetAt` solo no los distingue.
  *
  * Devuelve los dos ledgers actualizados y el bucket del que salió el save.
  */
@@ -148,24 +224,32 @@ export function acceptBlitzSuggestion(
     consumption = consumeSave(saves);
   } catch (e) {
     if (e instanceof DomainError && e.code === "content_quota_exceeded") {
-      // El PRD le da código propio a este caso: el usuario está en Blitz, no
-      // en el editor, y el mensaje tiene que explicar por qué se bloqueó el
-      // deck entero y no sólo esta tarjeta.
       throw new DomainError(
         "blitz_quota_blocked",
         "You're out of content saves, so Blitz can't save this one.",
-        { resetAt: saves.resetAt.toISOString() },
+        {
+          quotaType: "saves" satisfies BlitzQuotaType,
+          resetAt: saves.resetAt.toISOString(),
+          // ERR-R03 pide `count` y `limit`. `consumeSave` sólo lanza cuando el
+          // plan tiene cupo finito, así que `limit` nunca es `null` acá; el `?? 0`
+          // es para el compilador.
+          count: saves.includedUsed,
+          limit: PLANS[saves.plan].contentSaves ?? 0,
+        },
       );
     }
     throw e;
   }
 
-  // 2. Recién ahora, el swipe.
-  if (swipes.used >= swipes.dailyLimit) {
+  // 2. Recién ahora, el swipe. `null` = sin límite: se cuenta y no se corta.
+  if (swipes.dailyLimit !== null && swipes.used >= swipes.dailyLimit) {
     throw new DomainError(
       "blitz_quota_blocked",
       "You've used all your Blitz swipes for today.",
-      { resetAt: swipes.resetAt.toISOString() },
+      {
+        quotaType: "swipes" satisfies BlitzQuotaType,
+        resetAt: swipes.resetAt.toISOString(),
+      },
     );
   }
 
@@ -245,3 +329,34 @@ export function consumeTrial(ledger: TrialLedger): TrialLedger {
   }
   return { ...ledger, used: ledger.used + 1 };
 }
+
+/**
+ * ¿La cuota de contenido de este workspace es el **trial allowance**?
+ *
+ * Hoy, sólo en el plan Free. `PLANS.free.contentSaves` es `0` porque §16.1 dice
+ * *"Limited content"* sin número, y la cabecera de ese plan en `plans.ts` lo
+ * deja escrito: *"No se inventa: se usa el trial allowance de por vida"*. Un
+ * Free no tiene cupo mensual; tiene la asignación de por vida de §16.2/§16.7.
+ *
+ * **Lo que esto no decide:** si un plan pago en `trialing` también está acotado
+ * por el trial allowance. PRD §2.4 dice que el primer workspace nace Free +
+ * `trialing` y que por eso *"le aplican las restricciones de trial de §16.7"*,
+ * pero no dice nada de un Starter en prueba. Extenderlo a `trialing` sin plan
+ * Free sería inventar un límite, así que no se hace; queda como pregunta
+ * abierta en el reporte de la tarea.
+ */
+export function trialAllowanceGoverns(plan: PlanId): boolean {
+  return plan === "free";
+}
+
+/**
+ * El tope del trial allowance. **`null` = desconocido**, no ilimitado.
+ *
+ * Es el mismo hueco que {@link UNKNOWN_LIMITS}.`freeContentSaves`: §16.1 no da
+ * el número. Mientras sea `null`, quien cobre contenido a un workspace cuyo
+ * cupo es el trial **no puede comprobar el límite** y tiene que responder el
+ * `503 service_unavailable` de §9.6 / ERR-R06 —*"esto no significa cuota
+ * agotada"*—, no un `429` que diría que se agotó algo que nadie midió, ni un
+ * `202` que regalaría el driver de costo #1 del producto.
+ */
+export const TRIAL_CONTENT_ALLOWANCE: number | null = UNKNOWN_LIMITS.freeContentSaves;

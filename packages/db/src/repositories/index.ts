@@ -323,3 +323,10 @@ export {
   type CreateFirstWorkspaceResult,
   type NewFirstWorkspace,
 } from "./first-workspace.js";
+export {
+  blitzAcceptanceStore,
+  claimNextQueuedSuggestion,
+  markSuggestionPopped,
+  type SuggestionContentType,
+  type SuggestionRow,
+} from "./blitz-acceptance.js";
