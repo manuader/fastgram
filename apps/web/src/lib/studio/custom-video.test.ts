@@ -161,8 +161,12 @@ describe("desde dónde se retoma cada fallo · el coste manda", () => {
 
   it("la cuota agotada no se reintenta: no hay botón que la arregle", () => {
     // §19.8 / ERR-R03. El archivo está subido, pero repetir el paso 3 da otro
-    // 402 y encima parece que la culpa es del usuario por no insistir.
-    expect(resumeFor("finalize", apiError("content_quota_exceeded", 402))).toBe("none");
+    // 429 y encima parece que la culpa es del usuario por no insistir. Es el
+    // mismo status que `rate_limited`, que arriba SÍ se repite: la diferencia
+    // la hace el `code`.
+    expect(resumeFor("finalize", apiError("content_quota_exceeded", 429))).toBe("none");
+    expect(resumeFor("reserve", apiError("content_quota_exceeded", 429))).toBe("none");
+    // El 402 de créditos de AI Studio (FR-080) tampoco.
     expect(resumeFor("finalize", apiError("payment_required", 402))).toBe("none");
     expect(resumeFor("finalize", apiError("bad_request", 400))).toBe("none");
   });

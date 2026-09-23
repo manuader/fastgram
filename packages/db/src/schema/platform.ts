@@ -103,9 +103,10 @@ export const uploadReservations = pgTable(
  * DATA-029 — `QuotaLedger`. *"1 por periodo"* (diagrama de relaciones), por eso la PK
  * es `(companyId, period)`.
  *
- * `period` queda como `text`: el PRD no fija su formato. PENDIENTE — el reset de saves
- * es en el día ancla de facturación (§16.2), no en el mes calendario, así que el
- * formato tiene que decidirlo la tarea de cuotas, no este schema.
+ * `period` es `text` con formato `YYYY-MM-DD`: el **día de inicio del ciclo de
+ * facturación** (UTC), no el mes calendario, porque el reset de saves es en el día
+ * ancla (§16.2). Lo calcula `billingPeriodKey` (`packages/core/src/quota/reset.ts`);
+ * ése es el único sitio que decide la clave, y este schema no la valida.
  */
 export const quotaLedgers = pgTable(
   "quota_ledgers",

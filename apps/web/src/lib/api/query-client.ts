@@ -7,6 +7,9 @@
  * · `retry`: nunca se reintenta un 4xx. Un `content_quota_exceeded` reintentado
  *   tres veces sigue siendo cuota agotada, y entre medias el usuario mira una
  *   pantalla en blanco tres veces más tiempo. Los 5xx y los fallos de red sí.
+ *   El `429` es la excepción **sólo** con `code: rate_limited` (ERR-R01): la
+ *   cuota agotada también es `429` (ERR-R02/R03) y no se recupera esperando
+ *   segundos. Se mira el `code`, no el status.
  * · `staleTime` de 30 s: la mayoría de los listados cambian por acción del
  *   usuario, no solos. Refetchear en cada foco de ventana gasta rate limit
  *   (§9.8) sin enseñar nada nuevo.
@@ -20,8 +23,10 @@ export function shouldRetry(failureCount: number, error: unknown): boolean {
   if (failureCount >= MAX_RETRIES) return false;
   if (!isApiRequestError(error)) return false;
   if (error.code === "network_error" || error.code === "timeout") return true;
-  // 408 y 429 son recuperables; el resto de 4xx, no.
-  if (error.status === 408 || error.status === 429) return true;
+  // 408 y el 429 de rate limit son recuperables; el resto de 4xx, no. Un 429
+  // de cuota (`content_quota_exceeded`, `blitz_quota_exceeded`) no lo es.
+  if (error.status === 408) return true;
+  if (error.status === 429) return error.code === "rate_limited";
   return error.status >= 500;
 }
 

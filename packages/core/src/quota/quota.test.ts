@@ -26,6 +26,24 @@ import { isExpired, nextBillingResetUtc, nextDailyResetUtc } from "./reset.js";
 
 const RESET = new Date("2026-10-01T00:00:00.000Z");
 
+/**
+ * Lo que lanza `fn`, o falla el test si no lanza.
+ *
+ * El `expect.unreachable` va **fuera** de cualquier `try` del test (trampa 47 del
+ * handoff): dentro, el `catch` del propio test lo atrapa y compara *su* error.
+ */
+function thrown(fn: () => unknown): DomainError {
+  let caught: unknown;
+  try {
+    fn();
+  } catch (e) {
+    caught = e;
+  }
+  if (caught === undefined) expect.unreachable("tenía que lanzar");
+  expect(caught).toBeInstanceOf(DomainError);
+  return caught as DomainError;
+}
+
 const saves = (over: Partial<SavesLedger> = {}): SavesLedger => ({
   plan: "starter",
   includedUsed: 0,
@@ -124,16 +142,30 @@ describe("orden de consumo: incluidos → comprados → overage (PRD §16.2)", (
 
   it("sin overage, agotada la cuota corta con content_quota_exceeded", () => {
     // PRD §16.6: con el toggle desactivado devuelven `content_quota_exceeded`.
-    try {
-      consumeSave(saves({ includedUsed: 20 }));
-      expect.unreachable("tenía que lanzar");
-    } catch (e) {
-      expect(e).toBeInstanceOf(DomainError);
-      const d = e as DomainError;
-      expect(d.code).toBe("content_quota_exceeded");
-      // El PRD exige `resetAt` en el error de esta cuota.
-      expect(d.details?.["resetAt"]).toBe(RESET.toISOString());
-    }
+    const d = thrown(() => consumeSave(saves({ includedUsed: 20 })));
+    expect(d.code).toBe("content_quota_exceeded");
+    // Copy literal de ERR-R03.
+    expect(d.message).toBe("Monthly content quota reached for your plan");
+  });
+
+  it("el error trae count, limit y resetAt en ms de epoch (ERR-R03)", () => {
+    // `resetAt` en **ms**, no ISO: es lo que tipa
+    // `contentQuotaExceededDetailsSchema` y lo que la web convierte a fecha. Un
+    // ISO acá sale del borde sin `details` (el borde valida, no convierte).
+    const d = thrown(() => consumeSave(saves({ includedUsed: 20 })));
+    expect(d.details).toMatchObject({
+      count: 20,
+      limit: PLANS.starter.contentSaves,
+      resetAt: RESET.getTime(),
+    });
+    expect(typeof d.details?.["resetAt"]).toBe("number");
+  });
+
+  it("también corta —con los mismos details— agotados incluidos y comprados", () => {
+    const d = thrown(() =>
+      consumeSave(saves({ includedUsed: 20, purchasedRemaining: 0 })),
+    );
+    expect(d.details?.["count"]).toBe(20);
   });
 
   it("Pro no lleva contador ni factura overage", () => {
@@ -356,14 +388,11 @@ describe("créditos de AI Studio", () => {
   });
 
   it("rechaza si no alcanza, e informa cuánto hacía falta", () => {
-    try {
-      reserveCredits({ remaining: 59, resetAt: RESET }, "video");
-      expect.unreachable("tenía que lanzar");
-    } catch (e) {
-      const d = e as DomainError;
-      expect(d.code).toBe("content_quota_exceeded");
-      expect(d.details?.["required"]).toBe(60);
-    }
+    const d = thrown(() => reserveCredits({ remaining: 59, resetAt: RESET }, "video"));
+    expect(d.code).toBe("content_quota_exceeded");
+    expect(d.details?.["required"]).toBe(60);
+    // Mismo formato que el resto de los `details` de cuota.
+    expect(d.details?.["resetAt"]).toBe(RESET.getTime());
   });
 
   it("reservar y liberar deja el saldo igual", () => {
@@ -380,15 +409,13 @@ describe("trial allowance — de por vida, sin reset (PRD §16.2, §16.7)", () =
   it("agotado, el error va SIN resetAt", () => {
     // No hay ninguno. Un `resetAt` inventado le diría al usuario que espere a
     // una fecha en la que no va a pasar nada.
-    try {
-      consumeTrial({ lifetimeLimit: 3, used: 3 });
-      expect.unreachable("tenía que lanzar");
-    } catch (e) {
-      const d = e as DomainError;
-      expect(d.code).toBe("content_quota_exceeded");
-      expect(d.details?.["resetAt"]).toBeUndefined();
-      expect(d.details?.["trial"]).toBe(true);
-    }
+    const d = thrown(() => consumeTrial({ lifetimeLimit: 3, used: 3 }));
+    expect(d.code).toBe("content_quota_exceeded");
+    // Copy literal de ERR-R04.
+    expect(d.message).toBe("Trial content allowance reached");
+    expect(d.details).not.toHaveProperty("resetAt");
+    // `count`/`limit` sí: el schema del contrato los exige también acá.
+    expect(d.details).toMatchObject({ count: 3, limit: 3, trial: true });
   });
 });
 

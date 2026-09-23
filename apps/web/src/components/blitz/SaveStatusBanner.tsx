@@ -38,8 +38,9 @@ export interface SaveStatusBannerProps {
  * `useAutosave` salvo por `blocked`, que la pantalla añade encima.
  *
  * El fallo se dibuja con `ApiErrorState` y no con un texto propio: ese
- * componente ya decide la salida por el código del error (§19.8), así que un
- * `429` ofrece reintentar y un `402` no ofrece un botón que no sirve. Además
+ * componente ya decide la salida por el **código** del error (§19.8), así que un
+ * `429 rate_limited` ofrece reintentar y un `429 content_quota_exceeded` —mismo
+ * status— no ofrece un botón que no sirve. Además
  * pone `role="alert"`, que es lo que hace que el fallo se anuncie sin que el
  * usuario mire el banner.
  */

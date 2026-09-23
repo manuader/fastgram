@@ -23,8 +23,9 @@ export interface ApiErrorStateProps {
  *
  * Toda la decisión está en `lib/api/error-presentation.ts`; acá sólo se dibuja.
  * Lo que este componente garantiza es que ninguna pantalla vuelva a escribir
- * `<ErrorState onRetry={refetch}/>` a mano: ese botón, puesto sobre un 402 de
- * cuota, ofrece una salida que no existe.
+ * `<ErrorState onRetry={refetch}/>` a mano: ese botón, puesto sobre un `429` de
+ * cuota (ERR-R03), ofrece una salida que no existe. La salida se decide por el
+ * `code`: el mismo `429` con `rate_limited` (ERR-R01) sí se reintenta.
  *
  * La acción se arma entera acá en vez de usar el `onRetry` de `ErrorState`
  * porque ese camino rotula el botón con `Try again` siempre, y `Reload` no es

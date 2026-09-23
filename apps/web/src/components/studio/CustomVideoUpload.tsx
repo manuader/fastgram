@@ -122,8 +122,8 @@ function Failure({
   }
 
   // 4 · Lo demás es un error de la API v1 con código del contrato: la salida la
-  // decide §19 y no esta pantalla. Un `402` de cuota con `Try again` sería un
-  // botón que no puede funcionar; el `onRetry` sólo se pasa cuando reintentar
+  // decide §19 y no esta pantalla. Un `429 content_quota_exceeded` con `Try
+  // again` sería un botón que no puede funcionar; el `onRetry` sólo se pasa cuando reintentar
   // es realmente la salida.
   return (
     <ApiErrorState

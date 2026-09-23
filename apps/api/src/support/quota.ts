@@ -143,7 +143,9 @@ export async function lockLedger(
 }
 
 /**
- * Descuenta un content save, o lanza `content_quota_exceeded` (→ `402`).
+ * Descuenta un content save, o lanza `content_quota_exceeded` (→ `429`, ERR-R03,
+ * con `count`/`limit`/`resetAt` en ms que `http/errors.ts` valida contra el
+ * contrato antes de publicar). **No** es el 402 de los créditos de más abajo.
  *
  * Tiene que llamarse **dentro** de la transacción que crea el contenido, y
  * **antes** de encolar el build.
@@ -164,7 +166,7 @@ export async function consumeContentSave(
     resetAt: nextBillingResetUtc(now, company.billingAnchorDay),
   };
 
-  // Lanza `content_quota_exceeded` con `resetAt` en los detalles si no alcanza.
+  // Lanza `content_quota_exceeded` con `count`, `limit` y `resetAt` (ms) si no alcanza.
   // Al lanzar dentro de la transacción, el rollback deshace el lock y no queda
   // nada a medio escribir.
   const { ledger: despues, bucket } = consumeSave(ledger);

@@ -220,7 +220,7 @@ export type UploadStep = "reserve" | "transfer" | "finalize";
  * · `restart`  — hay que volver al paso 1 (que es gratis).
  * · `finalize` — los bytes ya están arriba: sólo falta el paso 3.
  * · `none`     — no hay reintento que ayude, y ofrecerlo sería un botón que no
- *                puede funcionar (§19: el `402` de cuota es el caso de manual).
+ *                puede funcionar (§19: la cuota agotada es el caso de manual).
  */
 export type ResumePoint = "restart" | "finalize" | "none";
 
@@ -234,8 +234,8 @@ export type ResumePoint = "restart" | "finalize" | "none";
  *
  * La regla de fondo: el reintento se ofrece cuando puede cambiar el resultado,
  * y cuesta lo menos posible. Reintentar el paso 3 no vuelve a subir el archivo;
- * reintentar el paso 1 no cuesta nada (PRD:2285); y reintentar un `402` de
- * cuota no cambia nada, así que no se ofrece — que es la lección que
+ * reintentar el paso 1 no cuesta nada (PRD:2285); y reintentar una cuota
+ * agotada (`429 content_quota_exceeded`) no cambia nada, así que no se ofrece — que es la lección que
  * `error-presentation.ts` ya dejó escrita y de la que aquí se tira.
  */
 export function resumeFor(step: UploadStep, error: ApiRequestError | null): ResumePoint {

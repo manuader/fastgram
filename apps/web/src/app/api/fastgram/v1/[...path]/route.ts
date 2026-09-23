@@ -29,7 +29,7 @@
  *    `Content-Type` (la API parsea por él) e `Idempotency-Key` (NFR-004; el
  *    nombre es el que lee `apps/api/src/routes/v1/shared.ts`).
  * 4. **El cuerpo se reenvía tal cual, en los dos sentidos, con su status.** El
- *    `402` de cuota tiene copy distinta del `500` (§19), y el cliente distingue
+ *    `429` de cuota tiene copy distinta del `500` (§19), y el cliente distingue
  *    por el `code` del sobre. Reempaquetar la respuesta acá sería perder justo
  *    eso. El proxy **no pone límite de tamaño**: el techo es el `bodyLimit` de
  *    `apps/api` (1 MiB), y los bytes de video no pasan por acá (van directo al

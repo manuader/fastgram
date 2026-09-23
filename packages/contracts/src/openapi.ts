@@ -1101,9 +1101,10 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
               dataOf(toJsonSchema(onboarding.onboardingCompletionSchema)),
             ),
             "400": errorResponse("bad_request — falta un paso del wizard"),
-            "409": errorResponse(
-              "conflict — el onboarding ya está terminado, o la key se reusó con otro cuerpo",
-            ),
+            // Cerrar un alta ya cerrada NO es 409: es idempotente y devuelve 202
+            // con `step: "ready"` y `discoveryRefillQueued: false`
+            // (`apps/api/src/routes/v1/onboarding.ts`). El único 409 es el de la key.
+            "409": errorResponse("conflict — la key se reusó con otro cuerpo"),
             "429": errorResponse("rate_limited"),
             "503": errorResponse(
               "service_unavailable — sin cola no se puede arrancar el relleno",

@@ -41,10 +41,11 @@ describe("la salida que se dibuja es la que corresponde al código", () => {
     expect(screen.queryByRole("link")).toBeNull();
   });
 
-  it("un 402 de cuota manda a Upgrade y dice cuándo vuelve — no a reintentar", () => {
-    // ERR-R03 (PRD:3213). `resetAt` en ms de epoch, UTC (§16.2).
-    const error = failure("content_quota_exceeded", 402, {
-      details: { resetAt: Date.UTC(2026, 9, 15) },
+  it("un 429 de cuota manda a Upgrade y dice cuándo vuelve — no a reintentar", () => {
+    // ERR-R03 (PRD:3213): `429`, con `count`, `limit` y `resetAt` en ms de
+    // epoch, UTC (§16.2). Mismo status que un rate limit: decide el `code`.
+    const error = failure("content_quota_exceeded", 429, {
+      details: { count: 20, limit: 20, resetAt: Date.UTC(2026, 9, 15) },
     });
     render(<ApiErrorState error={error} onRetry={vi.fn()} />);
 
@@ -56,6 +57,35 @@ describe("la salida que se dibuja es la que corresponde al código", () => {
     // aunque se le haya pasado un `onRetry`.
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
     expect(screen.getByText("Your quota resets on Oct 15.")).toBeInTheDocument();
+  });
+
+  it("un 429 de rate limit SÍ ofrece `Try again` (ERR-R01)", async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    render(
+      <ApiErrorState
+        error={failure("rate_limited", 429, { details: { retryAfterMs: 1000 } })}
+        onRetry={onRetry}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("link", { name: "Upgrade to unlock" })).toBeNull();
+  });
+
+  it("trial agotado (ERR-R04): su copy, Upgrade, y ninguna fecha", () => {
+    render(
+      <ApiErrorState
+        error={failure("content_quota_exceeded", 429, {
+          details: { count: 3, limit: 3 },
+        })}
+        onRetry={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Trial content allowance reached")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Upgrade to unlock" })).toBeInTheDocument();
+    expect(screen.queryByText(/Your quota resets on/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
   });
 
   it("`Reload` no se rotula `Try again` (ERR-P04)", () => {

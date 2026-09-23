@@ -12,9 +12,13 @@
  * al que no fue es un error de facturación que nadie ve.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { billingPeriodKey, PLANS } from "@fastgram/core";
+import {
+  contentQuotaExceededDetailsSchema,
+  errorEnvelopeSchema,
+} from "@fastgram/contracts";
+import { billingPeriodKey, nextBillingResetUtc, PLANS } from "@fastgram/core";
 
-import { dataOf, errorOf, startApi, type ApiHarness } from "./helpers/harness.js";
+import { dataOf, startApi, type ApiHarness } from "./helpers/harness.js";
 
 let api: ApiHarness;
 
@@ -152,12 +156,17 @@ describe("POST /content cobra", () => {
 });
 
 describe("cuando no queda cuota", () => {
-  it("responde 402 payment_required con el `resetAt`", async () => {
+  it("responde 429 content_quota_exceeded con count/limit/resetAt del contrato (ERR-R03)", async () => {
     // Se agota el cupo escribiendo el contador al tope en vez de haciendo 100
     // peticiones: lo que se prueba es la respuesta al agotarse, no la
-    // aritmética —eso ya está en `core/quota/content-saves.test.ts`— y 100
+    // aritmética —eso ya está en `core/quota/quota.test.ts`— y 100
     // requests harían el test lento y frágil.
-    const period = billingPeriodKey(new Date(api.clock.nowMs()), 1);
+    //
+    // Hasta el 2026-09-23 esto era `402` con `resetAt` en ISO y sin
+    // `count`/`limit`: §19.8 dice `429`, el contrato dice ms de epoch, y
+    // `POST /blitz` ya respondía así para la misma cuota.
+    const now = new Date(api.clock.nowMs());
+    const period = billingPeriodKey(now, 1);
     const tope = PLANS.growth.contentSaves ?? 0;
     await api.handle.sql`
       update quota_ledgers
@@ -166,13 +175,25 @@ describe("cuando no queda cuota", () => {
     `;
 
     const res = await crear();
-    expect(res.status).toBe(402);
-    const error = errorOf(res);
-    expect(error.code).toBe("content_quota_exceeded");
-    // `resetAt` no es decoración: es lo que la UI necesita para decirle al
-    // usuario cuándo vuelve a tener cupo en vez de sólo "no se puede".
-    expect(error.details).toMatchObject({ plan: "growth" });
-    expect((error.details as { resetAt?: string }).resetAt).toBeTypeOf("string");
+    expect(res.status).toBe(429);
+    // La respuesta entera, contra el zod de `@fastgram/contracts`.
+    const envelope = errorEnvelopeSchema.parse(res.body);
+    expect(envelope.error.code).toBe("content_quota_exceeded");
+    // Copy literal de ERR-R03.
+    expect(envelope.error.message).toBe("Monthly content quota reached for your plan");
+    // `.strict()`: lo que el contrato no nombra (`plan`) no sale.
+    const details = contentQuotaExceededDetailsSchema
+      .strict()
+      .parse(envelope.error.details);
+    expect(details).toEqual({
+      count: tope,
+      limit: tope,
+      // `resetAt` no es decoración: es lo que la UI necesita para decir cuándo
+      // vuelve el cupo. En ms, y el del ancla de facturación del workspace.
+      resetAt: nextBillingResetUtc(now, 1).getTime(),
+    });
+    // Un 429 de cuota no es un rate limit: no hay `Retry-After` que esperar.
+    expect(res.headers["retry-after"]).toBeUndefined();
   });
 
   it("y NO crea la pieza ni encola nada", async () => {
@@ -181,7 +202,7 @@ describe("cuando no queda cuota", () => {
     const cuantas = (antes.body?.["data"] as unknown[]).length;
 
     const res = await crear();
-    expect(res.status).toBe(402);
+    expect(res.status).toBe(429);
 
     const despues = await api.request({ method: "GET", path: "/api/v1/content" });
     expect((despues.body?.["data"] as unknown[]).length).toBe(cuantas);

@@ -7,7 +7,7 @@
  * la promesa no sería auditable.
  */
 import { DomainError, isDomainError } from "@fastgram/core";
-import type { ErrorCode } from "@fastgram/contracts";
+import { contentQuotaExceededDetailsSchema, type ErrorCode } from "@fastgram/contracts";
 import { isPortError, type PortErrorCode } from "@fastgram/ports";
 import type { DomainErrorCode } from "@fastgram/core";
 
@@ -21,8 +21,17 @@ export interface ErrorEnvelope {
 }
 
 const DOMAIN_STATUS: Record<DomainErrorCode, number> = {
-  content_quota_exceeded: 402,
-  blitz_quota_blocked: 402,
+  // ERR-R03 (§19.8): `429 content_quota_exceeded`. **No es 402.** El 402 del
+  // PRD es de créditos de AI Studio (`payment_required`, FR-080/ERR-R08), que
+  // `support/quota.ts` arma como `ApiRejection` y no pasa por acá. Hasta el
+  // 2026-09-23 esto decía 402 y `POST /content` respondía 402 mientras
+  // `POST /blitz` —que traduce por su cuenta— respondía 429 para la misma cuota.
+  content_quota_exceeded: 429,
+  // Normalmente no llega acá: `toBlitzRejection` (`routes/v1/blitz.ts`) lo
+  // traduce a `429 content_quota_exceeded` o `429 blitz_quota_exceeded`.
+  // `blitz_quota_blocked` no es un código del contrato; si alguna vez sale, es
+  // un corte de cuota que no pasó por esa traducción, y sigue siendo una cuota.
+  blitz_quota_blocked: 429,
   invalid_state: 409,
   out_of_range: 400,
   // El PRD §9.2 es explícito: acceso cruzado devuelve 404, nunca 403, para no
@@ -97,26 +106,58 @@ export function isApiRejection(e: unknown): e is ApiRejection {
 }
 
 /**
- * Los códigos de dominio cuyos `details` **son parte del contrato público**.
+ * Los códigos de dominio cuyos `details` **son parte del contrato público**, y
+ * el schema del contrato que los valida.
  *
  * La regla general es la contraria y no se toca: `DomainError.details` no sale
  * nunca, porque ahí viajan `attemptedBy` y `crossTenant`, que son exactamente
- * lo que §9.2 no quiere publicar. Pero hay dos errores donde el PRD nombra el
- * detalle como parte de la respuesta, no como diagnóstico:
+ * lo que §9.2 no quiere publicar. Pero ERR-R03 nombra `count`, `limit` y
+ * `resetAt` junto al copy del error: son contrato, no diagnóstico. Sin
+ * `resetAt` la UI sólo puede decir "no se puede" en vez de "vuelve el 15".
  *
- * `content_quota_exceeded` y `blitz_quota_blocked` llevan `resetAt`, y sin él
- * la UI sólo puede decir "no se puede" en vez de "vuelve el 15". El PRD lo
- * especifica junto al copy del error, así que es contrato.
+ * ## Se valida contra el schema del contrato, y no se convierte nada
+ *
+ * Lo que sale es la salida de `schema.safeParse(details)`: los campos que el
+ * contrato no nombra (`plan`, `trial`) **se descartan** —van al log—, y si
+ * `details` no cumple el schema **no se publica ningún `details`**. No se
+ * "arregla" en el borde (p. ej. un `resetAt` en ISO pasado a ms): un borde que
+ * convierte esconde que `core` emite otra cosa, y el día que otro llamador lea
+ * `DomainError.details` directo, recibe el formato viejo. Así, un `resetAt` ISO
+ * en `core` se ve como un 429 sin `details` en el test de este archivo y en el
+ * de integración de `POST /content`.
+ *
+ * `blitz_quota_blocked` no está: su traducción (código, copy y `details`) vive
+ * en `toBlitzRejection` (`routes/v1/blitz.ts`), que es la única ruta que lo
+ * lanza. Publicar sus `details` crudos acá publicaría `quotaType` bajo un
+ * código que el contrato no tiene.
  *
  * La lista es **explícita y corta** a propósito. Un "publicá los details salvo
  * en `not_found`" invertiría el default, y el día que alguien agregue un código
  * nuevo con información sensible adentro, se publicaría sin que nadie lo
- * decidiera. Acá agregar uno es un acto deliberado.
+ * decidiera. Acá agregar uno es un acto deliberado, y viene con su schema.
  */
-const DOMAIN_CODES_WITH_PUBLIC_DETAILS: ReadonlySet<DomainErrorCode> = new Set([
-  "content_quota_exceeded",
-  "blitz_quota_blocked",
-]);
+const PUBLIC_DETAILS_SCHEMAS: Partial<
+  Record<DomainErrorCode, typeof contentQuotaExceededDetailsSchema>
+> = {
+  content_quota_exceeded: contentQuotaExceededDetailsSchema,
+};
+
+/**
+ * Los `details` publicables de un `DomainError`, o `undefined`.
+ *
+ * `invalid` va al log: un `details` que el contrato rechaza es un bug de `core`
+ * y tiene que verse en algún lado aunque el cliente no lo reciba.
+ */
+function publicDomainDetails(e: DomainError): {
+  details?: Record<string, unknown>;
+  invalid?: unknown;
+} {
+  const schema = PUBLIC_DETAILS_SCHEMAS[e.code];
+  if (schema === undefined || e.details === undefined) return {};
+  const parsed = schema.safeParse(e.details);
+  if (!parsed.success) return { invalid: parsed.error.issues };
+  return { details: { ...parsed.data } };
+}
 
 export function translateError(e: unknown): TranslatedError {
   if (isApiRejection(e)) {
@@ -135,16 +176,20 @@ export function translateError(e: unknown): TranslatedError {
   }
 
   if (isDomainError(e)) {
-    const publica =
-      DOMAIN_CODES_WITH_PUBLIC_DETAILS.has(e.code) && e.details !== undefined;
+    const { details, invalid } = publicDomainDetails(e);
     return {
       status: DOMAIN_STATUS[e.code],
       body: {
-        error: { ...e.toPublic(), ...(publica ? { details: e.details } : {}) },
+        error: { ...e.toPublic(), ...(details === undefined ? {} : { details }) },
       },
       headers: {},
       // Al log van SIEMPRE, se publiquen o no.
-      logContext: { kind: "domain", code: e.code, details: e.details },
+      logContext: {
+        kind: "domain",
+        code: e.code,
+        details: e.details,
+        ...(invalid === undefined ? {} : { publicDetailsInvalid: invalid }),
+      },
     };
   }
 

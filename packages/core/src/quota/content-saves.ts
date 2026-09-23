@@ -57,10 +57,27 @@ export interface SaveConsumption {
 }
 
 /**
+ * Los `details` de un `content_quota_exceeded` por cupo mensual — ERR-R03.
+ *
+ * Es la forma de `contentQuotaExceededDetailsSchema` en `@fastgram/contracts`
+ * (`core` no depende de `contracts`, así que se repite el tipo y no el schema):
+ * `resetAt` va en **ms de epoch**, no en ISO. El borde (`apps/api/src/http/errors.ts`)
+ * publica estos `details` **validándolos contra ese schema**, sin convertir nada:
+ * si acá volviera a salir un ISO, el `429` saldría sin `details` y la UI no podría
+ * decir cuándo vuelve el cupo. `plan` va para el log; el schema lo descarta.
+ */
+export interface ContentQuotaExceededInfo {
+  readonly count: number;
+  readonly limit: number;
+  /** ms de epoch. Ausente sólo en el trial agotado (ERR-R04). */
+  readonly resetAt?: number;
+}
+
+/**
  * Descuenta un content save.
  *
- * Lanza `DomainError("content_quota_exceeded")` si no hay de dónde. El error
- * lleva `resetAt` en los detalles, como exige el PRD.
+ * Lanza `DomainError("content_quota_exceeded")` si no hay de dónde, con el copy
+ * literal de ERR-R03 y `count`, `limit`, `resetAt` (ms) en los detalles.
  */
 export function consumeSave(ledger: SavesLedger): SaveConsumption {
   const included = PLANS[ledger.plan].contentSaves;
@@ -91,10 +108,16 @@ export function consumeSave(ledger: SavesLedger): SaveConsumption {
     };
   }
 
+  const info: ContentQuotaExceededInfo = {
+    count: ledger.includedUsed,
+    limit: included,
+    resetAt: ledger.resetAt.getTime(),
+  };
   throw new DomainError(
     "content_quota_exceeded",
-    "You've used all your content saves for this billing period.",
-    { resetAt: ledger.resetAt.toISOString(), plan: ledger.plan },
+    // Copy literal de ERR-R03 (§19.8).
+    "Monthly content quota reached for your plan",
+    { ...info, plan: ledger.plan },
   );
 }
 
@@ -229,6 +252,10 @@ export function acceptBlitzSuggestion(
         "You're out of content saves, so Blitz can't save this one.",
         {
           quotaType: "saves" satisfies BlitzQuotaType,
+          // **ISO, no ms**, a diferencia de `consumeSave`: lo lee
+          // `toBlitzRejection` (`apps/api/src/routes/v1/blitz.ts`) con
+          // `Date.parse`, que sobre un número da `NaN`. Pasarlo a ms exige
+          // cambiar las dos cosas juntas; ver el reporte del 2026-09-23.
           resetAt: saves.resetAt.toISOString(),
           // ERR-R03 pide `count` y `limit`. `consumeSave` sólo lanza cuando el
           // plan tiene cupo finito, así que `limit` nunca es `null` acá; el `?? 0`
@@ -287,7 +314,10 @@ export function reserveCredits(
     throw new DomainError(
       "content_quota_exceeded",
       `This needs ${cost} AI Studio credits and you have ${ledger.remaining}.`,
-      { resetAt: ledger.resetAt.toISOString(), required: cost },
+      // `resetAt` en ms, como el resto de los `details` de cuota. Este error no
+      // sale tal cual: `apps/api/src/support/quota.ts` lo traduce a
+      // `402 payment_required` con `balance`/`required` (FR-080).
+      { resetAt: ledger.resetAt.getTime(), required: cost },
     );
   }
   return { ...ledger, remaining: ledger.remaining - cost };
@@ -315,16 +345,24 @@ export interface TrialLedger {
 /**
  * Consume del allowance de trial.
  *
- * Su error va **sin `resetAt`**: no hay ninguno. El PRD lo especifica así, y
- * un `resetAt` inventado acá le diría al usuario que espere a una fecha en la
- * que no va a pasar nada.
+ * Su error va **sin `resetAt`**: no hay ninguno. El PRD lo especifica así
+ * (ERR-R04), y un `resetAt` inventado acá le diría al usuario que espere a una
+ * fecha en la que no va a pasar nada. `count`/`limit` sí van: el schema del
+ * contrato los exige para `content_quota_exceeded` también en este caso.
  */
 export function consumeTrial(ledger: TrialLedger): TrialLedger {
   if (ledger.used >= ledger.lifetimeLimit) {
     throw new DomainError(
       "content_quota_exceeded",
-      "You've used your full trial allowance. Upgrade to keep creating.",
-      { trial: true },
+      // Copy literal de ERR-R04 (§19.8).
+      "Trial content allowance reached",
+      {
+        ...({
+          count: ledger.used,
+          limit: ledger.lifetimeLimit,
+        } satisfies ContentQuotaExceededInfo),
+        trial: true,
+      },
     );
   }
   return { ...ledger, used: ledger.used + 1 };

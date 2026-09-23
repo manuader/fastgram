@@ -445,17 +445,25 @@ describe("cuando falla a mitad de camino", () => {
     const user = userEvent.setup();
     requestMock.mockImplementation(async (path: string) => {
       if (path === RESERVE_PATH) return RESERVATION as never;
-      throw new ApiRequestError({ code: "content_quota_exceeded", status: 402 });
+      // El status real de ERR-R03: 429, el mismo que un rate limit. La pantalla
+      // tiene que reconocer la cuota por el `code`.
+      throw new ApiRequestError({
+        code: "content_quota_exceeded",
+        status: 429,
+        details: { count: 20, limit: 20, resetAt: Date.UTC(2026, 9, 15) },
+      });
     });
     renderUpload();
 
     await user.upload(fileInput(), videoFile());
     await screen.findByRole("alert");
 
-    // ERR-R03: reintentar da otro 402. Un botón que no puede funcionar enseña
+    // ERR-R03: reintentar da otro 429. Un botón que no puede funcionar enseña
     // que los botones de esta app no sirven.
     expect(screen.queryByRole("button", { name: "Finish upload" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
     expect(screen.getByRole("link", { name: "Upgrade to unlock" })).toBeInTheDocument();
+    // Y dice cuándo vuelve: el `resetAt` en ms, en UTC.
+    expect(screen.getByText("Your quota resets on Oct 15.")).toBeInTheDocument();
   });
 });
