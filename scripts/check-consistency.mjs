@@ -387,6 +387,19 @@ mismaLista(
   ],
 );
 
+// El recurso `Workspace` de `POST /onboarding/workspace` (P1-TENANT-001) serializa
+// las dos columnas tal cual: si la base suma un estado, el zod de la respuesta
+// rechazaría una fila válida y la ruta daría 500.
+mismaLista("estados de suscripción del workspace (DATA-002) · contracts ↔ db", [
+  ["packages/contracts/src/resources/workspaces.ts", "WORKSPACE_SUBSCRIPTION_STATUSES"],
+  ["packages/db/src/schema/enums.ts", "SUBSCRIPTION_STATUS"],
+]);
+
+mismaLista("estados de workspace (DATA-002) · contracts ↔ db", [
+  ["packages/contracts/src/resources/workspaces.ts", "WORKSPACE_STATUSES"],
+  ["packages/db/src/schema/enums.ts", "COMPANY_STATUS"],
+]);
+
 mismoNumero("content angles por workspace (PRD FR-056)", [
   ["packages/core/src/quota/plans.ts", "contentAngles"],
 ]);
