@@ -19,7 +19,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, timestamps } from "./_shared.js";
+import { createdAtOnly, timestamps, tsColumn } from "./_shared.js";
 import {
   companyStatusEnum,
   membershipRoleEnum,
@@ -44,9 +44,17 @@ export const users = pgTable(
      * un proveedor rechazado en una columna es una trampa para el próximo que lea esto.
      * DESVIACIÓN DEL PRD: `clerkUserId` → `externalIdentityId`. No es un campo del
      * contrato público (User no se expone en la API v1), así que no rompe integradores.
+     *
+     * **Nullable desde `0011`** (`P1-AUTH-001`): con Better Auth el id del usuario en el
+     * proveedor **es** `users.id` — Better Auth escribe en esta misma tabla — y nunca
+     * llena esta columna. Queda para el día que ADR-008 vuelva a un proveedor alojado.
      */
-    externalIdentityId: text().notNull(),
+    externalIdentityId: text(),
     email: text().notNull(),
+    /** Lo escribe Better Auth (`emailVerified`). `0011`. */
+    emailVerified: boolean().notNull().default(false),
+    /** El `image` de Better Auth. `0011`. */
+    image: text(),
     fullName: text().notNull(),
     /** IANA. El PRD dice *"sincronizada automáticamente"*. */
     timezone: text().notNull(),
@@ -157,3 +165,74 @@ export const companyRef = () =>
   uuid()
     .notNull()
     .references(() => companies.id, { onDelete: "cascade" });
+
+/**
+ * Tablas de Better Auth — `P1-AUTH-001`, IMPL ADR-008, `drizzle/0011_better_auth_identity.sql`.
+ *
+ * El modelo `user` de Better Auth **es** `users` (mapeado desde el adaptador); estas son
+ * las otras tres. Globales como `users`: una sesión o una credencial no son de un
+ * workspace. Las escribe y lee Better Auth vía `pg`, no los repositorios de este
+ * paquete: están acá para que el schema de Drizzle no mienta sobre lo que hay en la
+ * base, y para que el test de migraciones las cuente.
+ *
+ * `user_id` con `ON DELETE CASCADE`: borrar el usuario se lleva sesiones y credenciales
+ * en la misma sentencia (§9.1, borrado verificado sin estados intermedios).
+ */
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    /** Credencial. En la cookie viaja **firmado** con el secreto de Better Auth. */
+    token: text().notNull(),
+    userId: uuid()
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: tsColumn().notNull(),
+    ipAddress: text(),
+    userAgent: text(),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("auth_sessions_token_uq").on(t.token),
+    index("auth_sessions_user_idx").on(t.userId),
+  ],
+);
+
+export const authAccounts = pgTable(
+  "auth_accounts",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    accountId: text().notNull(),
+    /** `credential` para email/password; el id del proveedor para SSO. */
+    providerId: text().notNull(),
+    userId: uuid()
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Tokens del proveedor de SSO. `NFR-007`: nunca suben por el puerto. */
+    accessToken: text(),
+    refreshToken: text(),
+    idToken: text(),
+    accessTokenExpiresAt: tsColumn(),
+    refreshTokenExpiresAt: tsColumn(),
+    scope: text(),
+    /** Hash de la contraseña (cuentas `credential`). */
+    password: text(),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("auth_accounts_provider_account_uq").on(t.providerId, t.accountId),
+    index("auth_accounts_user_idx").on(t.userId),
+  ],
+);
+
+export const authVerifications = pgTable(
+  "auth_verifications",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    identifier: text().notNull(),
+    value: text().notNull(),
+    expiresAt: tsColumn().notNull(),
+    ...timestamps(),
+  },
+  (t) => [index("auth_verifications_identifier_idx").on(t.identifier)],
+);

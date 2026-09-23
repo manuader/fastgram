@@ -29,7 +29,7 @@ afterAll(async () => {
 });
 
 describe("migraciones", () => {
-  it("crean las 33 tablas del modelo de datos", async () => {
+  it("crean las 36 tablas: las 33 del modelo de datos + las 3 de Better Auth (0011)", async () => {
     const rows = await ctx.db.execute<{ table_name: string }>(sql`
       select table_name
         from information_schema.tables
@@ -48,8 +48,8 @@ describe("migraciones", () => {
     for (const name of expected) {
       expect(present.has(name), `falta la tabla ${name}`).toBe(true);
     }
-    expect(expected).toHaveLength(33);
-    expect(present.size).toBe(33);
+    expect(expected).toHaveLength(36);
+    expect(present.size).toBe(36);
   });
 
   it("son idempotentes: volver a correrlas no hace nada", async () => {

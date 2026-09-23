@@ -96,4 +96,16 @@ export const NON_TENANT_TABLES: ReadonlyArray<{ table: string; reason: string }>
     table: "onboarding_records",
     reason: "DATA-030: existe antes del workspace; scope por ownerUserId",
   },
+  {
+    table: "auth_sessions",
+    reason: "P1-AUTH-001: sesión de un usuario global (Better Auth)",
+  },
+  {
+    table: "auth_accounts",
+    reason: "P1-AUTH-001: credencial de un usuario global (Better Auth)",
+  },
+  {
+    table: "auth_verifications",
+    reason: "P1-AUTH-001: tokens de verificación, sin usuario ni workspace",
+  },
 ];

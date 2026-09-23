@@ -1,11 +1,10 @@
 /**
  * `Identity` en memoria — PRD §9.1, §15, IMPL ADR-008.
  *
- * **Esto no es Better Auth.** ADR-008 elige Better Auth self-hosted y ese
- * adaptador todavía no existe: el paquete no está declarado en
- * `packages/adapters` (ver el reporte de la tarea). Lo que hay acá es la
- * tercera implementación, la de tests — el mismo papel que `MemoryStorage`
- * cumple para `Storage`.
+ * **Esto no es Better Auth.** ADR-008 elige Better Auth self-hosted; ese
+ * adaptador es `BetterAuthIdentity` (`better-auth-identity.ts`, `P1-AUTH-001`).
+ * Lo que hay acá es la implementación de tests — el mismo papel que
+ * `MemoryStorage` cumple para `Storage`.
  *
  * Justifica su existencia por dos cosas concretas:
  *

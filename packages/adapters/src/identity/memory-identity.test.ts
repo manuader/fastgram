@@ -5,10 +5,9 @@ import { MemoryIdentity } from "./memory-identity.js";
 /**
  * Primera ejecución de la suite de contrato de `Identity`.
  *
- * Corre contra el adaptador en memoria porque **el de Better Auth todavía no
- * existe** (ADR-008 lo elige; el paquete no está declarado). Que los nueve
- * casos corran ya deja probado el armazón: cuando aparezca el adaptador real,
- * un fallo apunta al adaptador y no a la suite.
+ * La misma suite corre contra `BetterAuthIdentity` sobre Postgres real en
+ * `better-auth-identity.int.test.ts`. Que pase acá deja probado el armazón: un
+ * fallo allá apunta al adaptador y no a la suite.
  */
 const KNOWN_USER = "usr_conocido";
 const DISPOSABLE_USER = "usr_descartable";

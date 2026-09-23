@@ -55,6 +55,16 @@ export {
   type MemoryIdentityOptions,
   type MemoryIdentitySeedUser,
 } from "./identity/memory-identity.js";
+export {
+  BetterAuthIdentity,
+  SSO_NOT_CONFIGURED_MESSAGE,
+  type BetterAuthIdentityConfig,
+  type CompletePasswordResetRequest,
+  type IdentityEmailMessage,
+  type IdentityEmailSender,
+  type PasswordSignInRequest,
+  type PasswordSignUpRequest,
+} from "./identity/better-auth-identity.js";
 
 /**
  * Implementaciones de referencia en memoria de los cinco puertos que no tenían

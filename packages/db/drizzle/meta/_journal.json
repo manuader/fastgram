@@ -78,6 +78,13 @@
       "when": 1790008494032,
       "tag": "0010_snapshot_raw_purge",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790008494033,
+      "tag": "0011_better_auth_identity",
+      "breakpoints": true
     }
   ]
 }
