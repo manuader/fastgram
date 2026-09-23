@@ -28,6 +28,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { JOB_QUEUES } from "@fastgram/core";
 
+import { openDb } from "./helpers/fixtures.js";
 import { dataOf, errorOf, startApi, type ApiHarness } from "./helpers/harness.js";
 
 let api: ApiHarness;
@@ -699,6 +700,92 @@ describe("POST /brand/sources/:id/reanalyse", () => {
     expect(segundo.status).toBe(202);
     expect(dataOf(segundo)["analysisCount"]).toBe(1);
     expect(brandJobs()).toHaveLength(2);
+  });
+
+  it("dos pedidos simultáneos encolan UN job: el segundo espera la lectura y sale 409", async () => {
+    // La carrera: sin `FOR UPDATE` en la lectura, los dos pedidos leen `ready`,
+    // los dos pasan `startAnalysis`, y el `UPDATE` del segundo espera al
+    // primero y pasa igual (su `WHERE` es sólo id + workspace). Dos jobs.
+    //
+    // `Promise.all` a secas no la reproduce de forma confiable (trampa 34): las
+    // transacciones son cortas y se ordenan solas. Así que una tercera conexión
+    // **sostiene** el lock de la fila, y los dos pedidos se encolan detrás:
+    //
+    //  - con el lock en la ruta, los dos quedan esperando en la LECTURA; al
+    //    soltar, uno gana, confirma `analyzing`, y el otro lee eso → 409;
+    //  - sin el lock, los dos leen `ready` sin esperar y quedan trabados en el
+    //    UPDATE; al soltar, los dos escriben y los dos encolan → 202 + 202.
+    //
+    // Entre el primer pedido y el segundo se avanza el reloj: la clave del job
+    // lleva el instante, y con el `FixedClock` quieto los dos caerían en la
+    // misma clave y el doble los juntaría en uno — el test vería «1 job» sin el
+    // lock y mediría la deduplicación, no la guarda.
+    const id = await seedSource({
+      analysisCount: 1,
+      lastAnalysedAtMs: api.clock.nowMs() - 3_600_000,
+    });
+
+    const holder = openDb();
+    let soltar: () => void = () => {};
+    const suelta = new Promise<void>((r) => {
+      soltar = r;
+    });
+    let tomado: () => void = () => {};
+    const tomada = new Promise<void>((r) => {
+      tomado = r;
+    });
+    const sostenido = holder.sql.begin(async (tx) => {
+      await tx`select 1 from brand_sources where id = ${id}::uuid for update`;
+      tomado();
+      await suelta;
+    });
+
+    /** Cuántas sentencias sobre `brand_sources` están esperando un lock. */
+    const esperando = async (): Promise<number> => {
+      const [fila] = await holder.sql<{ n: number }[]>`
+        select count(*)::int as n from pg_stat_activity
+         where wait_event_type = 'Lock'
+           and datname = current_database()
+           and query ilike '%brand_sources%'
+      `;
+      return fila?.n ?? 0;
+    };
+    const hastaQueEsperen = async (n: number): Promise<void> => {
+      const limite = Date.now() + 10_000;
+      while ((await esperando()) < n) {
+        if (Date.now() > limite) {
+          throw new Error(`no llegaron ${String(n)} pedidos a esperar el lock`);
+        }
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    };
+
+    const reanalizar = () =>
+      api.request({ method: "POST", path: `/api/v1/brand/sources/${id}/reanalyse` });
+
+    try {
+      await tomada;
+      const primero = reanalizar();
+      await hastaQueEsperen(1);
+      api.clock.advanceMs(1_000);
+      const segundo = reanalizar();
+      await hastaQueEsperen(2);
+      soltar();
+      await sostenido;
+
+      const respuestas = await Promise.all([primero, segundo]);
+      // Lo que no tiene que pasar va primero (trampa 35): un segundo job.
+      expect(brandJobs()).toHaveLength(1);
+      expect(respuestas.map((r) => r.status).sort()).toEqual([202, 409]);
+      const [fila] = await api.handle.sql<{ analysis_count: number; status: string }[]>`
+        select analysis_count, status from brand_sources where id = ${id}::uuid
+      `;
+      expect(fila).toEqual({ analysis_count: 2, status: "analyzing" });
+    } finally {
+      soltar();
+      await sostenido.catch(() => undefined);
+      await holder.close();
+    }
   });
 
   it("un id ajeno da 404", async () => {

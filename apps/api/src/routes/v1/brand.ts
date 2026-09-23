@@ -108,6 +108,7 @@ import {
   brandSourceRepository,
   companyProfileRepository,
   connectionRepository,
+  lockBrandSource,
   workspaceMembershipRepository,
   type Transaction,
   type brandSources,
@@ -892,7 +893,12 @@ export function registerBrandRoutes(app: ZodApp): void {
             }
         > => {
           const scope = { companyId };
-          const current = await brandSourceRepository.findById(tx, scope, id);
+          // `FOR UPDATE`: un segundo pedido simultáneo espera acá hasta que éste
+          // confirme, y entonces lee `analyzing` y `startAnalysis` lo rechaza
+          // con 409. Con `findById` los dos leían `ready`, los dos pasaban, y el
+          // `UPDATE` de abajo no frena al segundo: su `WHERE` es sólo id +
+          // workspace, que siguen siendo ciertos (ver `brand-source-lock.ts`).
+          const current = await lockBrandSource(tx, scope, id);
           if (current === null) throw crossTenant("brand source", id, companyId);
 
           let next: DomainBrandSource;
@@ -946,11 +952,12 @@ export function registerBrandRoutes(app: ZodApp): void {
               // job viejo y la fuente quedaba `analyzing` sin nadie que la
               // analice. Con el instante, dos pedidos aceptados son dos jobs.
               //
-              // Lo que esto NO cierra: `findById` no toma lock de fila, así que
-              // dos pedidos **simultáneos** pueden leer los dos `ready`, pasar
-              // los dos `startAnalysis` y encolar dos jobs (si caen en el mismo
-              // milisegundo, pg-boss los junta). Es un análisis de más, no una
-              // fuente colgada; cerrarlo es un `FOR UPDATE` en la lectura.
+              // Dos pedidos **simultáneos** ya no llegan los dos hasta acá: la
+              // lectura de arriba es `FOR UPDATE`, así que el segundo espera,
+              // lee `analyzing` y sale con 409 sin encolar. Antes, con
+              // `findById` sin lock, los dos pasaban y esta clave —distinta por
+              // instante— los convertía en dos jobs. El test concurrente de
+              // `brand-sources.int.test.ts` lo mide con el lock quitado.
               singletonKey: `brand-source:${updated.id}:reanalyse:${now.toISOString()}`,
             },
           });
