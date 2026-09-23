@@ -19,10 +19,10 @@
  * Qué compra y qué no, con precisión:
  *  - `FR-010` criterio 3 (*"recargar la página conserva el progreso"*) se
  *    cumple **para todo lo que está guardado**: fuentes, detalles, cuestionario.
- *  - Lo que **no** está guardado en ninguna columna no sobrevive, y sólo hay
- *    dos cosas así: la rama manual (`Use description instead`) y el hecho de
- *    que `POST /onboarding/complete` ya corrió. Las dos están abajo, cada una
- *    en su sitio, y en el reporte.
+ *  - Lo que **no** está guardado en ninguna columna no sobrevive, y hoy es una
+ *    sola cosa: la rama manual (`Use description instead`), ver `baseRecord`.
+ *    Que `POST /onboarding/complete` ya corrió **sí** está guardado: es
+ *    `companies.status = 'active'`, que esa ruta escribe (ver su comentario).
  *
  * **No crea el workspace.** `FR-010` lo pide (`F-008`, PRD:436) y
  * `assertCanCreateWorkspace` está escrito y testeado en `core`. No se puede
@@ -43,7 +43,8 @@
  * **por plan** (`PLANS[plan].workspaces`). No se elige ninguno acá.
  *
  * **No tiene paso de detalles.** El paso 2 del wizard escribe `Company Name` y
- * `Company Logo`, que son columnas de `companies` — la tabla sin escritura. Un
+ * `Company Logo`, que son columnas de `companies` — tabla cuya única escritura
+ * es la transición de estado del cierre (`completeOnboarding`). Un
  * `POST /onboarding/details` que guardara la descripción y descartara en
  * silencio el nombre y el logo sería peor que no existir. La descripción, que
  * sí tiene dónde vivir, ya se escribe por `PATCH /brand/profile`.
@@ -348,8 +349,7 @@ function baseRecord(args: {
  * `ready` **sin comprobar nada**: pasar a `ready` es lo que hace
  * `POST /onboarding/complete`, no una consecuencia de tener el formulario
  * lleno. Y `ready` sólo se alcanza con la company en `active`, que es la única
- * marca persistida de que el alta cerró — y que hoy no escribe nadie (ver la
- * cabecera).
+ * marca persistida de que el alta cerró y que escribe ese endpoint.
  */
 export function walkToFurthestStep(record: OnboardingRecord): OnboardingRecord {
   let current = record;
@@ -543,15 +543,59 @@ export function registerOnboardingRoutes(app: ZodApp): void {
 
   // ── POST /onboarding/complete ──
   //
-  // `FR-010` **System behavior** (PRD:759), repetido en `FLOW-001` (PRD:1890) y
-  // `FLOW-009` (PRD:2006): *"crear el workspace real, sembrar content angles
-  // iniciales, **arrancar el relleno de la discovery queue** y marcar
-  // onboarding como completo."*
+  // `FR-010` **System behavior** (PRD:762), repetido en `FLOW-001` (PRD:1894) y
+  // `FLOW-009` (PRD:2010): *"Al finalizar: crear el workspace real, sembrar
+  // content angles iniciales, arrancar el relleno de la discovery queue y
+  // **marcar onboarding como completo**."*
   //
-  // De los cuatro efectos, **el tercero es el único que hoy tiene ejecutor**, y
-  // es el que este endpoint existe para disparar: era el disparador que el PRD
-  // define y que faltaba (ver la nota de `pedirRelleno` en `blitz.ts`, que
-  // encolaba desde el único otro momento en que el PRD promete el relleno).
+  // ## Qué hace, en orden, dentro de UNA transacción
+  //
+  //  1. Si el workspace ya está `active`, devuelve el estado `ready` sin tocar
+  //     nada (ver "idempotente" abajo).
+  //  2. Camina el wizard con `advanceOnboarding`: si falta un paso, sale el
+  //     error de **ese** paso con su copy literal de `FR-010` (400).
+  //  3. `draft|preparing → active` con un `UPDATE` condicionado
+  //     (`completeOnboarding`). Es la guarda de la carrera: de dos cierres
+  //     simultáneos, sólo uno recibe `activated`.
+  //  4. Sólo con `activated`: encola el relleno de la discovery queue.
+  //
+  // Si el encolado falla, la transacción entera vuelve atrás y el workspace
+  // sigue en `draft`: no hay un `active` sin su relleno pedido.
+  //
+  // ## Qué condiciones aplica, y cuáles NO
+  //
+  // Aplica sólo las que el PRD escribe como condición: los tres pasos del
+  // wizard (fuente, detalles, cuestionario — `advanceOnboarding`) y D-01
+  // (`assertNoOAuthRequired`).
+  //
+  // **No** exige que el análisis de las fuentes haya terminado bien. `FR-010`
+  // dice *"Si el análisis falla: 'Your company profile needs support before
+  // setup can finish.'"*, pero §19.5.1 (PRD:3190) dice de **todos** los estados
+  // de error de las fuentes que *"ninguno bloquea el alta"*, y el PRD no fija
+  // qué cuenta como "el análisis falla" con varias fuentes (¿una `failed`?
+  // ¿todas?) ni qué pasa con una fuente todavía `analyzing`. Elegir sería
+  // inventar la regla. Queda en el reporte como pregunta de producto.
+  //
+  // ## `preparing` no se escribe
+  //
+  // `DATA-002` declara `preparing` y el PRD no dice cuándo se entra ni qué lo
+  // termina. Lo que sí dice (`FLOW-001`): `Creating Workspace...` → ángulos →
+  // arranque del relleno → `Workspace ready!` — y el criterio 4 de `FR-010` da
+  // hasta **5 minutos después** de llegar a `/home` para que la discovery queue
+  // tenga una sugerencia, o sea que `ready` no espera al relleno. Con lo único
+  // que hoy se ejecuta (el encolado) dentro de la misma transacción, un
+  // `preparing` intermedio no lo vería nadie; y uno persistido sin nada que lo
+  // saque a `active` es exactamente el bug que esto cierra (`GET /onboarding`
+  // nunca llegaba a `ready`). El día que la siembra de ángulos sea un job,
+  // `preparing` es su estado natural — y hace falta que el PRD diga qué lo cierra.
+  //
+  // ## Idempotente
+  //
+  // Cerrar un alta ya cerrada devuelve **202 con el mismo estado** (`ready`), y
+  // no vuelve a encolar: `discoveryRefillQueued` dice si **esta** llamada
+  // encoló, así que es `false`. Lo mismo para quien pierde la carrera del punto
+  // 3. Con la misma `Idempotency-Key`, además, la respuesta es la primera,
+  // replicada (`withIdempotency`).
   //
   // `202` y no `200`: lo que termina al devolver es el encolado, no el trabajo.
   app.post(
@@ -589,6 +633,15 @@ export function registerOnboardingRoutes(app: ZodApp): void {
         () =>
           request.tx(async (tx): Promise<OnboardingCompletion> => {
             const loaded = await loadState(tx, companyId);
+            const finished = (): OnboardingCompletion => ({
+              ...toState({ ...loaded.record, step: "ready" }, loaded.sources),
+              discoveryRefillQueued: false,
+            });
+
+            // 1. Ya cerrado: mismo resultado, ningún efecto. Va antes que las
+            //    validaciones a propósito: un alta cerrada no se re-juzga contra
+            //    reglas del wizard que pueden haber cambiado desde entonces.
+            if (loaded.record.step === "ready") return finished();
 
             // `D-01` / `FLOW-009` criterio 11. Va **antes** que cualquier
             // escritura: si el alta llegó hasta acá habiendo pedido un
@@ -597,15 +650,9 @@ export function registerOnboardingRoutes(app: ZodApp): void {
             // día que la columna exista, este llamado ya está en su sitio.
             assertNoOAuthRequired(loaded.record);
 
-            // Cerrar dos veces no vuelve a encolar: `advanceOnboarding` sobre
-            // `ready` lanza *"This onboarding is already finished."* con
-            // `invalid_state`, que `http/errors.ts` traduce a `409`. El mensaje
-            // y el status los decide el dominio, no esta ruta.
-            if (loaded.record.step === "ready") advanceOnboarding(loaded.record);
-
-            // Si falta un paso, el error que sale es el del paso que falta,
-            // con su copy literal. Es el mismo camino que `GET /onboarding`
-            // recorre en silencio; acá se deja lanzar.
+            // 2. Si falta un paso, el error que sale es el del paso que falta,
+            //    con su copy literal. Es el mismo camino que `GET /onboarding`
+            //    recorre en silencio; acá se deja lanzar.
             let record = loaded.record;
             while (record.step !== "processing") {
               try {
@@ -615,21 +662,37 @@ export function registerOnboardingRoutes(app: ZodApp): void {
               }
             }
 
+            // 3. La transición. Ver `completeOnboarding` para por qué el
+            //    `UPDATE` condicionado es la guarda y no la lectura de arriba.
+            const transition = await companyRepository.completeOnboarding(tx, {
+              companyId,
+            });
+            if (transition.kind === "not_found") throw notFound("workspace");
+            if (transition.kind === "already_active") {
+              // Perdió la carrera contra otro cierre que ya confirmó. El otro
+              // encoló; éste no.
+              request.log.info(
+                { companyId },
+                "onboarding complete lost the race: already active",
+              );
+              return finished();
+            }
+
             // `FR-011.7` #7: los ángulos se siembran **sólo en el primer
             // análisis del workspace**. El conteo va con scope, como todo.
             const existingAngles = await contentAngleRepository.count(tx, { companyId });
             const plan = planOnboardingCompletion(record, existingAngles);
 
+            // 4. ADR-005: el encolado va **dentro** de la transacción.
+            //
+            // La clave lleva un cubo por minuto por la misma razón que en
+            // `blitz.ts`: el adaptador deriva de `singletonKey` un id
+            // determinista y permanente, así que una clave fija por workspace
+            // encolaría el relleno **una sola vez en la vida**. Y como sólo se
+            // llega acá con `activated`, que ocurre una vez por workspace, el
+            // cubo ya no es lo que evita el doble relleno: lo evita el paso 3.
             let discoveryRefillQueued = false;
             if (plan.startDiscoveryRefill) {
-              // ADR-005: el encolado va **dentro** de la transacción.
-              //
-              // La clave lleva un cubo por minuto por la misma razón que en
-              // `blitz.ts`: el adaptador deriva de `singletonKey` un id
-              // determinista y permanente, así que una clave fija por workspace
-              // encolaría el relleno **una sola vez en la vida**. Con el cubo,
-              // dos cierres con keys distintas dentro del mismo minuto se
-              // deduplican y el siguiente minuto vuelve a poder pedirlo.
               const minuto = Math.floor(clock.nowMs() / 60_000);
               await queue.enqueue<DiscoveryRefillJob>({
                 queue: JOB_QUEUES.discoveryRefill,
@@ -642,17 +705,14 @@ export function registerOnboardingRoutes(app: ZodApp): void {
               discoveryRefillQueued = true;
             }
 
-            // Los otros tres efectos del plan no se ejecutan y **no se
-            // simulan**:
-            //  - `createWorkspace` y `markComplete` necesitan escritura sobre
-            //    `companies` (ver la cabecera). Por eso el `step` que vuelve es
-            //    `processing` y no `ready`: `ready` sería mentira, y la próxima
-            //    lectura de `GET /onboarding` la desmentiría.
-            //  - `seedContentAngles` necesita el generador de `AI-005`, que es
-            //    `deps.angleGenerator` y no está montado. Devolver ángulos
-            //    inventados sería peor que ninguno.
+            // `seedContentAngles` **no se ejecuta y no se simula**: necesita el
+            // generador de `AI-005`, que es `deps.angleGenerator` y no está
+            // montado. Devolver ángulos inventados sería peor que ninguno. El
+            // workspace queda `active` sin ángulos sembrados — en el reporte.
+            // `createWorkspace` ya lo hizo `POST /onboarding/workspace`, y
+            // `markComplete` es el paso 3.
             return {
-              ...toState(record, loaded.sources),
+              ...toState({ ...record, step: "ready" }, loaded.sources),
               discoveryRefillQueued,
             };
           }),

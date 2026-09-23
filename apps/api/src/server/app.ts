@@ -23,6 +23,7 @@ import {
   type ZodTypeProvider,
 } from "fastify-type-provider-zod";
 
+import { neutralizeMalformedIds } from "../http/route-ids.js";
 import { registerErrorHandler } from "../plugins/error-handler.js";
 import {
   REDACTED_PATHS,
@@ -192,6 +193,11 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
           runScoped(deps.db, resolution.auth.companyId, deps.appRole, fn);
         return;
       });
+
+      // NFR-006: un `:id` que no es uuid se contesta como uno que no existe, en
+      // todas las rutas v1 y sin que cada una tenga que acordarse. Antes daba
+      // 500 en 11 de las 17 operaciones con `{id}`. Ver `http/route-ids.ts`.
+      v1.addHook("preValidation", neutralizeMalformedIds);
 
       await registerV1Routes(v1);
     },
