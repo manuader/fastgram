@@ -8,20 +8,12 @@
  *
  * No se agrega ninguna familia que el PRD no nombre.
  *
- * ── Trampa verificada en esta máquina (2026-09-21) ────────────────────────────
- * `sharp` 0.33 trae su propio libvips con fontconfig **sin config por defecto**:
- * al renderizar texto imprime `Fontconfig error: Cannot load default config
- * file` y resuelve TODA familia al mismo tipo de reserva. Medido: "Helvetica",
- * "Courier", "Times New Roman", "Montserrat" y una familia inexistente dan
- * exactamente las mismas métricas (517x39 px para la cadena sonda).
- *
- * Consecuencia: pedir una familia por nombre NO garantiza nada, y el fallback es
- * SILENCIOSO. Por eso acá:
- *   (a) cada peso se carga por ARCHIVO absoluto (`fontfile` de sharp), no por
- *       nombre — eso sí cambia las métricas de verdad (verificado con Georgia);
- *   (b) antes de usar una familia se la verifica contra una sonda centinela
- *       (`probeFontLoaded`), y si no cargó se falla con `font_unavailable` en
- *       lugar de renderizar con la fuente equivocada.
+ * ── Cómo se cargan ────────────────────────────────────────────────────────────
+ * Por NOMBRE, después de que `render/fontActivation.ts` activó el directorio al
+ * arrancar, y verificadas contra una sonda centinela (`render/fontLoader.ts`).
+ * Este comentario decía que se cargaban «por ARCHIVO absoluto (`fontfile`),
+ * verificado con Georgia»: era falso (trampa 40 del HANDOFF) — Georgia es del
+ * sistema y `fontfile` se ignora.
  */
 
 export const FONT_FAMILIES = [
@@ -98,8 +90,13 @@ export const FONT_REGISTRY: Readonly<Record<FontFamily, FontFamilySpec>> = {
  * Versión del registro. Entra en la clave de cache del overlay: si cambian las
  * fuentes, los overlays cacheados dejan de ser válidos aunque el texto no haya
  * cambiado (`P2-RENDER-010`).
+ *
+ * `"2"` (2026-09-23): la descripción Pango pasó de `"Inter 700 42px"` —que
+ * Pango lee como la familia «Inter 700» y cae a la reserva— a
+ * `"Inter, Bold 42px"`, y la familia sale del archivo. Todo overlay cacheado
+ * con la versión 1 se dibujó con la fuente de reserva.
  */
-export const FONT_REGISTRY_VERSION = "1";
+export const FONT_REGISTRY_VERSION = "2";
 
 export function isFontFamily(value: string): value is FontFamily {
   return (FONT_FAMILIES as readonly string[]).includes(value);

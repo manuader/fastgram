@@ -2,22 +2,19 @@
  * Baja las fuentes que `FR-051` exige — `P2-RENDER-008`, bloqueo #1 de
  * `P2-RENDER-015`.
  *
- * ## LO QUE ESTE SCRIPT NO RESUELVE — leer antes de darlo por cerrado
+ * ## Bajar no es activar
  *
  * Consigue los 32 archivos de las 10 familias OFL, con su licencia y su
- * procedencia. **Con eso el motor de texto TODAVÍA no las carga**, y está
- * medido: en macOS, con los 32 archivos presentes y válidos —nombres internos
- * correctos, leídos de la tabla `name`—, las 10 familias siguen dando
- * `font_unavailable`.
+ * procedencia. Que el motor de texto los encuentre **por nombre** es otro paso:
+ * lo hace `../src/render/fontActivation.ts` al arrancar el servicio, sólo para
+ * ese proceso y sin instalar nada (CoreText por proceso en macOS —con
+ * `NODE_OPTIONS=--experimental-ffi`—, un `fonts.conf` propio en Linux).
  *
- * La causa está documentada en `../src/render/fontLoader.ts`: el `fontfile` de
- * sharp **se ignora**, y lo único que decide es si el nombre de la familia
- * resuelve en el sistema. `FONTCONFIG_FILE` apuntando a este directorio tampoco
- * alcanza.
- *
- * O sea: **bajar ≠ instalar**. Instalarlas donde el sistema las encuentre por
- * nombre es trabajo del despliegue —del Dockerfile que `P0-REPO-004` bloquea—,
- * y este script es el paso de antes, no el paso entero.
+ * Hasta el 2026-09-23 este comentario decía que hacía falta instalarlas en el
+ * sistema porque `fontfile` se ignora y `FONTCONFIG_FILE` no alcanza. Lo
+ * primero es cierto; lo segundo sólo en macOS, y por una razón que no se había
+ * visto: el Pango de sharp en macOS no tiene backend fontconfig. Ver la
+ * cabecera de `fontActivation.ts` con los números.
  *
  * ## Por qué un script y no archivos en el repo
  *

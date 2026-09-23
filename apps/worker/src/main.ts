@@ -25,7 +25,6 @@
 import {
   createPgBossQueue,
   drizzleTransactionToExecutor,
-  MemoryMediaRenderer,
   OpenAiCompatibleLlm,
   S3Storage,
   systemClock,
@@ -33,7 +32,6 @@ import {
 } from "@fastgram/adapters";
 import { ALL_JOB_QUEUES } from "@fastgram/core";
 import { createDb } from "@fastgram/db";
-import type { MediaRenderer } from "@fastgram/ports";
 import pino from "pino";
 
 import { createLlmBrandSynthesizer } from "./brand/synthesizer.js";
@@ -50,7 +48,10 @@ import {
   renderServiceFromEnv,
 } from "./env.js";
 import { JOB_CATALOG, type JobPolicy } from "./jobs/catalog.js";
-import { createNormalizationRenderer } from "./media/normalization-renderer.js";
+import {
+  createRenderServiceRenderers,
+  selectWorkerRenderers,
+} from "./media/render-service.js";
 
 const env = loadWorkerEnv();
 const logger = pino({ level: env.LOG_LEVEL });
@@ -82,31 +83,6 @@ const { queue } = createPgBossQueue({
 });
 
 /**
- * `MemoryMediaRenderer` es un puesto de guardia **para `content-build`**, no la
- * solución.
- *
- * El adaptador real **ya existe** (`HttpMediaRenderer`, `P2-RENDER-002`) y rinde
- * video de verdad. No está montado para los builds porque hoy **rompería todos
- * los builds**, y los bloqueos están medidos en `P2-RENDER-015`: las fuentes no
- * están instaladas donde el motor las busca y el servicio respondería
- * `font_unavailable` —que el adaptador traduce, correctamente, a un
- * `bad_request` permanente: pieza fallada y save reembolsado en **cada**
- * build—; el audio no tiene origen definido; y `build-handler` todavía no usa
- * `renderAll`, así que un slideshow de más de un slide no entra.
- *
- * Con el de memoria el pipeline corre de punta a punta y el artefacto son bytes
- * sintéticos. Con el real mal configurado, el pipeline **cobra y reembolsa en
- * bucle**. El de memoria es peor producto y mejor estado.
- *
- * **`media-normalization` no usa esta instancia**: tiene su propio
- * `HttpMediaRenderer`, montado sólo si el entorno trae `RENDER_SERVICE_URL` y
- * `RENDER_MEDIA_GRANT_SECRET` (ver {@link createNormalizationRendererFromEnv}).
- * `probe`/`normalize` no dibujan texto, así que el bloqueo de las fuentes no les
- * aplica. Cambiar *esta* línea por el real sigue siendo `P2-RENDER-015`.
- */
-const renderer = new MemoryMediaRenderer();
-
-/**
  * El storage, **real** — `P1-STORAGE-007`, `ADR-006`.
  *
  * Acá estaba `MemoryStorage`. Con la API ya sobre S3 y el worker sobre memoria,
@@ -136,24 +112,39 @@ const storage = new S3Storage({
 });
 
 /**
- * El renderer de `media-normalization`, o `null` si el servicio de render no
- * está configurado. El «todas o ninguna» de las variables ya lo cortó
- * `loadWorkerEnv`; acá sólo se decide entre las dos mitades válidas.
+ * Los renderers — `P2-RENDER-015`.
  *
- * Con configuración, pide la versión del motor a `GET /capabilities` **antes**
- * de montar nada: si el servicio no contesta, el worker no levanta (ver
- * `media/normalization-renderer.ts` por qué).
+ * Con `RENDER_SERVICE_URL` + `RENDER_MEDIA_GRANT_SECRET`: `HttpMediaRenderer`
+ * contra `services/render` para `content-build` y `content-rebuild` (una
+ * instancia) y otra para `media-normalization` (otro presupuesto de tiempo).
+ * Sin ellas: `MemoryMediaRenderer` para los builds —bytes sintéticos, el
+ * pipeline corre igual— y la normalización sin montar. Ver
+ * `media/render-service.ts`, que es también donde está el porqué de que el
+ * real ya no rompa los builds (las fuentes cargan desde `RENDER_FONT_DIR`).
+ *
+ * Con la configuración puesta, pide la versión del motor a
+ * `GET /capabilities` **antes** de montar nada: si el servicio no contesta, el
+ * worker no levanta.
  */
-async function createNormalizationRendererFromEnv(): Promise<MediaRenderer | null> {
+async function renderersFromEnv() {
   const config = renderServiceFromEnv(env);
-  if (config === null) return null;
-  const created = await createNormalizationRenderer(config);
+  if (config === null) {
+    logger.warn(
+      "sin RENDER_SERVICE_URL: content-build y content-rebuild usan MemoryMediaRenderer " +
+        "(artefactos sintéticos) y media-normalization no se monta",
+    );
+    return selectWorkerRenderers(null);
+  }
+  const created = await createRenderServiceRenderers(config);
   // Nunca el secreto: sólo a dónde se habla.
-  logger.info({ baseUrl: config.baseUrl }, "servicio de render para media-normalization");
-  return created;
+  logger.info(
+    { baseUrl: config.baseUrl },
+    "servicio de render para content-build, content-rebuild y media-normalization",
+  );
+  return selectWorkerRenderers(created);
 }
 
-const normalizationRenderer = await createNormalizationRendererFromEnv();
+const { renderer, normalizationRenderer } = await renderersFromEnv();
 
 /**
  * `brand-source-analysis`: extractor de web (una instancia por `website` y

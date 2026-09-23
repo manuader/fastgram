@@ -39,14 +39,16 @@ import { createPublishHandler } from "./publishing/publish-handler.js";
 export interface WorkerHandlerDeps {
   readonly db: Database;
   /**
-   * El de `content-build` **y** `content-rebuild`. Hoy `MemoryMediaRenderer`:
-   * ver `main.ts`.
+   * El de `content-build` **y** `content-rebuild`: `HttpMediaRenderer` contra
+   * `services/render` si el entorno lo configura, `MemoryMediaRenderer` si no.
+   * Lo decide `selectWorkerRenderers` (`media/render-service.ts`).
    */
   readonly renderer: MediaRenderer;
   /**
-   * El de `media-normalization`, **otra instancia** y a propósito: un
-   * `HttpMediaRenderer` contra `services/render`, o `null` si el entorno no lo
-   * configura. Ver el bloque de `media-normalization` más abajo.
+   * El de `media-normalization`, **otra instancia** y a propósito (otro
+   * presupuesto de tiempo): un `HttpMediaRenderer` contra `services/render`,
+   * o `null` si el entorno no lo configura. Ver el bloque de
+   * `media-normalization` más abajo.
    */
   readonly normalizationRenderer: MediaRenderer | null;
   readonly storage: Storage;
@@ -150,9 +152,8 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
      * **Con el MISMO `renderer` que `content-build`, no con el de
      * normalización.** Un rebuild es el mismo render con otra revisión: con otro
      * motor, una edición que no cambia nada produciría una pieza que se ve
-     * distinta. Hoy es el de memoria, así que el rebuild que llega a renderizar
-     * deja un artefacto sintético igual que el build; el día que `content-build`
-     * pase a `services/render`, éste pasa con él sin tocar esta línea.
+     * distinta. Con el servicio de render configurado, los dos van contra
+     * `services/render`; sin él, los dos dejan un artefacto sintético.
      *
      * Montarlo no es opcional desde que la API encola acá: sin handler, cada
      * edición dejaría la pieza en `BUILDING` para siempre, sin fallar.
@@ -247,17 +248,17 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
    * `media-normalization` — **montado sólo si el servicio de render está
    * configurado**, y con su **propio** renderer.
    *
-   * Con el `MemoryMediaRenderer` de `content-build` no se puede: `probe`
-   * responde `not_found` para toda URL que no se le sembró —o sea, para todo
-   * upload real— y el handler marcaría **cada video del usuario `failed`** con
-   * `media_unreadable`. Eso es mentir en sus datos: el archivo está bien, lo
-   * que falta es el motor. La trampa 30 dice que se monta sin proveedor *si lo
-   * que escribe es verdad*, y esto no lo sería.
+   * Sin servicio, `content-build` usa el `MemoryMediaRenderer`, y con ése no
+   * se puede: `probe` responde `not_found` para toda URL que no se le sembró
+   * —o sea, para todo upload real— y el handler marcaría **cada video del
+   * usuario `failed`** con `media_unreadable`. Eso es mentir en sus datos: el
+   * archivo está bien, lo que falta es el motor. La trampa 30 dice que se
+   * monta sin proveedor *si lo que escribe es verdad*, y esto no lo sería.
    *
-   * Con un `HttpMediaRenderer` aparte sí: `probe`/`normalize` no necesitan las
-   * fuentes que bloquean `content-build` en `P2-RENDER-015`. Y es **otra
-   * instancia**, no el mismo `renderer`: cambiar el de `content-build` rompería
-   * todos los builds por esas fuentes.
+   * Por eso depende de `normalizationRenderer` y nunca de `renderer`: aunque
+   * con el servicio configurado los dos hablan con `services/render`, sin él
+   * `renderer` es el de memoria (trampa 46). Y es otra instancia por el
+   * presupuesto de tiempo (`media/normalization-renderer.ts`).
    *
    * Sin configuración, el video queda `processing`, que **sí** es verdad (no
    * está normalizado), y los jobs esperan en la cola a que aparezca un

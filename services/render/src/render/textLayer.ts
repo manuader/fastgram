@@ -23,6 +23,7 @@
 import sharp from "sharp";
 import type { Canvas } from "../domain/canvas.js";
 import type { TextObject } from "../domain/text.js";
+import { noteTextEngineUse } from "./fontActivation.js";
 import { resolveFont, type FontLoaderOptions, type ResolvedFont } from "./fontLoader.js";
 
 /** Ver la nota ABIERTO del encabezado. */
@@ -113,7 +114,6 @@ async function renderGlyphs(
     width: number;
     align: "left" | "centre" | "right";
     wrap: "word";
-    fontfile?: string;
   } = {
     text: `<span foreground="${colorHex}">${markupText}</span>`,
     font: font.pangoDescription,
@@ -123,7 +123,9 @@ async function renderGlyphs(
     align: pangoAlign(align),
     wrap: "word",
   };
-  if (font.fontFile !== null) text.fontfile = font.fontFile;
+  // Sin `fontfile`: se ignora (ver fontLoader.ts). La familia resuelve por
+  // nombre porque `fontActivation.ts` la activó al arrancar.
+  noteTextEngineUse();
   const pipeline = sharp({ text });
   const { data, info } = await pipeline.png().toBuffer({ resolveWithObject: true });
   return { buffer: data, width: info.width, height: info.height };

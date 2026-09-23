@@ -18,9 +18,12 @@
  *   `S3_ENDPOINT` cuesta un minuto; el otro camino cuesta una tarde y una
  *   llamada de un cliente.
  * - **Las dos del servicio de render van juntas o no van**
- *   (`RENDER_SERVICE_URL` y `RENDER_MEDIA_GRANT_SECRET`). Ninguna = la cola
- *   `media-normalization` no se monta y el arranque lo dice. Una sola = el
- *   proceso no levanta. Ver {@link renderServiceFromEnv}.
+ *   (`RENDER_SERVICE_URL` y `RENDER_MEDIA_GRANT_SECRET`). Las dos =
+ *   `content-build`, `content-rebuild` y `media-normalization` van contra
+ *   `services/render`. Ninguna = los builds usan el renderer de memoria
+ *   (artefactos sintéticos), `media-normalization` no se monta, y el arranque
+ *   lo dice. Una sola = el proceso no levanta. Ver {@link renderServiceFromEnv}
+ *   y `media/render-service.ts`.
  */
 import {
   baseEnvSchema,

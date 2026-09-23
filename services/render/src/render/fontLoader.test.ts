@@ -8,9 +8,12 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { RenderError } from "../errors.js";
 import {
+  fontAvailability,
   fontLoaderOptionsFromEnv,
+  pangoDescription,
   resetFontProbeCache,
   resolveFont,
+  verifyFontLoads,
 } from "./fontLoader.js";
 
 let dir = "";
@@ -48,7 +51,7 @@ describe("resolveFont", () => {
   it("en modo no estricto degrada pero lo marca: verified === false", async () => {
     const font = await resolveFont("inter", 400, 32, { fontDir: null, strict: false });
     expect(font.verified).toBe(false);
-    expect(font.pangoDescription).toBe("Inter 400 32px");
+    expect(font.pangoDescription).toBe("Inter, 32px");
   });
 
   it("las familias de marca sin nombre resuelto fallan en estricto", async () => {
@@ -65,7 +68,7 @@ describe("resolveFont", () => {
     );
     resetFontProbeCache();
     const font = await resolveFont("tiktok", 500, 32, { fontDir: dir, strict: false });
-    expect(font.pangoDescription).toBe("TikTok Display 500 32px");
+    expect(font.pangoDescription).toBe("TikTok Display, Medium 32px");
     // Sigue sin verificar porque el archivo tampoco está.
     expect(font.verified).toBe(false);
   });
@@ -89,5 +92,46 @@ describe("fontLoaderOptionsFromEnv", () => {
 
   it("RENDER_FONT_STRICT=false permite degradar", () => {
     expect(fontLoaderOptionsFromEnv({ RENDER_FONT_STRICT: "false" }).strict).toBe(false);
+  });
+});
+
+describe("pangoDescription", () => {
+  /**
+   * La descripción era `"Montserrat 700 42px"`, y Pango lee `"Montserrat 700"`
+   * como el NOMBRE de la familia: no la encuentra y cae a la reserva. Medido
+   * con Georgia (del sistema): `"Georgia 700"` da el centinela, 517x39.
+   */
+  it("el peso va como palabra de Pango, nunca como número", () => {
+    for (const weight of [300, 500, 600, 700]) {
+      expect(pangoDescription("Montserrat", weight, 42)).not.toMatch(/\d{3}/);
+    }
+    expect(pangoDescription("Montserrat", 300, 42)).toBe("Montserrat, Light 42px");
+    expect(pangoDescription("Montserrat", 500, 42)).toBe("Montserrat, Medium 42px");
+    expect(pangoDescription("Montserrat", 600, 42)).toBe("Montserrat, Semi-Bold 42px");
+    expect(pangoDescription("Montserrat", 700, 42)).toBe("Montserrat, Bold 42px");
+  });
+
+  it("400 no lleva palabra", () => {
+    expect(pangoDescription("Anton", 400, 40)).toBe("Anton, 40px");
+  });
+
+  it("la coma cierra la familia: «Poppins Light» no se parte en Poppins + Light", () => {
+    expect(pangoDescription("Poppins Light", 300, 40)).toBe("Poppins Light, Light 40px");
+  });
+});
+
+describe("verifyFontLoads", () => {
+  it("una familia inexistente no verifica, en ningún peso", async () => {
+    for (const weight of [400, 700]) {
+      expect(await verifyFontLoads("__fastgram_test_missing__", weight)).toBe(false);
+    }
+  });
+});
+
+describe("fontAvailability", () => {
+  it("sin directorio, ninguna de las 42 combinaciones figura como disponible", async () => {
+    const status = await fontAvailability({ fontDir: null, strict: true });
+    expect(status).toHaveLength(42);
+    expect(status.filter((s) => s.file || s.verified)).toEqual([]);
   });
 });

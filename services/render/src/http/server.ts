@@ -17,6 +17,8 @@ import {
   type RenderEngineConfig,
 } from "../render/engine.js";
 import { engineVersionFrom } from "../render/engineVersion.js";
+import type { FontActivation } from "../render/fontActivation.js";
+import type { FontStatus } from "../render/fontLoader.js";
 import {
   normalizeOperation,
   probeOperation,
@@ -32,6 +34,14 @@ import {
 export interface ServerDeps {
   readonly engine: RenderEngineConfig;
   readonly logger: boolean;
+  /**
+   * Lo que se activó y verificó al arrancar (`main.ts`). Opcional para los
+   * tests que montan el server sin pasar por el arranque.
+   */
+  readonly fontReport?: {
+    readonly activation: FontActivation;
+    readonly status: readonly FontStatus[];
+  };
 }
 
 /**
@@ -110,6 +120,27 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         requiredFiles: requiredFontFiles(),
         fontDir: deps.engine.fonts.fontDir,
         strict: deps.engine.fonts.strict,
+        /**
+         * Qué resuelve DE VERDAD el motor de texto, medido con la sonda al
+         * arrancar — no «qué archivo existe». Ver `render/fontActivation.ts`.
+         */
+        ...(deps.fontReport === undefined
+          ? {}
+          : {
+              activation: {
+                backend: deps.fontReport.activation.backend,
+                applied: deps.fontReport.activation.applied,
+                fontFiles: deps.fontReport.activation.fontFiles,
+                registered: deps.fontReport.activation.registered,
+                reason: deps.fontReport.activation.reason,
+              },
+              verified: deps.fontReport.status
+                .filter((s) => s.verified)
+                .map((s) => `${s.family}-${String(s.weight)}`),
+              unverified: deps.fontReport.status
+                .filter((s) => !s.verified)
+                .map((s) => `${s.family}-${String(s.weight)}`),
+            }),
       },
     };
   });

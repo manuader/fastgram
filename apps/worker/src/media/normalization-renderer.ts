@@ -1,10 +1,11 @@
 /**
  * El `HttpMediaRenderer` de `media-normalization` — y **sólo** de esa cola.
  *
- * `content-build` sigue con `MemoryMediaRenderer` (ver `main.ts` y
- * `P2-RENDER-015`: sin las fuentes, el real rompería todos los builds). `probe`
- * y `normalize` no dibujan texto, así que ese bloqueo no les aplica, y por eso
- * esta instancia existe aparte.
+ * Es otra instancia que la de `content-build`/`content-rebuild` (ver
+ * `render-service.ts`, que arma las dos con una sola consulta de versión)
+ * porque su presupuesto es otro: el de abajo. Nació aparte por otra razón que
+ * ya no rige —el de build era el de memoria porque las fuentes no cargaban—;
+ * la del presupuesto sigue.
  *
  * ## La versión del motor, al arrancar
  *
@@ -59,15 +60,12 @@ export interface NormalizationRendererOptions {
   readonly clock?: Clock;
 }
 
-export async function createNormalizationRenderer(
+/** Con la versión del motor ya pedida (ver `render-service.ts`). */
+export function normalizationRendererFor(
   config: RenderServiceConfig,
+  engineVersion: string,
   options: NormalizationRendererOptions = {},
-): Promise<HttpMediaRenderer> {
-  const engineVersion = await fetchRenderEngineVersion({
-    baseUrl: config.baseUrl,
-    timeoutMs: CAPABILITIES_TIMEOUT_MS,
-    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-  });
+): HttpMediaRenderer {
   return new HttpMediaRenderer({
     baseUrl: config.baseUrl,
     engineVersion,
@@ -77,4 +75,16 @@ export async function createNormalizationRenderer(
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
+}
+
+export async function createNormalizationRenderer(
+  config: RenderServiceConfig,
+  options: NormalizationRendererOptions = {},
+): Promise<HttpMediaRenderer> {
+  const engineVersion = await fetchRenderEngineVersion({
+    baseUrl: config.baseUrl,
+    timeoutMs: CAPABILITIES_TIMEOUT_MS,
+    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+  });
+  return normalizationRendererFor(config, engineVersion, options);
 }

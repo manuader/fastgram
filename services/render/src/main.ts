@@ -18,8 +18,18 @@ import { codeVersion } from "./domain/codeVersion.js";
 import { FileCacheStore } from "./cache/store.js";
 import { createHttpMediaResolver } from "./media/httpResolver.js";
 import { buildServer } from "./http/server.js";
+import { activateFontDir } from "./render/fontActivation.js";
+import { fontAvailability } from "./render/fontLoader.js";
 
 const env = loadRenderEnv();
+const fontOptions = fontOptionsFromEnv(env);
+
+// Las fuentes se activan ANTES de cualquier texto: fontconfig y el fontmap de
+// CoreText se congelan en el primer uso (ver `render/fontActivation.ts`). Y
+// después se mide qué resuelve de verdad, con la sonda: eso es lo que se loguea
+// y lo que publica `/capabilities`, no «qué archivo existe».
+const fontActivation = await activateFontDir(fontOptions.fontDir);
+const fontStatus = await fontAvailability(fontOptions);
 
 // `P2-RENDER-016`: la versión del motor se deriva del árbol de código y entra en
 // todas las claves de cache. Se fuerza acá, al arrancar, para que una instalación
@@ -35,10 +45,11 @@ await mkdir(downloadDir, { recursive: true });
 
 const app = buildServer({
   logger: true,
+  fontReport: { activation: fontActivation, status: fontStatus },
   engine: {
     cache: new FileCacheStore(cacheDir),
     policy: mediaPolicyFromEnv(env),
-    fonts: fontOptionsFromEnv(env),
+    fonts: fontOptions,
     resolveMedia: createHttpMediaResolver({
       downloadDir,
       maxBytes: (role) => maxBytesFor(env, role),
@@ -48,6 +59,20 @@ const app = buildServer({
     allowUntonemappedHdr: env.RENDER_ALLOW_UNTONEMAPPED_HDR,
   },
 });
+
+{
+  const verified = fontStatus
+    .filter((s) => s.verified)
+    .map((s) => `${s.family}-${String(s.weight)}`);
+  const unverified = fontStatus
+    .filter((s) => !s.verified)
+    .map((s) => `${s.family}-${String(s.weight)}`);
+  const { fontconfigFile: _local, ...activation } = fontActivation;
+  const summary = { activation, verified: verified.length, unverified };
+  if (unverified.length === 0) app.log.info(summary, "fuentes: todas verificadas");
+  else if (verified.length === 0) app.log.error(summary, "fuentes: NINGUNA verifica");
+  else app.log.warn(summary, "fuentes: hay familias que no verifican");
+}
 
 app.listen({ port: env.RENDER_PORT, host: "0.0.0.0" }).catch((err: unknown) => {
   app.log.error(err);
