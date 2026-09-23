@@ -157,6 +157,10 @@ API REST v1 completa (29 endpoints) · MCP OAuth connector (8 tools) · MCP API-
 
 Ver §24 (Open Questions). Resumen: detalle de la matriz de permisos por rol, panel de notificaciones, límites exactos de swipes diarios por plan, webhooks salientes, exportación de datos, y el alcance real de la superficie "V2 / Fastlane OS".
 
+> **Decisiones del dueño del producto (2026-09-23), para lo que este PRD dejaba abierto:**
+> - **Límite diario de swipes: sin límite por ahora.** El swipe se cuenta pero no se limita. Es provisorio y se cambia por configuración; no es un número del producto original.
+> - **Plan y estado del primer workspace: Free + `trialing`.** Un workspace nace en el plan Free de §16.1 («No credit card») con `subscriptionStatus = trialing`, así que le aplican las restricciones de trial de §16.7. Crear el **primero** no consulta el límite de workspaces; los adicionales siguen sin número para Free.
+
 ## 2.5 Fuera de alcance (no construir)
 
 - **Admin interno** (`/admin/*`): 13 páginas de back-office de Fastlane (companies, copilot, doctrine, RAG, velocity, zero-view-media, media-usage, base-character-gallery, design-system…). Es tooling interno del vendor, no del cliente. Se documenta su existencia en §3 pero **no forma parte del clon**. CONFIRMED `[APP routes]`

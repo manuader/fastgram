@@ -459,6 +459,11 @@ Detalle, decisiones y lo que se descartó:
 
 ## 5. Decisiones que no se vuelven a discutir
 
+- **(2026-09-23, decisión del usuario) El primer workspace nace en Free + `trialing`.** Anotado
+  en PRD §2.4. Crear el primero no consulta el límite de workspaces.
+- **(2026-09-23, decisión del usuario) Swipes diarios sin límite, por ahora.** Se cuentan y no se
+  limitan. Provisorio, por configuración; PRD §2.4.
+
 Las de producto (`D-01`…`D-05`) están en PRD §2.7 con su razón. Las de arquitectura, en
 `IMPLEMENTATION-PLAN.md` §3 como ADR-001…ADR-015. Las cuatro que más se van a querer reabrir:
 
