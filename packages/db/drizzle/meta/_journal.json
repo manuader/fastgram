@@ -71,6 +71,13 @@
       "when": 1790008494031,
       "tag": "0009_brand_staleness_sweep",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790008494032,
+      "tag": "0010_snapshot_raw_purge",
+      "breakpoints": true
     }
   ]
 }

@@ -39,6 +39,7 @@ import { createContentBuildHandler } from "./content/build-handler.js";
 import { createInfluencerPipelineHandler } from "./influencers/pipeline-handler.js";
 import { createDiscoveryRefillHandler } from "./discovery/refill-handler.js";
 import { createBrandStalenessHandler } from "./brand/staleness-handler.js";
+import { createSnapshotPurgeHandler } from "./brand/snapshot-purge-handler.js";
 import { createHealthServer, createWorkerHealth } from "./health/server.js";
 import { createPublishHandler } from "./publishing/publish-handler.js";
 import { loadWorkerEnv } from "./env.js";
@@ -219,6 +220,21 @@ const HANDLERS: Readonly<Record<string, JobHandler<unknown>>> = {
     appRole,
     logger,
   }),
+  /**
+   * **Una obligación de retención, no una optimización** (`DATA-032`, §9.14).
+   *
+   * Montarlo es lo que enciende su cron: el bloque de abajo sólo programa las
+   * colas con handler. Hoy **nada escribe snapshots** —el análisis de brand
+   * sources todavía no persiste `brand_source_snapshots`—, así que cada noche
+   * va a purgar cero. Se monta igual: el día que aparezca el productor, la
+   * retención ya se está cumpliendo en vez de quedar como tarea pendiente.
+   */
+  [JOB_QUEUES.snapshotPurge]: createSnapshotPurgeHandler({
+    db: handle.db,
+    clock,
+    appRole,
+    logger,
+  }),
   [JOB_QUEUES.quotaReset]: createQuotaResetHandler({
     db: handle.db,
     clock,
@@ -248,8 +264,8 @@ await queue.start();
  * Y **sólo los que tienen handler.** Programar el cron de una cola que nadie
  * consume es el peor modo de falla de este sistema —el que no falla—: los jobs
  * se acumulan, nadie los toma, y el log de arranque diría que el trabajo está
- * programado. Hoy el único en esa situación es `snapshot-purge`; la lista de los
- * que quedaron afuera va al log, igual que las colas sin consumidor.
+ * programado. La lista de los que quedaran afuera va al log, igual que las
+ * colas sin consumidor.
  *
  * El cron sale del catálogo y no de acá: es la política del consumidor y ya
  * está escrita con su razón. El adaptador lo registra **en UTC** (§16.2 fija

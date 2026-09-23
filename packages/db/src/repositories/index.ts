@@ -286,4 +286,5 @@ export {
   type InfluencerRow,
 } from "./influencer-credits.js";
 export { brandStalenessStore, sweepStaleBrandSources } from "./brand-staleness.js";
+export { purgeExpiredSnapshotRaw, snapshotPurgeStore } from "./snapshot-purge.js";
 export { lockPost, postPublishStore, type PostRow } from "./post-publish.js";
