@@ -634,9 +634,14 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 193
    **algunas familias sí resuelven**, y eso es lo peligroso: quien spot-chequea con la fuente
    equivocada ve que "anda" y cierra la investigación, y el producto sale con la tipografía
    incorrecta en cada pieza.
-   La defensa está implementada en `services/render/src/render/fontLoader.ts`: cargar por archivo
-   absoluto y **verificar contra una sonda centinela**. `FONTCONFIG_FILE` con un `fonts.conf`
-   propio **no** funciona; ya se probó.
+   La defensa es **verificar contra una sonda centinela** (`fontLoader.ts`). **Corregido el
+   2026-09-23 (`835628e`), porque dos cosas de acá eran falsas:** `fontfile` **no se usa** (la
+   trampa 40), y `FONTCONFIG_FILE` no falla por fontconfig sino porque **en macOS el Pango de
+   sharp sólo tiene backend CoreText** y nunca le pregunta. Lo que funciona en macOS es
+   registrar los archivos en CoreText con scope de proceso (`fontActivation.ts`, `node:ffi`,
+   `--experimental-ffi`); en Linux, `FONTCONFIG_FILE` es justamente el mecanismo (sin verificar
+   todavía). Y un tercer error de la sonda: pedía la familia sin peso, y `"Montserrat 700"` Pango
+   lo lee como familia inexistente — un "verificado" con la fuente de fallback.
 
 7. **Borrar `node_modules/.modules.yaml` a mano corrompe el lockfile de pnpm.** Deja symlinks
    colgados: `ls -d node_modules/eslint` responde bien y `ls node_modules/eslint/` falla. El
