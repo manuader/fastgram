@@ -1463,6 +1463,7 @@ Tarjetas compactas sin numeración: `Mode` (`⊕ Create New` / `⤫ Remix`) · `
 **Payloads de build (contrato normativo).** SUPPORTED `[DEV POST /content]`
 - Objeto de texto común: `{content, x, y, width, fontSize, color, textAlign: left|center|right, fontWeight?: 100–900, strokeWidth?, strokeColor?, backgroundColor?}`.
 - `canvas` = `{width, height}` en píxeles (p. ej. 1080×1920). Cada elemento de media lleva `drawX/drawY/drawW/drawH`.
+- **Decisión del dueño del producto (2026-09-23): `fontSize` y `strokeWidth` son unidades de editor, no píxeles del lienzo.** Son relativas a una vista previa de **360 px de ancho**; el render las escala por `canvas.width / 360` (en 1080 px, ×3: el `18` por defecto de `FR-051` sale a 54 px). Así el rango 8–72 del contrato vale igual para `POST /content`, Blitz y las ediciones. Antes se pasaban tal cual y el texto salía ilegible (18 px ≈ 2 % de la altura en 1080×1350).
 - `wall-of-text`: `{canvas, video{url,draw…}, audio{url}, text}`.
 - `green-screen`: `{canvas, image{url,draw…}, video{url,draw…}, text}` — el video con croma se compone **sobre** la imagen de fondo.
 - `video-hook`: `{canvas, hook_video{…}, demo_video{…}, audio{url}, text}` — hook arriba, demo abajo.
