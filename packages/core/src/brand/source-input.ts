@@ -311,7 +311,13 @@ export function canonicalSocialUrl(sourceType: SocialSourceType, handle: string)
         ? `https://youtube.com/${handle}`
         : `https://youtube.com/@${handle}`;
     case "linkedin":
-      return `https://linkedin.com/${handle}`;
+      // `detectBrandSource` sólo reconoce `company/`, `school/` e `in/`, y
+      // guarda el handle con el prefijo. Un slug suelto es una company page
+      // (`FR-011.1`: `linkedin.com/company/mimarca`); sin esto,
+      // `linkedin.com/acme` no lo reconocía ni el propio detector.
+      return handle.includes("/")
+        ? `https://linkedin.com/${handle}`
+        : `https://linkedin.com/company/${handle}`;
   }
 }
 

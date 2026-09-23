@@ -937,10 +937,21 @@ export function registerBrandRoutes(app: ZodApp): void {
             options: {
               transaction: tx,
               // A diferencia del alta, acá el id **se repite** entre
-              // re-análisis, así que la clave lleva el contador de la ventana:
-              // sin él, pg-boss deriva un id determinista de la clave y el
-              // segundo re-análisis de la misma fuente no se encolaría nunca.
-              singletonKey: `brand-source:${updated.id}:${String(next.analysisCount)}`,
+              // re-análisis, y pg-boss deriva un id determinista de la clave:
+              // una clave repetida no se encola nunca más (trampa 39).
+              //
+              // Llevaba el contador de la ventana, y **no alcanzaba**: el
+              // contador vuelve a 1 al vencer la ventana, así que el segundo
+              // re-análisis de otro día repetía `:1`, se deduplicaba contra el
+              // job viejo y la fuente quedaba `analyzing` sin nadie que la
+              // analice. Con el instante, dos pedidos aceptados son dos jobs.
+              //
+              // Lo que esto NO cierra: `findById` no toma lock de fila, así que
+              // dos pedidos **simultáneos** pueden leer los dos `ready`, pasar
+              // los dos `startAnalysis` y encolar dos jobs (si caen en el mismo
+              // milisegundo, pg-boss los junta). Es un análisis de más, no una
+              // fuente colgada; cerrarlo es un `FOR UPDATE` en la lectura.
+              singletonKey: `brand-source:${updated.id}:reanalyse:${now.toISOString()}`,
             },
           });
 

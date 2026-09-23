@@ -668,6 +668,39 @@ describe("POST /brand/sources/:id/reanalyse", () => {
     expect(brandJobs()).toHaveLength(0);
   });
 
+  it("dos re-análisis en ventanas distintas encolan DOS jobs, no uno", async () => {
+    // Trampa 39: la clave era `brand-source:<id>:<analysisCount>`, y el
+    // contador vuelve a 1 al vencer la ventana. El segundo re-análisis de otro
+    // día repetía `:1`, pg-boss lo deduplicaba contra el job viejo, y la fuente
+    // quedaba `analyzing` sin nada que la analice.
+    const id = await seedSource({
+      analysisCount: 1,
+      lastAnalysedAtMs: api.clock.nowMs() - 25 * 3_600_000,
+    });
+    const primero = await api.request({
+      method: "POST",
+      path: `/api/v1/brand/sources/${id}/reanalyse`,
+    });
+    expect(primero.status).toBe(202);
+    expect(dataOf(primero)["analysisCount"]).toBe(1);
+
+    // El worker la terminó; pasa un día.
+    await api.handle.sql`
+      update brand_sources
+         set status = 'ready', last_analysed_at = ${new Date(api.clock.nowMs()).toISOString()}::timestamptz
+       where id = ${id}::uuid
+    `;
+    api.clock.advanceHours(25);
+
+    const segundo = await api.request({
+      method: "POST",
+      path: `/api/v1/brand/sources/${id}/reanalyse`,
+    });
+    expect(segundo.status).toBe(202);
+    expect(dataOf(segundo)["analysisCount"]).toBe(1);
+    expect(brandJobs()).toHaveLength(2);
+  });
+
   it("un id ajeno da 404", async () => {
     const ajena = dataOf(
       await create(

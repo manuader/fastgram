@@ -21,6 +21,7 @@ export * from "./workspace/influencers.js";
 export * from "./brand/source-input.js";
 export * from "./brand/acquisition.js";
 export * from "./brand/brand-source.js";
+export * from "./brand/analysis.js";
 export * from "./brand/synthesis.js";
 export * from "./onboarding/onboarding.js";
 export * from "./discovery/blitz-preferences.js";

@@ -3,6 +3,7 @@ import { DomainError } from "../errors.js";
 import {
   SOCIAL_SOURCE_TYPES,
   assertHostAllowed,
+  canonicalSocialUrl,
   detectBrandSource,
   type BrandSourceDetection,
 } from "./source-input.js";
@@ -248,5 +249,21 @@ describe("protección SSRF con el copy literal de FR-010", () => {
   it("un host normal pasa", () => {
     expect(() => assertHostAllowed("miproducto.com")).not.toThrow();
     expect(() => assertHostAllowed("www.instagram.com")).not.toThrow();
+  });
+});
+
+describe("canonicalSocialUrl · ida y vuelta con detectBrandSource", () => {
+  it("un slug de LinkedIn sin prefijo es una company page que el detector reconoce", () => {
+    const url = canonicalSocialUrl("linkedin", "acme");
+    expect(url).toBe("https://linkedin.com/company/acme");
+    const back = detectBrandSource(url);
+    expect(back).toMatchObject({ sourceType: "linkedin", handle: "company/acme" });
+  });
+
+  it("un handle de LinkedIn con prefijo se respeta", () => {
+    expect(canonicalSocialUrl("linkedin", "in/ana")).toBe("https://linkedin.com/in/ana");
+    expect(canonicalSocialUrl("linkedin", "school/uba")).toBe(
+      "https://linkedin.com/school/uba",
+    );
   });
 });

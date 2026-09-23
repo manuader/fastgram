@@ -284,12 +284,3 @@ export function assertCanRemoveSource(
     );
   }
 }
-
-/*
- * El análisis de una fuente (`AI-016`, etapas 3 y 4) vive en `analysis.ts` y
- * sale por acá, no por `src/index.ts`: el barril de `core` no es de la tarea
- * que lo escribió (varios agentes en paralelo). Mover esta línea a
- * `src/index.ts` es una limpieza de una línea; `analysis.ts` no importa este
- * archivo, así que no hay ciclo.
- */
-export * from "./analysis.js";
