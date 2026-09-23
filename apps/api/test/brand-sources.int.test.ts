@@ -63,8 +63,12 @@ async function create(
   });
 }
 
-const resolve = (input: string): ReturnType<ApiHarness["request"]> =>
-  api.request({ method: "POST", path: "/api/v1/brand/sources/resolve", body: { input } });
+const resolve = (input: string, hint?: string): ReturnType<ApiHarness["request"]> =>
+  api.request({
+    method: "POST",
+    path: "/api/v1/brand/sources/resolve",
+    body: hint === undefined ? { input } : { input, hint },
+  });
 
 const brandJobs = (): readonly unknown[] =>
   api.queue.forQueue(JOB_QUEUES.brandSourceAnalysis);
@@ -154,6 +158,33 @@ describe("POST /brand/sources/resolve", () => {
     expect(errorOf(res).code).toBe("service_unavailable");
   });
 
+  it("el chip Website (`hint: website`) decide website frente a other_url · FR-011.1", async () => {
+    // Sin pista, un host desconocido es `other_url` (la aclaración de FR-011.1).
+    expect(dataOf(await resolve("acme.test"))["sourceType"]).toBe("other_url");
+    // Con la pista del chip, es `website`: mismo handle, mismo canonical.
+    const conPista = dataOf(await resolve("acme.test", "website"));
+    expect(conPista["sourceType"]).toBe("website");
+    expect(conPista["handle"]).toBe("acme.test");
+  });
+
+  it("`hint: website` nunca convierte una red social en web, ni resuelve un @handle", async () => {
+    const ig = dataOf(await resolve("instagram.com/acme", "website"));
+    expect(ig["sourceType"]).toBe("instagram");
+    expect(ig["handle"]).toBe("acme");
+
+    const handle = await resolve("@acme", "website");
+    expect(handle.status).toBe(400);
+    expect(errorOf(handle).details).toMatchObject({ code: "ERR-B03" });
+  });
+
+  it("una pista distinta de `website` se rechaza por contrato", async () => {
+    // Un chip social ya prefija el input con su host (FR-011.2); aceptar
+    // `hint: instagram` abriría una segunda vía para fijar el tipo que el
+    // detector no respalda.
+    const res = await resolve("instagram.com/acme", "instagram");
+    expect(res.status).toBe(400);
+  });
+
   it("`available` es false cuando la fuente ya está en ESTE workspace", async () => {
     expect((await create({ sourceType: "instagram", handle: "acme" })).status).toBe(202);
     expect(dataOf(await resolve("https://instagram.com/acme"))["available"]).toBe(false);
@@ -206,6 +237,28 @@ describe("POST /brand/sources", () => {
     const body = dataOf(await create({ sourceType: "linkedin", handle: "company/acme" }));
     expect(body["handle"]).toBe("company/acme");
     expect(body["canonicalUrl"]).toBe("https://linkedin.com/company/acme");
+  });
+
+  it("un handle de LinkedIn a secas es una company page, no un ERR-B02 · FR-011.1", async () => {
+    const res = await create({ sourceType: "linkedin", handle: "acme" });
+    expect(res.status).toBe(202);
+    const body = dataOf(res);
+    expect(body["handle"]).toBe("company/acme");
+    expect(body["canonicalUrl"]).toBe("https://linkedin.com/company/acme");
+    // Y es la MISMA fila que pegar la URL: la segunda alta choca.
+    const otra = await create({
+      sourceType: "linkedin",
+      canonicalUrl: "https://www.linkedin.com/company/acme/",
+    });
+    expect(otra.status).toBe(409);
+  });
+
+  it("un handle que el detector leería como otra cuenta se rechaza, no se da de alta", async () => {
+    // `youtube.com/@user/acme` resolvería `@user`: otro canal.
+    const res = await create({ sourceType: "youtube", handle: "user/acme" });
+    expect(res.status).toBe(400);
+    expect(errorOf(res).details).toMatchObject({ code: "ERR-B02" });
+    expect(brandJobs()).toHaveLength(0);
   });
 
   it("la rama web de FR-010 sigue funcionando: `sourceType: website` fija el tipo", async () => {

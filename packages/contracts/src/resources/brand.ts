@@ -102,12 +102,38 @@ export const brandSourceSchema = z
 export type BrandSource = z.infer<typeof brandSourceSchema>;
 
 /**
+ * La única pista de tipo que acepta `/resolve`: el chip `Website`.
+ *
+ * `FR-011.2` dice que los chips *"prefijan el input y fijan el `sourceType`"*.
+ * Para los cinco sociales el prefijo ya lo dice todo —`instagram.com/…` se
+ * detecta por el host—, así que una pista no aportaría nada. `Website` es el
+ * único chip sin prefijo posible, y la aclaración de `FR-011.1` (2026-09-21)
+ * dice que ese chip *"pasa un **hint** que fuerza `website`"* porque, sin él,
+ * un host desconocido se detecta `other_url` y la precedencia de fusión de
+ * `FR-011.6` los trata distinto.
+ *
+ * Semántica, que es la de `detectBrandSource` en `core`: **sólo decide
+ * `website` frente a `other_url`** para un host que no es de ninguna red
+ * social. Nunca convierte una URL de Instagram (ni de ninguna de las cinco) en
+ * `website`, y un `@handle` suelto sigue siendo ambiguo (`ERR-B03`).
+ */
+export const brandSourceResolveHintSchema = z.enum(["website"]);
+export type BrandSourceResolveHint = z.infer<typeof brandSourceResolveHintSchema>;
+
+/**
  * `POST /brand/sources/resolve` — "Dado un texto libre, devuelve
  * `{sourceType, handle, canonicalUrl, displayName, avatarUrl, available}` sin
- * crear nada" (PRD:2368). Forma literal.
+ * crear nada" (PRD:2368).
+ *
+ * `hint` es **añadido sobre la forma literal** de PRD:2368, y es opcional: sin
+ * él la respuesta es exactamente la de antes. Ver
+ * {@link brandSourceResolveHintSchema}.
  */
 export const resolveBrandSourceRequestSchema = z
-  .object({ input: z.string().min(1) })
+  .object({
+    input: z.string().min(1),
+    hint: brandSourceResolveHintSchema.optional(),
+  })
   .strict();
 export type ResolveBrandSourceRequest = z.infer<typeof resolveBrandSourceRequestSchema>;
 

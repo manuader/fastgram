@@ -14,6 +14,7 @@
 import { describe, expect, it } from "vitest";
 import { FixedClock, MemoryStorage } from "@fastgram/adapters";
 import {
+  buildOpenApiDocument,
   imageContentTypeSchema,
   uploadReservationStateSchema,
   videoContentTypeSchema,
@@ -21,7 +22,11 @@ import {
 
 import { canFinalize } from "../../http/uploads.js";
 import { ALLOWED_CATEGORIES, CATEGORY_SCHEMA } from "./media.js";
-import { canonicalObjectUrl, extensionFor } from "../../support/upload-reservations.js";
+import {
+  canonicalObjectUrl,
+  extensionFor,
+  type UploadRejection,
+} from "../../support/upload-reservations.js";
 
 const COMPANY = "11111111-1111-4111-8111-111111111111";
 const NOW = 1_700_000_000_000;
@@ -131,5 +136,34 @@ describe("categorías por tipo (F-129 / FR-100)", () => {
       "hook-video",
       "green-screen-video",
     ]);
+  });
+});
+
+describe("POST /media · el OpenAPI declara las respuestas que la ruta da", () => {
+  /**
+   * Los status que `claimReservation` puede rechazar, **atados al tipo**: si
+   * `UploadRejection["status"]` gana un miembro, este objeto deja de compilar
+   * (`apps/api` typechequea `src/**`), y quien lo agregue se entera acá de que
+   * falta declararlo en `packages/contracts/src/openapi.ts`.
+   */
+  const REJECTIONS: Record<UploadRejection["status"], string> = {
+    404: "not_found",
+    409: "conflict",
+    410: "gone",
+  };
+
+  /** Lo que no sale de `UploadRejection`: el éxito, el rate limit y el 503. */
+  const OTHERS = [
+    201, // el asset creado
+    429, // `rateLimit(limiter, "restPerWorkspace")` en el preHandler
+    503, // un video sin cola de `media-normalization` no se crea
+  ];
+
+  it("en los dos sentidos: ni un status sin declarar, ni uno declarado que no ocurre", () => {
+    const declared = Object.keys(
+      buildOpenApiDocument().paths["/media"]?.post?.responses ?? {},
+    ).sort();
+    const real = [...Object.keys(REJECTIONS), ...OTHERS.map(String)].sort();
+    expect(declared).toEqual(real);
   });
 });

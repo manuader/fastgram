@@ -14,6 +14,7 @@ import {
   companyProfileStatusSchema,
   createBrandSourceRequestSchema,
   fieldConfidenceSchema,
+  resolveBrandSourceRequestSchema,
   resolveBrandSourceResponseSchema,
   updateBrandSourceRequestSchema,
   updateCompanyProfileRequestSchema,
@@ -98,6 +99,23 @@ describe("enums de Brand Source · DATA-031 · PRD:2183-2192", () => {
 });
 
 describe("endpoints de Brand · §9.14 · PRD:2368-2374", () => {
+  it("resolve acepta el chip Website como pista, y ninguna otra", () => {
+    expect(resolveBrandSourceRequestSchema.parse({ input: "acme.test" })).toEqual({
+      input: "acme.test",
+    });
+    expect(
+      resolveBrandSourceRequestSchema.parse({ input: "acme.test", hint: "website" }).hint,
+    ).toBe("website");
+    // Los chips sociales prefijan el input con su host (FR-011.2): no hay
+    // pista social, y `other_url` es lo que ya sale sin pista.
+    for (const hint of ["instagram", "other_url", "manual"]) {
+      expect(
+        resolveBrandSourceRequestSchema.safeParse({ input: "acme.test", hint }).success,
+        hint,
+      ).toBe(false);
+    }
+  });
+
   it("resolve devuelve la forma literal del PRD", () => {
     const parsed = resolveBrandSourceResponseSchema.parse({
       sourceType: "instagram",

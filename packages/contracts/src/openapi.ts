@@ -599,7 +599,31 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
             required: true,
             content: json(toJsonSchema(media.finalizeMediaRequestSchema)),
           },
-          responses: { "201": ok("Creado", dataOf(mediaJs)) },
+          /*
+           * Las respuestas de error son las que `apps/api/src/routes/v1/media.ts`
+           * devuelve de verdad. Hasta el 2026-09-23 sólo estaba el `201`, y
+           * un SDK generado desde acá trataba el 410 de una reserva vencida
+           * —que el cliente **tiene** que distinguir para pedir otra— como
+           * error desconocido. `media.test.ts` de `apps/api` ata esta lista al
+           * tipo `UploadRejection`: un status nuevo allá no compila sin
+           * declararlo acá.
+           */
+          responses: {
+            "201": ok("Creado", dataOf(mediaJs)),
+            "404": errorResponse(
+              "not_found — la reserva no existe o es de otro workspace (§9.2)",
+            ),
+            "409": errorResponse(
+              "conflict — la reserva ya se finalizó, o el objeto todavía no está en " +
+                "el storage (terminar el PUT y reintentar la misma reserva)",
+            ),
+            "410": errorResponse("gone — reserva expirada; hay que pedir otra"),
+            "429": errorResponse("rate_limited"),
+            "503": errorResponse(
+              "service_unavailable — un video sin cola de `media-normalization` " +
+                "no se crea; la reserva queda intacta y reintentable",
+            ),
+          },
         },
         get: {
           operationId: "listMedia",

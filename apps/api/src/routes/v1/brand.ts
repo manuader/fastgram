@@ -231,6 +231,12 @@ export function asApiRejection(error: unknown): unknown {
  * detector la lee de vuelta. Eso además resuelve gratis los dos handles que no
  * son una palabra: `company/acme` (LinkedIn) y `channel/UCxxxx` (YouTube, con
  * mayúsculas que **no** se pueden bajar porque el id es sensible a caja).
+ *
+ * **La invariante** —la cubre `brand.test.ts`, plataforma por plataforma— es
+ * que escribir el handle equivale a pegar la URL del perfil: el
+ * `(sourceType, handle)` que sale del detector es el mismo en los dos caminos.
+ * Si no lo fuera, la unicidad global de `DATA-031` dejaría pasar la misma
+ * cuenta dos veces, una por cada camino.
  */
 export function detectionInputOf(
   sourceType: CoreBrandSourceType,
@@ -240,8 +246,75 @@ export function detectionInputOf(
   },
 ): string {
   if (body.canonicalUrl !== undefined) return body.canonicalUrl;
-  const handle = (body.handle ?? "").replace(/^@/, "");
-  return isSocialType(sourceType) ? canonicalSocialUrl(sourceType, handle) : handle;
+  const handle = (body.handle ?? "").trim().replace(/^@/, "");
+  return isSocialType(sourceType)
+    ? canonicalSocialUrl(sourceType, profileHandleOf(sourceType, handle))
+    : handle;
+}
+
+/**
+ * El handle tal como lo escribe `core` en `(sourceType, handle)`.
+ *
+ * Existe por **un** caso: un handle de LinkedIn a secas. `detectBrandSource`
+ * sólo reconoce `linkedin.com/company|school|in/<slug>` y guarda el handle
+ * **con** el prefijo; `canonicalSocialUrl("linkedin", "acme")` arma
+ * `linkedin.com/acme`, que el propio detector no reconoce (`ERR-B02`). O sea
+ * que `core` no hace ida y vuelta consigo mismo para LinkedIn, y el alta con
+ * `{sourceType: "linkedin", handle: "acme"}` fallaba.
+ *
+ * El prefijo por defecto es `company/` porque LinkedIn entra en `FR-011.1`
+ * como *"URL de company page o perfil"* con el ejemplo
+ * `linkedin.com/company/mimarca`, y porque las señales de `FR-011.3` para
+ * LinkedIn (tagline, industria, tamaño de empresa, sede) son de una página de
+ * empresa: un slug suelto es una marca, no una persona. Quien quiera un
+ * perfil personal o una escuela manda el prefijo (`in/…`, `school/…`).
+ *
+ * **Este arreglo es de `core`, no de acá**: el lugar natural es
+ * `canonicalSocialUrl` (o el `@handle` + `hint: "linkedin"` de
+ * `detectBrandSource`, que tiene el mismo defecto y devuelve `handle: "acme"`
+ * en vez de `company/acme`). Está en el reporte; mientras tanto el test de ida
+ * y vuelta de `brand.test.ts` se pone rojo si alguien lo quita de este lado.
+ */
+export function profileHandleOf(sourceType: SocialSourceType, handle: string): string {
+  if (sourceType === "linkedin" && !handle.includes("/")) return `company/${handle}`;
+  return handle;
+}
+
+/**
+ * La detección de un alta **por handle** tiene que caer en la plataforma y el
+ * handle pedidos; si no, se rechaza en vez de dar de alta otra cosa.
+ *
+ * El caso que lo motiva no es teórico: `{sourceType: "youtube", handle:
+ * "user/acme"}` arma `youtube.com/@user/acme`, el detector lee el primer
+ * segmento y resuelve **`@user`** — un canal que existe y no es el de la
+ * marca. Sin esta guarda el alta sale `202` con la cuenta equivocada y nadie
+ * se entera hasta ver el perfil sintetizado. Lo mismo `instagram` + `a/b`
+ * (resuelve `a`, marcado como post).
+ *
+ * Se compara sin caja: el detector baja a minúsculas los `@handle` pero no
+ * los ids de canal de YouTube, y lo que se quiere detectar es un cambio de
+ * **estructura**, no de mayúsculas.
+ */
+export function assertHandleRoundTrip(
+  requested: { readonly sourceType: SocialSourceType; readonly handle: string },
+  resolved: ResolvedInput,
+): void {
+  const wanted = profileHandleOf(
+    requested.sourceType,
+    requested.handle.trim().replace(/^@/, ""),
+  ).toLowerCase();
+  if (
+    resolved.sourceType !== requested.sourceType ||
+    resolved.handle.toLowerCase() !== wanted ||
+    resolved.resolvedFromPost
+  ) {
+    throw new ApiRejection(
+      400,
+      "bad_request",
+      "We couldn't tell what this is. Paste a website URL or a social profile link.",
+      { code: "ERR-B02" },
+    );
+  }
 }
 
 const SOCIAL_TYPES: readonly string[] = [
@@ -514,8 +587,13 @@ export function registerBrandRoutes(app: ZodApp): void {
       const companyId = request.auth.companyId;
 
       const result = await request.tx(async (tx): Promise<ResolveBrandSourceResponse> => {
+        // `hint` sólo puede ser `website` (el chip de `FR-011.2`), y
+        // `detectBrandSource` sólo lo mira para un host que no es de ninguna
+        // red social: no convierte una URL de Instagram en web ni resuelve un
+        // `@handle` suelto. Ver `brandSourceResolveHintSchema` en contracts.
         const resolved = requireResolved(
           detect(request.body.input, {
+            hint: request.body.hint,
             connectedPlatforms: await connectedPlatforms(tx, companyId),
           }),
         );
@@ -644,6 +722,18 @@ export function registerBrandRoutes(app: ZodApp): void {
                 connectedPlatforms: await connectedPlatforms(tx, companyId),
               }),
             );
+            // Por handle (sin URL) no hay host que mande: lo que se pidió es lo
+            // que se tiene que dar de alta, o nada. Ver `assertHandleRoundTrip`.
+            if (
+              body.canonicalUrl === undefined &&
+              body.handle !== undefined &&
+              isSocialType(body.sourceType)
+            ) {
+              assertHandleRoundTrip(
+                { sourceType: body.sourceType, handle: body.handle },
+                resolved,
+              );
+            }
 
             const existing = await listAllSources(tx, companyId);
 

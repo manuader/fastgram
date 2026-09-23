@@ -189,6 +189,32 @@ describe("documento OpenAPI · ADR-015", () => {
     ]);
   });
 
+  it("POST /media declara sus errores reales con el sobre de error, no sólo el 201", () => {
+    const responses = doc.paths["/media"]?.post?.responses ?? {};
+    expect(Object.keys(responses).sort()).toEqual([
+      "201",
+      "404",
+      "409",
+      "410",
+      "429",
+      "503",
+    ]);
+    const errorJs = toJsonSchema(errorEnvelopeSchema);
+    for (const status of ["404", "409", "410", "429", "503"]) {
+      expect(responses[status]?.content?.["application/json"]?.schema, status).toEqual(
+        errorJs,
+      );
+    }
+  });
+
+  it("/brand/sources/resolve acepta `hint` opcional, y sólo `website` · FR-011.1", () => {
+    const schema =
+      doc.paths["/brand/sources/resolve"]?.post?.requestBody?.content["application/json"]
+        ?.schema;
+    expect(schema?.required).toEqual(["input"]);
+    expect(schema?.properties?.["hint"]).toEqual({ type: "string", enum: ["website"] });
+  });
+
   it("todas las respuestas de error usan el sobre {error:{code,message}}", () => {
     const errorJs = toJsonSchema(errorEnvelopeSchema);
     const unauthorized = doc.paths["/influencers"]?.post?.responses["402"];
