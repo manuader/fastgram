@@ -20,7 +20,8 @@
     "db:migrate": "pnpm --filter @fastgram/db db:migrate",
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm boundaries && pnpm consistency && pnpm test",
     "consistency": "node scripts/check-consistency.mjs",
-    "smoke:binary": "node scripts/smoke-binary.mjs"
+    "smoke:binary": "node scripts/smoke-binary.mjs",
+    "dev:workspace": "node scripts/dev-workspace.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
