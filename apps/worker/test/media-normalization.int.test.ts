@@ -383,6 +383,7 @@ describe("el cableado de createHandlers", () => {
       clock,
       appRole: APP_ROLE,
       logger: silencioso,
+      brandAnalysis: { kind: "unmounted", missing: [] },
     });
     const normalizar = handlers[JOB_QUEUES.mediaNormalization];
     if (normalizar === undefined) throw new Error("media-normalization no se montó");

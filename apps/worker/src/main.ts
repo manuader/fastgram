@@ -26,17 +26,20 @@ import {
   createPgBossQueue,
   drizzleTransactionToExecutor,
   MemoryMediaRenderer,
+  OpenAiCompatibleLlm,
   S3Storage,
   systemClock,
+  WebsiteReader,
 } from "@fastgram/adapters";
 import { ALL_JOB_QUEUES } from "@fastgram/core";
 import { createDb } from "@fastgram/db";
 import type { MediaRenderer } from "@fastgram/ports";
 import pino from "pino";
 
-import { createHandlers } from "./handlers.js";
+import { createLlmBrandSynthesizer } from "./brand/synthesizer.js";
+import { createHandlers, type BrandAnalysisMount } from "./handlers.js";
 import { createHealthServer, createWorkerHealth } from "./health/server.js";
-import { loadWorkerEnv, renderServiceFromEnv } from "./env.js";
+import { brandAnalysisFromEnv, loadWorkerEnv, renderServiceFromEnv } from "./env.js";
 import { JOB_CATALOG, type JobPolicy } from "./jobs/catalog.js";
 import { createNormalizationRenderer } from "./media/normalization-renderer.js";
 
@@ -143,6 +146,35 @@ async function createNormalizationRendererFromEnv(): Promise<MediaRenderer | nul
 
 const normalizationRenderer = await createNormalizationRendererFromEnv();
 
+/**
+ * `brand-source-analysis`: extractor de web (una instancia por `website` y
+ * otra por `other_url`, `FR-011.1`), LLM y retención — o qué falta.
+ *
+ * Construir los adaptadores no toca red: `WebsiteReader` y
+ * `OpenAiCompatibleLlm` sólo validan su configuración, y **lanzan** si es
+ * inválida, así que un número imposible tira el arranque acá en vez del
+ * primer job. Sólo `website` y `other_url` tienen extractor: las cinco
+ * plataformas sociales terminan en `unsupported_platform` (ver el handler).
+ */
+function brandAnalysisMountFromEnv(): BrandAnalysisMount {
+  const config = brandAnalysisFromEnv(env);
+  if (config.kind === "missing") return { kind: "unmounted", missing: config.missing };
+  const reader = (source: "website" | "other_url"): WebsiteReader =>
+    new WebsiteReader({ source, ...config.website });
+  const llm = new OpenAiCompatibleLlm(config.llm);
+  // Nunca la API key: sólo a dónde se habla y con qué modelo.
+  logger.info(
+    { baseUrl: config.llm.baseUrl, model: config.llm.model },
+    "LLM para brand-source-analysis",
+  );
+  return {
+    kind: "mounted",
+    readers: { website: reader("website"), other_url: reader("other_url") },
+    synthesizer: createLlmBrandSynthesizer({ llm }),
+    rawRetentionDays: config.rawRetentionDays,
+  };
+}
+
 const { handlers: HANDLERS, unmounted } = createHandlers({
   db: handle.db,
   renderer,
@@ -151,6 +183,7 @@ const { handlers: HANDLERS, unmounted } = createHandlers({
   clock,
   appRole,
   logger,
+  brandAnalysis: brandAnalysisMountFromEnv(),
 });
 
 for (const [name, handler] of Object.entries(HANDLERS)) {
@@ -224,7 +257,8 @@ if (programablesSinHandler.length > 0) {
   );
 }
 // Una línea por cola que **tiene** handler y quedó afuera por configuración,
-// con el porqué. Hoy es sólo `media-normalization` sin servicio de render.
+// con el porqué: `media-normalization` sin servicio de render y
+// `brand-source-analysis` sin extractor, LLM o retención.
 for (const { queue: name, why } of unmounted) {
   logger.warn({ cola: name }, `handler no montado: ${why}`);
 }

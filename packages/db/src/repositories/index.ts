@@ -296,3 +296,22 @@ export {
   type CompleteNormalizationInput,
   type MediaRow,
 } from "./media-normalization.js";
+export {
+  brandAnalysisStore,
+  claimBrandSourceAnalysis,
+  completeBrandSourceAnalysis,
+  failBrandSourceAnalysis,
+  findBrandSourceForAnalysis,
+  insertBrandSourceSnapshot,
+  latestSnapshotsOfOtherSources,
+  lockCompanyProfile,
+  saveMaterializedProfile,
+  type BrandSourceRow,
+  type CompanyProfileRow,
+  type CompleteBrandSourceInput,
+  type FailBrandSourceInput,
+  type InsertSnapshotInput,
+  type MaterializedProfileValues,
+  type OtherSourceSnapshot,
+  type SaveMaterializedProfileInput,
+} from "./brand-analysis.js";

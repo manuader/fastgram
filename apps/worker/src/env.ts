@@ -30,6 +30,7 @@ import {
   z,
 } from "@fastgram/config/env";
 import { APP_ROLE } from "@fastgram/db";
+import { LINK_IN_BIO_MAX_DESTINATIONS } from "@fastgram/ports";
 
 /**
  * `X=` en un `.env` llega como `""`, no como ausente. Para estas dos variables
@@ -44,6 +45,21 @@ const unsetIfEmpty = (value: unknown): unknown => (value === "" ? undefined : va
 const GRANT_SECRET_MIN_LENGTH = 32;
 
 const RENDER_VARS = ["RENDER_SERVICE_URL", "RENDER_MEDIA_GRANT_SECRET"] as const;
+const LLM_VARS = [
+  "LLM_BASE_URL",
+  "LLM_API_KEY",
+  "LLM_MODEL",
+  "LLM_CONTEXT_WINDOW_TOKENS",
+] as const;
+const WEBSITE_READER_VARS = [
+  "BRAND_WEBSITE_TIMEOUT_MS",
+  "BRAND_WEBSITE_MAX_BODY_BYTES",
+  "BRAND_WEBSITE_MAX_REDIRECTS",
+  "BRAND_WEBSITE_MAX_SECONDARY_PAGES",
+  "BRAND_WEBSITE_MAX_TEXT_CHARS",
+  "BRAND_WEBSITE_USER_AGENT",
+  "BRAND_WEBSITE_ALLOWED_PORTS",
+] as const;
 
 const workerEnvObject = baseEnvSchema
   .merge(postgresEnvSchema)
@@ -120,6 +136,106 @@ const workerEnvObject = baseEnvSchema
         )
         .optional(),
     ),
+
+    /*
+     * ── `brand-source-analysis` ──────────────────────────────────────────
+     *
+     * Tres grupos, y el handler se monta sólo con **los tres**: sin extractor
+     * no hay qué leer, sin LLM no hay síntesis, y sin retención cada snapshot
+     * guardaría material de terceros sin fecha de purga (`DATA-032`). Ver
+     * {@link brandAnalysisFromEnv}. Ninguno tiene default numérico: el PRD no
+     * da ninguno de estos números, y ADR-009 prohíbe fijar el modelo.
+     */
+
+    /** ADR-009. Las cuatro juntas o ninguna. */
+    LLM_BASE_URL: z.preprocess(
+      unsetIfEmpty,
+      z
+        .string()
+        .url()
+        .refine((v) => /^https?:\/\//.test(v), "tiene que ser http:// o https://")
+        .optional(),
+    ),
+    LLM_API_KEY: z.preprocess(unsetIfEmpty, z.string().min(1).optional()),
+    LLM_MODEL: z.preprocess(unsetIfEmpty, z.string().min(1).optional()),
+    /**
+     * Ventana del modelo de `LLM_MODEL`, en tokens. El adaptador la exige
+     * (rechaza como `bad_request` un prompt que no entra) y es una propiedad
+     * del modelo, así que cambia con él: sale de la ficha del gateway.
+     */
+    LLM_CONTEXT_WINDOW_TOKENS: z.preprocess(
+      unsetIfEmpty,
+      z.coerce.number().int().positive().optional(),
+    ),
+
+    /** `WebsiteReader` (`P1-BRAND-006`). Las siete juntas o ninguna. */
+    BRAND_WEBSITE_TIMEOUT_MS: z.preprocess(
+      unsetIfEmpty,
+      z.coerce.number().int().positive().optional(),
+    ),
+    BRAND_WEBSITE_MAX_BODY_BYTES: z.preprocess(
+      unsetIfEmpty,
+      z.coerce.number().int().positive().optional(),
+    ),
+    BRAND_WEBSITE_MAX_REDIRECTS: z.preprocess(
+      unsetIfEmpty,
+      z.coerce.number().int().min(0).optional(),
+    ),
+    /** §9.14: 1 nivel, **máximo 5** destinos. El techo es del PRD; el valor, no. */
+    BRAND_WEBSITE_MAX_SECONDARY_PAGES: z.preprocess(
+      unsetIfEmpty,
+      z.coerce.number().int().min(0).max(LINK_IN_BIO_MAX_DESTINATIONS).optional(),
+    ),
+    BRAND_WEBSITE_MAX_TEXT_CHARS: z.preprocess(
+      unsetIfEmpty,
+      z.coerce.number().int().positive().optional(),
+    ),
+    /** Identificación del bot. La elige quien opera, no el código. */
+    BRAND_WEBSITE_USER_AGENT: z.preprocess(unsetIfEmpty, z.string().min(1).optional()),
+    /** Lista separada por comas, p. ej. `80,443`. Sin lista, sería un escáner de puertos. */
+    BRAND_WEBSITE_ALLOWED_PORTS: z.preprocess(
+      unsetIfEmpty,
+      z
+        .string()
+        .transform((v, ctx) => {
+          const ports = v.split(",").map((p) => p.trim());
+          const parsed = ports.map(Number);
+          if (
+            ports.some((p) => p === "") ||
+            parsed.some((p) => !Number.isInteger(p) || p < 1 || p > 65_535)
+          ) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "lista de puertos separados por comas, cada uno en [1, 65535]",
+            });
+            return z.NEVER;
+          }
+          return parsed;
+        })
+        .optional(),
+    ),
+    /**
+     * «Hosts bloqueados» de `NFR-017`. **El PRD no dice cuáles**, así que vacío
+     * es un valor válido: la guarda de IPs privadas/localhost corre igual.
+     */
+    BRAND_WEBSITE_BLOCKED_HOSTS: z
+      .string()
+      .default("")
+      .transform((v) =>
+        v
+          .split(",")
+          .map((h) => h.trim())
+          .filter((h) => h.length > 0),
+      ),
+
+    /**
+     * `DATA-032.rawRetentionExpiresAt`, en días. **El PRD no da la duración**:
+     * la ata a la revisión legal de `OQ-16`. Sin ella el análisis no se monta.
+     */
+    BRAND_SNAPSHOT_RAW_RETENTION_DAYS: z.preprocess(
+      unsetIfEmpty,
+      z.coerce.number().int().positive().optional(),
+    ),
   });
 
 /**
@@ -139,20 +255,43 @@ const workerEnvObject = baseEnvSchema
  * bandera explícita, no la ausencia de una variable.
  */
 export const workerEnvSchema = workerEnvObject.superRefine((env, ctx) => {
-  const present = RENDER_VARS.filter((name) => env[name] !== undefined);
-  if (present.length === 0 || present.length === RENDER_VARS.length) return;
-  for (const name of RENDER_VARS) {
+  allOrNone(env, ctx, RENDER_VARS, "el servicio de render", "media-normalization");
+  allOrNone(env, ctx, LLM_VARS, "el LLM", "brand-source-analysis");
+  allOrNone(
+    env,
+    ctx,
+    WEBSITE_READER_VARS,
+    "el extractor de web",
+    "brand-source-analysis",
+  );
+});
+
+/**
+ * Un grupo de variables que va entero o no va. La mitad configurada es el
+ * peor estado, porque **parece andar**: el arranque no dice nada y la cola
+ * queda sin montar, o montada contra algo que falla en cada job.
+ */
+function allOrNone(
+  env: z.infer<typeof workerEnvObject>,
+  ctx: z.RefinementCtx,
+  group: readonly (keyof z.infer<typeof workerEnvObject>)[],
+  what: string,
+  queue: string,
+): void {
+  const present = group.filter((name) => env[name] !== undefined);
+  if (present.length === 0 || present.length === group.length) return;
+  for (const name of group) {
     if (env[name] !== undefined) continue;
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: [name],
       message:
-        `falta, y ${present.join(", ")} sí está: el servicio de render se ` +
-        `configura con ${RENDER_VARS.join(" + ")} juntas, o sin ninguna ` +
-        "(la cola media-normalization no se monta)",
+        `falta, y ${present.join(", ")} sí está: ${what} se ` +
+        `configura con ${group.join(" + ")} juntas, o sin ninguna ` +
+        `(la cola ${queue} no se monta)`,
     });
   }
-});
+}
 
 export type WorkerEnv = z.infer<typeof workerEnvSchema>;
 
@@ -181,4 +320,84 @@ export function loadWorkerEnv(
   source: Record<string, string | undefined> = process.env,
 ): WorkerEnv {
   return defineEnv("@fastgram/worker", workerEnvSchema, source);
+}
+
+/** Lo que hace falta para `OpenAiCompatibleLlm` (ADR-009). */
+export interface LlmConfig {
+  readonly baseUrl: string;
+  readonly apiKey: string;
+  readonly model: string;
+  readonly contextWindowTokens: number;
+}
+
+/** `WebsiteReaderConfig` sin `source`: se monta una vez por `website` y otra por `other_url`. */
+export interface WebsiteReaderSettings {
+  readonly timeoutMs: number;
+  readonly maxBodyBytes: number;
+  readonly maxRedirects: number;
+  readonly maxSecondaryPages: number;
+  readonly maxTextChars: number;
+  readonly userAgent: string;
+  readonly allowedPorts: readonly number[];
+  readonly blockedHosts: readonly string[];
+}
+
+export type BrandAnalysisConfig =
+  | {
+      readonly kind: "configured";
+      readonly llm: LlmConfig;
+      readonly website: WebsiteReaderSettings;
+      readonly rawRetentionDays: number;
+    }
+  | { readonly kind: "missing"; readonly missing: readonly string[] };
+
+/**
+ * Los tres grupos que el handler necesita, o **cuáles faltan**, para que el
+ * arranque lo diga con nombres de variable. El «todas o ninguna» de cada grupo
+ * ya lo cortó el esquema.
+ */
+export function brandAnalysisFromEnv(env: WorkerEnv): BrandAnalysisConfig {
+  const missing: string[] = [];
+  const llm =
+    env.LLM_BASE_URL !== undefined &&
+    env.LLM_API_KEY !== undefined &&
+    env.LLM_MODEL !== undefined &&
+    env.LLM_CONTEXT_WINDOW_TOKENS !== undefined
+      ? {
+          baseUrl: env.LLM_BASE_URL,
+          apiKey: env.LLM_API_KEY,
+          model: env.LLM_MODEL,
+          contextWindowTokens: env.LLM_CONTEXT_WINDOW_TOKENS,
+        }
+      : null;
+  if (llm === null) missing.push(LLM_VARS.join(" + "));
+
+  const website =
+    env.BRAND_WEBSITE_TIMEOUT_MS !== undefined &&
+    env.BRAND_WEBSITE_MAX_BODY_BYTES !== undefined &&
+    env.BRAND_WEBSITE_MAX_REDIRECTS !== undefined &&
+    env.BRAND_WEBSITE_MAX_SECONDARY_PAGES !== undefined &&
+    env.BRAND_WEBSITE_MAX_TEXT_CHARS !== undefined &&
+    env.BRAND_WEBSITE_USER_AGENT !== undefined &&
+    env.BRAND_WEBSITE_ALLOWED_PORTS !== undefined
+      ? {
+          timeoutMs: env.BRAND_WEBSITE_TIMEOUT_MS,
+          maxBodyBytes: env.BRAND_WEBSITE_MAX_BODY_BYTES,
+          maxRedirects: env.BRAND_WEBSITE_MAX_REDIRECTS,
+          maxSecondaryPages: env.BRAND_WEBSITE_MAX_SECONDARY_PAGES,
+          maxTextChars: env.BRAND_WEBSITE_MAX_TEXT_CHARS,
+          userAgent: env.BRAND_WEBSITE_USER_AGENT,
+          allowedPorts: env.BRAND_WEBSITE_ALLOWED_PORTS,
+          blockedHosts: env.BRAND_WEBSITE_BLOCKED_HOSTS,
+        }
+      : null;
+  if (website === null) missing.push(WEBSITE_READER_VARS.join(" + "));
+
+  const rawRetentionDays = env.BRAND_SNAPSHOT_RAW_RETENTION_DAYS;
+  if (rawRetentionDays === undefined) missing.push("BRAND_SNAPSHOT_RAW_RETENTION_DAYS");
+
+  if (llm === null || website === null || rawRetentionDays === undefined) {
+    return { kind: "missing", missing };
+  }
+  return { kind: "configured", llm, website, rawRetentionDays };
 }

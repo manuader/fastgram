@@ -8,17 +8,21 @@
  * dobles para comprobar qué se monta en cada configuración.
  */
 import type {
+  BrandSourceType,
   Clock,
   JobHandler,
   MediaRenderer,
   SocialPublisher,
+  SocialReader,
   Storage,
 } from "@fastgram/ports";
 import { JOB_QUEUES, type JobQueueName } from "@fastgram/core";
 import type { Database } from "@fastgram/db";
 import { systemRng } from "@fastgram/adapters";
 
+import { createBrandSourceAnalysisHandler } from "./brand/analysis-handler.js";
 import { createBrandStalenessHandler } from "./brand/staleness-handler.js";
+import type { BrandSynthesizer } from "./brand/synthesizer.js";
 import { createSnapshotPurgeHandler } from "./brand/snapshot-purge-handler.js";
 import { createContentBuildHandler, type BuildLogger } from "./content/build-handler.js";
 import { createDiscoveryRefillHandler } from "./discovery/refill-handler.js";
@@ -41,6 +45,28 @@ export interface WorkerHandlerDeps {
   readonly clock: Clock;
   readonly appRole: string | undefined;
   readonly logger: BuildLogger;
+  /**
+   * Lo de `brand-source-analysis`, o **qué falta** para montarlo. Ver el
+   * bloque de esa cola más abajo.
+   */
+  readonly brandAnalysis: BrandAnalysisMount;
+}
+
+export type BrandAnalysisMount =
+  | {
+      readonly kind: "mounted";
+      readonly readers: Readonly<Partial<Record<BrandSourceType, SocialReader>>>;
+      readonly synthesizer: BrandSynthesizer;
+      readonly rawRetentionDays: number;
+    }
+  | { readonly kind: "unmounted"; readonly missing: readonly string[] };
+
+export function brandAnalysisUnmountedWhy(missing: readonly string[]): string {
+  return (
+    `faltan ${missing.join("; ")}: las brand sources quedan en \`pending\` y sus ` +
+    "jobs esperan en la cola hasta que un worker con extractor de web, LLM y " +
+    "retención de snapshots configurados los tome"
+  );
 }
 
 /** Una cola que tiene handler escrito y que esta configuración no monta. */
@@ -222,6 +248,39 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
       clock,
       appRole,
       logger,
+    });
+  }
+
+  /*
+   * `brand-source-analysis` — **montado sólo con extractor de web, LLM y
+   * retención configurados**.
+   *
+   * La nota de `P1-BRAND-006` en `tasks.md` explica por qué no se montó sin
+   * extractor: ningún motivo del enum era verdad. Con `WebsiteReader` sí hay
+   * verdades para escribir, y las plataformas sin extractor terminan en
+   * `failed`/`unsupported_platform` (ver la cabecera del handler).
+   *
+   * Pero con cualquiera de las tres piezas ausente, lo que escribiría sería
+   * falso: sin extractor de web, **una web** terminaría `unsupported_platform`
+   * —esta instalación sí la soporta, sólo no está configurada—; sin LLM, cada
+   * fuente fallaría por algo que no es de la fuente; sin retención, cada
+   * snapshot guardaría material de terceros sin fecha de purga. Sin montar, la
+   * fuente queda `pending`, que es verdad: nadie la analizó.
+   */
+  if (deps.brandAnalysis.kind === "mounted") {
+    handlers[JOB_QUEUES.brandSourceAnalysis] = createBrandSourceAnalysisHandler({
+      db,
+      readers: deps.brandAnalysis.readers,
+      synthesizer: deps.brandAnalysis.synthesizer,
+      rawRetentionDays: deps.brandAnalysis.rawRetentionDays,
+      clock,
+      appRole,
+      logger,
+    });
+  } else {
+    unmounted.push({
+      queue: JOB_QUEUES.brandSourceAnalysis,
+      why: brandAnalysisUnmountedWhy(deps.brandAnalysis.missing),
     });
   }
 
