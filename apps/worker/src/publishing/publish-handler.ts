@@ -51,7 +51,11 @@
  *   También reportado.
  */
 
-import { parsePublishJob, type PublishJob } from "@fastgram/core";
+import {
+  parsePublishJob,
+  translatePublishFailure,
+  type PublishJob,
+} from "@fastgram/core";
 import {
   contentRepository,
   postPublishStore,
@@ -62,6 +66,7 @@ import {
 } from "@fastgram/db";
 import {
   PortError,
+  PUBLISH_PLATFORMS,
   type Clock,
   type JobContext,
   type JobHandler,
@@ -287,7 +292,7 @@ export function createPublishHandler(deps: PublishDeps): JobHandler<unknown> {
               // El código es neutral (§10, regla 6) y el mensaje ya viene
               // "seguro de mostrar" del puerto: sin ids internos, sin nombre de
               // proveedor, sin trazas.
-              errorCode: status.failure.reason,
+              errorCode: errorCodeFor(post.platform, status.failure),
               errorMessage: status.failure.message,
             }),
       });
@@ -401,4 +406,28 @@ export function createPublishHandler(deps: PublishDeps): JobHandler<unknown> {
 
     deps.logger.info({ ...base, kind: status.kind }, "publicación resuelta");
   };
+}
+
+/**
+ * `errorCode` de un fallo que devolvió la plataforma — `P3-PUB-006`, DP-006.
+ *
+ * La tabla de `@fastgram/core` es la primera línea (PRD:3805). Sólo cambia la
+ * fila cuando el PRD tiene un código literal (`coded`): un límite de TikTok
+ * queda `tiktok_post_limit_exceeded` (PRD:1399) y no `post_limit_exceeded`.
+ *
+ * En `uncoded` y `escalate` se deja el motivo neutral del puerto, que es lo que
+ * se escribía antes: el PRD no da código para esos casos, y DP-006 no tiene
+ * adaptador de `Judgment` todavía. Inventar un código acá sería peor que
+ * dejar el motivo, que ya es estable y no nombra al proveedor.
+ */
+function errorCodeFor(
+  platform: string,
+  failure: NonNullable<PublishStatus["failure"]>,
+): string {
+  if (!(PUBLISH_PLATFORMS as readonly string[]).includes(platform)) return failure.reason;
+  const t = translatePublishFailure({
+    platform: platform as (typeof PUBLISH_PLATFORMS)[number],
+    failure,
+  });
+  return t.kind === "coded" ? t.errorCode : failure.reason;
 }

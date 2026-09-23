@@ -294,9 +294,29 @@ describe("los fallos se escriben, no se reintentan", () => {
 
     const post = await readPost(handle, postId);
     expect(post.status).toBe("FAILED");
-    // Código neutral (§10, regla 6): nunca el de la plataforma.
-    expect(post.error_code).toBe("post_limit_exceeded");
+    // Código neutral respecto al proveedor (§10, regla 6) y **diferenciado por
+    // plataforma** (PRD:1399): la tabla de DP-006 lo traduce. Antes se escribía
+    // `post_limit_exceeded` tal cual y P3-PUB-007 no se cumplía.
+    expect(post.error_code).toBe("tiktok_post_limit_exceeded");
     expect(post.error_message).toBe("You've hit the daily limit.");
+  });
+
+  it("un motivo al que el PRD no le da código queda con el motivo neutral del puerto", async () => {
+    // `permissions_missing` es `uncoded` en la tabla: el PRD lo clasifica
+    // (ERR-D05) pero no le da `errorCode`. No se inventa uno.
+    publicador = new PublicadorContado([
+      {
+        kind: "failed",
+        failure: { reason: "permissions_missing", message: "Reconnect your account." },
+      },
+    ]);
+    const { postId } = await seedPost(handle, companyId);
+
+    await handler()(ctx({ companyId, postId }));
+
+    const post = await readPost(handle, postId);
+    expect(post.status).toBe("FAILED");
+    expect(post.error_code).toBe("permissions_missing");
   });
 
   it("si la llamada FALLA, el handler no relanza", async () => {
