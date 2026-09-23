@@ -129,3 +129,27 @@ Dos lecturas sin lock que precedían a una decisión: el re-análisis de brand (
 `PATCH`/`regenerate` de contenido (`lockContent`). El test del re-análisis tuvo que avanzar el
 reloj entre los dos pedidos: con el mismo milisegundo la clave coincidía, el doble de la cola los
 juntaba y el test veía un job **también sin lock** — medía la deduplicación, no la guarda.
+
+---
+
+## Identidad (misma fecha, con permiso para instalar `better-auth`)
+
+- **Dependencias:** `better-auth@1.7.5` y `pg@8.23.0` (la versión que ya traía pg-boss). El
+  adaptador de Drizzle de Better Auth pide `drizzle-orm` ≥0.45.2 y el repo está en 0.38.4: se usa
+  el `Pool` de `pg`, que Better Auth acepta directo, en vez de subir Drizzle. `pg` quedó también
+  como dependencia directa de `apps/api`: el agente lo había resuelto con `createRequire` a
+  través de `adapters`, que escondía la dependencia a pnpm y a depcruise.
+- **Diseño (no está en el PRD):** la web es BFF. La API emite el token sólo al servidor web; el
+  navegador lo tiene en `fg_session` (`HttpOnly`); el proxy lo reenvía en `X-Fastgram-Session` y
+  ninguna otra credencial. `/api/fastgram/v1/auth/*` da 404 en el proxy: si no, le pasaba el
+  token al JavaScript de la página.
+- **`FORCE RLS` otra vez (trampa 13, del lado del usuario):** `fastgram_app` no ve
+  `workspace_memberships` sin GUC, y el GUC es justo lo que se está tratando de averiguar. Toda
+  sesión quedaba sin workspace. `0012` agrega `app.resolve_session_workspace`, `SECURITY DEFINER`.
+- **Rate limit por IP sólo con `AUTH_TRUSTED_PROXIES`:** detrás del BFF, la IP del socket es la
+  de la web, y un bucket por IP sería un límite global para todo el producto.
+- **`.env.example` estaba roto antes de esto:** `FASTGRAM_API_URL` sin `/api/v1` hacía que cada
+  llamada de la web pegara fuera del prefijo.
+- **Verificado a mano con la API y la web levantadas**, secreto efímero generado en el momento y
+  no escrito en ningún lado. Los datos de prueba se borraron después. El formulario de `/login`
+  **no** se llenó desde el navegador.

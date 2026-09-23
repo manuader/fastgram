@@ -110,15 +110,20 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 ## P1-AUTH — Identidad
 
 - [~] **P1-AUTH-001** Puerto `Identity` + adaptador Better Auth · `ADR-008`
-- [ ] **P1-AUTH-002** Signup / login / logout · `F-001`…`F-003`
+  > **Adaptador hecho (`79a9567`), SSO no.** `BetterAuthIdentity` sobre la tabla `users` existente (sin segunda tabla), `Pool` de `pg` en vez del adaptador de Drizzle (pide drizzle-orm ≥0.45.2; el repo está en 0.38.4). La cookie **firmada** es el token: un token crudo de `auth_sessions` no alcanza. `deleteUser` en una transacción propia: `internalAdapter.deleteUser` son tres sentencias sueltas y dejaba cuentas a medio borrar. Queda `[~]` por SSO: el PRD no nombra proveedor y el puerto hace que quien llama genere el `state`, que Better Auth genera solo — cambio de puerto para P1-AUTH-003.
+- [~] **P1-AUTH-002** Signup / login / logout · `F-001`…`F-003`
+  > **Funciona de punta a punta por HTTP (`8b1a8ad`, `c0e7516`), verificado contra la API y la web reales:** signup por el BFF → cookie `HttpOnly` sin token en el cuerpo → ruta de negocio 200 con membresía → escritura sin header CSRF 403 → logout 204 → misma cookie 401; ni token ni contraseña en los logs. `/login` se vio en el navegador; **el formulario no se llenó desde el navegador**. Diseño (no del PRD): la web es BFF, la API emite el token sólo al servidor web y el proxy lo reenvía en `X-Fastgram-Session`. Queda `[~]` por SSO (F-001/F-002) y porque **un usuario nuevo no tiene workspace**: nada lo crea (P1-TENANT-001), así que recibe 403 en toda ruta de negocio.
 - [ ] **P1-AUTH-003** SSO + callback `/auth/sso-callback` · `F-002`
 - [~] **P1-AUTH-004** Sesiones, refresh, revocación
-- [ ] **P1-AUTH-005** Recuperación de contraseña · `§15.3`
+  > Sesiones de 7 días que se extienden si se usan pasado 1 día (defaults de Better Auth 1.7.5, declarados); revocación inmediata (sin `cookieCache`); reset de contraseña revoca todas las sesiones.
+- [~] **P1-AUTH-005** Recuperación de contraseña · `§15.3`
+  > **El flujo existe, el email no sale.** `/forgot-password` y `/reset-password?token=` en la web, rutas en la API, 202 siempre (no revela existencia). **No hay adaptador de email en el repo**: el callback loguea que no se envió, sin token ni email. Sin verificar: la diferencia de tiempo entre email existente e inexistente (enumeración por tiempo).
 - [~] **P1-AUTH-006** Borrado de cuenta con confirmación por email y sus estados · `F-011`, `FR-160`
 
 ## P1-TENANT — Workspaces
 
 - [~] **P1-TENANT-001** Creación de workspace + límite por usuario · `F-008`
+  > **Ahora es el tapón del alta.** Con identidad real, un usuario recién registrado queda con `companyId: null` y 403 en toda ruta de negocio, y la web lo manda a `/onboarding`, cuyas rutas exigen empresa. El PRD (§15.4) dice que el primer workspace se crea durante el onboarding pero no define endpoint, plan inicial ni el número del límite. Crear el **primero** no necesita el límite; sí necesita decidir con qué plan nace.
 - [ ] **P1-TENANT-002** Cambio de workspace y contexto activo · `F-009`
 - [~] **P1-TENANT-003** Roles `owner` / `member`, comprobados **en el servidor** · PRD §4, `FR-002`
 - [x] **P1-TENANT-004** Test de contrato: acceso cruzado devuelve **404**, no 403 · `NFR-006`

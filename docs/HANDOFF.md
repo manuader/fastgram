@@ -78,6 +78,18 @@ El detalle está en `docs/IMPLEMENTATION-PLAN.md` §2. No lo repito acá para qu
 
 ## 4. Qué cambió, sesión por sesión
 
+### Sesión 2026-09-23 (4) — Identidad real, verificada de punta a punta
+
+Better Auth instalado (ADR-008) y montado: adaptador (`79a9567`), rutas internas de auth y
+sesión → usuario → workspace en la API (`c0e7516`), BFF en la web (`8b1a8ad`). **Primera vez que
+se probó una sesión real contra la API y la web levantadas**: signup por el BFF, cookie
+`HttpOnly` sin el token en el cuerpo, ruta de negocio con membresía, 403 sin el header CSRF,
+logout, 401 después. Se fueron la sesión de desarrollo por defecto, el JSON sin firmar y la API
+key de servidor de la web.
+
+**Lo que ahora tapa todo: nada crea un workspace.** Un usuario nuevo queda sin empresa y recibe
+403 en cada ruta de negocio. Es P1-TENANT-001, y necesita una decisión: con qué plan nace.
+
 ### Sesión 2026-09-23 (3) — Una tarea hecha que no se cumplía
 
 Dos agentes. **`P3-PUB-007` estaba `[x]` y ningún post recibía un código diferenciado**: el worker
@@ -492,7 +504,7 @@ Y una de la sesión del worker:
 
 ## 6. Cómo verificar
 
-**Números al 2026-09-23 (octava tanda).** Son lo que permite distinguir "lo rompí yo" de "ya estaba rojo".
+**Números al 2026-09-23 (identidad).** Son lo que permite distinguir "lo rompí yo" de "ya estaba rojo".
 Si tu corrida da menos, algo se perdió; si da más, actualizá esta sección.
 
 ```bash
@@ -507,25 +519,25 @@ pnpm verify           # lint · typecheck · boundaries · consistency · test
 | `pnpm format:check` | prettier sobre el repo. **Entró en `verify` tarde**: CI lo corría solo y llevaba tandas en rojo sin que nadie lo viera | **limpio** |
 | `pnpm lint` | eslint una vez sobre todo el repo | **0 errores** |
 | `pnpm typecheck` | `tsc --noEmit` por paquete, 18 tareas | **18 successful** |
-| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 514 módulos · **1691 dependencias** |
+| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 544 módulos · **1807 dependencias** |
 | `pnpm consistency` | los números del PRD escritos en más de un paquete | **41 invariantes** |
-| `pnpm test` | unitarios | **2.420** |
+| `pnpm test` | unitarios | **2.554** |
 
 Desglose de `pnpm test`, por si uno solo se cae:
 
 | Paquete | Tests | | Paquete | Tests |
 |---|---|---|---|---|
-| `core` | 561 | | `adapters` | 464 (+10 salteados) |
-| `web` | 432 | | `contracts` | 274 |
+| `core` | 561 | | `adapters` | 474 (+10 salteados) |
+| `web` | 528 | | `contracts` | 282 |
 | `render-service` | 207 | | `ui` | 170 |
-| `api` | 175 | | `db` | 52 |
+| `api` | 195 | | `db` | 52 |
 | `worker` | 76 | | `config` | 9 |
 
 ### Lo que necesita servicios levantados
 
 ```bash
 docker compose up -d                       # Postgres con pgvector + MinIO con el bucket creado
-pnpm test:int                              # db 218 · api 239 (+11 salteados sin S3) · worker 148 · adapters 9 → 614
+pnpm test:int                              # db 233 · api 269 (+11 salteados sin S3) · worker 148 · adapters 35 → 685
 pnpm --filter @fastgram/adapters test:int  # 9 — encolado dentro de la transacción de Drizzle
 pnpm build && pnpm smoke:binary           # el artefacto que se despliega, de verdad
 ```
@@ -1070,6 +1082,15 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 193
     cada edición fallida devolvía uno. Cuando dos flujos comparten motor y no
     comparten reglas de cobro, van por colas —o al menos por cierres— distintos.
 
+50. **Dos suites de integración sobre la misma base se borran filas entre sí,
+    y cada una sola pasa siempre.** El test de identidad de `adapters` escribe
+    en `users`; la suite de `apps/api` trunca `users`; turbo corre las dos a la
+    vez. El síntoma no dice nada de eso: `23503` en `auth_sessions`, o un alta
+    que «ya existe». Solas, 35/35. Una suite nueva que escribe en tablas que
+    otra trunca necesita **su propia base** (`fastgram_worker`,
+    `fastgram_adapters`), no un `singleFork`: `singleFork` serializa archivos
+    de una suite, no suites entre sí.
+
 ## 8. Qué falta
 
 El backlog real es `tasks.md`. El estado de hoy está en §6.
@@ -1116,7 +1137,7 @@ ponerla.
 | **`GET /posts` no filtra por fecha, y ningún endpoint publica la zona horaria** | el calendario pide hasta 500 posts y dice cuando no alcanzan; usa la zona del navegador, y la Library usa UTC: un post puede caer en días distintos en cada pantalla | `P2-CAL-*` |
 | ~~**El contrato público miente en tres lugares**~~ **cerrado, y con guardián** | los cinco `/brand/*` **existen**; `409 media_in_use` se quitó (implementarlo necesita un operador «contiene» en los filtros de `packages/db`); y `openapi-routes.test.ts` compara ahora el OpenAPI contra las rutas **registradas** en los dos sentidos. En su primera corrida encontró una tercera mentira que nadie pidió buscar: `GET /blitz/angles/page` existía y el contrato no la nombraba | — |
 | ~~**P1-BRAND: dominio completo y cero rutas**~~ **cerrado** | las nueve rutas de §9.14 existen. Lo que falta ahora es otra cosa: **nadie consume el job que encolan** (fila de arriba) | `P1-BRAND-*` |
-| **No hay adaptador de identidad**: la API sólo acepta API key | el proxy de `apps/web` usa **una key por despliegue**, o sea un workspace para todo el que llegue a la app. Es provisorio y está escrito como tal | `P1-AUTH-*` |
+| **Nada crea un workspace** | con identidad real, un usuario recién registrado queda con `companyId: null` y **403 en toda ruta de negocio**; la web lo manda a `/onboarding`, cuyas rutas exigen empresa. §15.4 dice que el primero nace en el onboarding, pero no da endpoint ni plan inicial | `P1-TENANT-001` |
 | `text-subtle` en modo oscuro no llega a AA para texto normal (3,65:1 y 3,16:1) | accesibilidad, y hoy está sin restricción de uso | `P1-UI-011` |
 
 Salieron de acá, cerrados: `P0-REPO-013`, `P1-DATA-014`, `P1-DATA-015`,
