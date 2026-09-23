@@ -25,11 +25,14 @@
     "@aws-sdk/client-s3": "^3.716.0",
     "@aws-sdk/s3-request-presigner": "^3.716.0",
     "@fastgram/ports": "workspace:*",
+    "better-auth": "1.7.5",
+    "pg": "8.23.0",
     "pg-boss": "^10.1.6",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@fastgram/config": "workspace:*",
+    "@types/pg": "^8.23.1",
     "drizzle-orm": "catalog:",
     "postgres": "catalog:",
     "typescript": "catalog:",
