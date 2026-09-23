@@ -16,11 +16,19 @@
  * Va en su propio archivo porque `startApi` siembra la base desde cero; dos
  * arneses en el mismo archivo se pisarían los datos a mitad de corrida.
  */
+import { FixedClock, MemoryStorage } from "@fastgram/adapters";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { errorOf, startApi, type ApiHarness } from "./helpers/harness.js";
+import { dataOf, errorOf, startApi, type ApiHarness } from "./helpers/harness.js";
 
 let api: ApiHarness;
+
+/**
+ * El mismo `MemoryStorage` que el arnés crearía solo, pero con referencia: el
+ * caso de `POST /media` necesita dejar el objeto en el storage para pasar el
+ * `head()` y llegar hasta la decisión de la cola.
+ */
+const storage = new MemoryStorage(new FixedClock("2026-09-21T12:00:00.000Z"));
 
 const WALL_OF_TEXT = {
   canvas: { width: 1080, height: 1920 },
@@ -43,7 +51,7 @@ const WALL_OF_TEXT = {
 };
 
 beforeAll(async () => {
-  api = await startApi({ withQueue: false });
+  api = await startApi({ withQueue: false, storage });
 }, 180_000);
 
 afterAll(async () => {
@@ -148,6 +156,61 @@ describe("POST /influencers sin cola", () => {
 
     const despues = await api.request({ method: "GET", path: "/api/v1/influencers" });
     expect((despues.body?.["data"] as unknown[]).length).toBe(cuantos);
+  });
+});
+
+describe("POST /media sin cola (media-normalization, §9.5 #7)", () => {
+  /** Reserva y deja el objeto en el storage. Devuelve el `uploadId`. */
+  async function reservarYSubir(filename: string, contentType: string): Promise<string> {
+    const bytes = new TextEncoder().encode(`bytes de ${filename}`);
+    const reserva = await api.request({
+      method: "POST",
+      path: "/api/v1/media/upload-url",
+      body: { filename, contentType, sizeBytes: bytes.byteLength },
+    });
+    expect(reserva.status).toBe(200);
+    const uploadId = String(dataOf(reserva)["uploadId"]);
+    const filas = await api.handle.sql`
+      select storage_key from upload_reservations where upload_id = ${uploadId}::uuid
+    `;
+    const key = (filas[0] as unknown as { storage_key: string }).storage_key;
+    await storage.put({ key, body: bytes, contentType });
+    return uploadId;
+  }
+
+  it("un video responde 503 y NO deja el asset `processing` sin job", async () => {
+    const uploadId = await reservarYSubir("sin-cola.mov", "video/quicktime");
+
+    const res = await api.request({
+      method: "POST",
+      path: "/api/v1/media",
+      body: { uploadId },
+    });
+
+    // Negativas primero: lo caro sería la fila huérfana, no el código.
+    const filas = await api.handle.sql`
+      select count(*)::int as n from media where filename = 'sin-cola.mov'
+    `;
+    expect((filas[0] as unknown as { n: number }).n).toBe(0);
+    const reservas = await api.handle.sql`
+      select state from upload_reservations where upload_id = ${uploadId}::uuid
+    `;
+    // `reserved`: cuando la cola vuelva, la misma reserva se puede finalizar.
+    expect((reservas[0] as unknown as { state: string }).state).toBe("reserved");
+
+    expect(res.status).toBe(503);
+    expect(errorOf(res).code).toBe("service_unavailable");
+  });
+
+  it("una imagen no necesita cola: 201 y `ready`", async () => {
+    const uploadId = await reservarYSubir("sin-cola.png", "image/png");
+    const res = await api.request({
+      method: "POST",
+      path: "/api/v1/media",
+      body: { uploadId },
+    });
+    expect(res.status).toBe(201);
+    expect(dataOf(res)["status"]).toBe("ready");
   });
 });
 

@@ -288,3 +288,11 @@ export {
 export { brandStalenessStore, sweepStaleBrandSources } from "./brand-staleness.js";
 export { purgeExpiredSnapshotRaw, snapshotPurgeStore } from "./snapshot-purge.js";
 export { lockPost, postPublishStore, type PostRow } from "./post-publish.js";
+export {
+  completeMediaNormalization,
+  failMediaNormalization,
+  findMediaToNormalize,
+  mediaNormalizationStore,
+  type CompleteNormalizationInput,
+  type MediaRow,
+} from "./media-normalization.js";

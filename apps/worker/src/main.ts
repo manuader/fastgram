@@ -241,6 +241,24 @@ const HANDLERS: Readonly<Record<string, JobHandler<unknown>>> = {
     appRole,
     logger,
   }),
+  /*
+   * `media-normalization` — **escrito, testeado y deliberadamente NO montado.**
+   *
+   * `createMediaNormalizationHandler` (`./media/normalization-handler.ts`) está
+   * listo y `POST /media` ya encola un job por video. Lo que falta es un
+   * renderer que sepa leer archivos: con el `MemoryMediaRenderer` de arriba,
+   * `probe` responde `not_found` para toda URL que no se le sembró —o sea,
+   * para todo upload real— y el handler marcaría **cada video del usuario
+   * `failed`** con `media_unreadable`. Eso es mentir en sus datos: el archivo
+   * está bien, lo que falta es el motor. La trampa 30 dice que se monta sin
+   * proveedor *si lo que escribe es verdad*, y esto no lo sería.
+   *
+   * Sin montar, el video queda `processing`, que **sí** es verdad (no está
+   * normalizado) y los jobs esperan en la cola a que aparezca un consumidor.
+   * Se monta en la misma línea en que se cambie `renderer` por el
+   * `HttpMediaRenderer` (`P2-RENDER-015`); `probe`/`normalize` no necesitan
+   * fuentes, así que ese bloqueo de `P2-RENDER-015` no aplica a esta cola.
+   */
 };
 
 for (const [name, handler] of Object.entries(HANDLERS)) {

@@ -63,6 +63,7 @@ import {
   updateVideoMediaRequestSchema,
   videoMediaCategorySchema,
 } from "@fastgram/contracts";
+import { JOB_QUEUES } from "@fastgram/core";
 import { mediaRepository, uploadReservationRepository, type media } from "@fastgram/db";
 
 import { rateLimit } from "../../plugins/rate-limit.js";
@@ -101,13 +102,37 @@ export const ALLOWED_CATEGORIES = {
   video: videoMediaCategorySchema.options,
 } as const;
 
+/**
+ * Payload de `media-normalization` (§9.5 #7, `NFR-014`).
+ *
+ * Escrito dos veces —acá y en `apps/worker/src/media/normalization-handler.ts`,
+ * que lo parsea—; su lugar es `@fastgram/core`. El nombre de la cola sí sale de
+ * `JOB_QUEUES`, que es lo que ya divergió una vez (trampa 19).
+ */
+interface MediaNormalizationRequest {
+  readonly companyId: string;
+  readonly mediaId: string;
+}
+
+/**
+ * Intentos totales del job: los `maxAttempts: 3` de `mediaNormalization` en
+ * `apps/worker/src/jobs/catalog.ts`. pg-boss cuenta reintentos, no intentos.
+ */
+const MEDIA_NORMALIZATION_RETRY_LIMIT = 2;
+
+type FinalizeOutcome =
+  | { readonly ok: true; readonly row: MediaRow }
+  | { readonly ok: false; readonly rejection: UploadRejection }
+  /** Un video sin cola no se crea: ver la ruta. */
+  | { readonly ok: false; readonly queueUnavailable: true };
+
 type PatchOutcome =
   | { readonly kind: "not_found" }
   | { readonly kind: "invalid_categories"; readonly mediaType: MediaRow["mediaType"] }
   | { readonly kind: "ok"; readonly row: MediaRow };
 
 export function registerMediaRoutes(app: ZodApp): void {
-  const { clock, limiter, storage } = app.deps;
+  const { clock, limiter, storage, queue } = app.deps;
 
   // ── POST /media/upload-url ──
   app.post(
@@ -157,64 +182,106 @@ export function registerMediaRoutes(app: ZodApp): void {
       // una sola cosa. Separarlas deja el par roto en los dos sentidos —una reserva
       // `committed` sin asset, o un asset que se puede volver a finalizar—. El precio
       // es que el `head` del storage ocurre con la transacción abierta.
-      const outcome = await request.tx(
-        async (
+      const outcome = await request.tx(async (tx): Promise<FinalizeOutcome> => {
+        const claim = await claimReservation({
           tx,
-        ): Promise<
-          { ok: true; row: MediaRow } | { ok: false; rejection: UploadRejection }
-        > => {
-          const claim = await claimReservation({
-            tx,
-            storage,
-            companyId,
-            uploadId,
-            nowMs: clock.nowMs(),
-          });
-          if (!claim.ok) return claim;
+          storage,
+          companyId,
+          uploadId,
+          nowMs: clock.nowMs(),
+        });
+        if (!claim.ok) return claim;
 
-          const reservation = claim.row;
-          const mediaType = reservation.contentType.startsWith("image/")
-            ? ("image" as const)
-            : ("video" as const);
+        const reservation = claim.row;
+        const mediaType = reservation.contentType.startsWith("image/")
+          ? ("image" as const)
+          : ("video" as const);
 
-          const created = await mediaRepository.create(
-            tx,
-            { companyId },
-            {
-              mediaType,
-              filename: reservation.filename,
-              r2Url: await canonicalObjectUrl(storage, reservation.storageKey),
-              storageKey: reservation.storageKey,
-              // FR-100 literal: *"Las imágenes quedan `ready` al instante; los videos
-              // quedan `processing` y se normalizan en background"*. El video sale
-              // `processing` aunque nadie esté normalizando todavía: decir `ready`
-              // sería afirmar que pasó por MOV→MP4, faststart y HDR→SDR.
-              status: mediaType === "image" ? "ready" : "processing",
-              // El tamaño real del objeto, no el declarado en la reserva. Son el mismo
-              // número cuando el cliente no miente, y cuando miente el que vale es éste.
-              sizeMb: claim.sizeBytes / BYTES_PER_MB,
-              // `videoDurationSec` queda nulo: el cuerpo de la reserva que fija el
-              // contrato no tiene `durationSec`, así que nadie lo declaró. Lo llena la
-              // normalización, que es la que mide el archivo.
-              ...(reservation.durationSec === null
-                ? {}
-                : { videoDurationSec: reservation.durationSec }),
-              // FR-100: *"Lista vacía = el asset sale de todos los pools automáticos"*.
-              // Es el estado correcto al subir: las categorías se ponen con PATCH.
-              categories: [],
-              origin: "manual_upload",
+        // **Sin cola, un video no se crea.** Nacería `processing` sin job que
+        // lo saque de ahí, y FR-100 no tiene camino de vuelta: quedaría
+        // `processing` para siempre y sin fallar nunca. Es el mismo criterio
+        // que las rutas de `content.ts` (503 antes de escribir). Va acá y no
+        // antes de la transacción porque el tipo sólo se sabe leyendo la
+        // reserva; `claimReservation` no escribe, así que devolver ahora
+        // deja la reserva `reserved` y reintentable. Las imágenes no
+        // necesitan cola y siguen funcionando.
+        if (mediaType === "video" && queue === undefined) {
+          return { ok: false, queueUnavailable: true };
+        }
+
+        const created = await mediaRepository.create(
+          tx,
+          { companyId },
+          {
+            mediaType,
+            filename: reservation.filename,
+            r2Url: await canonicalObjectUrl(storage, reservation.storageKey),
+            storageKey: reservation.storageKey,
+            // FR-100 literal: *"Las imágenes quedan `ready` al instante; los videos
+            // quedan `processing` y se normalizan en background"*. Lo saca de
+            // ahí el job de `media-normalization` que se encola abajo; decir
+            // `ready` acá sería afirmar que pasó por MOV→MP4, faststart y HDR→SDR.
+            status: mediaType === "image" ? "ready" : "processing",
+            // El tamaño real del objeto, no el declarado en la reserva. Son el mismo
+            // número cuando el cliente no miente, y cuando miente el que vale es éste.
+            sizeMb: claim.sizeBytes / BYTES_PER_MB,
+            // `videoDurationSec` queda nulo: el cuerpo de la reserva que fija el
+            // contrato no tiene `durationSec`, así que nadie lo declaró. Lo llena la
+            // normalización, que es la que mide el archivo.
+            ...(reservation.durationSec === null
+              ? {}
+              : { videoDurationSec: reservation.durationSec }),
+            // FR-100: *"Lista vacía = el asset sale de todos los pools automáticos"*.
+            // Es el estado correcto al subir: las categorías se ponen con PATCH.
+            categories: [],
+            origin: "manual_upload",
+          },
+        );
+
+        await uploadReservationRepository.update(tx, { companyId }, uploadId, {
+          state: "committed",
+        });
+
+        // §9.5 #7 / NFR-014: el productor de `media-normalization`. **Dentro**
+        // de la transacción (ADR-005): si el encolado falla, ni la fila ni el
+        // commit de la reserva existen, y el cliente reintenta la misma
+        // reserva. Al revés —fila sin job— es el `processing` eterno.
+        //
+        // `singletonKey` fijo por media, sin nada que rote, y acá está bien a
+        // pesar de la trampa 39: una clave fija dispara **una vez en la
+        // vida**, y la normalización de un asset es exactamente eso — una vez
+        // por asset. El `mediaId` es nuevo en cada finalización (la reserva
+        // sólo se commitea una vez), así que la clave nunca choca contra el
+        // job de otro asset; lo único que deduplica es un reintento del
+        // propio encolado. Si algún día hiciera falta re-normalizar (un
+        // motor nuevo), esa clave **no** serviría: tendría que rotar.
+        if (mediaType === "video" && queue !== undefined) {
+          await queue.enqueue<MediaNormalizationRequest>({
+            queue: JOB_QUEUES.mediaNormalization,
+            payload: { companyId, mediaId: created.mediaId },
+            options: {
+              transaction: tx,
+              singletonKey: `${JOB_QUEUES.mediaNormalization}:${created.mediaId}`,
+              retryLimit: MEDIA_NORMALIZATION_RETRY_LIMIT,
+              retryBackoff: true,
             },
-          );
-
-          await uploadReservationRepository.update(tx, { companyId }, uploadId, {
-            state: "committed",
           });
+        }
 
-          return { ok: true, row: created };
-        },
-      );
+        return { ok: true, row: created };
+      });
 
-      if (!outcome.ok) return sendRejection(reply, outcome.rejection);
+      if (!outcome.ok) {
+        if ("queueUnavailable" in outcome) {
+          return reply.status(503).send({
+            error: {
+              code: "service_unavailable",
+              message: "Video uploads are temporarily unavailable. Retry shortly.",
+            },
+          });
+        }
+        return sendRejection(reply, outcome.rejection);
+      }
       return reply.status(201).send(data(toMedia(outcome.row)));
     },
   );
