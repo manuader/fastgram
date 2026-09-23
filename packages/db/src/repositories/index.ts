@@ -316,3 +316,10 @@ export {
   type OtherSourceSnapshot,
   type SaveMaterializedProfileInput,
 } from "./brand-analysis.js";
+export {
+  blitzAcceptanceStore,
+  claimNextQueuedSuggestion,
+  markSuggestionPopped,
+  type SuggestionContentType,
+  type SuggestionRow,
+} from "./blitz-acceptance.js";

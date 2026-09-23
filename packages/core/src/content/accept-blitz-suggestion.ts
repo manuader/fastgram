@@ -239,7 +239,13 @@ export async function acceptBlitzSuggestionUseCase(
     contentType: suggestion.contentType,
     aspectRatio: input.aspectRatio,
   });
-  assertValidTextBoxes(suggestion.textBoxes);
+  // Las cajas se validan **si vienen**. `DATA-007` (PRD:2081) no le da cajas a una
+  // `Suggestion` —`generatedText` y nada de layout— y la cola de discovery no las
+  // produce: la composición del texto es trabajo del build (FR-050, *"dibujado de
+  // overlays"*), no un dato de la sugerencia. Exigir al menos una acá hacía
+  // imposible aceptar cualquier sugerencia real (`POST /blitz` respondía `400`
+  // `A piece needs at least one text box.`, visto en `blitz-accept.int.test.ts`).
+  if (suggestion.textBoxes.length > 0) assertValidTextBoxes(suggestion.textBoxes);
 
   // ── 1. ¿Es un replay? ────────────────────────────────────────────────────
   // La LECTURA de la key va antes del gate de cuota y la ESCRITURA va después,

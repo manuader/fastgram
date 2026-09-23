@@ -8,8 +8,12 @@ import {
   hasUnlimitedSaves,
 } from "./plans.js";
 import {
+  BLITZ_DAILY_SWIPE_LIMIT,
+  TRIAL_CONTENT_ALLOWANCE,
   acceptBlitzSuggestion,
   consumeSave,
+  currentSwipesLedger,
+  trialAllowanceGoverns,
   consumeTrial,
   refundSave,
   releaseCredits,
@@ -214,11 +218,125 @@ describe("Blitz: el gate de saves se evalúa ANTES que el de swipes (PRD §16.2)
     }
   });
 
+  it("el corte por saves dice `quotaType: saves` y trae count/limit de ERR-R03", () => {
+    // El borde traduce a `429 content_quota_exceeded` con `count`, `limit` y
+    // `resetAt`. Sin `quotaType` no podría distinguirlo del corte por swipes:
+    // los dos llevan `resetAt` y nada más en común.
+    try {
+      acceptBlitzSuggestion(saves({ includedUsed: 20 }), swipes());
+      expect.unreachable("tenía que lanzar");
+    } catch (e) {
+      expect((e as DomainError).details).toEqual({
+        quotaType: "saves",
+        resetAt: RESET.toISOString(),
+        count: 20,
+        limit: PLANS.starter.contentSaves,
+      });
+    }
+  });
+
+  it("el corte por swipes dice `quotaType: swipes`", () => {
+    try {
+      acceptBlitzSuggestion(saves(), swipes({ used: 30 }));
+      expect.unreachable("tenía que lanzar");
+    } catch (e) {
+      expect((e as DomainError).details?.["quotaType"]).toBe("swipes");
+    }
+  });
+
+  it("`dailyLimit: null` no corta nunca, pero cuenta igual (PRD §2.4, 2026-09-23)", () => {
+    // "El swipe se cuenta pero no se limita." Un contador enorme no corta, y
+    // el swipe sube igual: el dato para calibrar el límite futuro tiene que
+    // existir desde hoy.
+    const r = acceptBlitzSuggestion(
+      saves(),
+      swipes({ dailyLimit: null, used: 1_000_000 }),
+    );
+    expect(r.swipes.used).toBe(1_000_001);
+  });
+
+  it("sin límite, igual se evalúan los saves primero", () => {
+    expect(() =>
+      acceptBlitzSuggestion(saves({ includedUsed: 20 }), swipes({ dailyLimit: null })),
+    ).toThrow(DomainError);
+  });
+
   it("con ambas cuotas, consume una de cada una", () => {
     const r = acceptBlitzSuggestion(saves(), swipes());
     expect(r.saves.includedUsed).toBe(1);
     expect(r.swipes.used).toBe(1);
     expect(r.bucket).toBe("included");
+  });
+});
+
+describe("swipes: la configuración provisoria y el reset en lectura", () => {
+  it("el límite configurado es `null`, que significa sin límite — no un número mágico", () => {
+    // PRD §2.4 (2026-09-23). Si alguien pone un número acá, este test tiene que
+    // caer junto con la actualización del PRD: son los dos pasos, no uno.
+    expect(BLITZ_DAILY_SWIPE_LIMIT).toBeNull();
+  });
+
+  const NOW = new Date("2026-09-23T15:00:00.000Z");
+
+  it("con el reset guardado en el futuro, el contador vigente es el guardado", () => {
+    const l = currentSwipesLedger({
+      storedUsed: 7,
+      storedResetAt: new Date("2026-09-24T00:00:00.000Z"),
+      now: NOW,
+      dailyLimit: null,
+    });
+    expect(l.used).toBe(7);
+    expect(l.resetAt).toEqual(nextDailyResetUtc(NOW));
+  });
+
+  it("con el reset vencido, vale 0 aunque el barrido no haya corrido", () => {
+    const l = currentSwipesLedger({
+      storedUsed: 7,
+      storedResetAt: new Date("2026-09-23T00:00:00.000Z"),
+      now: NOW,
+      dailyLimit: 5,
+    });
+    expect(l.used).toBe(0);
+    expect(l.dailyLimit).toBe(5);
+  });
+
+  it("justo en el instante del reset ya vale 0 (el borde es de mañana, no de hoy)", () => {
+    const edge = new Date("2026-09-24T00:00:00.000Z");
+    const l = currentSwipesLedger({
+      storedUsed: 7,
+      storedResetAt: edge,
+      now: edge,
+      dailyLimit: null,
+    });
+    expect(l.used).toBe(0);
+    expect(l.resetAt).toEqual(new Date("2026-09-25T00:00:00.000Z"));
+  });
+
+  it("sin reset guardado (nunca swipeó), vale 0", () => {
+    expect(
+      currentSwipesLedger({
+        storedUsed: 3,
+        storedResetAt: null,
+        now: NOW,
+        dailyLimit: null,
+      }).used,
+    ).toBe(0);
+  });
+});
+
+describe("trial allowance: quién lo tiene y si se sabe el número", () => {
+  it("gobierna al plan Free, y a ningún plan pago", () => {
+    expect(trialAllowanceGoverns("free")).toBe(true);
+    expect(trialAllowanceGoverns("starter")).toBe(false);
+    expect(trialAllowanceGoverns("growth")).toBe(false);
+    expect(trialAllowanceGoverns("pro")).toBe(false);
+  });
+
+  it("el tope es desconocido (`null`), el mismo hueco que `freeContentSaves`", () => {
+    // §16.1: "Limited content", sin número. Si aparece, se cambia en
+    // `UNKNOWN_LIMITS` y en el PRD a la vez, y este test cae para avisar.
+    expect(TRIAL_CONTENT_ALLOWANCE).toBeNull();
+    expect(TRIAL_CONTENT_ALLOWANCE).toBe(UNKNOWN_LIMITS.freeContentSaves);
   });
 });
 

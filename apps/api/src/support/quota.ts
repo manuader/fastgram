@@ -90,7 +90,7 @@ export interface ConsumedSave {
   readonly period: string;
 }
 
-interface LockedLedger {
+export interface LockedLedger {
   readonly company: CompanyBilling;
   readonly plan: PlanId;
   readonly now: Date;
@@ -101,12 +101,16 @@ interface LockedLedger {
 /**
  * Lee el plan y deja el ledger del período **bloqueado** hasta el commit.
  *
- * Los dos cobros pasan por acá para que los defaults del período los decida un
- * solo sitio. Cuando había un solo llamador eso era una preferencia; con dos
+ * Los cobros pasan por acá para que los defaults del período los decida un
+ * solo sitio. Cuando había un solo llamador eso era una preferencia; con varios
  * es lo que evita que el período se cree con un cupo distinto según quién
  * llegue primero, que es un descuadre que sólo se ve en la factura.
+ *
+ * Se exporta para `POST /blitz` (`routes/v1/blitz.ts`), que no puede usar
+ * {@link consumeContentSave} tal cual: su gate es `acceptBlitzSuggestion` de
+ * `core`, que evalúa saves **y** swipes juntos sobre la misma fila bloqueada.
  */
-async function lockLedger(
+export async function lockLedger(
   tx: Transaction,
   scope: TenantScope,
   clock: Clock,
