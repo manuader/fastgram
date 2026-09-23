@@ -425,6 +425,79 @@ export const webEn = {
     "It's building now — the server normalizes the video and makes the thumbnail. It shows up in your Library when that finishes.", // nuevo
   "studio.custom.done.goToLibrary": "Go to Library", // nuevo
   "studio.custom.uploadAnother": "Upload another", // nuevo
+
+  /* --------------------------- Onboarding · paso 1 · FR-011.2 (PRD:826-833) */
+  // Los literales son de `FR-011.2` (EXTENSION) y de `FR-010` (PRD:743-767).
+  "onboarding.source.title": "Where can we learn about your brand?", // literal PRD:828
+  "onboarding.source.subtitle":
+    "Paste your website, your Instagram, TikTok, X, YouTube or LinkedIn — whatever describes you best.", // literal PRD:828
+  "onboarding.source.placeholder": "yoursite.com, instagram.com/yourbrand, or @yourbrand", // literal PRD:829
+  "onboarding.source.inputLabel": "Website, social profile or @handle", // nuevo · el PRD no da label, sólo placeholder
+  "onboarding.source.chipsLabel": "Platform", // nuevo · sólo para lectores de pantalla
+  "onboarding.source.analyse": "Analyse", // literal PRD:831
+  "onboarding.source.analysing": "Adding…", // nuevo · el botón mientras corre el POST
+  "onboarding.source.addAnother": "Add another source", // literal PRD:833
+  "onboarding.source.continue": "Continue", // nuevo · el PRD no da el botón para salir del paso
+  "onboarding.source.detecting": "Checking…", // nuevo · estado `detecting` de FR-011.8
+  "onboarding.source.added": "Your sources", // nuevo
+  "onboarding.source.alreadyAdded": "This one is already among your sources.", // nuevo · `available: false` de /resolve
+  // `needs_lookup`: la API responde 503 sin `details.code`. El texto es el del
+  // servidor (`brand.ts`, `requireResolved`), copiado acá para no enseñar el
+  // `message` crudo: el PRD no trae copy para este caso.
+  "onboarding.source.postLinkUnsupported":
+    "We can't resolve a post link to its profile yet. Paste the profile link instead.", // nuevo
+  // FR-010 (PRD:767) — los tres rechazos SSRF de la rama web, literales. La API
+  // los manda como `bad_request` sin `details.code`; ver `lib/brand/errors.ts`.
+  "onboarding.validation.localhost": "Localhost URLs are not allowed", // literal PRD:767
+  "onboarding.validation.privateIp": "Private IP addresses are not allowed", // literal PRD:767
+  "onboarding.validation.blocked": "Blocked URL for security reasons", // literal PRD:767
+
+  // Los chips de FR-011.2 (PRD:830), literales. `other_url` y `manual` no
+  // tienen chip ni nombre en el PRD.
+  "brand.sourceType.website": "Website", // literal PRD:830
+  "brand.sourceType.instagram": "Instagram", // literal PRD:830
+  "brand.sourceType.tiktok": "TikTok", // literal PRD:830
+  "brand.sourceType.x": "X", // literal PRD:830
+  "brand.sourceType.youtube": "YouTube", // literal PRD:830
+  "brand.sourceType.linkedin": "LinkedIn", // literal PRD:830
+  "brand.sourceType.otherUrl": "Link", // nuevo
+  "brand.sourceType.manual": "Description", // nuevo
+
+  // FR-011.8 (PRD:941) da los estados, no su texto: todos `nuevo`.
+  "brand.status.pending": "Queued", // nuevo · `queued` de FR-011.8
+  "brand.status.analyzing": "Analyzing", // nuevo
+  "brand.status.ready": "Ready", // nuevo
+  "brand.status.partial": "Partial", // nuevo
+  "brand.status.failed": "Failed", // nuevo
+  "brand.status.stale": "Needs a refresh", // nuevo
+  // El hueco del worker: nada consume `brand-source-analysis` todavía, así que
+  // en la realidad una fuente se queda en `pending`. Esto es lo que se ve
+  // pasados los 3 min de FR-011.12 crit. 9 — que no empezó, no que "sigue".
+  "brand.pendingTooLong":
+    "The analysis hasn't started yet. It's still queued — you can keep going with setup meanwhile.", // nuevo
+  "brand.failure.unsupportedPlatform":
+    "We can't read this kind of source yet. Add a different one.", // nuevo · `unsupported_platform` sin copy en §19.5.1
+  // FR-011.2 (PRD:835) — sub-pasos de Instagram en Fase 1, literales.
+  "brand.substep.readingProfile": "Reading profile", // literal PRD:835
+  "brand.substep.readingPosts": "Reading recent posts", // literal PRD:835
+  "brand.substep.readingOnScreenText": "Reading on-screen text", // literal PRD:835
+  "brand.substep.buildingProfile": "Building your brand profile", // literal PRD:835
+  "brand.substep.label": "What the analysis does", // nuevo · sólo para lectores de pantalla
+  // La API publica el estado de la fuente, no el del sub-paso: marcar checks
+  // sería inventarlos. Ver `lib/onboarding/processing.ts`.
+  "brand.substep.noProgress": "We can't show which of these is running yet.", // nuevo
+
+  /* --------------------------- Onboarding · paso 4 · FR-010 (PRD:748, 760) */
+  "onboarding.processing.done": "Brand analysis finished", // nuevo · ver `ProcessingStep`
+  "onboarding.processing.needsSupport":
+    "Your company profile needs support before setup can finish.", // literal PRD:760
+  "onboarding.processing.noSources": "There are no brand sources to analyse yet.", // nuevo
+  // Los cinco pasos de FR-010 (PRD:743-749), para el aviso de paso sin construir.
+  "onboarding.step.brandSource": "Brand source", // literal PRD:743
+  "onboarding.step.companyDetails": "Company details", // literal PRD:746
+  "onboarding.step.profiling": "Profiling", // literal PRD:747
+  "onboarding.step.processing": "Processing", // literal PRD:748
+  "onboarding.step.ready": "Path hint", // literal PRD:749
 } as const;
 
 export type WebMessageKey = keyof typeof webEn;

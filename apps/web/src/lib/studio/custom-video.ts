@@ -73,6 +73,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../api/client";
+import { newIdempotencyKey } from "../api/idempotency-key";
 import { presentError } from "../api/error-presentation";
 import { ApiRequestError, isApiRequestError } from "../api/errors";
 import { queryKeys } from "../api/keys";
@@ -298,27 +299,6 @@ export interface CustomVideoUploadController {
   readonly cancel: () => void;
   /** Vuelve al estado inicial tras un éxito o un rechazo. */
   readonly reset: () => void;
-}
-
-/**
- * `Idempotency-Key` para la finalización.
- *
- * `crypto.randomUUID` sólo existe en **contexto seguro** (https o localhost);
- * en un http plano es `undefined`. El contrato no exige formato, sólo que no
- * esté vacía (`idempotency.ts`), así que el respaldo vale: lo que importa es
- * que la misma subida reintente con la misma cadena, no que sea un uuid.
- */
-function newIdempotencyKey(): string {
-  const maybe: unknown = globalThis.crypto;
-  if (
-    typeof maybe === "object" &&
-    maybe !== null &&
-    "randomUUID" in maybe &&
-    typeof (maybe as Crypto).randomUUID === "function"
-  ) {
-    return (maybe as Crypto).randomUUID();
-  }
-  return `fgw-${String(Date.now())}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
 /** Cualquier cosa que lance `apiRequest`, como error del contrato. */

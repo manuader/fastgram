@@ -17,9 +17,16 @@
  * a decidir qué salida tiene. Con un `default` heredaría "reintentá" en
  * silencio, que es el bug que este archivo evita.
  */
-import type { CopyKey, MessageVars } from "../i18n/t";
-import { copyKeyForError, isApiRequestError, type FailureCode } from "./errors";
+import { brandSourceTypeSchema } from "@fastgram/contracts";
+import { tw, type CopyKey, type MessageVars } from "../i18n/t";
+import {
+  copyKeyForError,
+  isApiRequestError,
+  type ApiRequestError,
+  type FailureCode,
+} from "./errors";
 import { ROUTES } from "../nav/routes";
+import { SOURCE_TYPE_COPY } from "../brand/source-types";
 
 /**
  * La salida que se le ofrece al usuario.
@@ -97,6 +104,8 @@ export const REMEDY_LABEL_KEY: Readonly<Record<Remedy, CopyKey | null>> = {
 
 export interface ErrorPresentation {
   readonly titleKey: CopyKey;
+  /** Los huecos del título (`@{handle}`, `{platform}`, `{hours}` de §19.5.1). */
+  readonly titleVars?: MessageVars;
   readonly remedy: Remedy;
   readonly descriptionKey?: CopyKey;
   readonly vars?: MessageVars;
@@ -135,10 +144,145 @@ const resetFormat = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
 });
 
+// ───────────────────────────────────────────────────────────────────────────
+// Brand Sources · §19.5.1 (EXTENSION)
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Los 14 `ERR-B` de §19.5.1 son códigos de **catálogo**, no del cable.
+ *
+ * El `code` del sobre tiene que salir de `errorCodeSchema` (§9.3), así que la
+ * API manda el estable (`bad_request`, `conflict`, `rate_limited`) y el `ERR-B`
+ * viaja en `details.code` (ver la cabecera de `apps/api/src/routes/v1/brand.ts`).
+ * Sin leerlo, un `ERR-B10` —"podés tener 5 fuentes"— se pintaría como *"That
+ * request wasn't valid"*, y un `ERR-B11` —esperá N horas— como `rate_limited`
+ * con un `Try again` que no sirve hasta mañana.
+ *
+ * `needs` son los huecos que el copy exige. Si el servidor no los manda, el
+ * `ERR-B` **no** se usa y cae a la traducción del código del cable: un
+ * *"We couldn't find @{handle} on {platform}"* con las llaves a la vista es
+ * peor que un genérico correcto.
+ */
+type BrandVar = "handle" | "platform" | "hours";
+
+interface BrandErrorEntry {
+  readonly titleKey: CopyKey;
+  readonly remedy: Remedy;
+  readonly needs: readonly BrandVar[];
+}
+
+export const BRAND_ERRORS = {
+  "ERR-B01": { titleKey: "error.brand.sourceRequired.title", remedy: "none", needs: [] },
+  "ERR-B02": { titleKey: "error.brand.unrecognized.title", remedy: "none", needs: [] },
+  "ERR-B03": {
+    titleKey: "error.brand.whichPlatform.title",
+    remedy: "none",
+    needs: ["handle"],
+  },
+  "ERR-B04": {
+    titleKey: "error.brand.handleNotFound.title",
+    remedy: "none",
+    needs: ["handle", "platform"],
+  },
+  "ERR-B05": {
+    titleKey: "error.brand.privateProfile.title",
+    remedy: "none",
+    needs: ["handle"],
+  },
+  // Copy neutro, no el literal del PRD: ver la nota de `packages/ui`.
+  "ERR-B06": {
+    titleKey: "error.brand.alreadyConnected.title",
+    remedy: "none",
+    needs: [],
+  },
+  "ERR-B07": {
+    titleKey: "error.brand.platformDown.title",
+    remedy: "retry",
+    needs: ["platform"],
+  },
+  // "Esperar (no bloquea)": reintentar a mano no acelera nada.
+  "ERR-B08": { titleKey: "error.brand.backlogged.title", remedy: "none", needs: [] },
+  "ERR-B09": { titleKey: "error.brand.thinProfile.title", remedy: "none", needs: [] },
+  "ERR-B10": { titleKey: "error.brand.sourceLimit.title", remedy: "none", needs: [] },
+  // Viaja como `429 rate_limited`, que por sí solo diría `retry`. Es un cooldown
+  // de horas: el botón mentiría.
+  "ERR-B11": {
+    titleKey: "error.brand.refreshCooldown.title",
+    remedy: "none",
+    needs: ["hours"],
+  },
+  "ERR-B12": {
+    titleKey: "error.brand.wholeProfile.title",
+    remedy: "none",
+    needs: ["handle"],
+  },
+  "ERR-B13": { titleKey: "error.brand.tooBroad.title", remedy: "none", needs: [] },
+  "ERR-B14": { titleKey: "error.brand.conflict.title", remedy: "none", needs: [] },
+} as const satisfies Readonly<Record<string, BrandErrorEntry>>;
+
+export type BrandErrorCode = keyof typeof BRAND_ERRORS;
+
+function isBrandErrorCode(value: unknown): value is BrandErrorCode {
+  return typeof value === "string" && Object.hasOwn(BRAND_ERRORS, value);
+}
+
+/** El `ERR-B` de `details.code`, si lo hay. */
+export function brandErrorCodeOf(error: unknown): BrandErrorCode | null {
+  if (!isApiRequestError(error)) return null;
+  const code = error.details?.["code"];
+  return isBrandErrorCode(code) ? code : null;
+}
+
+const HOUR_MS = 3_600_000;
+
+/**
+ * Los huecos de §19.5.1 a partir de `details`.
+ *
+ * · `handle` — lo manda `ERR-B03` (`details.handle`).
+ * · `platform` — el nombre en pantalla del `details.sourceType`, **validado
+ *   contra el enum del contrato**: un string cualquiera no se pinta.
+ * · `hours` — `ERR-B11` manda `retryAfterMs`; se redondea **hacia arriba**,
+ *   porque decir "1 hour" cuando faltan 61 min manda a reintentar a un 429.
+ */
+function brandVarsOf(error: ApiRequestError): Partial<Record<BrandVar, string>> {
+  const details = error.details ?? {};
+  const vars: Partial<Record<BrandVar, string>> = {};
+
+  const handle = details["handle"];
+  if (typeof handle === "string" && handle !== "") vars.handle = handle;
+
+  const type = brandSourceTypeSchema.safeParse(details["sourceType"]);
+  if (type.success) vars.platform = tw(SOURCE_TYPE_COPY[type.data]);
+
+  const retryAfterMs = details["retryAfterMs"];
+  if (
+    typeof retryAfterMs === "number" &&
+    Number.isFinite(retryAfterMs) &&
+    retryAfterMs > 0
+  ) {
+    vars.hours = String(Math.ceil(retryAfterMs / HOUR_MS));
+  }
+  return vars;
+}
+
+function presentBrandError(error: ApiRequestError): ErrorPresentation | null {
+  const code = brandErrorCodeOf(error);
+  if (code === null) return null;
+  const entry: BrandErrorEntry = BRAND_ERRORS[code];
+  const vars = brandVarsOf(error);
+  if (entry.needs.some((name) => vars[name] === undefined)) return null;
+  return entry.needs.length === 0
+    ? { titleKey: entry.titleKey, remedy: entry.remedy }
+    : { titleKey: entry.titleKey, titleVars: vars, remedy: entry.remedy };
+}
+
 /** Qué enseña una pantalla cuando una petición falla. */
 export function presentError(error: unknown): ErrorPresentation {
   const titleKey = copyKeyForError(error);
   if (!isApiRequestError(error)) return { titleKey, remedy: "retry" };
+
+  const brand = presentBrandError(error);
+  if (brand !== null) return brand;
 
   const remedy = REMEDIES[error.code];
   const resetAt = quotaResetAt(error);

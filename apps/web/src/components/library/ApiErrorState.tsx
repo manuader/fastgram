@@ -31,7 +31,7 @@ export interface ApiErrorStateProps {
  * `Try again`: uno dice "el servidor falló", el otro "lo tuyo está viejo".
  */
 export function ApiErrorState({ error, onRetry, className }: ApiErrorStateProps) {
-  const { titleKey, descriptionKey, vars, remedy } = presentError(error);
+  const { titleKey, titleVars, descriptionKey, vars, remedy } = presentError(error);
   const labelKey = REMEDY_LABEL_KEY[remedy];
   const href = REMEDY_HREF[remedy];
 
@@ -56,7 +56,7 @@ export function ApiErrorState({ error, onRetry, className }: ApiErrorStateProps)
 
   return (
     <ErrorState
-      title={tw(titleKey)}
+      title={tw(titleKey, titleVars)}
       {...(description === undefined ? {} : { description })}
       {...(action === undefined ? {} : { action })}
       {...(className === undefined ? {} : { className })}

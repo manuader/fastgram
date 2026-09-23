@@ -82,3 +82,69 @@ describe("presentError", () => {
     }
   });
 });
+
+/**
+ * §19.5.1 — los `ERR-B` viajan en `details.code`, con un código del cable que
+ * por sí solo diría otra cosa. Cada caso de acá es uno donde leer sólo el
+ * código del cable enseñaría el mensaje equivocado **o la salida equivocada**.
+ */
+describe("presentError · ERR-B de Brand Sources (§19.5.1)", () => {
+  it("ERR-B10 (cap de 5) no es un genérico «request inválida»", () => {
+    const shown = presentError(failure("bad_request", 400, { code: "ERR-B10", cap: 5 }));
+    expect(shown.titleKey).toBe("error.brand.sourceLimit.title");
+    expect(shown.remedy).toBe("none");
+  });
+
+  it("ERR-B11 llega como 429 y NO ofrece «Try again»: es un cooldown de horas", () => {
+    // 61 min: se redondea hacia arriba. Decir «1 hour» manda a un 429 seguro.
+    const shown = presentError(
+      failure("rate_limited", 429, { code: "ERR-B11", retryAfterMs: 61 * 60_000 }),
+    );
+    expect(shown.titleKey).toBe("error.brand.refreshCooldown.title");
+    expect(shown.titleVars).toEqual({ hours: "2" });
+    expect(shown.remedy).toBe("none");
+    // Sin el ERR-B, el mismo 429 sí sería reintentable.
+    expect(presentError(failure("rate_limited", 429)).remedy).toBe("retry");
+  });
+
+  it("ERR-B06 usa el copy neutro, que no nombra el otro workspace", () => {
+    const shown = presentError(
+      failure("conflict", 409, { code: "ERR-B06", reason: "already_registered" }),
+    );
+    expect(shown.titleKey).toBe("error.brand.alreadyConnected.title");
+    // `conflict` a secas diría «recargá», y recargar no cambia de dueño un perfil.
+    expect(shown.remedy).toBe("none");
+  });
+
+  it("ERR-B03 lleva el handle que manda la API", () => {
+    const shown = presentError(
+      failure("bad_request", 400, {
+        code: "ERR-B03",
+        handle: "mimarca",
+        candidates: ["instagram"],
+        preselected: null,
+      }),
+    );
+    expect(shown.titleKey).toBe("error.brand.whichPlatform.title");
+    expect(shown.titleVars).toEqual({ handle: "mimarca" });
+  });
+
+  it("ERR-B07 traduce `sourceType` al nombre de la plataforma", () => {
+    const shown = presentError(
+      failure("service_unavailable", 503, { code: "ERR-B07", sourceType: "tiktok" }),
+    );
+    expect(shown.titleVars).toEqual({ platform: "TikTok" });
+    expect(shown.remedy).toBe("retry");
+  });
+
+  it("un ERR-B sin los huecos que su copy exige cae al código del cable, no a llaves visibles", () => {
+    const shown = presentError(failure("bad_request", 400, { code: "ERR-B03" }));
+    expect(shown.titleKey).toBe("error.badRequest.title");
+    expect(shown.titleVars).toBeUndefined();
+  });
+
+  it("un `details.code` que no es un ERR-B conocido no se interpreta", () => {
+    const shown = presentError(failure("bad_request", 400, { code: "ERR-B99" }));
+    expect(shown.titleKey).toBe("error.badRequest.title");
+  });
+});

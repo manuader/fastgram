@@ -1566,3 +1566,193 @@ body {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ------------------------------------------------------------------------
+   Onboarding · pasos 1 y 4 · FR-011.2, FR-010 (P1-ONB-002, P1-ONB-005)
+   ------------------------------------------------------------------------ */
+
+.fgw-onb-flow {
+  width: 100%;
+  max-width: 560px;
+}
+
+.fgw-onb {
+  display: grid;
+  gap: var(--fg-space-5);
+  width: 100%;
+  max-width: 560px;
+}
+
+.fgw-onb__header {
+  display: grid;
+  gap: var(--fg-space-2);
+}
+
+.fgw-onb__title {
+  margin: 0;
+  font-size: var(--fg-text-xl);
+  font-weight: var(--fg-weight-semibold);
+}
+
+.fgw-onb__title--status {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-2);
+}
+
+.fgw-onb__subtitle,
+.fgw-onb__hint,
+.fgw-onb-source__note {
+  margin: 0;
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-onb__subheading {
+  margin: 0 0 var(--fg-space-2);
+  font-size: var(--fg-text-sm);
+  font-weight: var(--fg-weight-semibold);
+}
+
+.fgw-onb__form {
+  display: grid;
+  gap: var(--fg-space-3);
+}
+
+/* Seis chips no caben en 375 px en una fila: se parten, no se desbordan. */
+.fgw-onb__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fg-space-2);
+}
+
+.fgw-onb__feedback {
+  display: grid;
+  gap: var(--fg-space-3);
+  min-height: 1.5rem;
+}
+
+.fgw-onb__problem {
+  display: grid;
+  gap: var(--fg-space-2);
+  justify-items: start;
+  margin: 0;
+  color: var(--fg-color-danger-text);
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-onb__problem p {
+  margin: 0;
+}
+
+.fgw-onb__ambiguous {
+  display: grid;
+  gap: var(--fg-space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.fgw-onb__ambiguous legend {
+  padding: 0;
+  margin-bottom: var(--fg-space-2);
+  font-size: var(--fg-text-sm);
+  font-weight: var(--fg-weight-semibold);
+}
+
+.fgw-onb__card {
+  display: grid;
+  gap: var(--fg-space-3);
+  justify-items: start;
+  padding: var(--fg-space-4);
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-xl);
+  background: var(--fg-color-surface-raised);
+}
+
+.fgw-onb__card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--fg-space-3);
+  min-width: 0;
+}
+
+.fgw-onb__card-id {
+  min-width: 0;
+}
+
+.fgw-onb__card-name,
+.fgw-onb__card-meta {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.fgw-onb__card-name {
+  font-weight: var(--fg-weight-semibold);
+}
+
+.fgw-onb__card-meta {
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-onb__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fg-space-3);
+}
+
+.fgw-onb__skeleton {
+  height: 12rem;
+}
+
+.fgw-onb-sources {
+  display: grid;
+  gap: var(--fg-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fgw-onb-source {
+  display: grid;
+  gap: var(--fg-space-2);
+  padding: var(--fg-space-3) var(--fg-space-4);
+  border: 1px solid var(--fg-color-border);
+  border-radius: var(--fg-radius-xl);
+}
+
+.fgw-onb-source__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fg-space-2);
+}
+
+.fgw-onb-source__platform {
+  font-weight: var(--fg-weight-semibold);
+}
+
+.fgw-onb-source__handle {
+  color: var(--fg-color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* Sin checks a propósito: la API no publica el sub-paso en curso. */
+.fgw-onb-source__substeps {
+  margin: 0;
+  padding-left: var(--fg-space-5);
+  color: var(--fg-color-text-muted);
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-onb-source__notice {
+  margin: 0;
+  font-size: var(--fg-text-sm);
+}
+
+.fgw-onb-source__notice[data-problem="true"] {
+  color: var(--fg-color-danger-text);
+}

@@ -19,6 +19,13 @@ export const queryKeys = {
   connections: () => ["connections"] as const,
   warmedAccounts: () => ["warmed-accounts"] as const,
   homeKpis: () => ["home", "kpis"] as const,
+  /** `GET /onboarding` — trae las fuentes, así que el alta de una la invalida. */
+  onboarding: () => ["onboarding"] as const,
+  /**
+   * `POST /brand/sources/resolve` por texto. Cuelga de `brand-sources` para que
+   * invalidar las fuentes (un alta, un borrado) también olvide los `available`.
+   */
+  brandSourceResolve: (input: string) => ["brand-sources", "resolve", input] as const,
   /**
    * El estado del servicio (`F-255`). No cuelga de ningún recurso del API v1 a
    * propósito: no lleva workspace ni sesión, así que invalidar "todo lo del
