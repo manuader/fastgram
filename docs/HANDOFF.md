@@ -78,6 +78,23 @@ El detalle está en `docs/IMPLEMENTATION-PLAN.md` §2. No lo repito acá para qu
 
 ## 4. Qué cambió, sesión por sesión
 
+### Sesión 2026-09-23 (4) — Primero las features: auth y suscripciones a otra rama
+
+**Decisión del dueño:** las suscripciones y la auth multiusuario son secundarias por ahora; lo
+primero es tener todas las features para usar la app él mismo. Todo lo de identidad, workspaces
+y cuotas de plan quedó en la rama **`auth-y-suscripciones`** (Better Auth, BFF de sesión, primer
+workspace Free + trialing, `onboardingComplete`), verde y verificado de punta a punta. **`main`
+se rearmó** desde `a5e680d` trayendo sólo lo que no depende de eso: el 404 para ids no-uuid y el
+cierre del onboarding (`bdf5eed`), el accept de Blitz (`635f867`) y la cuota como 429 (`116ca08`).
+
+**Para usarla vos:** `pnpm dev:workspace` crea el workspace de desarrollo en plan **pro** y
+emite la `FASTGRAM_API_KEY` de la web. Verificado con API + web + worker levantados: las
+pantallas cargan y Blitz hace el ciclo completo (cola vacía → relleno → accept cobra y encola).
+
+**El hueco que eso destapó: una pieza de Blitz no se construye.** El worker la cierra
+`FAILED` con `invalid_build_payload` porque una sugerencia no lleva `buildPayload`. Es la
+próxima feature: generar el contenido a partir de la sugerencia.
+
 ### Sesión 2026-09-23 (3) — Una tarea hecha que no se cumplía
 
 Dos agentes. **`P3-PUB-007` estaba `[x]` y ningún post recibía un código diferenciado**: el worker
@@ -446,6 +463,12 @@ Detalle, decisiones y lo que se descartó:
 [`SESSION-2026-09-21-implementacion.md`](SESSION-2026-09-21-implementacion.md).
 
 ## 5. Decisiones que no se vuelven a discutir
+
+- **(2026-09-23, decisión del usuario) Primero las features; auth y suscripciones después**, en
+  la rama `auth-y-suscripciones`. En `main` la web usa una API key de servidor (`pnpm
+  dev:workspace`) y el workspace de desarrollo es plan pro.
+- **(2026-09-23, decisión del usuario) Swipes diarios sin límite, por ahora.** Se cuentan y no se
+  limitan. Provisorio, por configuración; PRD §2.4.
 
 Las de producto (`D-01`…`D-05`) están en PRD §2.7 con su razón. Las de arquitectura, en
 `IMPLEMENTATION-PLAN.md` §3 como ADR-001…ADR-015. Las cuatro que más se van a querer reabrir:
