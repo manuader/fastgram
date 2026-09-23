@@ -78,6 +78,16 @@ El detalle está en `docs/IMPLEMENTATION-PLAN.md` §2. No lo repito acá para qu
 
 ## 4. Qué cambió, sesión por sesión
 
+### Sesión 2026-09-23 (3) — Una tarea hecha que no se cumplía
+
+Dos agentes. **`P3-PUB-007` estaba `[x]` y ningún post recibía un código diferenciado**: el worker
+escribía el motivo del puerto tal cual, y un test fijaba `post_limit_exceeded`. La tabla
+determinística de DP-006 (`382f82d`) ya está cableada (`3118b48`). `/brand` existe con sus tres
+secciones, la tarjeta de fuentes y la procedencia por campo (`262fb25`). Hubo que agregar
+`apiSend` porque `apiRequest` trataba un 204 vacío como una respuesta rota: **todo `DELETE`
+exitoso fallaba**. Faltan en la API `expectedBrandRevision` en el perfil y una forma de ver las
+propuestas del re-análisis.
+
 ### Sesión 2026-09-23 (2) — Un save regalado por cada edición fallida
 
 Tres agentes más. Detalle en
@@ -482,7 +492,7 @@ Y una de la sesión del worker:
 
 ## 6. Cómo verificar
 
-**Números al 2026-09-23 (séptima tanda).** Son lo que permite distinguir "lo rompí yo" de "ya estaba rojo".
+**Números al 2026-09-23 (octava tanda).** Son lo que permite distinguir "lo rompí yo" de "ya estaba rojo".
 Si tu corrida da menos, algo se perdió; si da más, actualizá esta sección.
 
 ```bash
@@ -497,16 +507,16 @@ pnpm verify           # lint · typecheck · boundaries · consistency · test
 | `pnpm format:check` | prettier sobre el repo. **Entró en `verify` tarde**: CI lo corría solo y llevaba tandas en rojo sin que nadie lo viera | **limpio** |
 | `pnpm lint` | eslint una vez sobre todo el repo | **0 errores** |
 | `pnpm typecheck` | `tsc --noEmit` por paquete, 18 tareas | **18 successful** |
-| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 505 módulos · **1622 dependencias** |
-| `pnpm consistency` | los números del PRD escritos en más de un paquete | **39 invariantes** |
-| `pnpm test` | unitarios | **2.280** |
+| `pnpm boundaries` | las reglas de la arquitectura | **0 errores** · 514 módulos · **1691 dependencias** |
+| `pnpm consistency` | los números del PRD escritos en más de un paquete | **41 invariantes** |
+| `pnpm test` | unitarios | **2.420** |
 
 Desglose de `pnpm test`, por si uno solo se cae:
 
 | Paquete | Tests | | Paquete | Tests |
 |---|---|---|---|---|
-| `core` | 472 | | `adapters` | 464 (+10 salteados) |
-| `web` | 381 | | `contracts` | 274 |
+| `core` | 561 | | `adapters` | 464 (+10 salteados) |
+| `web` | 432 | | `contracts` | 274 |
 | `render-service` | 207 | | `ui` | 170 |
 | `api` | 175 | | `db` | 52 |
 | `worker` | 76 | | `config` | 9 |
@@ -515,7 +525,7 @@ Desglose de `pnpm test`, por si uno solo se cae:
 
 ```bash
 docker compose up -d                       # Postgres con pgvector + MinIO con el bucket creado
-pnpm test:int                              # db 218 · api 239 (+11 salteados sin S3) · worker 147 · adapters 9 → 613
+pnpm test:int                              # db 218 · api 239 (+11 salteados sin S3) · worker 148 · adapters 9 → 614
 pnpm --filter @fastgram/adapters test:int  # 9 — encolado dentro de la transacción de Drizzle
 pnpm build && pnpm smoke:binary           # el artefacto que se despliega, de verdad
 ```

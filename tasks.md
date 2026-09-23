@@ -305,11 +305,14 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P1-BRANDPG — Página Brand
 
-- [ ] **P1-BRANDPG-001** `/brand` con secciones editables · `FR-020`
-- [ ] **P1-BRANDPG-002** Tarjeta `Brand sources`: listar, añadir, re-analizar, primaria, eliminar · `F-024`
-- [ ] **P1-BRANDPG-003** Badges de origen y confianza por campo · `F-025`
-- [ ] **P1-BRANDPG-004** `brandRevision` + `expectedBrandRevision` en las escrituras · `F-022`
-- [ ] **P1-BRANDPG-005** Re-análisis respeta `editedByUser`: propone, no pisa · `FR-020`
+- [~] **P1-BRANDPG-001** `/brand` con secciones editables · `FR-020`
+- [~] **P1-BRANDPG-002** Tarjeta `Brand sources`: listar, añadir, re-analizar, primaria, eliminar · `F-024`
+- [~] **P1-BRANDPG-003** Badges de origen y confianza por campo · `F-025`
+  > **001–003 hechas en jsdom, sin navegador (`262fb25`).** El `PATCH` manda **sólo los campos cambiados**: la API marca `editedByUser` cada clave del cuerpo, y mandar la sección entera congelaba campos que el usuario ni miró. Un campo editado no muestra badge de confianza: la API conserva la confianza y la fuente viejas (`markEditedByUser`), y mostrar «low, from @x» sobre texto del usuario sería falso. El header dice `Company Profile` sin nombre: ningún endpoint de brand devuelve el nombre de la empresa.
+- [~] **P1-BRANDPG-004** `brandRevision` + `expectedBrandRevision` en las escrituras · `F-022`
+  > **Sólo un aviso, no una guarda.** `updateCompanyProfileRequestSchema` es `.strict()` y no tiene `expectedBrandRevision`: mandarlo da 400. El PRD lo pide para guardar sugerencias generadas, no para editar el perfil. La pantalla muestra la revisión y avisa si cambió en el servidor con una sección abierta; dos pestañas que editan el mismo campo se pisan en silencio.
+- [~] **P1-BRANDPG-005** Re-análisis respeta `editedByUser`: propone, no pisa · `FR-020`
+  > **Lo que se ve, sí; las propuestas, no.** Los campos editados se marcan y la tarjeta dice que el re-análisis no los pisa. Pero la propuesta del re-análisis sobre un campo editado vive sólo en el snapshot, ningún endpoint la devuelve, y no hay forma de aceptarla (ERR-B14). Hace falta API.
 - [~] **P1-BRANDPG-006** `stale` a los 90 días + oferta de refrescar · `F-026`
   > **El barrido está**: marca `stale` a los 90 días, con el mismo borde que el dominio («89 no, 90 sí»). Falta la **oferta de refrescar**, que es UI y necesita las rutas de brand.
 
@@ -561,8 +564,10 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [x] **P3-PUB-003** `IN_USER_INBOX` como estado normal, **no error** · `FR-060`
 - [ ] **P3-PUB-004** **Watcher de carril lento de TikTok hasta 72 h; nunca duplicar** · `NFR-015` · ⚠️ regla explícita
 - [x] **P3-PUB-005** `publishedCaption` + `captionAdjustmentReason` · `FR-060`
-- [ ] **P3-PUB-006** Traducción a `errorCode` estable y neutral · `DP-006` · tabla determinística primero
+- [~] **P3-PUB-006** Traducción a `errorCode` estable y neutral · `DP-006` · tabla determinística primero
+  > **Tabla determinística hecha y cableada (`382f82d`, `3118b48`).** 7 motivos × 5 plataformas, las 35 celdas escritas; sólo cambia la fila cuando el PRD tiene un código literal. `uncoded` (el PRD clasifica sin código: `permissions_missing`, etc.) deja el motivo neutral del puerto. **Falta la rama `escalate`**: `unknown` va a DP-006, que no tiene adaptador de `Judgment`. Decisión mía, revisable: límites de LinkedIn y Reddit → `rate_limited` (PRD:1398, «límite de plataforma»).
 - [x] **P3-PUB-007** Límites de plataforma diferenciados · `FR-060`
+  > **Estaba marcada hecha y no se cumplía hasta `3118b48`:** el worker escribía `failure.reason` tal cual, así que un límite de TikTok quedaba `post_limit_exceeded` y un test lo fijaba así. Ahora pasa por la tabla de DP-006.
 
 ## P3-METRIC — Métricas
 
