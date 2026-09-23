@@ -204,6 +204,10 @@ describe("protección SSRF con el copy literal de FR-010", () => {
       // 169.254.169.254 es el metadata de AWS, GCP y Azure. Es EL objetivo.
       "169.254.169.254",
       "100.64.0.1",
+      "224.0.0.1",
+      "239.255.255.250",
+      "240.0.0.1",
+      "255.255.255.255",
       "::1",
       "fd00::1",
       "fe80::1",

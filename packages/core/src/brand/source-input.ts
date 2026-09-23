@@ -112,6 +112,10 @@ function isPrivateIpv4(host: string): boolean {
   // 169.254/16: el metadata de AWS, GCP y Azure vive en 169.254.169.254.
   if (a === 169 && b === 254) return true;
   if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+  // 224/4 multicast y 240/4 reservado, que incluye 255.255.255.255. Ninguna
+  // web vive ahí; el extractor (`website-ssrf.ts` de adapters) ya los corta
+  // después del DNS, y este prefiltro no tiene por qué ser más laxo que él.
+  if (a >= 224) return true;
   return false;
 }
 
