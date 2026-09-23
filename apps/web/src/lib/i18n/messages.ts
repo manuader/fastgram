@@ -523,13 +523,21 @@ export const webEn = {
   "brand.status.partial": "Partial", // nuevo
   "brand.status.failed": "Failed", // nuevo
   "brand.status.stale": "Needs a refresh", // nuevo
-  // El hueco del worker: nada consume `brand-source-analysis` todavía, así que
-  // en la realidad una fuente se queda en `pending`. Esto es lo que se ve
+  // Un worker sin la configuración de `brand-source-analysis` no la monta, y
+  // entonces una fuente se queda en `pending`. Esto es lo que se ve
   // pasados los 3 min de FR-011.12 crit. 9 — que no empezó, no que "sigue".
   "brand.pendingTooLong":
     "The analysis hasn't started yet. It's still queued — you can keep going with setup meanwhile.", // nuevo
+  // `unsupported_platform` no tiene copy en §19.5.1. FR-011.4 pide que al
+  // degradar a D la UI «lo diga explícitamente y pida la ayuda concreta»
+  // (pegar bio, capturas, describir la marca) — y **ningún endpoint** recibe
+  // hoy esa ayuda: `POST /brand/sources` rechaza `manual` y no hay otro. Así que
+  // se dice lo que pasó y se pide la única ayuda que sí funciona. «Add a
+  // different one» era falso: el worker da este motivo a **toda** plataforma
+  // social (sólo hay extractor de web), así que otra red social falla igual.
+  // Una web sí se lee: el handler sólo se monta con el extractor de web.
   "brand.failure.unsupportedPlatform":
-    "We can't read this kind of source yet. Add a different one.", // nuevo · `unsupported_platform` sin copy en §19.5.1
+    "We can't read {platform} profiles yet, so this source won't shape your brand profile. If you have a website, add it instead.", // nuevo
   // FR-011.2 (PRD:835) — sub-pasos de Instagram en Fase 1, literales.
   "brand.substep.readingProfile": "Reading profile", // literal PRD:835
   "brand.substep.readingPosts": "Reading recent posts", // literal PRD:835

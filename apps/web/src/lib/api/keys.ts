@@ -33,8 +33,11 @@ export const queryKeys = {
   /**
    * `POST /brand/sources/resolve` por texto. Cuelga de `brand-sources` para que
    * invalidar las fuentes (un alta, un borrado) también olvide los `available`.
+   * La pista del chip `Website` es parte de la pregunta: sin ella en la clave,
+   * activar el chip sobre un texto ya resuelto serviría el `other_url` viejo.
    */
-  brandSourceResolve: (input: string) => ["brand-sources", "resolve", input] as const,
+  brandSourceResolve: (input: string, hint?: string) =>
+    ["brand-sources", "resolve", input, hint ?? null] as const,
   /**
    * El estado del servicio (`F-255`). No cuelga de ningún recurso del API v1 a
    * propósito: no lleva workspace ni sesión, así que invalidar "todo lo del

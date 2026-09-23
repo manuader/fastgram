@@ -80,7 +80,7 @@ function source(overrides: Readonly<Record<string, unknown>> = {}): BrandSource 
 // El doble del servidor
 // ---------------------------------------------------------------------------
 
-type Resolver = (input: string) => unknown;
+type Resolver = (input: string, hint: string | undefined) => unknown;
 
 interface Server {
   state: OnboardingState;
@@ -121,8 +121,8 @@ function installServer(initial: Partial<Server> = {}): void {
 
     if (path === "/onboarding") return parse(server.state);
     if (path === "/brand/sources/resolve") {
-      const body = options.body as { input: string };
-      return parse(server.resolve(body.input));
+      const body = options.body as { input: string; hint?: string };
+      return parse(server.resolve(body.input, body.hint));
     }
     if (path === "/brand/sources" && options.method === "POST") {
       if (server.createFails !== null) throw server.createFails;
@@ -457,20 +457,29 @@ describe("paso 1 · input único, detección y alta", () => {
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
   });
 
-  it("chip Website + dominio desconocido: la tarjeta y el alta dicen `website`, no `other_url`", async () => {
-    installServer({
-      resolve: () => ({
-        sourceType: "other_url",
-        handle: "miproducto.com",
-        canonicalUrl: "https://miproducto.com",
-        displayName: null,
-        avatarUrl: null,
-        available: true,
-      }),
-    });
+  /**
+   * El doble decide como `detectBrandSource` de `core`: un host desconocido es
+   * `other_url`, y sólo `hint: "website"` lo vuelve `website`. Si el cliente no
+   * manda la pista, la tarjeta dice `Link` y el alta sale `other_url`.
+   */
+  const unknownHost: Resolver = (input, hint) => ({
+    sourceType: hint === "website" ? "website" : "other_url",
+    handle: input,
+    canonicalUrl: `https://${input}`,
+    displayName: null,
+    avatarUrl: null,
+    available: true,
+  });
+
+  it("chip Website + dominio desconocido: manda `hint: website` y el alta sale `website`", async () => {
+    installServer({ resolve: unknownHost });
     await mount();
     fireEvent.click(screen.getByRole("button", { name: "Website" }));
     await typeAndSettle("miproducto.com");
+    expect(calls("/brand/sources/resolve").at(-1)?.options.body).toEqual({
+      input: "miproducto.com",
+      hint: "website",
+    });
     expect(screen.getByText("Website", { selector: "p" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Analyse" }));
@@ -479,6 +488,27 @@ describe("paso 1 · input único, detección y alta", () => {
       sourceType: "website",
       canonicalUrl: "https://miproducto.com",
     });
+  });
+
+  it("pulsar Website sobre un dominio ya resuelto vuelve a preguntar: no sirve el `other_url` de la caché", async () => {
+    installServer({ resolve: unknownHost });
+    await mount();
+    await typeAndSettle("miproducto.com");
+    // Sin chip no hay pista: lo que dice el host.
+    expect(calls("/brand/sources/resolve")[0]?.options.body).toEqual({
+      input: "miproducto.com",
+    });
+    expect(screen.getByText("Link", { selector: "p" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Website" }));
+    await tick(RESOLVE_DEBOUNCE_MS);
+    await tick(0);
+    // Negativa primero, tras una espera neutral (trampa 38): el botón existe
+    // en los dos mundos.
+    expect(screen.getByRole("button", { name: "Analyse" })).toBeInTheDocument();
+    expect(screen.queryByText("Link", { selector: "p" })).toBeNull();
+    expect(screen.getByText("Website", { selector: "p" })).toBeInTheDocument();
+    expect(calls("/brand/sources/resolve")).toHaveLength(2);
   });
 
   it("reanudar con una fuente ya creada no vuelve al paso 1, y el análisis sigue a la vista", async () => {
@@ -542,7 +572,7 @@ describe("estado del análisis · polling y `pending` que no avanza", () => {
     expect(screen.queryByText(/hasn't started yet/)).toBeNull();
 
     // El dato no cambia en todo este rato: sólo el reloj. Es exactamente lo que
-    // pasa hoy, que nada consume `brand-source-analysis`.
+    // pasa cuando el worker no montó `brand-source-analysis`.
     await tick(ANALYSIS_EXPECTED_MS);
 
     // Negativa primero, tras una espera neutral (trampa 38): el `aria-busy`
@@ -602,6 +632,41 @@ describe("estado del análisis · polling y `pending` que no avanza", () => {
     expect(
       screen.getByText(
         "@mimarca is private, so we can't read it. Connect the account or paste your bio instead.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * `FR-011.4` pide, al degradar a D, pedir «la ayuda concreta» (pegar la bio,
+   * subir capturas, describir la marca). Ningún endpoint la recibe hoy, así que
+   * la pantalla **no** la pide: dice qué pasó y ofrece lo único que funciona.
+   * Tampoco «Add a different one»: toda red social termina en este motivo.
+   */
+  it("paso 4 · `unsupported_platform` lo dice con la plataforma, sin pedir bio ni otra red", async () => {
+    installServer({
+      state: onboarding({
+        step: "processing",
+        sources: [
+          source({
+            sourceType: "tiktok",
+            canonicalUrl: "https://tiktok.com/@mimarca",
+            status: "failed",
+            failureReason: "unsupported_platform",
+            acquisitionTier: "D_assisted",
+          }),
+        ],
+      }),
+    });
+    const { container } = await mount();
+    // Negativas primero, tras la espera neutral (trampa 38).
+    expect(busy(container)).toBe("false");
+    const list = container.querySelector(".fgw-onb-sources");
+    expect(list).not.toBeNull();
+    const shown = list?.textContent ?? "";
+    expect(shown).not.toMatch(/bio|screenshot|describe|different one/i);
+    expect(
+      screen.getByText(
+        "We can't read TikTok profiles yet, so this source won't shape your brand profile. If you have a website, add it instead.",
       ),
     ).toBeInTheDocument();
   });

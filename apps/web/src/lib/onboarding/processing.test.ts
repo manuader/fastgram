@@ -79,6 +79,22 @@ describe("sourceNotice", () => {
     ).toBe("error.brand.privateProfile.title");
   });
 
+  it("`unsupported_platform` nombra la plataforma y no promete el tier D que no existe", () => {
+    const notice = sourceNotice(
+      source({
+        status: "failed",
+        failureReason: "unsupported_platform",
+        acquisitionTier: "D_assisted",
+      }),
+      T0,
+    );
+    expect(notice).toEqual({
+      key: "brand.failure.unsupportedPlatform",
+      vars: { handle: "mimarca", platform: "Instagram" },
+      problem: true,
+    });
+  });
+
   it("`partial` es ERR-B09 y no es un problema: no bloquea el alta", () => {
     expect(sourceNotice(source({ status: "partial" }), T0)).toEqual({
       key: "error.brand.thinProfile.title",

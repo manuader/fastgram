@@ -23,16 +23,17 @@
  * ## Lo que los chips pueden y no pueden hacer
  *
  * `FR-011.2`: los chips *"prefijan el input y fijan el `sourceType`"*. Lo
- * primero es texto. Lo segundo **no llega a `/resolve`**: su request es
- * `{input}` y nada más (forma literal de PRD:2368). Dos consecuencias:
+ * primero es texto. Lo segundo viaja como `hint` a `/resolve`, y **sólo** para
+ * `Website` (`brandSourceResolveHintSchema` en contracts es `["website"]`):
  *
- * · Para las cinco sociales no importa: el prefijo (`instagram.com/`) hace que
- *   la URL misma diga la plataforma, que es lo que la API mira.
- * · Para `Website` sí importa: `/resolve` devuelve `other_url` para cualquier
- *   host desconocido (aclaración de `FR-011.1`), y el chip tiene que ganar. Se
- *   resuelve en {@link effectiveSourceType} y la pista viaja en el alta
- *   (`POST /brand/sources` con `sourceType: "website"`), donde la API **sí** la
- *   pasa como `hint` al detector.
+ * · Para las cinco sociales el prefijo (`instagram.com/`) hace que la URL misma
+ *   diga la plataforma. Mandarles `hint` sería además un `400`: el esquema del
+ *   request es `.strict()` y el enum no las admite.
+ * · Para `Website` sí importa: sin pista, `/resolve` devuelve `other_url` para
+ *   cualquier host desconocido (aclaración de `FR-011.1`). Con `hint: "website"`
+ *   la API decide `website` —y sólo eso: no convierte una URL de Instagram ni
+ *   resuelve un `@handle` suelto—, así que la tarjeta dice lo que va a darse
+ *   de alta y el cliente no reinterpreta nada. Ver {@link resolveHintOf}.
  */
 import {
   brandSourceSchema,
@@ -40,6 +41,7 @@ import {
   onboardingStateSchema,
   resolveBrandSourceResponseSchema,
   type BrandSource,
+  type BrandSourceResolveHint,
   type BrandSourceType,
   type CreateBrandSourceRequest,
   type OnboardingState,
@@ -132,19 +134,15 @@ export function applyChip(input: string, chip: ChipType): string {
 }
 
 /**
- * El tipo con el que se da de alta, dados lo que dijo `/resolve` y el chip.
+ * La pista que viaja a `/resolve` con el chip activo: `website` o nada.
  *
- * Sólo un caso cambia el resultado: chip `Website` y `other_url` resuelto. Ver
- * la cabecera. Un chip social **no** pisa lo resuelto: si alguien fija
+ * Un chip social **no** manda pista: el enum del contrato no la admite (sería
+ * un `400`) y el prefijo ya la dice. Tampoco pisa lo resuelto: si alguien fija
  * Instagram y pega `tiktok.com/@acme`, manda el host (`FR-011.1`), y la
  * tarjeta de confirmación dice TikTok antes de que pulse `Analyse`.
  */
-export function effectiveSourceType(
-  resolved: BrandSourceType,
-  chip: ChipType | null,
-): BrandSourceType {
-  if (chip === "website" && resolved === "other_url") return "website";
-  return resolved;
+export function resolveHintOf(chip: ChipType | null): BrandSourceResolveHint | undefined {
+  return chip === "website" ? "website" : undefined;
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -222,6 +220,7 @@ export function useDebouncedValue<T>(value: T, ms: number): T {
  */
 export function useBrandSourceDetection(input: string, chip: ChipType | null): Detection {
   const debounced = useDebouncedValue(input.trim(), RESOLVE_DEBOUNCE_MS);
+  const hint = resolveHintOf(chip);
   // Un prefijo de chip sin nada detrás no es una entrada: no se pregunta.
   const ready = debounced !== "" && !isChipPrefix(debounced);
 
@@ -229,11 +228,14 @@ export function useBrandSourceDetection(input: string, chip: ChipType | null): D
     ResolveBrandSourceResponse,
     ApiRequestError
   >({
-    queryKey: queryKeys.brandSourceResolve(debounced),
+    // La pista va en la clave: la misma URL con y sin `Website` son dos
+    // preguntas distintas (`website` vs `other_url`), y compartir caché
+    // serviría la respuesta de la otra al activar o soltar el chip.
+    queryKey: queryKeys.brandSourceResolve(debounced, hint),
     queryFn: ({ signal }) =>
       apiRequest("/brand/sources/resolve", {
         method: "POST",
-        body: { input: debounced },
+        body: hint === undefined ? { input: debounced } : { input: debounced, hint },
         signal,
         schema: resolveBrandSourceResponseSchema,
       }),
@@ -256,7 +258,7 @@ export function useBrandSourceDetection(input: string, chip: ChipType | null): D
   return {
     kind: "resolved",
     result: query.data,
-    sourceType: effectiveSourceType(query.data.sourceType, chip),
+    sourceType: query.data.sourceType,
   };
 }
 

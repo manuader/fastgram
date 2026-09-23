@@ -9,8 +9,8 @@ import {
   ambiguityOf,
   applyChip,
   createBodyOf,
-  effectiveSourceType,
   presentSourceInputError,
+  resolveHintOf,
 } from "./brand-source";
 
 describe("applyChip", () => {
@@ -38,14 +38,16 @@ describe("applyChip", () => {
   });
 });
 
-describe("effectiveSourceType", () => {
-  it("el chip Website convierte `other_url` en `website` (FR-011.1, aclaración)", () => {
-    expect(effectiveSourceType("other_url", "website")).toBe("website");
-    expect(effectiveSourceType("other_url", null)).toBe("other_url");
+describe("resolveHintOf", () => {
+  it("el chip Website manda `hint: website` a /resolve (FR-011.1, aclaración)", () => {
+    expect(resolveHintOf("website")).toBe("website");
   });
 
-  it("un chip social no pisa lo que dice el host", () => {
-    expect(effectiveSourceType("tiktok", "instagram")).toBe("tiktok");
+  it("sin chip, o con uno social, no hay pista: el enum del contrato no las admite", () => {
+    expect(resolveHintOf(null)).toBeUndefined();
+    for (const chip of ["instagram", "tiktok", "x", "youtube", "linkedin"] as const) {
+      expect(resolveHintOf(chip)).toBeUndefined();
+    }
   });
 });
 

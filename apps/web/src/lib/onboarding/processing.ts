@@ -17,9 +17,9 @@
  *
  * ## El caso real hoy: `pending` para siempre
  *
- * Nada consume la cola `brand-source-analysis` (el handler no existe, ver
- * `P1-BRAND-022` en `tasks.md`), así que toda fuente creada se queda en
- * `pending`. La pantalla no puede saber que no hay worker —sólo ve una fuente
+ * El handler de `brand-source-analysis` existe pero **sólo se monta** con
+ * extractor, LLM y retención configurados (`apps/worker/src/handlers.ts`); sin
+ * eso —hoy, en todo entorno— toda fuente creada se queda en `pending`. La pantalla no puede saber que no hay worker —sólo ve una fuente
  * encolada—, pero sí puede no mentir sobre lo que ve: pasado
  * {@link ANALYSIS_EXPECTED_MS} en `pending` dice que **no empezó**, y que se
  * puede seguir con el alta (§19.5.1: *"ninguno bloquea el alta"*). No dice
@@ -98,6 +98,13 @@ export interface Notice {
 /**
  * `failureReason` → copy de §19.5.1. `unsupported_platform` no tiene copy en el
  * PRD; `already_registered` usa el neutro de `ERR-B06` (ver `packages/ui`).
+ *
+ * `unsupported_platform` es la degradación a D de `FR-011.4` (el worker la
+ * escribe con `acquisitionTier: D_assisted`), y el PRD pide ofrecer ahí la
+ * ayuda asistida. **No se ofrece porque no hay endpoint que la reciba** — ver
+ * la nota de la clave en `messages.ts`. Tampoco `private` e
+ * `insufficient_content`: sus literales (ERR-B05, ERR-E13) ya piden «paste your
+ * bio» / «describe your brand», que hoy no tienen adónde ir.
  */
 const FAILURE_COPY: Readonly<Record<BrandSourceFailureReason, CopyKey>> = {
   not_found: "error.brand.handleNotFound.title", // ERR-B04
