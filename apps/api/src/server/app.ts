@@ -164,6 +164,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
             clock: deps.clock,
             ...(deps.sessions === undefined ? {} : { sessions: deps.sessions }),
             ...(deps.mode === undefined ? {} : { mode: deps.mode }),
+            ownerLevel: isOwnerLevelRoute(request.url),
           },
           request.headers,
         );
@@ -216,4 +217,24 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   );
 
   return app;
+}
+
+/**
+ * Rutas del **dueño**, no de una marca: `/mode` y `/workspaces…` ignoran
+ * `X-Fastgram-Workspace`.
+ *
+ * Bug visto en el navegador (2026-09-24): con la cookie de marca apuntando a una
+ * marca que ya no existe (borrada, o base vaciada), TODAS las requests daban
+ * 404 — incluidas estas dos. La web leía el 404 de `/mode` como "no es modo
+ * personal", escondía el selector de marca y no había forma de salir. Estas dos
+ * rutas son justamente con las que la web detecta y limpia una cookie vieja,
+ * así que no pueden depender de ella.
+ */
+function isOwnerLevelRoute(url: string): boolean {
+  const path = url.split("?", 1)[0] ?? "";
+  return (
+    path === `${API_V1_PREFIX}/mode` ||
+    path === `${API_V1_PREFIX}/workspaces` ||
+    path.startsWith(`${API_V1_PREFIX}/workspaces/`)
+  );
 }

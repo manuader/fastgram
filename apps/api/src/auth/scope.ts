@@ -116,6 +116,11 @@ export interface ScopeResolverOptions {
    * `standard` (y ausente) el header se ignora por completo, ni siquiera se valida.
    */
   readonly mode?: FastgramMode;
+  /**
+   * La ruta es del dueño (`/mode`, `/workspaces…`): el header de marca no se
+   * aplica, ni siquiera se valida. Ver `isOwnerLevelRoute` en `server/app.ts`.
+   */
+  readonly ownerLevel?: boolean;
 }
 
 /**
@@ -132,6 +137,9 @@ export async function resolveScope(
 ): Promise<ScopeResolution> {
   const base = await resolveCredential(options, headers);
   if (!base.ok || options.mode !== "personal") return base;
+  if (options.ownerLevel === true) {
+    return { ok: true, auth: { ...base.auth, homeCompanyId: base.auth.companyId } };
+  }
   return applyWorkspaceHeader(options.db, base.auth, headers);
 }
 

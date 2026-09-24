@@ -392,6 +392,30 @@ describe("X-Fastgram-Workspace scopea rutas que no saben que existe", () => {
     }
   });
 
+  it("/mode y /workspaces ignoran una marca vieja en el header: la web se recupera con ellas", async () => {
+    // El bug del 2026-09-24: cookie apuntando a una marca borrada → todo 404,
+    // incluido /mode → la web creía estar en modo standard y no podía salir.
+    for (const value of [deletedCompanyId, api.data.unknownId, "no-es-uuid"]) {
+      const mode = await api.request({
+        method: "GET",
+        path: "/api/v1/mode",
+        headers: { [HEADER]: value },
+      });
+      expect(mode.status, value).toBe(200);
+      expect(dataOf(mode)["mode"]).toBe("personal");
+
+      const list = await api.request({
+        method: "GET",
+        path: "/api/v1/workspaces",
+        headers: { [HEADER]: value },
+      });
+      expect(list.status, value).toBe(200);
+      const ids = (list.body?.["data"] as { id: string }[]).map((w) => w.id);
+      expect(ids).toContain(api.data.a.companyId);
+      expect(ids).not.toContain(value);
+    }
+  });
+
   it("sin credencial, el header no cambia nada: 401", async () => {
     const res = await api.request({
       method: "GET",
