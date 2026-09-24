@@ -48,6 +48,7 @@ import { AcceptDialog } from "./AcceptDialog";
 import { BuildTray } from "./BuildTray";
 import { CardChips, RemixedFromPanel, WhyPanel, WhyToggle } from "./CardDetails";
 import { CardFace } from "./CardFace";
+import { AutopilotBanner } from "./AutopilotBanner";
 import { CreatePromptBar } from "./CreatePromptBar";
 import { CheckIcon, GearIcon, PencilIcon, XIcon } from "./icons";
 import { SwipeCard, type ExitCustom } from "./SwipeCard";
@@ -295,6 +296,9 @@ export function BlitzDeck() {
           <span className="ml-1.5">{td("deck.configure")}</span>
         </Link>
       </header>
+
+      {/* `PU-AUTO-002`: sólo con la marca en piloto. */}
+      <AutopilotBanner />
 
       {/* `PU-BLITZ-003`: lo que se pide acá entra primero en la cola. */}
       <CreatePromptBar />

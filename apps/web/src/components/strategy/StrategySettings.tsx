@@ -20,6 +20,8 @@ import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { ApiErrorState } from "@/components/library/ApiErrorState";
 import { NETWORK_LABEL } from "@/lib/calendar/board";
 import { useSaveStrategy, useStrategy } from "./api";
+import { AutopilotPolicyPanel } from "./AutopilotPolicy";
+import { MixAutotuneToggle } from "@/components/analytics/MixPanel";
 import { STRATEGY_COPY as COPY } from "./copy";
 
 type Draft = UpdateStrategyRequest;
@@ -209,6 +211,12 @@ function StrategyForm({ strategy }: { readonly strategy: Strategy }) {
             </label>
           ))}
         </fieldset>
+        {/* `PU-AUTO-002`: qué hace el piloto y con qué umbrales. */}
+        <AutopilotPolicyPanel />
+        {/* `PU-AUTO-004`: se guarda al instante, aparte del botón Save. */}
+        <div className="mt-3 rounded-lg border border-border p-3">
+          <MixAutotuneToggle compact />
+        </div>
       </Section>
 
       <Section title={COPY.localeTitle}>

@@ -120,6 +120,20 @@
       "when": 1790008494060,
       "tag": "0016_text_box_width_fraction",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790008494065,
+      "tag": "0017_autopilot",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790008494085,
+      "tag": "0018_metrics_sync",
+      "breakpoints": true
     }
   ]
 }

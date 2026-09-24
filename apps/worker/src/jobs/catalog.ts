@@ -1,4 +1,9 @@
-import { JOB_QUEUES, type JobQueueName } from "@fastgram/core";
+import {
+  AUTOPILOT_SWEEP_CRON,
+  JOB_QUEUES,
+  METRICS_SYNC_CRON,
+  type JobQueueName,
+} from "@fastgram/core";
 
 /**
  * Catálogo de jobs — PRD §9.5.
@@ -194,27 +199,60 @@ export const JOB_CATALOG = {
     concurrency: null,
     idempotent: true,
   },
+  /**
+   * `PU-AUTO-004`: `{}` es el barrido del cron (encola una corrida por marca
+   * con clave por hora) y `{companyId}` la corrida de una marca (sync de los
+   * posts debidos + auto-tune semanal del mix si está prendido). Idempotente:
+   * reescribir métricas con lo último que dio la plataforma no duplica nada.
+   */
   metricsSync: {
     name: JOB_QUEUES.metricsSync,
-    what: "Refresca views, likes y comments por post.",
-    prd: "§9.5.10, FR-120",
+    what: "Refresca views, likes, comments y shares por post y ajusta el mix si la marca lo pidió.",
+    prd: "§9.5.10, FR-120, PU-AUTO-004",
     maxAttempts: 3,
     backoff: "exponential",
     retryDelaySeconds: 300,
     timeoutSeconds: 120,
     concurrency: null,
     idempotent: true,
+    scheduled: {
+      cron: METRICS_SYNC_CRON,
+      why:
+        "Cada hora porque los posts de menos de 48 h se leen cada hora (es cuando " +
+        "el número cambia); los más viejos, cada 24 h, y la política vive en " +
+        "`core` (`isMetricsSyncDue`), no en el cron. A los 7 minutos para no " +
+        "caer en la hora en punto con el resto de los barridos.",
+    },
   },
+  /**
+   * Reusada por el piloto automático (`PU-AUTO-001/002`): `{}` es el barrido
+   * del cron y `{companyId}` la corrida de una marca (relleno de la cola al
+   * objetivo de su estrategia + pre-chequeo y aprobación si está en piloto).
+   * Idempotente por convergencia (el relleno lleva la cola a N) y por el
+   * `UNIQUE (suggestion_id)` de `autopilot_decisions`.
+   *
+   * 900 s y no 600: una corrida puede rellenar hasta 30 sugerencias (una
+   * llamada al LLM cada una) y juzgar hasta 6 con timeout duro de 30 s, y con
+   * un modelo local de 7B eso son minutos.
+   */
   automationGeneration: {
     name: JOB_QUEUES.automationGeneration,
-    what: "Genera los slots de una automation.",
-    prd: "§9.5.11, FR-150",
+    what: "Piloto automático: barrido de marcas, cola de Blitz al objetivo de la estrategia y aprobación con pre-chequeo.",
+    prd: "§9.5.11, FR-150, PU-AUTO-001/002",
     maxAttempts: 3,
     backoff: "exponential",
     retryDelaySeconds: 30,
-    timeoutSeconds: 600,
+    timeoutSeconds: 900,
     concurrency: null,
     idempotent: true,
+    scheduled: {
+      cron: AUTOPILOT_SWEEP_CRON,
+      why:
+        "La cola de cada marca tiene que estar llena antes de que el piloto o " +
+        "el humano la necesiten, sin que nadie abra Blitz. Cada 15 min: el " +
+        "barrido sólo encola una corrida por marca (con clave por ventana), y " +
+        "la corrida no hace nada si la cola ya está en el objetivo.",
+    },
   },
   automationBuildSchedule: {
     name: JOB_QUEUES.automationBuildSchedule,

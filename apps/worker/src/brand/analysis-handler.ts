@@ -32,6 +32,12 @@
  * | **no hay extractor para la plataforma** | `failed` | `unsupported_platform` | `D_assisted` |
  * | proveedor de lectura agotó reintentos | `failed` | `rate_limited` / `provider_unavailable` | `D_assisted` |
  * | el LLM falló o contestó fuera de contrato | `failed` | **`null`** | `D_assisted` |
+ * | **texto pegado** (`assisted` en el payload, `P1-BRAND-014`) | `ready` / `partial` | — | `D_assisted` |
+ *
+ * El último camino es el tier D de verdad: el usuario pegó su bio y unos
+ * captions (`POST /brand/sources/:id/assist`). No se consulta ningún extractor
+ * —así funciona aunque la plataforma no tenga uno montado— y lo pegado pasa
+ * por la misma síntesis y la misma contención que una bio leída.
  *
  * `D_assisted` en toda falla terminal: `FR-011.4` y §19.5.1 dicen que ninguna
  * falla bloquea el alta, «como mucho degradan al tier D», y `AI-016` que
@@ -58,6 +64,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   acquisitionPlan,
+  assistedSynthesisInput,
   BRAND_PROFILE_FIELDS,
   completeAnalysis,
   currentProfileFields,
@@ -102,7 +109,9 @@ export interface BrandSourceAnalysisDeps {
   readonly db: Database;
   /**
    * Un extractor por plataforma (§9.14). Lo que falte acá termina en
-   * `unsupported_platform`: hoy sólo hay `website` y `other_url`.
+   * `unsupported_platform`. `website`/`other_url` los monta `main.ts`; las
+   * redes, `socialReadersFromEnv` (`./social-readers.ts`), cada una sólo si
+   * su variable está.
    */
   readonly readers: Readonly<Partial<Record<BrandSourceType, SocialReader>>>;
   readonly synthesizer: BrandSynthesizer;
@@ -274,7 +283,18 @@ export function createBrandSourceAnalysisHandler(
       const read = await reader.readProfile({ handle });
       // `not_found` / `private` / `insufficient_content`: resultados, no
       // excepciones. Con C apagado y A sin credencial, la escalera termina en D.
-      if (read.status !== "ok") return { kind: "unavailable", reason: read.status };
+      if (read.status !== "ok") {
+        return {
+          kind: "unavailable",
+          // La herramienta del extractor no está (`PU-SCRAPE-001`): para esta
+          // instalación, hoy, la plataforma no se puede leer. No es la
+          // plataforma la que falló, así que no es `provider_unavailable`.
+          reason:
+            read.status === "extractor_unavailable"
+              ? "unsupported_platform"
+              : read.status,
+        };
+      }
       profile = read.data;
       tier = read.tier;
     } catch (error: unknown) {
@@ -389,16 +409,36 @@ export function createBrandSourceAnalysisHandler(
     };
 
     // ── Etapa 1: recolección ────────────────────────────────────────────────
-    const reader = deps.readers[sourceType];
-    if (reader === undefined) {
-      const marked = await fail(job, "unsupported_platform");
-      deps.logger.warn(
-        { ...base, sourceType, marked },
-        "sin extractor para la plataforma: failed/unsupported_platform, degradada a D",
-      );
-      return;
+    let collected: Collected;
+    if (job.assisted !== undefined) {
+      // Tier D asistido (`P1-BRAND-014`): el usuario pegó su bio y captions
+      // porque el extractor no alcanzó. No se lee la plataforma —ni hace falta
+      // que haya extractor—, y lo pegado entra a la síntesis por el mismo
+      // camino que una bio leída: dato delimitado, nunca instrucción.
+      const input = assistedSynthesisInput(job.assisted, {
+        sourceId: row.id,
+        sourceType,
+        handle: row.handle ?? undefined,
+      });
+      collected = {
+        kind: "ok",
+        tier: "D_assisted",
+        profile: input.profile,
+        items: input.items,
+        signalsFailed: false,
+      };
+    } else {
+      const reader = deps.readers[sourceType];
+      if (reader === undefined) {
+        const marked = await fail(job, "unsupported_platform");
+        deps.logger.warn(
+          { ...base, sourceType, marked },
+          "sin extractor para la plataforma: failed/unsupported_platform, degradada a D",
+        );
+        return;
+      }
+      collected = await collect(reader, row, job);
     }
-    const collected = await collect(reader, row, job);
     if (collected.kind === "unavailable") {
       const marked = await fail(job, collected.reason);
       deps.logger.info(

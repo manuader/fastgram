@@ -38,7 +38,9 @@ import {
 import { useNow } from "@/lib/onboarding/use-now";
 import type { ApiRequestError } from "@/lib/api/errors";
 import type { UseQueryResult } from "@tanstack/react-query";
+import { canAssist } from "@/lib/brand/assist";
 import { AddSourceForm } from "./AddSourceForm";
+import { AssistedSourcePanel } from "./AssistedSourcePanel";
 
 const STATUS_TONE: Readonly<
   Record<BrandSource["status"], NonNullable<BadgeProps["tone"]>>
@@ -261,6 +263,10 @@ function SourceRow({
         </p>
       )}
       {failure !== null && <ActionProblem failure={failure} />}
+      {canAssist(source) && !busy && (
+        // P1-BRAND-014 / FR-011.4: degradada a D, se pide la ayuda concreta.
+        <AssistedSourcePanel source={source} />
+      )}
     </li>
   );
 }

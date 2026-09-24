@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
-import { RoutePlaceholder } from "@/components/placeholder/RoutePlaceholder";
+import { AnalyticsScreen } from "@/components/analytics/AnalyticsScreen";
 
 export const metadata: Metadata = { title: "Analytics · FastGram" };
 
-export default function Page() {
-  return (
-    <RoutePlaceholder screen="Analytics" spec="PRD §3.1 · FR-120" task="P3-ANALYT-001" />
-  );
+/**
+ * `/analytics` · `FR-120` (PRD:1691), `P3-ANALYT-001/002`, `PU-AUTO-004`.
+ *
+ * Server component fino: la pantalla es cliente — habla con la API y depende
+ * de la marca activa del `WorkspaceProvider`.
+ */
+export default function AnalyticsPage() {
+  return <AnalyticsScreen />;
 }

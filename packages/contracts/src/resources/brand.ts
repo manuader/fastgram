@@ -9,6 +9,7 @@
  *   POST   /brand/sources              202 + `brandSourceId`, exige Idempotency-Key
  *   GET    /brand/sources[/:id]        listado y polling de estado
  *   POST   /brand/sources/:id/reanalyse
+ *   POST   /brand/sources/:id/assist   tier D: bio y captions pegados (añadida)
  *   PATCH  /brand/sources/:id          sólo `isPrimary`
  *   DELETE /brand/sources/:id
  *   GET|PATCH /brand/profile
@@ -177,6 +178,42 @@ export const createBrandSourceRequestSchema = z
     message: "handle or canonicalUrl is required",
   });
 export type CreateBrandSourceRequest = z.infer<typeof createBrandSourceRequestSchema>;
+
+/**
+ * `POST /brand/sources/:id/assist` — **tier D asistido** (`P1-BRAND-014`,
+ * `FR-011.4` fila D, `FR-011.9`). **Ruta añadida sobre §9.14.**
+ *
+ * Cuando una fuente social no se pudo leer (sin extractor, privada, límite de
+ * la plataforma), el usuario pega su bio y unos captions recientes y la misma
+ * síntesis corre sobre eso. Es una ruta sobre la fuente que ya existe, y no un
+ * `POST /brand/sources` con `sourceType: manual`, por dos razones: la fuente
+ * conserva su plataforma —la precedencia de `FR-011.6` (y el tono invertido)
+ * la necesita—, y un `manual` con `handle` vacío chocaría contra la unicidad
+ * global de `(sourceType, handle)`.
+ *
+ * `202` con la fuente en `analyzing` y `acquisitionTier` final `D_assisted`.
+ * **No** consume el cupo de re-análisis (`ERR-B11`): no se lee la plataforma.
+ * Todo lo pegado es dato, nunca instrucción (§9.14): pasa por la misma
+ * contención que una bio leída.
+ *
+ * Techos: los de la descripción libre de `AI-001` por texto
+ * ({@link BRAND_FREE_TEXT_ANSWER_MAX}) y los ítems de un análisis
+ * ({@link BRAND_SOURCE_ITEMS_PER_ANALYSIS_DEFAULT}). El PRD no fija otros.
+ */
+export const assistBrandSourceRequestSchema = z
+  .object({
+    bio: z.string().max(BRAND_FREE_TEXT_ANSWER_MAX).optional(),
+    captions: z
+      .array(z.string().max(BRAND_FREE_TEXT_ANSWER_MAX))
+      .max(BRAND_SOURCE_ITEMS_PER_ANALYSIS_DEFAULT)
+      .optional(),
+  })
+  .strict()
+  .refine(
+    (b) => (b.bio ?? "").trim() !== "" || (b.captions ?? []).some((c) => c.trim() !== ""),
+    { message: "paste a bio or at least one caption" },
+  );
+export type AssistBrandSourceRequest = z.infer<typeof assistBrandSourceRequestSchema>;
 
 /** `PATCH /brand/sources/:id` — "Sólo `isPrimary`" (PRD:2372). */
 export const updateBrandSourceRequestSchema = z

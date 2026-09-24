@@ -10,6 +10,7 @@ export * from "./ocr.js";
 export * from "./asr.js";
 export * from "./social-reader.js";
 export * from "./social-publisher.js";
+export * from "./social-metrics.js";
 export * from "./payments.js";
 export * from "./identity.js";
 export * from "./media-generation.js";

@@ -231,6 +231,27 @@ export const posts = pgTable(
     views: integer().notNull().default(0),
     likes: integer().notNull().default(0),
     comments: integer().notNull().default(0),
+    /**
+     * `0018` (`PU-AUTO-004`) — lo que el sync de métricas necesita además de
+     * las tres columnas del PRD. El porqué de cada una está en la migración:
+     *
+     * - `shares`: la cuarta métrica que dan Instagram, Threads, Facebook y X.
+     * - `metricsSyncedAt`: `null` = **pre-sync** (`NFR-016`). Es lo que
+     *   distingue un 0 real de uno por defecto; `postedAt` sólo dice que salió.
+     * - `metricsMissing`: las métricas que la red **no dio** en el último
+     *   sync (`views`, `likes`, `comments`, `shares`). Sus columnas quedan en
+     *   0 por el `NOT NULL`, y esto dice que ese 0 no es un dato.
+     * - `metricsErrorCode`: por qué el último intento no trajo nada (código
+     *   estable: `metrics_permission_missing`, `metrics_reconnect_required`,
+     *   `metrics_unavailable`, `not_found_on_platform`). `null` = sin error.
+     */
+    shares: integer().notNull().default(0),
+    metricsSyncedAt: tsColumn(),
+    metricsMissing: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    metricsErrorCode: text(),
     automationSlotId: uuid().references(() => automationSlots.id, {
       onDelete: "set null",
     }),

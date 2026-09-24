@@ -68,3 +68,7 @@ class HealthResponse(BaseModel):
     #: parece sano y degrada todas las altas a `partial` en silencio.
     ocr_engine: str
     ocr_available: bool
+    #: Si `instaloader` está instalado (`PU-SCRAPE-001`). Sin él,
+    #: `POST /social/instagram/profile` contesta 503 `extractor_unavailable`
+    #: y la fuente de Instagram degrada a D.
+    instagram_available: bool = False

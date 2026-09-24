@@ -1,0 +1,36 @@
+# Contexto de build de las imágenes de `deploy/` (el contexto es la raíz del repo).
+# Lo que no está acá abajo entra a la imagen de build: si agregás un directorio
+# pesado o con secretos, sumalo.
+
+# Dependencias y builds: se rehacen dentro de la imagen, para Linux.
+# Un `node_modules` de la Mac trae binarios darwin (sharp, esbuild) que en
+# Linux fallan en runtime, no en el build.
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/*.tsbuildinfo
+**/coverage
+.pnpm-store
+
+# Secretos y estado local. Nunca dentro de una imagen.
+**/.env
+**/.env.*
+!.env.example
+deploy/.env.vps
+deploy/backups
+
+# Nada de esto se ejecuta.
+.git
+.github
+.claude
+handoffs
+docs
+PRD.md
+EVAL-JEV.md
+tasks.md
+**/.DS_Store
+**/*.log
+
+# Python del servicio de visión (tiene su propio Dockerfile y contexto).
+services/vision

@@ -13,11 +13,19 @@ from typing import Annotated
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 from .frames import ffmpeg_available
 from .models import HealthResponse, OcrRequest, OcrResponse, OcrStatus
 from .ocr import build_engine
 from .service import analyse_image, analyse_video
+from .social.instagram import (
+    InstagramError,
+    InstagramProfileRequest,
+    InstagramProfileResponse,
+    InstagramReader,
+    build_backend,
+)
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 log = logging.getLogger("vision")
@@ -30,10 +38,40 @@ _VIDEO_SUFFIXES = {".mp4", ".mov", ".webm", ".m4v", ".avi"}
 state: dict[str, object] = {}
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name, "").strip()
+    return float(raw) if raw else default
+
+
+def build_instagram_reader() -> InstagramReader:
+    """El lector de Instagram con la configuración del entorno.
+
+    Los números por defecto son **decisiones de este servicio**, no del PRD ni
+    de Instagram: 6 h de cache (una marca no cambia de bio cada hora y cada
+    llamada ahorrada es un 429 menos), 5 min de enfriamiento después del
+    primer 429 duplicándose hasta 1 h, 20 s de timeout por request.
+    """
+    return InstagramReader(
+        build_backend(
+            request_timeout=_env_float("SOCIAL_IG_REQUEST_TIMEOUT_SECONDS", 20.0),
+        ),
+        cache_ttl_seconds=_env_float("SOCIAL_IG_CACHE_TTL_SECONDS", 6 * 3600.0),
+        cooldown_base_seconds=_env_float("SOCIAL_IG_COOLDOWN_BASE_SECONDS", 300.0),
+        cooldown_max_seconds=_env_float("SOCIAL_IG_COOLDOWN_MAX_SECONDS", 3600.0),
+    )
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     engine = build_engine()
     state["engine"] = engine
+    instagram = build_instagram_reader()
+    state["instagram"] = instagram
+    if not instagram.available:
+        log.warning(
+            "instaloader no está instalado: POST /social/instagram/profile va a "
+            "contestar 503 extractor_unavailable (instalá `instaloader==4.15.3`)."
+        )
     if not engine.available():
         # Arranca igual, pero que quede en el log del deploy. El estado sano
         # con motor ausente es la falla silenciosa que queremos evitar.
@@ -57,7 +95,42 @@ async def health() -> HealthResponse:
         service="vision",
         ocr_engine=getattr(engine, "name", "none"),
         ocr_available=available,
+        instagram_available=bool(
+            isinstance(state.get("instagram"), InstagramReader)
+            and state["instagram"].available  # type: ignore[union-attr]
+        ),
     )
+
+
+@app.post(
+    "/social/instagram/profile",
+    response_model=InstagramProfileResponse,
+    responses={
+        400: {"description": "invalid_username"},
+        403: {"description": "profile_unavailable (reason: private)"},
+        404: {"description": "profile_unavailable (reason: not_found)"},
+        429: {"description": "platform_rate_limited, con Retry-After"},
+        502: {"description": "platform_unavailable"},
+        503: {"description": "extractor_unavailable: instaloader no instalado"},
+    },
+)
+async def instagram_profile(request: InstagramProfileRequest):
+    """Perfil público + últimos N posts de Instagram, **sin login** (`D-13`).
+
+    Ver `app/social/instagram.py` para el cache, el enfriamiento ante 429 y
+    por qué no hay reintentos adentro. Los errores salen con un código estable
+    en `{"error": {"code", "message", "reason"?, "retry_after"?}}`.
+    """
+    reader = state.get("instagram")
+    if not isinstance(reader, InstagramReader):
+        raise HTTPException(status_code=503, detail="service not ready")
+    try:
+        return await reader.read(request.username.lstrip("@"), request.limit)
+    except InstagramError as err:
+        headers = (
+            {"Retry-After": str(err.retry_after)} if err.retry_after is not None else None
+        )
+        return JSONResponse(status_code=err.status, content=err.body(), headers=headers)
 
 
 @app.post("/ocr/bytes", response_model=OcrResponse)

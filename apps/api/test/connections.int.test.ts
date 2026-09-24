@@ -229,7 +229,7 @@ describe("authorize: la URL de cada plataforma", () => {
       "https://www.instagram.com/oauth/authorize",
     );
     expect(ig.searchParams.get("scope")).toBe(
-      "instagram_business_basic,instagram_business_content_publish",
+      "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights",
     );
     const th = new URL((dataOf(await authorize("threads")) as { url: string }).url);
     expect(`${th.origin}${th.pathname}`).toBe("https://threads.com/oauth/authorize");

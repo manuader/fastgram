@@ -14,6 +14,10 @@ dependencies = [
 # PaddleOCR (ADR-011) es pesado y no siempre instalable en la máquina de
 # desarrollo. El servicio arranca sin él y lo reporta; no se cae.
 ocr = ["paddleocr>=2.9.0", "paddlepaddle>=2.6.0", "pillow>=10.0.0"]
+# Lectura de Instagram sin login (`PU-SCRAPE-001`, `D-13`). Versión FIJA: es la
+# auditada (`docs/AUDITORIA-SCRAPERS.md`, commit 7efc78d = tag v4.15.3 + un
+# commit de docs). Sin este extra, `/social/instagram/profile` contesta 503.
+social = ["instaloader==4.15.3"]
 dev = ["pytest>=8.3.0", "pytest-asyncio>=0.24.0", "ruff>=0.8.0"]
 
 [tool.ruff]

@@ -87,6 +87,7 @@ const BODIES: Readonly<Record<string, () => unknown>> = {
     targets: [{ platform: "tiktok", connectionId: api.data.a.connectionId, title: "t" }],
   }),
   "PATCH /brand/sources/{id}": () => ({ isPrimary: true }),
+  "POST /brand/sources/{id}/assist": () => ({ bio: "Café de especialidad en Palermo." }),
   "PATCH /workspaces/{id}": () => ({ name: "Otra marca" }),
   // `:task` no es un uuid, pero una tarea inexistente tiene que dar el mismo 404.
   "PUT /models/{task}": () => ({ provider: "ollama", model: "cualquiera" }),

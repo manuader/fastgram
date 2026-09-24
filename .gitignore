@@ -32,3 +32,4 @@ scratch/
 # con timestamps. Meter 164 MB en la historia penaliza cada clone para siempre,
 # y el valor ya está extraído. Si hacen falta, están en docs/features/demo/ local.
 docs/features/demo/
+!deploy/.env.vps.example

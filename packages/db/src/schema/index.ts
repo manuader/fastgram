@@ -18,6 +18,8 @@ export * from "./discovery.js";
 export * from "./platform.js";
 export * from "./judgment.js";
 export * from "./strategy.js";
+export * from "./autopilot.js";
+export * from "./metrics.js";
 
 export { tsColumn, timestamps, createdAtOnly, softDelete } from "./_shared.js";
 
@@ -35,6 +37,8 @@ import { companies, workspaceMemberships } from "./identity.js";
 import { influencerAssets, influencerConfigs, influencers } from "./influencers.js";
 import { judgmentRecords } from "./judgment.js";
 import { brandStrategies, plannedSlots } from "./strategy.js";
+import { autopilotDecisions, autopilotRuns } from "./autopilot.js";
+import { contentMixAutotune, formatMixAdjustments } from "./metrics.js";
 import { media, mediaSets } from "./media.js";
 import {
   apiKeys,
@@ -89,6 +93,10 @@ export const COMPANY_SCOPED_TABLES = [
   judgmentRecords,
   brandStrategies,
   plannedSlots,
+  autopilotDecisions,
+  autopilotRuns,
+  contentMixAutotune,
+  formatMixAdjustments,
 ] as const;
 
 /** La raíz de la tenencia. Su política compara `id`, no `company_id`. */

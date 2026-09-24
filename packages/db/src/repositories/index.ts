@@ -357,3 +357,33 @@ export {
   lockCompanyBrandKit,
   type BrandKitMediaInput,
 } from "./brand-kit.js";
+export {
+  AUTOPILOT_RUN_OUTCOMES,
+  autopilotStore,
+  countSuggestionsCreatedInRange,
+  findAutopilotRun,
+  listAutopilotBrands,
+  listAutopilotDecisionsInRange,
+  listPilotCandidates,
+  recordAutopilotDecision,
+  saveAutopilotRun,
+  type AutopilotBrandRow,
+  type AutopilotDecisionRow,
+  type AutopilotRunOutcome,
+  type AutopilotRunRow,
+  type AutopilotRunValues,
+  type DecisionWithSuggestion,
+  type NewAutopilotDecision,
+} from "./autopilot.js";
+export {
+  POST_METRIC_COLUMNS,
+  metricsStore,
+  mixTuningStore,
+  type AnalyticsPostRow,
+  type ContentMixAutotuneRow,
+  type FormatMixAdjustmentRow,
+  type FormatWeightsRow,
+  type MetricsSyncPostRow,
+  type PostMetricColumn,
+  type PostMetricsWrite,
+} from "./metrics.js";

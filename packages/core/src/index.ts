@@ -39,3 +39,8 @@ export * from "./brand-kit/index.js";
 export * from "./media-import/index.js";
 // `PU-MODEL-003`/`004`/`005`, `PU-LATER-005`: AI Studio, generación y tope mensual.
 export * from "./genai/index.js";
+// `PU-AUTO-001…003`: piloto automático y pre-chequeo `JV-3` del piloto.
+export * from "./autopilot/index.js";
+// `PU-AUTO-004`, `P3-ANALYT-001/002`: métricas de vuelta, auto-tune del mix y resumen de analytics.
+export * from "./metrics/index.js";
+export * from "./analytics/index.js";

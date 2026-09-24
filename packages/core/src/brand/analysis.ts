@@ -59,6 +59,123 @@ export interface BrandSourceAnalysisJob {
   readonly brandSourceId: string;
   /** `AI-016`: 24 por defecto, configurable. Validado con el techo de `HARD_CAPS`. */
   readonly itemsPerAnalysis: number;
+  /**
+   * Tier D asistido (`P1-BRAND-014`): el texto que el usuario pegó porque el
+   * extractor no alcanzó. Con esto el worker **no lee** la plataforma: sintetiza
+   * sobre lo pegado. Viaja en el payload y no en una columna porque no hay
+   * migración para guardarlo; lo que se persiste es el snapshot, como con
+   * cualquier otra lectura (`DATA-032`).
+   */
+  readonly assisted?: AssistedMaterial;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Tier D asistido — `P1-BRAND-014`, `FR-011.4` (fila D), `FR-011.9`
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Techo por texto pegado: el de la descripción libre de `AI-001` (4 000
+ * caracteres por respuesta, `BRAND_FREE_TEXT_ANSWER_MAX` en contracts). El PRD
+ * no fija uno propio para el tier D, y reusar éste evita inventarlo.
+ */
+export const ASSISTED_TEXT_MAX_CHARS = 4000;
+
+/** Cuántos captions: los mismos ítems que una lectura (`AI-016`, 24). */
+export const ASSISTED_MAX_CAPTIONS = HARD_CAPS.itemsPerBrandAnalysis;
+
+/**
+ * Lo que el usuario pega cuando el extractor no alcanza: `Paste your bio and a
+ * few recent captions`. **Es dato, nunca instrucción** (§9.14): entra a la
+ * síntesis por el mismo `collectSynthesisFragments` → `containUntrusted` que
+ * una bio leída de la plataforma, y pasa por la misma suite adversarial.
+ */
+export interface AssistedMaterial {
+  readonly bio: string;
+  readonly captions: readonly string[];
+}
+
+export type ParsedAssistedMaterial =
+  | { readonly ok: true; readonly material: AssistedMaterial }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * Valida lo pegado. Recorta espacios y descarta captions vacíos; exige una bio
+ * o al menos un caption con texto, porque sin nada no hay qué sintetizar.
+ */
+export function parseAssistedMaterial(raw: unknown): ParsedAssistedMaterial {
+  if (typeof raw !== "object" || raw === null) {
+    return { ok: false, reason: "assisted is not an object" };
+  }
+  const { bio, captions } = raw as Record<string, unknown>;
+  const b = bio ?? "";
+  if (typeof b !== "string")
+    return { ok: false, reason: "assisted.bio must be a string" };
+  if (b.length > ASSISTED_TEXT_MAX_CHARS) {
+    return {
+      ok: false,
+      reason: `assisted.bio must be at most ${String(ASSISTED_TEXT_MAX_CHARS)} characters`,
+    };
+  }
+  const cs = captions ?? [];
+  if (!Array.isArray(cs) || cs.some((c) => typeof c !== "string")) {
+    return { ok: false, reason: "assisted.captions must be an array of strings" };
+  }
+  const list = (cs as string[]).map((c) => c.trim()).filter((c) => c.length > 0);
+  if (list.length > ASSISTED_MAX_CAPTIONS) {
+    return {
+      ok: false,
+      reason: `assisted.captions must have at most ${String(ASSISTED_MAX_CAPTIONS)} items`,
+    };
+  }
+  if (list.some((c) => c.length > ASSISTED_TEXT_MAX_CHARS)) {
+    return {
+      ok: false,
+      reason: `each caption must be at most ${String(ASSISTED_TEXT_MAX_CHARS)} characters`,
+    };
+  }
+  const trimmed = b.trim();
+  if (trimmed.length === 0 && list.length === 0) {
+    return { ok: false, reason: "paste a bio or at least one caption" };
+  }
+  return { ok: true, material: { bio: trimmed, captions: list } };
+}
+
+const HASHTAG = /#([\p{L}\p{N}_]+)/gu;
+const MENTION = /(?:^|[^\p{L}\p{N}_])@([\p{L}\p{N}._]+)/gu;
+
+/**
+ * Lo pegado, con la forma que la síntesis ya sabe leer. Los captions quedan en
+ * el orden en que se pegaron (sin engagement, `collectSynthesisFragments`
+ * conserva el orden); los hashtags se extraen para que pesen como en una
+ * lectura real.
+ */
+export function assistedSynthesisInput(
+  material: AssistedMaterial,
+  source: {
+    readonly sourceId: string;
+    readonly sourceType: BrandSourceType;
+    readonly handle?: string | undefined;
+  },
+): SynthesisInput {
+  return {
+    sourceId: source.sourceId,
+    sourceType: source.sourceType,
+    profile: {
+      ...(source.handle === undefined || source.handle === ""
+        ? {}
+        : { handle: source.handle }),
+      ...(material.bio === "" ? {} : { bio: material.bio }),
+    },
+    items: material.captions.map((caption, i) => ({
+      externalId: `assisted:${String(i + 1)}`,
+      kind: "text" as const,
+      caption,
+      hashtags: [...caption.matchAll(HASHTAG)].map((m) => m[1] ?? "").filter(Boolean),
+      mentions: [...caption.matchAll(MENTION)].map((m) => m[1] ?? "").filter(Boolean),
+      engagement: {},
+      mediaUrls: [],
+    })),
+  };
 }
 
 export type ParsedBrandSourceAnalysisJob =
@@ -100,7 +217,20 @@ export function parseBrandSourceAnalysisJob(raw: unknown): ParsedBrandSourceAnal
       reason: `itemsPerAnalysis must be an integer in [1, ${String(HARD_CAPS.itemsPerBrandAnalysis)}]`,
     };
   }
-  return { ok: true, job: { companyId, brandSourceId, itemsPerAnalysis: items } };
+  if (source["assisted"] === undefined) {
+    return { ok: true, job: { companyId, brandSourceId, itemsPerAnalysis: items } };
+  }
+  const assisted = parseAssistedMaterial(source["assisted"]);
+  if (!assisted.ok) return { ok: false, reason: assisted.reason };
+  return {
+    ok: true,
+    job: {
+      companyId,
+      brandSourceId,
+      itemsPerAnalysis: items,
+      assisted: assisted.material,
+    },
+  };
 }
 
 // ───────────────────────────────────────────────────────────────────────────

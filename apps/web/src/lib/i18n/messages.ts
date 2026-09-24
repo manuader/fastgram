@@ -718,6 +718,22 @@ export const webEn = {
   "brand.sources.removePrimaryBody":
     "It's your primary source, so your oldest remaining source becomes primary.", // nuevo
   "brand.sources.addTitle": "Add a source", // nuevo
+  // P1-BRAND-014 — tier D asistido. FR-011.4: al degradar a D la UI «lo dice
+  // explícitamente y pide la ayuda concreta». El título es el del brief.
+  "brand.assist.title": "Paste your bio and a few recent captions", // nuevo
+  "brand.assist.body":
+    "We couldn't read this profile on our own. Paste what's on it and we'll build your brand profile from that.", // nuevo
+  "brand.assist.bio": "Bio", // nuevo
+  "brand.assist.captions": "Recent captions", // nuevo
+  "brand.assist.captionsHint":
+    "One caption per block — leave an empty line between captions. Up to {max}.", // nuevo
+  "brand.assist.submit": "Use this text", // nuevo
+  "brand.assist.submitting": "Sending…", // nuevo
+  "brand.assist.sent": "Got it. We're building your profile from what you pasted.", // nuevo
+  "brand.assist.empty": "Paste your bio or at least one caption.", // nuevo
+  "brand.assist.bioTooLong": "Keep the bio under {max} characters.", // nuevo
+  "brand.assist.captionTooLong": "Caption {index} is longer than {max} characters.", // nuevo
+  "brand.assist.tooManyCaptions": "That's {count} captions. Paste up to {max}.", // nuevo
 
   /* --------------------------- Onboarding · paso 4 · FR-010 (PRD:748, 760) */
   "onboarding.processing.done": "Brand analysis finished", // nuevo · ver `ProcessingStep`

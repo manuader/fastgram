@@ -36,7 +36,7 @@
  */
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdirSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { connect } from "node:net";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -159,6 +159,13 @@ for (const [k, v] of Object.entries(PERSONAL_BRAND_DEFAULTS)) {
   if (env[k] === undefined || env[k] === "") env[k] = v;
 }
 
+/**
+ * X sin login (PU-SCRAPE-001, D-13): FxTwitter expone perfil y posts públicos
+ * sin credenciales (`GET /2/profile/{handle}`, OpenAPI de FxEmbed). Es un
+ * servicio público de terceros; se pisa con `X_EXTRACTOR_URL=` vacío… o con otro.
+ */
+if (env.X_EXTRACTOR_URL === undefined) env.X_EXTRACTOR_URL = "https://api.fxtwitter.com";
+
 /** Vacío cuenta como ausente: `.env.example` trae muchas `KEY=` sin valor. */
 /** @param {string} k */
 const envValue = (k) => (env[k] === undefined || env[k] === "" ? undefined : env[k]);
@@ -175,6 +182,7 @@ const PUBLIC_MEDIA_PORT = Number(
 );
 
 const RENDER_PORT = Number(envValue("RENDER_PORT") ?? 3002);
+const VISION_PORT = Number(envValue("VISION_PORT") ?? 3004);
 const API_PORT = Number(envValue("API_PORT") ?? 3001);
 const WEB_PORT = 3000; // fijo en `apps/web/package.json` (`next dev -p 3000`)
 
@@ -526,6 +534,34 @@ async function main() {
     accept: (res) => res.status === 200,
   });
   log("start", `api lista en :${API_PORT}`);
+
+  // 7b'. Visión (opcional) — el extractor anónimo de Instagram (PU-SCRAPE-001)
+  // vive en `services/vision` (instaloader). Se levanta sólo si su venv existe
+  // (`cd services/vision && uv pip install -e ".[dev,social]"`); si no, las
+  // fuentes de Instagram caen a tier D (pegar la bio) y se avisa.
+  const visionUvicorn = join(ROOT, "services/vision/.venv/bin/uvicorn");
+  if (existsSync(visionUvicorn) && envValue("INSTAGRAM_EXTRACTOR_URL") === undefined) {
+    checkAbort();
+    const vision = spawnTracked(
+      "vision",
+      visionUvicorn,
+      ["app.main:app", "--host", "127.0.0.1", "--port", String(VISION_PORT)],
+      { cwd: join(ROOT, "services/vision"), env: { ...env } },
+    );
+    watchDeath(vision);
+    await waitForHttp(vision, `http://127.0.0.1:${VISION_PORT}/health`, {
+      timeoutMs: 60_000,
+      accept: (res) => res.ok,
+    });
+    env.INSTAGRAM_EXTRACTOR_URL = `http://127.0.0.1:${VISION_PORT}`;
+    env.VISION_SERVICE_URL ||= `http://127.0.0.1:${VISION_PORT}`;
+    log("start", `visión lista en :${VISION_PORT} (extractor anónimo de Instagram)`);
+  } else if (envValue("INSTAGRAM_EXTRACTOR_URL") === undefined) {
+    log(
+      "start",
+      "sin services/vision/.venv: Instagram cae a pegar la bio a mano (ver docs/GUIA-DE-USO.md)",
+    );
+  }
 
   // 7c. Worker — no abre puerto por defecto; "worker arriba" es su última línea
   // de arranque, después de pedirle `/capabilities` al render.

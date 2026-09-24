@@ -14,6 +14,7 @@ import type {
   JobHandler,
   MediaRenderer,
   Queue,
+  SocialMetrics,
   SocialPublisher,
   SocialReader,
   Storage,
@@ -53,6 +54,7 @@ import type { PublishingMount } from "./publishing/mount.js";
 import { createPublishingSweepHandler } from "./publishing/sweep-handler.js";
 import { createWatchHandler } from "./publishing/watch-handler.js";
 import { createMediaImportHandler } from "./media-import/handler.js";
+import { createMetricsSyncHandler } from "./metrics/sync-handler.js";
 import type { MediaImportMount } from "./media-import/mount.js";
 
 export interface WorkerHandlerDeps {
@@ -120,6 +122,17 @@ export interface WorkerHandlerDeps {
    * Ausente = no se monta (tests que no lo miran).
    */
   readonly aiStudio?: JobHandler<unknown>;
+  /**
+   * `PU-AUTO-001/002`. El handler del piloto automático (`autopilot/handler.ts`)
+   * sobre `automation-generation`. Ausente = no se monta (tests que no lo miran).
+   */
+  readonly autopilot?: JobHandler<unknown>;
+  /**
+   * `PU-AUTO-004`. Adaptadores de métricas por red (`metrics/mount.ts`). Los
+   * tokens salen de `publishing`; sin publicación montada, sólo corre el
+   * auto-tune del mix. Ausente = no se monta (tests que no lo miran).
+   */
+  readonly metrics?: Readonly<Record<string, SocialMetrics>>;
 }
 
 export type BrandAnalysisMount =
@@ -481,6 +494,26 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
   // `PU-LATER-005`: AI Studio. Resuelve proveedor y key del registro en cada job.
   if (deps.aiStudio !== undefined) {
     handlers[JOB_QUEUES.aiStudioGeneration] = deps.aiStudio;
+  }
+
+  // `PU-AUTO-001/002`: generación continua y piloto. Montarlo es lo que
+  // enciende su cron (`main.ts` sólo programa colas con handler).
+  if (deps.autopilot !== undefined) {
+    handlers[JOB_QUEUES.automationGeneration] = deps.autopilot;
+  }
+
+  // `PU-AUTO-004`: métricas de vuelta y auto-tune del mix. Montarlo es lo que
+  // enciende su cron (`main.ts` sólo programa colas con handler).
+  if (deps.metrics !== undefined) {
+    handlers[JOB_QUEUES.metricsSync] = createMetricsSyncHandler({
+      db,
+      clock,
+      appRole,
+      logger,
+      adapters: deps.metrics,
+      tokens: deps.publishing?.tokens ?? null,
+      queue: deps.queue,
+    });
   }
 
   return { handlers, unmounted };

@@ -17,6 +17,13 @@ export interface OAuthPlatformSpec {
   /** Scopes que se piden, en el orden y con el separador que arma el adaptador. */
   readonly scopes: readonly string[];
   /**
+   * Los de {@link scopes} que sólo sirven para **leer métricas** (sprint 5,
+   * `PU-AUTO-004`). Un subconjunto: se piden igual, pero una cuenta que no
+   * los concede **puede publicar** — sólo se queda sin métricas. Quien decide
+   * `publishable` los tiene que excluir (ver {@link publishScopesOf}).
+   */
+  readonly insightsScopes: readonly string[];
+  /**
    * `verified`: la doc oficial dice que la redirect URI tiene que ser https.
    * `recommended`: la doc no lo dice de esta plataforma, pero la app de Meta
    * trae "Enforce HTTPS" prendido por default — se avisa, no se bloquea.
@@ -52,11 +59,23 @@ export const OAUTH_PLATFORM_SPECS: Readonly<Record<OAuthPlatform, OAuthPlatformS
    * Token largo: 60 días (`expires_in` 5183944 en el ejemplo) y se refresca
    * con `ig_refresh_token` si tiene más de 24 h — misma página.
    * https: la doc de Instagram no lo dice; ver `https: "recommended"`.
+   *
+   * `instagram_business_manage_insights` (sprint 5, `PU-AUTO-004`): lo exige
+   * `GET /<IG_MEDIA_ID>/insights` —
+   * https://developers.facebook.com/docs/instagram-platform/reference/instagram-media/insights
+   * y https://developers.facebook.com/blog/post/2025/03/24/user-and-media-insights-on-instagram-api-with-instagram-login/
+   * **Las conexiones anteriores no lo tienen: hay que reconectarlas** para que
+   * vuelvan métricas (el sync responde `forbidden` y la pantalla lo dice).
    */
   instagram: {
     platform: "instagram",
     label: "Instagram",
-    scopes: ["instagram_business_basic", "instagram_business_content_publish"],
+    scopes: [
+      "instagram_business_basic",
+      "instagram_business_content_publish",
+      "instagram_business_manage_insights",
+    ],
+    insightsScopes: ["instagram_business_manage_insights"],
     https: "recommended",
     consoleUrl: "https://developers.facebook.com/apps/",
     docsUrl:
@@ -83,6 +102,9 @@ export const OAUTH_PLATFORM_SPECS: Readonly<Record<OAuthPlatform, OAuthPlatformS
     platform: "tiktok",
     label: "TikTok",
     scopes: ["user.info.basic", "video.upload"],
+    // Sin métricas: pedirían `video.list` y el id del video, que el Upload a
+    // borrador no da (ver `packages/adapters/src/metrics/index.ts`).
+    insightsScopes: [],
     https: "verified",
     consoleUrl: "https://developers.tiktok.com/apps/",
     docsUrl: "https://developers.tiktok.com/doc/login-kit-web",
@@ -104,6 +126,9 @@ export const OAUTH_PLATFORM_SPECS: Readonly<Record<OAuthPlatform, OAuthPlatformS
     platform: "x",
     label: "X",
     scopes: ["tweet.read", "tweet.write", "users.read", "media.write", "offline.access"],
+    // `GET /2/tweets` con `public_metrics` pide `tweet.read` + `users.read`,
+    // que ya se piden para publicar: no hay scope sólo de métricas.
+    insightsScopes: [],
     https: "no",
     consoleUrl: "https://developer.x.com/en/portal/dashboard",
     docsUrl:
@@ -120,11 +145,16 @@ export const OAUTH_PLATFORM_SPECS: Readonly<Record<OAuthPlatform, OAuthPlatformS
    * https://developers.facebook.com/docs/threads/get-started/get-access-tokens-and-permissions
    * Token largo 60 días, refresco con más de 24 h —
    * https://developers.facebook.com/docs/threads/get-started/long-lived-tokens
+   *
+   * `threads_manage_insights` (sprint 5, `PU-AUTO-004`): lo exige
+   * `GET /<THREADS_MEDIA_ID>/insights` — https://developers.facebook.com/docs/threads/insights
+   * Las conexiones anteriores hay que reconectarlas.
    */
   threads: {
     platform: "threads",
     label: "Threads",
-    scopes: ["threads_basic", "threads_content_publish"],
+    scopes: ["threads_basic", "threads_content_publish", "threads_manage_insights"],
+    insightsScopes: ["threads_manage_insights"],
     https: "recommended",
     consoleUrl: "https://developers.facebook.com/apps/",
     docsUrl:
@@ -146,6 +176,11 @@ export const OAUTH_PLATFORM_SPECS: Readonly<Record<OAuthPlatform, OAuthPlatformS
    * "Enforce HTTPS" *"requires HTTPS for OAuth Redirects"* —
    * https://developers.facebook.com/documentation/facebook-login/security
    * (que localhost en modo desarrollo quede exento: NO VERIFICADO).
+   *
+   * `read_insights` y `pages_manage_engagement` (sprint 5, `PU-AUTO-004`): los
+   * dos figuran como requeridos para `GET /<VIDEO_ID>/video_insights` (métricas
+   * de Reels) — https://developers.facebook.com/docs/graph-api/reference/video/video_insights
+   * Las conexiones anteriores hay que reconectarlas.
    */
   facebook: {
     platform: "facebook",
@@ -155,7 +190,10 @@ export const OAUTH_PLATFORM_SPECS: Readonly<Record<OAuthPlatform, OAuthPlatformS
       "pages_read_engagement",
       "pages_manage_posts",
       "pages_manage_metadata",
+      "read_insights",
+      "pages_manage_engagement",
     ],
+    insightsScopes: ["read_insights", "pages_manage_engagement"],
     https: "recommended",
     consoleUrl: "https://developers.facebook.com/apps/",
     docsUrl:
@@ -169,4 +207,15 @@ export const OAUTH_PLATFORM_SPECS: Readonly<Record<OAuthPlatform, OAuthPlatformS
 
 export function oauthPlatformSpec(platform: OAuthPlatform): OAuthPlatformSpec {
   return OAUTH_PLATFORM_SPECS[platform];
+}
+
+/**
+ * Los scopes sin los que **no se puede publicar**: {@link OAuthPlatformSpec.scopes}
+ * menos los de métricas. Es contra esto que se tiene que calcular
+ * `publishable`; contra la lista entera, una cuenta que rechazó el permiso de
+ * insights quedaría sin poder publicar por algo que publicar no usa.
+ */
+export function publishScopesOf(platform: OAuthPlatform): readonly string[] {
+  const spec = OAUTH_PLATFORM_SPECS[platform];
+  return spec.scopes.filter((s) => !spec.insightsScopes.includes(s));
 }

@@ -75,6 +75,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
+  assistBrandSourceRequestSchema,
   createBrandSourceRequestSchema,
   cursorQuerySchema,
   idempotencyHeaderSchema,
@@ -94,8 +95,10 @@ import {
   createBrandSource,
   detectBrandSource,
   isDomainError,
+  parseAssistedMaterial,
   setPrimarySource,
   startAnalysis,
+  startAssistedAnalysis,
   assertCanRemoveSource,
   type BrandSource as DomainBrandSource,
   type BrandSourceDetection,
@@ -985,6 +988,99 @@ export function registerBrandRoutes(app: ZodApp): void {
       }
 
       return reply.status(202).send(data(toBrandSource(outcome.row)));
+    },
+  );
+
+  // ── POST /brand/sources/:id/assist ──
+  //
+  // Tier D asistido (`P1-BRAND-014`): la bio y unos captions que el usuario
+  // pega cuando el extractor no alcanzó. **Ruta añadida sobre §9.14**; el
+  // porqué del contrato está en `assistBrandSourceRequestSchema`.
+  //
+  // Lo pegado viaja **en el payload del job**, no en una columna: no hay
+  // migración para guardarlo, y lo que queda persistido es el snapshot que
+  // escribe el worker, como con cualquier lectura (`DATA-032`). Es dato de
+  // terceros igual que una bio leída —el propio usuario puede pegar texto que
+  // copió de otro lado—, así que el worker lo contiene de la misma forma.
+  app.post(
+    "/brand/sources/:id/assist",
+    {
+      schema: { params: brandSourceParams, body: assistBrandSourceRequestSchema },
+      preHandler: rateLimit(limiter, "restPerWorkspace"),
+    },
+    async (request, reply) => {
+      const { queue } = app.deps;
+      if (queue === undefined) {
+        return reply.status(503).send({
+          error: {
+            code: "service_unavailable",
+            message: "Brand source analysis is temporarily unavailable.",
+          },
+        });
+      }
+
+      const { id } = request.params;
+      const companyId = request.auth.companyId;
+      const now = new Date(clock.nowMs());
+      // Una sola definición de «texto pegado válido»: la de `core`. El esquema
+      // de contracts ya cortó la forma; esto recorta y descarta vacíos.
+      const material = parseAssistedMaterial(request.body);
+      if (!material.ok) throw new ApiRejection(400, "bad_request", material.reason);
+
+      const row = await request.tx(async (tx) => {
+        const scope = { companyId };
+        // `FOR UPDATE`, como en `/reanalyse`: dos pedidos simultáneos no
+        // encolan dos análisis; el segundo lee `analyzing` y sale con 409.
+        const current = await lockBrandSource(tx, scope, id);
+        if (current === null) throw crossTenant("brand source", id, companyId);
+        if (!isSocialType(current.sourceType)) {
+          throw new ApiRejection(
+            400,
+            "bad_request",
+            "Pasting your bio is only for social profiles.",
+          );
+        }
+
+        let next: DomainBrandSource;
+        try {
+          next = startAssistedAnalysis(toDomainSource(current));
+        } catch (error) {
+          throw asApiRejection(error);
+        }
+
+        const updated = await brandSourceRepository.update(tx, scope, id, {
+          status: next.status,
+          failureReason: null,
+        });
+        if (updated === null) {
+          throw new Error(
+            "El UPDATE no encontró la fuente que el lock acababa de devolver, " +
+              "en la misma transacción. Si pasa, cambió el aislamiento del repositorio.",
+          );
+        }
+
+        await queue.enqueue({
+          queue: JOB_QUEUES.brandSourceAnalysis,
+          payload: {
+            brandSourceId: updated.id,
+            companyId,
+            sourceType: updated.sourceType,
+            handle: updated.handle,
+            canonicalUrl: updated.canonicalUrl,
+            itemsPerAnalysis: HARD_CAPS.itemsPerBrandAnalysis,
+            assisted: material.material,
+          },
+          options: {
+            transaction: tx,
+            // Distinta por instante, por la trampa 45: una clave repetida no se
+            // encola nunca más y la fuente quedaría `analyzing` sin nadie.
+            singletonKey: `brand-source:${updated.id}:assist:${now.toISOString()}`,
+          },
+        });
+        return updated;
+      });
+
+      return reply.status(202).send(data(toBrandSource(row)));
     },
   );
 

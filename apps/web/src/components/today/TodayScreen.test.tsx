@@ -144,6 +144,8 @@ function installBackend(over: Partial<Backend> = {}): void {
       };
     }
     if (path === "blitz/queue") return backend.queue;
+    // `PU-AUTO-003`: sin marcas en piloto la tarjeta no se dibuja.
+    if (path === "autopilot/digest") return { brands: [] };
     if (path === markPostedPath(DRAFT.id)) {
       expect(options?.method).toBe("POST");
       backend.items = backend.items.map((i) =>

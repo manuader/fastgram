@@ -25,7 +25,7 @@
 import { DomainError } from "../errors.js";
 import { HARD_CAPS } from "../quota/plans.js";
 import { assertCanAddBrandSource } from "../workspace/caps.js";
-import type { CoreBrandSourceType } from "./source-input.js";
+import { SOCIAL_SOURCE_TYPES, type CoreBrandSourceType } from "./source-input.js";
 
 export const BRAND_SOURCE_STATUSES = [
   "pending",
@@ -185,6 +185,32 @@ export function startAnalysis(source: BrandSource, now: Date): BrandSource {
     analysisCount: windowExpired ? 1 : source.analysisCount + 1,
     analysisWindowStartedAt: windowExpired ? now : windowStart,
   };
+}
+
+/**
+ * `failed | ready | partial | stale | pending` → `analyzing`, **con el texto que
+ * pegó el usuario** (tier D, `P1-BRAND-014`).
+ *
+ * A diferencia de {@link startAnalysis}, no aplica el cupo de re-análisis ni lo
+ * consume: `ERR-B11` existe para no martillar a la plataforma con lecturas, y
+ * acá no se lee ninguna plataforma. Lo que cuesta es una llamada al LLM, la
+ * misma que en el alta. Sólo `social`: pegar la bio de una web no tiene sentido
+ * (la web se lee sola) y `manual` es otra rama.
+ */
+export function startAssistedAnalysis(source: BrandSource): BrandSource {
+  if (source.status === "analyzing") {
+    throw new DomainError("conflict", "This source is already being analysed.", {
+      sourceId: source.id,
+    });
+  }
+  if (!(SOCIAL_SOURCE_TYPES as readonly string[]).includes(source.sourceType)) {
+    throw new DomainError(
+      "invalid_state",
+      "Pasting your bio is only for social profiles.",
+      { sourceId: source.id, sourceType: source.sourceType },
+    );
+  }
+  return { ...source, status: "analyzing", failureReason: undefined };
 }
 
 export interface AnalysisOutcome {

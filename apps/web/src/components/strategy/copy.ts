@@ -43,7 +43,34 @@ export const STRATEGY_COPY = {
   autonomyManualHint: "You approve every piece in Blitz.",
   autonomyAutopilot: "Autopilot",
   autonomyAutopilotHint:
-    "Pieces approve themselves after a pre-check. Not running yet: this setting is saved for when it ships.",
+    "Pieces that pass a pre-check approve and schedule themselves. You get a daily summary on Today.",
+
+  // `PU-AUTO-002`: qué hace el piloto y con qué umbrales (sólo lectura).
+  autopilotHowTitle: "How autopilot decides",
+  autopilotHowSteps: [
+    "Every 15 minutes it tops up this brand's Blitz queue to cover the next days of your plan: pieces per day × active networks × the horizon.",
+    "It takes the oldest ideas first (not the ones you asked for with a prompt) and asks the pre-check model a few closed questions about each one.",
+    "If it passes, the piece is built and lands in the next free posting time. If not, it's discarded and the reason shows up on Today.",
+    "If the pre-check doesn't answer in time, nothing is approved: the idea stays in Blitz for you.",
+    "It never approves more than your posting times can take in the horizon.",
+  ],
+  autopilotHorizon: (days: number) => `Horizon: ${String(days)} days`,
+  autopilotQueue: (min: number, max: number) =>
+    `Queue size: between ${String(min)} and ${String(max)} ideas`,
+  autopilotPerRun: (n: number) => `Up to ${String(n)} decisions per run`,
+  autopilotTimeout: (seconds: number) => `Pre-check timeout: ${String(seconds)} s`,
+  autopilotThresholdsTitle: "Pre-check thresholds",
+  autopilotThresholds: {
+    onBrandMin: (p: string) => `On-topic for the brand: at least ${p}`,
+    riskyClaimMaxMass: (p: string) =>
+      `Health, money or legal claims: rejected from ${p} likely`,
+    thirdPartyMax: (p: string) => `Mentions another brand: rejected from ${p} likely`,
+    coherentMin: (p: string) => `Reads well: at least ${p}`,
+    inLanguageMin: (p: string) => `In the strategy's language: at least ${p}`,
+  },
+  autopilotModelHint:
+    "The pre-check uses the Judgment model from Settings → Models (the text model if Judgment has none).",
+  autopilotPolicyError: "Couldn't load how autopilot decides.",
 
   localeTitle: "Time zone and language",
   timezone: "Time zone",

@@ -247,8 +247,16 @@ export interface SocialReadUnavailable {
   /**
    * `not_found` → `ERR-B04`. `private` → `ERR-B05`. `insufficient_content` →
    * `ERR-B09`. Los tres degradan; ninguno bloquea el alta (§19.5.1).
+   *
+   * `extractor_unavailable` (`PU-SCRAPE-001`): el adaptador está montado pero
+   * **la herramienta de la que depende no está** —el servicio de visión sin
+   * `instaloader`, el contenedor de TikTok sin configurar o con la API key
+   * rechazada—. No es culpa de la plataforma (`ERR-B07` la nombraría) y
+   * reintentar no lo arregla: el worker lo persiste como
+   * `unsupported_platform` —esta instalación hoy no lee esa red— y degrada a D.
    */
-  readonly status: "not_found" | "private" | "insufficient_content";
+  readonly status:
+    "not_found" | "private" | "insufficient_content" | "extractor_unavailable";
   /** Qué se intentó antes de rendirse. Alimenta el siguiente escalón y el log. */
   readonly attemptedTiers: readonly AcquisitionTier[];
 }

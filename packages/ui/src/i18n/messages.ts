@@ -544,6 +544,46 @@ export const en = {
   "today.error": "Couldn't load today's plan.",
   "today.truncated":
     "One of your brands has more items than the calendar returns at once, so this list may be incomplete.",
+  // Piloto automático · PU-AUTO-002/003 (D-08). Copy nuevo, nada literal del PRD.
+  "autopilot.card.title": "Autopilot",
+  "autopilot.card.subtitle": "What the autopilot did today",
+  "autopilot.card.approved": "{count} approved",
+  "autopilot.card.rejected": "{count} rejected",
+  "autopilot.card.held": "{count} waiting for you",
+  "autopilot.card.generated": "{count} generated",
+  "autopilot.card.published": "{count} published",
+  "autopilot.card.failed": "{count} failed",
+  "autopilot.card.nothing": "Nothing decided yet today.",
+  "autopilot.card.reviewRejected": "Review rejected ({count})",
+  "autopilot.card.hideRejected": "Hide rejected",
+  "autopilot.card.reviewHeld": "Review in Blitz",
+  "autopilot.card.lastRun": "Last run {time}",
+  "autopilot.card.neverRan": "Hasn't run yet.",
+  "autopilot.card.error": "Couldn't load the autopilot summary.",
+  "autopilot.card.retry": "Retry",
+  "autopilot.card.truncated": "Long day: this list may be incomplete.",
+  "autopilot.outcome.no_llm": "Paused: no text model set up (Settings → Models).",
+  "autopilot.outcome.no_judgment":
+    "Paused: no model for the pre-check (Settings → Models).",
+  "autopilot.outcome.invalid_strategy":
+    "Paused: its strategy couldn't be read. Save it again.",
+  "autopilot.outcome.profile_not_ready": "Paused: finish the brand profile first.",
+  "autopilot.outcome.error": "The last run failed. It retries on its own.",
+  "autopilot.reason.off_brand": "Off-topic for the brand",
+  "autopilot.reason.health_claim": "Health claim",
+  "autopilot.reason.financial_claim": "Money or investment claim",
+  "autopilot.reason.legal_claim": "Legal claim",
+  "autopilot.reason.third_party_brand": "Mentions another brand",
+  "autopilot.reason.incoherent": "Text doesn't read well",
+  "autopilot.reason.wrong_language": "Wrong language",
+  "autopilot.reason.unbuildable": "Couldn't be built (media missing)",
+  "autopilot.reason.judgment_timeout": "Pre-check timed out",
+  "autopilot.reason.judgment_unavailable": "Pre-check unavailable",
+  "autopilot.banner.onOne": "Autopilot is on for this brand — 1 approved today",
+  "autopilot.banner.onMany": "Autopilot is on for this brand — {count} approved today",
+  "autopilot.banner.hint":
+    "Pieces that pass the pre-check approve and schedule themselves. What's left here is for you.",
+  "autopilot.banner.settings": "Autopilot settings",
 
   /* ------------- AI Studio · PU-LATER-005, PU-MODEL-003…005 (FR-090 adaptado) */
   "aiStudio.title": "AI Studio",
@@ -617,6 +657,83 @@ export const en = {
     "The provider answered something unexpected.",
   "aiStudio.error.not_configured": "The model is no longer set up in Settings → Models.",
   "aiStudio.error.download_failed": "The result couldn't be copied to your storage.",
+
+  /* --------- Analytics · P3-ANALYT-001/002 (FR-120, F-171, F-172), PU-AUTO-004 */
+  "analytics.title": "Analytics", // literal nav PRD §3.2
+  "analytics.subtitle": "Track your content performance across all platforms.", // literal FR-120
+  "analytics.range.label": "Range", // nuevo
+  "analytics.range.days": "{n} days", // literal FR-120 (`<N> days`)
+  "analytics.scope.label": "Brands", // nuevo
+  "analytics.scope.current": "This brand", // nuevo
+  "analytics.scope.all": "All brands", // nuevo
+  "analytics.sync.now": "Sync now", // nuevo
+  "analytics.sync.queued": "Sync requested. New numbers show up in a few minutes.", // nuevo
+  "analytics.sync.already": "A sync for this brand is already on its way.", // nuevo
+  "analytics.sync.failed": "Couldn't request a sync. Try again in a moment.", // nuevo
+  // NFR-016: "las métricas reflejan la última sincronización".
+  "analytics.lastSynced": "Numbers as of the last sync, {ago}.", // nuevo
+  "analytics.neverSynced": "No metrics have been synced for this range yet.", // nuevo
+  "analytics.pendingSync":
+    "{count} published posts are waiting for their first sync. They aren't counted as zero.", // nuevo · FR-120 criterio 2
+  "analytics.totals.posts": "Posts", // nuevo
+  "analytics.totals.views": "Views", // nuevo
+  "analytics.totals.likes": "Likes", // nuevo
+  "analytics.totals.comments": "Comments", // nuevo
+  "analytics.totals.shares": "Shares", // nuevo
+  "analytics.totals.engagement": "Engagement rate", // nuevo
+  "analytics.totals.engagementHint":
+    "(likes + comments + shares) ÷ views, over posts that report views.", // nuevo
+  "analytics.totals.notReported": "Not reported by these networks", // nuevo
+  "analytics.byNetwork.title": "By network", // nuevo
+  "analytics.byNetwork.posts": "{network} posts", // literal F-171 (`TikTok posts`, …)
+  "analytics.byNetwork.noMetrics": "No metrics via API", // nuevo
+  "analytics.byFormat.title": "By content type", // nuevo
+  "analytics.format.slideshow": "Slideshow", // literal F-172
+  "analytics.format.wall-of-text": "Wall of Text", // literal F-172
+  "analytics.format.green-screen": "Green Screen", // literal F-172
+  "analytics.format.video-hook": "Hook & Demo", // literal F-172
+  "analytics.format.custom": "Custom", // literal F-070
+  "analytics.top.title": "Top posts", // nuevo
+  "analytics.top.empty": "No synced posts in this range yet.", // nuevo
+  "analytics.top.open": "Open on the platform", // nuevo
+  "analytics.top.noCaption": "Untitled post", // nuevo
+  "analytics.unsupported":
+    "{networks}: posts published as drafts can't be measured through the API, so they stay without numbers.", // nuevo
+  "analytics.xNote":
+    "X metrics are read only when METRICS_X_ENABLED is on: X bills every post read.", // nuevo
+  "analytics.issue.metrics_reconnect_required":
+    "{count} posts: the account needs to be reconnected to read metrics.", // nuevo
+  "analytics.issue.metrics_permission_missing":
+    "{count} posts: the account didn't grant permission to read insights. Reconnect it to allow it.", // nuevo
+  "analytics.issue.metrics_unavailable":
+    "{count} posts: the platform didn't return metrics.", // nuevo
+  "analytics.issue.not_found_on_platform":
+    "{count} posts: no longer found on the platform.", // nuevo
+  "analytics.issue.action": "Open Connections", // nuevo
+  "analytics.truncated":
+    "Some brands have more posts than this page reads. Totals are partial.", // nuevo
+  "analytics.empty.title": "No metrics yet", // nuevo
+  "analytics.empty.body":
+    "No metrics yet: connect accounts and publish. Numbers show up here after the first sync.", // nuevo
+  "analytics.empty.connect": "Connect accounts", // nuevo
+  "analytics.error": "Couldn't load analytics.", // nuevo
+  "analytics.mix.title": "Content mix", // nuevo
+  "analytics.mix.hint": "The format weights Blitz uses to generate for this brand.", // nuevo
+  "analytics.mix.autotune": "Auto-tune content mix", // nuevo
+  "analytics.mix.autotuneHint":
+    "Once a week, moves up to 10 points toward the formats that engage best on each network. Formats at 0 stay off, and every other format keeps at least 5.", // nuevo
+  "analytics.mix.autotuneFailed": "Couldn't change auto-tune. Try again.", // nuevo
+  "analytics.mix.lastRun": "Last check {when}: {outcome}.", // nuevo
+  "analytics.mix.neverRun": "Not checked yet. The first check runs within the hour.", // nuevo
+  "analytics.mix.outcome.changed": "adjusted", // nuevo
+  "analytics.mix.outcome.single_active_format": "only one format is on", // nuevo
+  "analytics.mix.outcome.insufficient_data": "not enough measured posts yet", // nuevo
+  "analytics.mix.outcome.no_significant_difference": "no clear winner, left as is", // nuevo
+  "analytics.mix.history": "Changes", // nuevo
+  "analytics.mix.historyEmpty": "No automatic changes yet.", // nuevo
+  "analytics.mix.change": "{date} · by auto-tune", // nuevo
+  "analytics.mix.samples": "{n} measured posts", // nuevo
+  "analytics.mix.error": "Couldn't load the content mix.", // nuevo
 } as const;
 
 export type MessageKey = keyof typeof en;

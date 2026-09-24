@@ -41,6 +41,7 @@ export * from "./resources/workspaces.js";
 export * from "./resources/models.js";
 export * from "./resources/genai.js";
 export * from "./resources/strategy.js";
+export * from "./resources/autopilot.js";
 
 // OpenAPI
 export * from "./openapi.js";

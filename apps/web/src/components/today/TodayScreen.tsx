@@ -24,6 +24,7 @@ import {
   type DayPart,
 } from "@/lib/today/today";
 import { ApprovalCard } from "./ApprovalCard";
+import { AutopilotCard } from "./AutopilotCard";
 import { FailedCard } from "./FailedCard";
 import { TikTokDrafts } from "./TikTokDrafts";
 import { TodayCounters } from "./TodayCounters";
@@ -198,6 +199,8 @@ export function TodayScreen() {
           </div>
           <aside className="flex min-w-0 flex-col gap-6">
             <ApprovalCard activeCount={blitzValue ?? null} loading={blitz.isPending} />
+            {/* `PU-AUTO-003`: sólo se dibuja con alguna marca en piloto. */}
+            <AutopilotCard timeZone={timeZone} />
             <FailedCard
               failed={view?.failed}
               details={details.data}

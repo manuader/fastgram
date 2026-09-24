@@ -4,6 +4,9 @@ import base from "./packages/config/eslint.config.js";
 
 export default [
   ...base,
+  // El entorno Python de `services/vision` (instaloader trae urllib3, que trae
+  // JS de navegador): no es código nuestro.
+  { ignores: ["**/.venv/**"] },
   {
     // Los tests pueden afirmar sobre cosas que el tipo dice que no son null.
     files: ["**/*.test.ts", "**/*.test.tsx", "**/test/**"],

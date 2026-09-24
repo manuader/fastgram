@@ -67,6 +67,7 @@ import {
 import {
   JOB_QUEUES,
   OAUTH_PLATFORM_SPECS,
+  publishScopesOf,
   OAUTH_STATE_TTL_MS,
   applyIntegrationUpdate,
   consumeOAuthState,
@@ -243,7 +244,10 @@ export function toConnectionAccount(row: ConnectionRow): ConnectionAccount {
 function grantedScopes(platform: OAuthPlatform, account: OAuthGrantedAccount) {
   const requested = OAUTH_PLATFORM_SPECS[platform].scopes;
   const granted = account.tokens.scopes ?? requested;
-  return { granted, publishable: requested.every((s) => granted.includes(s)) };
+  // Sólo los de publicación: una cuenta que rechaza los de métricas (insights)
+  // publica igual; sus posts quedan `metrics_permission_missing` (PU-AUTO-004).
+  const needed = publishScopesOf(platform);
+  return { granted, publishable: needed.every((s) => granted.includes(s)) };
 }
 
 function exchangeRejection(error: unknown): ApiRejection {

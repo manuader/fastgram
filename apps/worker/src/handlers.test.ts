@@ -186,4 +186,14 @@ describe("createHandlers", () => {
     expect(noQueue.handlers[JOB_QUEUES.mediaImport]).toBeUndefined();
     expect(noQueue.unmounted.map((u) => u.queue)).toContain(JOB_QUEUES.mediaImport);
   });
+
+  it("el piloto (PU-AUTO-001/002) va en automation-generation, y sólo si se pasa", () => {
+    const autopilot = () => Promise.resolve();
+    expect(createHandlers(deps(null)).handlers[JOB_QUEUES.automationGeneration]).toBe(
+      undefined,
+    );
+    const { handlers } = createHandlers({ ...deps(null), autopilot });
+    // El mismo handler, no uno construido en otro lado (trampa 46).
+    expect(handlers[JOB_QUEUES.automationGeneration]).toBe(autopilot);
+  });
 });

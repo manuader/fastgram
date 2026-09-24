@@ -1,0 +1,74 @@
+{
+  "code": 200,
+  "results": [
+    {
+      "type": "status",
+      "id": "1830000000000000002",
+      "url": "https://x.com/TallerCeramico/status/1830000000000000002",
+      "text": "Abrimos el taller el sábado #ceramica",
+      "created_at": "Sat Sep 20 10:00:00 +0000 2026",
+      "created_timestamp": 1790244000,
+      "likes": 40,
+      "reposts": 3,
+      "quotes": 0,
+      "replies": 5,
+      "views": 2100,
+      "author": {
+        "type": "profile",
+        "id": "1500000000000000000",
+        "name": "Taller Cerámico",
+        "screen_name": "TallerCeramico"
+      },
+      "media": {
+        "photos": [
+          {
+            "type": "photo",
+            "url": "https://pbs.twimg.com/media/a.jpg",
+            "width": 1200,
+            "height": 900
+          }
+        ]
+      },
+      "raw_text": { "text": "Abrimos el taller el sábado #ceramica" },
+      "lang": "es",
+      "possibly_sensitive": false,
+      "replying_to": null,
+      "source": null,
+      "embed_card": "summary_large_image",
+      "provider": "twitter",
+      "is_note_tweet": false,
+      "community_note": null,
+      "reposted_by": null
+    },
+    {
+      "type": "status",
+      "id": "1830000000000000001",
+      "url": "https://x.com/otra/status/1830000000000000001",
+      "text": "Un tweet de otra cuenta que la marca reposteó",
+      "created_at": "Fri Sep 19 10:00:00 +0000 2026",
+      "created_timestamp": 1790157600,
+      "likes": 999,
+      "reposts": 50,
+      "quotes": 1,
+      "replies": 2,
+      "views": null,
+      "author": { "type": "profile", "id": "2", "name": "Otra", "screen_name": "otra" },
+      "media": {},
+      "raw_text": { "text": "..." },
+      "lang": "es",
+      "possibly_sensitive": false,
+      "replying_to": null,
+      "source": null,
+      "embed_card": "tweet",
+      "provider": "twitter",
+      "is_note_tweet": false,
+      "community_note": null,
+      "reposted_by": {
+        "id": "1500000000000000000",
+        "name": "Taller Cerámico",
+        "screen_name": "TallerCeramico"
+      }
+    }
+  ],
+  "cursor": { "top": null, "bottom": "DAABCgABGd" }
+}

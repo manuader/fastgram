@@ -29,6 +29,7 @@ import {
   modelRegistryPath,
   S3Storage,
   systemClock,
+  systemRng,
   WebsiteReader,
 } from "@fastgram/adapters";
 import { ALL_JOB_QUEUES, JOB_QUEUES } from "@fastgram/core";
@@ -44,6 +45,10 @@ import {
 } from "./discovery/refill-handler.js";
 import { createHandlers, type BrandAnalysisMount } from "./handlers.js";
 import { createAiStudioMount } from "./genai/mount.js";
+import { createMetricsAdapters } from "./metrics/mount.js";
+import { createAutopilotHandler } from "./autopilot/handler.js";
+import { createRegistryJudgment } from "./autopilot/judgment.js";
+import { createAutoBrandKitTrigger } from "./brand-kit/mount.js";
 import { createHealthServer, createWorkerHealth } from "./health/server.js";
 import {
   brandReaderFromEnv,
@@ -55,6 +60,7 @@ import { createLlmSource, createResolvingLlm } from "./llm/registry-llm.js";
 import { JOB_CATALOG, type JobPolicy } from "./jobs/catalog.js";
 import { mountMediaImport } from "./media-import/mount.js";
 import { mountPublishing } from "./publishing/mount.js";
+import { socialReadersFromEnv } from "./brand/social-readers.js";
 import {
   createRenderServiceRenderers,
   selectWorkerRenderers,
@@ -194,13 +200,26 @@ const BRAND_ANALYSIS_LLM_POLL_MS = 30_000;
  */
 const brandReader = brandReaderFromEnv(env);
 const textLlmAtStart = await llmSource.current("text");
+/**
+ * PU-SCRAPE-001/002: los extractores de Instagram, TikTok y X que tengan su URL
+ * configurada. Los que no, dejan la fuente en tier D (pegar la bio a mano).
+ */
+const socialReaders = socialReadersFromEnv(process.env);
+logger.info(
+  { mounted: socialReaders.mounted, skipped: socialReaders.skipped },
+  "extractores sociales",
+);
 
 function brandAnalysisHandlerDeps() {
   if (brandReader.kind === "missing") return null;
   const reader = (source: "website" | "other_url"): WebsiteReader =>
     new WebsiteReader({ source, ...brandReader.website });
   return {
-    readers: { website: reader("website"), other_url: reader("other_url") },
+    readers: {
+      website: reader("website"),
+      other_url: reader("other_url"),
+      ...socialReaders.readers,
+    },
     synthesizer: createLlmBrandSynthesizer({
       llm: createResolvingLlm(llmSource, "text"),
     }),
@@ -283,6 +302,27 @@ const { handlers: HANDLERS, unmounted } = createHandlers({
     logger,
     env: process.env,
   }).handler,
+  // `PU-AUTO-001/002`: cola de cada marca al objetivo de su estrategia y piloto
+  // con pre-chequeo `JV-3`. El juicio sale de la tarea `judgment` del registro
+  // (hereda la de `text`). Cuota ilimitada en el modo personal, como la API.
+  autopilot: createAutopilotHandler({
+    db: handle.db,
+    appRole,
+    logger,
+    clock,
+    queue,
+    rng: systemRng,
+    copywriter,
+    judgment: createRegistryJudgment({ llmSource, db: handle.db, appRole, logger }),
+    quotaPolicy: process.env["FASTGRAM_MODE"] === "personal" ? "unlimited" : "enforced",
+    personal: process.env["FASTGRAM_MODE"] === "personal",
+    // `publishing-sweep` se monta con la publicación y la cola, que acá van siempre.
+    publishingSweep: true,
+    onMediaBankEmpty: createAutoBrandKitTrigger(queue, logger),
+  }),
+  // `PU-AUTO-004`: métricas de vuelta (IG, Threads, FB; X sólo con
+  // `METRICS_X_ENABLED=true` porque leer cuesta) y auto-tune del mix.
+  metrics: createMetricsAdapters(process.env),
 });
 
 for (const [name, handler] of Object.entries(HANDLERS)) {

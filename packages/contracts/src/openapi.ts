@@ -42,6 +42,7 @@ import * as models from "./resources/models.js";
 import * as genai from "./resources/genai.js";
 import * as workspaces from "./resources/workspaces.js";
 import * as strategy from "./resources/strategy.js";
+import * as autopilot from "./resources/autopilot.js";
 import {
   imageUploadReservationRequestSchema,
   mediaUploadReservationRequestSchema,
@@ -1187,6 +1188,58 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
         },
       },
       /**
+       * `/analytics` — `P3-ANALYT-001/002`, `PU-AUTO-004`. Fuera de la §9.3
+       * del PRD (uso personal). Ver la cabecera de la sección en
+       * `resources/analytics.ts`.
+       */
+      "/analytics/summary": {
+        get: {
+          operationId: "getAnalyticsSummary",
+          summary:
+            "Totales, desglose por red y por tipo y top posts de los últimos N días, de esta marca o de todas",
+          parameters: queryParams(analytics.analyticsSummaryQuerySchema),
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(analytics.analyticsSummarySchema))),
+          },
+        },
+      },
+      "/analytics/mix": {
+        get: {
+          operationId: "getAnalyticsMix",
+          summary: "Pesos de formato, estado del auto-tune y su historial de ajustes",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(analytics.analyticsMixSchema))),
+          },
+        },
+      },
+      "/analytics/mix/autotune": {
+        put: {
+          operationId: "setMixAutotune",
+          summary: "Prende o apaga el auto-tune semanal del content mix de la marca",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(analytics.mixAutotuneRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(analytics.mixAutotuneSchema))),
+          },
+        },
+      },
+      "/analytics/sync": {
+        post: {
+          operationId: "requestMetricsSync",
+          summary:
+            "Pide un sync de métricas ya para la marca activa (encola metrics-sync)",
+          responses: {
+            "202": ok(
+              "Accepted",
+              dataOf(toJsonSchema(analytics.analyticsSyncResponseSchema)),
+            ),
+            "503": errorResponse("service_unavailable — sin cola"),
+          },
+        },
+      },
+      /**
        * ── Brand Sources · EXTENSION EXT-001 ────────────────────────────────
        *
        * Estos cinco paths estaban acá **describiendo rutas que no existían**:
@@ -1314,6 +1367,29 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
             "429": errorResponse(
               "rate_limited — ERR-B11, con `Retry-After` y `details.retryAfterMs`",
             ),
+            "503": errorResponse(
+              "service_unavailable — sin cola no se encola el análisis",
+            ),
+          },
+        },
+      },
+      "/brand/sources/{id}/assist": {
+        post: {
+          operationId: "assistBrandSource",
+          summary:
+            "EXTENSION · tier D (P1-BRAND-014): sintetiza sobre la bio y los captions pegados. No consume el cupo de re-análisis.",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(brand.assistBrandSourceRequestSchema)),
+          },
+          responses: {
+            "202": ok("Análisis encolado", dataOf(toJsonSchema(brand.brandSourceSchema))),
+            "400": errorResponse(
+              "bad_request — nada pegado, textos de más, o la fuente no es de una red social",
+            ),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — ya se está analizando"),
             "503": errorResponse(
               "service_unavailable — sin cola no se encola el análisis",
             ),
@@ -1713,6 +1789,32 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
               "conflict / invalid_state — ya salió, carril lento o warmed",
             ),
             "503": errorResponse("service_unavailable — mover un post necesita la cola"),
+          },
+        },
+      },
+      /**
+       * Piloto automático — `PU-AUTO-001…003`. Fuera de la §9.3 del PRD (uso
+       * personal, `D-08`). Ver la cabecera de `resources/autopilot.ts`.
+       */
+      "/autopilot/digest": {
+        get: {
+          operationId: "getAutopilotDigest",
+          summary:
+            "Resumen del día por marca: generadas, aprobadas solas, rechazadas con motivo, en espera, publicadas y fallidas",
+          parameters: queryParams(autopilot.autopilotDigestQuerySchema),
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(autopilot.autopilotDigestSchema))),
+            "400": errorResponse("bad_request — fecha inválida"),
+          },
+        },
+      },
+      "/autopilot/policy": {
+        get: {
+          operationId: "getAutopilotPolicy",
+          summary:
+            "Cómo decide el piloto: horizonte, objetivo de la cola, cupo por corrida y umbrales del pre-chequeo",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(autopilot.autopilotPolicySchema))),
           },
         },
       },

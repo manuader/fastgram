@@ -10,6 +10,8 @@
 import type { ZodApp } from "../../server/types.js";
 
 import { registerAiStudioRoutes } from "./ai-studio.js";
+import { registerAnalyticsRoutes } from "./analytics.js";
+import { registerAutopilotRoutes } from "./autopilot.js";
 import { defaultGenAiRouteDeps, registerGenAiRoutes } from "./genai.js";
 import { registerAngleRoutes } from "./angles.js";
 import { registerBlitzRoutes } from "./blitz.js";
@@ -57,5 +59,9 @@ export async function registerV1Routes(app: ZodApp): Promise<void> {
   registerCalendarRoutes(app);
   // `PU-PUB-001`/`002`, `P3-OAUTH-002`: OAuth por marca y credenciales de las apps.
   registerConnectionRoutes(app);
+  // `P3-ANALYT-001/002`, `PU-AUTO-004`: resumen, auto-tune del mix y sync a pedido.
+  registerAnalyticsRoutes(app);
+  // `PU-AUTO-002`/`003`: resumen diario y política del piloto automático.
+  registerAutopilotRoutes(app);
   await Promise.resolve();
 }

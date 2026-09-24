@@ -1,0 +1,344 @@
+# FastGram en un VPS — PU-RUN-004 (PRD D-16: Mac primero, después VPS).
+#
+# Uso (desde la raíz del repo, con `deploy/.env` completado desde
+# `deploy/.env.vps.example`):
+#
+#   docker compose -f deploy/compose.vps.yml up -d --build
+#
+# Paso a paso, acceso y backups: `deploy/README.md`.
+#
+# ── Qué queda expuesto ───────────────────────────────────────────────────────
+# NADA a internet por defecto. El modo personal no tiene login: la web y la API
+# abiertas serían regalarle la cuenta (y las keys de los proveedores) a
+# cualquiera. Se publican sólo dos puertos, atados a `FASTGRAM_BIND`
+# (default 127.0.0.1; la IP de Tailscale si entrás por Tailscale):
+#   - web  → para el navegador del dueño;
+#   - MinIO → el navegador sube la media directo al bucket con URLs firmadas.
+# La API no se publica: la web la llama por la red interna.
+# Lo único que ve internet es `public-media` (sirve media firmada y el callback
+# de OAuth), y sólo a través de `cloudflared` (perfil `tunnel`), sin puertos.
+#
+# ── Orden de arranque (el mismo que `scripts/start.mjs`) ─────────────────────
+# postgres, minio → minio-init (bucket + usuario) → init (migraciones,
+# secretos, key de la web) → render → api → worker → web.
+# El worker MUERE si el render no contesta `/capabilities` al arrancar: por eso
+# espera a `render: service_healthy`, y `restart` lo levanta si igual pasa.
+#
+# ── Perfiles (`COMPOSE_PROFILES` en el .env) ─────────────────────────────────
+#   minio  → MinIO local + su init. Sin él, `S3_*` apunta a un S3 externo (R2).
+#   tunnel → cloudflared con un named tunnel (`TUNNEL_TOKEN`).
+
+# No `fastgram`: es el nombre del proyecto del `docker-compose.yml` de desarrollo
+# (el directorio del repo) y los volúmenes (`fastgram_postgres-data`) chocarían.
+name: fastgram-vps
+
+x-logging: &logging
+  driver: json-file
+  options:
+    # Sin tope, los logs de Docker llenan el disco de un VPS chico.
+    max-size: "10m"
+    max-file: "5"
+
+x-restart: &restart
+  restart: unless-stopped
+
+x-s3-env: &s3-env
+  S3_ENDPOINT: ${S3_ENDPOINT:?falta S3_ENDPOINT en deploy/.env}
+  S3_REGION: ${S3_REGION:-auto}
+  S3_BUCKET: ${S3_BUCKET:?falta S3_BUCKET}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?falta S3_ACCESS_KEY_ID}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?falta S3_SECRET_ACCESS_KEY}
+  S3_PUBLIC_URL: ${S3_PUBLIC_URL:?falta S3_PUBLIC_URL}
+  S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+
+x-app-env: &app-env
+  NODE_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  TZ: ${TZ:-UTC}
+  DATABASE_URL: postgres://fastgram:${POSTGRES_PASSWORD:?falta POSTGRES_PASSWORD}@postgres:5432/fastgram
+  FASTGRAM_MODE: personal
+  FASTGRAM_HOME: /data/fastgram-home
+
+x-api-image: &api-image
+  image: fastgram/api:${FASTGRAM_IMAGE_TAG:-local}
+  build:
+    context: ..
+    dockerfile: apps/api/Dockerfile
+
+services:
+  # ── Datos ────────────────────────────────────────────────────────────────
+  postgres:
+    # Misma major (17) y pgvector que `docker-compose.yml` de desarrollo.
+    image: pgvector/pgvector:0.8.6-pg17-bookworm
+    <<: *restart
+    logging: *logging
+    environment:
+      POSTGRES_USER: fastgram
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?falta POSTGRES_PASSWORD}
+      POSTGRES_DB: fastgram
+      TZ: ${TZ:-UTC}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fastgram -d fastgram"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio:
+    profiles: ["minio"]
+    # MinIO publica en quay.io, no en Docker Hub (trampa 9 del HANDOFF).
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    <<: *restart
+    logging: *logging
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-fastgram-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}
+    ports:
+      # El navegador sube directo al bucket (URL firmada contra S3_ENDPOINT).
+      # El puerto del host TIENE que ser el mismo que el de S3_ENDPOINT: la
+      # firma incluye el Host. La consola (9001) no se publica.
+      - "${FASTGRAM_BIND:-127.0.0.1}:${S3_HOST_PORT:-9000}:9000"
+    networks:
+      default:
+        # El mismo nombre que usa el navegador (S3_ENDPOINT / S3_PUBLIC_URL)
+        # resuelve, adentro de la red, a este contenedor: render, API y worker
+        # usan la MISMA URL canónica que el navegador. Ver README §Acceso.
+        aliases: ["${S3_HOSTNAME:-fastgram-s3}"]
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Bucket, lectura anónima y el usuario de la app. Idempotente; sale con 0.
+  # La lectura anónima es la misma que en desarrollo: el render baja la media
+  # por URL canónica SIN firmar (ESTADO §8). El bucket sólo es alcanzable por
+  # `FASTGRAM_BIND` (localhost/Tailscale), no desde internet.
+  minio-init:
+    profiles: ["minio"]
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    logging: *logging
+    depends_on:
+      minio: { condition: service_healthy }
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-fastgram-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}
+      S3_BUCKET: ${S3_BUCKET:?falta S3_BUCKET}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?falta S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?falta S3_SECRET_ACCESS_KEY}
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null
+        mc mb --ignore-existing "local/$$S3_BUCKET"
+        mc anonymous set download "local/$$S3_BUCKET"
+        mc admin user add local "$$S3_ACCESS_KEY_ID" "$$S3_SECRET_ACCESS_KEY" >/dev/null
+        mc admin policy attach local readwrite --user "$$S3_ACCESS_KEY_ID" >/dev/null 2>&1 || true
+        echo "bucket $$S3_BUCKET y usuario de la app listos"
+
+  # ── Preparación (migraciones, secretos, key de la web) ───────────────────
+  init:
+    <<: *api-image
+    logging: *logging
+    # root sólo para dejar los volúmenes con dueño `node`; ver deploy/init/init.mjs.
+    user: "0"
+    entrypoint: ["tini", "--"]
+    command: ["node", "/app/deploy/init/init.mjs"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully, required: false }
+    environment:
+      <<: *app-env
+      RENDER_MEDIA_GRANT_SECRET: ${RENDER_MEDIA_GRANT_SECRET:-}
+    volumes:
+      - fastgram-home:/data/fastgram-home
+      - secrets:/run/fastgram-secrets
+
+  # ── Servicios ────────────────────────────────────────────────────────────
+  render:
+    image: fastgram/render:${FASTGRAM_IMAGE_TAG:-local}
+    build:
+      context: ..
+      dockerfile: services/render/Dockerfile
+    <<: *restart
+    logging: *logging
+    depends_on:
+      init: { condition: service_completed_successfully }
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      TZ: ${TZ:-UTC}
+      RENDER_MEDIA_GRANT_SECRET: ${RENDER_MEDIA_GRANT_SECRET:-}
+      RENDER_MEDIA_GRANT_SECRET_FILE: /run/fastgram-secrets/render-grant-secret
+      RENDER_REQUIRE_GRANT: "true"
+      RENDER_FONT_STRICT: "true"
+      RENDER_CACHE_DIR: /var/cache/fastgram-render
+    volumes:
+      - render-cache:/var/cache/fastgram-render
+      - secrets:/run/fastgram-secrets:ro
+    # healthcheck: el de la imagen (GET /health).
+
+  api:
+    <<: [*api-image, *restart]
+    logging: *logging
+    depends_on:
+      init: { condition: service_completed_successfully }
+      render: { condition: service_healthy }
+    environment:
+      <<: [*app-env, *s3-env]
+      API_PORT: "3001"
+      # En modo personal la API escucha en 127.0.0.1 si no se le dice otra
+      # cosa; en un contenedor eso la haría inalcanzable para la web. 0.0.0.0
+      # es la red INTERNA de Compose: el puerto no se publica.
+      API_HOST: 0.0.0.0
+      # Una sola réplica de API: crea el esquema de pg-boss al arrancar (ver
+      # `QUEUE_MIGRATE` en apps/api/src/env.ts). El worker no migra.
+      QUEUE_MIGRATE: "true"
+      API_PUBLIC_URL: ${FASTGRAM_APP_ORIGIN:-http://localhost:3000}
+      WEB_PUBLIC_URL: ${FASTGRAM_APP_ORIGIN:-http://localhost:3000}
+      FASTGRAM_PUBLIC_URL: ${FASTGRAM_PUBLIC_URL:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_CONTEXT_WINDOW_TOKENS: ${LLM_CONTEXT_WINDOW_TOKENS:-}
+    volumes:
+      - fastgram-home:/data/fastgram-home
+    # healthcheck: el de la imagen (GET /health == 200).
+
+  worker:
+    image: fastgram/worker:${FASTGRAM_IMAGE_TAG:-local}
+    build:
+      context: ..
+      dockerfile: apps/worker/Dockerfile
+    <<: *restart
+    logging: *logging
+    depends_on:
+      render: { condition: service_healthy }
+      # La API crea el esquema de la cola (QUEUE_MIGRATE); el worker no.
+      api: { condition: service_healthy }
+    environment:
+      <<: [*app-env, *s3-env]
+      WORKER_HEALTH_PORT: "3004"
+      RENDER_SERVICE_URL: http://render:3002
+      RENDER_MEDIA_GRANT_SECRET: ${RENDER_MEDIA_GRANT_SECRET:-}
+      RENDER_MEDIA_GRANT_SECRET_FILE: /run/fastgram-secrets/render-grant-secret
+      FASTGRAM_PUBLIC_URL: ${FASTGRAM_PUBLIC_URL:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_CONTEXT_WINDOW_TOKENS: ${LLM_CONTEXT_WINDOW_TOKENS:-}
+      # Límites de higiene del análisis de marca: los mismos que elige
+      # `pnpm start` (PERSONAL_BRAND_DEFAULTS). Se pisan desde el .env.
+      BRAND_WEBSITE_TIMEOUT_MS: ${BRAND_WEBSITE_TIMEOUT_MS:-15000}
+      BRAND_WEBSITE_MAX_BODY_BYTES: ${BRAND_WEBSITE_MAX_BODY_BYTES:-3000000}
+      BRAND_WEBSITE_MAX_REDIRECTS: ${BRAND_WEBSITE_MAX_REDIRECTS:-5}
+      BRAND_WEBSITE_MAX_SECONDARY_PAGES: ${BRAND_WEBSITE_MAX_SECONDARY_PAGES:-4}
+      BRAND_WEBSITE_MAX_TEXT_CHARS: ${BRAND_WEBSITE_MAX_TEXT_CHARS:-40000}
+      BRAND_WEBSITE_USER_AGENT: ${BRAND_WEBSITE_USER_AGENT:-FastGram/0.1 (personal brand analysis)}
+      BRAND_WEBSITE_ALLOWED_PORTS: ${BRAND_WEBSITE_ALLOWED_PORTS:-80,443}
+      BRAND_SNAPSHOT_RAW_RETENTION_DAYS: ${BRAND_SNAPSHOT_RAW_RETENTION_DAYS:-30}
+      PUBLISH_INSTAGRAM_GRAPH_HOST: ${PUBLISH_INSTAGRAM_GRAPH_HOST:-}
+      PUBLISH_META_GRAPH_VERSION: ${PUBLISH_META_GRAPH_VERSION:-}
+      PUBLISH_THREADS_API_VERSION: ${PUBLISH_THREADS_API_VERSION:-}
+      PUBLISH_X_ALLOW_LINKS: ${PUBLISH_X_ALLOW_LINKS:-}
+    volumes:
+      - fastgram-home:/data/fastgram-home
+      - secrets:/run/fastgram-secrets:ro
+    # healthcheck: el de la imagen (GET :3004/health/ready).
+
+  web:
+    image: fastgram/web:${FASTGRAM_IMAGE_TAG:-local}
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    <<: *restart
+    logging: *logging
+    depends_on:
+      api: { condition: service_healthy }
+    environment:
+      NODE_ENV: production
+      TZ: ${TZ:-UTC}
+      FASTGRAM_MODE: personal
+      FASTGRAM_API_URL: http://api:3001/api/v1
+      FASTGRAM_HEALTH_URL: http://api:3001/health
+      FASTGRAM_API_KEY_FILE: /run/fastgram-secrets/web-api-key
+      # El origin con el que el navegador abre la web: contra esto compara el
+      # anti-CSRF. Sin él, en producción TODAS las escrituras responden 503.
+      FASTGRAM_APP_ORIGIN: ${FASTGRAM_APP_ORIGIN:-http://localhost:3000}
+      FASTGRAM_PUBLIC_URL: ${FASTGRAM_PUBLIC_URL:-}
+    ports:
+      - "${FASTGRAM_BIND:-127.0.0.1}:${WEB_HOST_PORT:-3000}:3000"
+    volumes:
+      - secrets:/run/fastgram-secrets:ro
+    # healthcheck: el de la imagen (GET / < 500).
+
+  # ── Media pública (PU-RUN-005) ───────────────────────────────────────────
+  # Escucha en 127.0.0.1:3003 DE SU CONTENEDOR (está así en el código): no la
+  # alcanza nadie de la red de Compose. `cloudflared` comparte su red
+  # (`network_mode: service:public-media`) y es el único que llega.
+  public-media:
+    <<: [*api-image, *restart]
+    logging: *logging
+    command: ["node", "dist/public-media/main.js"]
+    depends_on:
+      init: { condition: service_completed_successfully }
+    environment:
+      <<: *s3-env
+      NODE_ENV: production
+      TZ: ${TZ:-UTC}
+      FASTGRAM_HOME: /data/fastgram-home
+      PUBLIC_MEDIA_PORT: "3003"
+      # Destino del único reenvío (callback de OAuth): la web por la red interna.
+      WEB_ORIGIN: http://web:3000
+    volumes:
+      - fastgram-home:/data/fastgram-home
+    healthcheck:
+      # Cualquier respuesta HTTP (un 404 en `/`) es "vivo"; un error de red no.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3003/').then(r=>process.exit(r.status<500?0:1),()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  cloudflared:
+    profiles: ["tunnel"]
+    image: cloudflare/cloudflared:2026.9.0
+    <<: *restart
+    logging: *logging
+    network_mode: service:public-media
+    depends_on:
+      public-media: { condition: service_healthy }
+    # Named tunnel: la ruta pública <host> → http://localhost:3003 se configura
+    # en el dashboard de Cloudflare. El token SÓLO llega a este contenedor.
+    command: ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:20241", "run"]
+    environment:
+      # `:-` y no `:?`: Compose interpola el archivo entero aunque el perfil
+      # esté apagado. Sin token, cloudflared sale con error y lo dice.
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:20241", "ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  postgres-data:
+  minio-data:
+  # `~/.fastgram` de la Mac: models.json, integrations.json, secret.key, spend.
+  # secret.key cifra las credenciales guardadas: SIN este volumen, un backup de
+  # la base no sirve para recuperar las conexiones. Entra en los backups.
+  fastgram-home:
+  # Secreto render↔worker y key de la web, generados por `init`.
+  secrets:
+  render-cache:

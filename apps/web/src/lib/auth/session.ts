@@ -61,7 +61,14 @@ export function parseSessionCookie(raw: string | undefined): Session | null {
   }
 }
 
-/** ¿Vale el fallback de desarrollo? Fuera de producción, sí. */
+/**
+ * ¿Vale el fallback sin login? Fuera de producción, sí; y en producción **sólo**
+ * en modo personal (D-06): un usuario, sin auth, detrás de un acceso privado
+ * (SSH o Tailscale; ver `deploy/README.md`). Sin esto, la imagen de la web
+ * construida con `next build` redirigía todo a `/login` en el VPS.
+ */
 export function devSessionAllowed(): boolean {
-  return process.env.NODE_ENV !== "production";
+  return (
+    process.env.NODE_ENV !== "production" || process.env["FASTGRAM_MODE"] === "personal"
+  );
 }
