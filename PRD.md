@@ -207,10 +207,11 @@ Decisiones **cerradas** por el equipo de producto. No son hipótesis ni recomend
 | **D-10** | Cómo se publica en TikTok | **Upload como borrador (`IN_USER_INBOX`)**, no Direct Post | TikTok declara *not acceptable* la herramienta para publicar en cuentas propias: sin auditoría, todo sale privado. |
 | **D-11** | Automatización | **Sólo APIs oficiales**; nunca automatizar el navegador ni usar APIs privadas | Topes propios por debajo de los oficiales, jitter y nada de likes/follows automáticos. |
 | **D-12** | Origen de los memes | **Importar por link** (yt-dlp) + recorte de fondo | Los derechos de lo que se publica son responsabilidad del dueño. |
-| **D-13** | Lectura de perfiles sociales | **Scraper open source auditado**, nunca con las cuentas propias logueadas | Salta el gate `OQ-16` **sólo para uso personal**; se reabre si la app se abre a terceros. |
+| **D-13** | Lectura de perfiles sociales | **Scraper open source auditado, sin ninguna cuenta logueada** (tampoco secundaria: el dueño lo rechazó el 2026-09-24) | IG: modo anónimo o Business Discovery oficial, y si no, pegar la bio a mano. X: sin login, o pegar a mano. Salta el gate `OQ-16` **sólo para uso personal**. |
 | **D-14** | Modelos de IA | **Multi-proveedor por tarea**: Higgsfield + opciones baratas o gratis; locales después. Presupuesto de US$20–50 por mes | Puertos `ImageGen`, `VideoGen` y `BackgroundRemoval`, más un registro de modelos. Ningún id de modelo fijo en el código. |
 | **D-15** | Recorte de alcance | **Fuera**: Warmed Accounts, Billing, API pública, MCP y Growth. **Al final**: Engagement e Inspiration | Esas épicas quedan anotadas en `tasks.md`. |
 | **D-16** | Dónde corre | **En la Mac, después en un VPS** | `pnpm start` local primero; Docker Compose para 24/7 después. |
+| **D-17** | URL pública de la media | **Cloudflare Tunnel desde la Mac** (gratis, publica sólo si la Mac está prendida) | IG y las fotos de TikTok traen la media de esa URL. |
 
 **Sobre D-05.** La evaluación de arquitectura (`EVAL-JEV.md`, 2026-09-21) concluyó que Jev encaja genuinamente en dos huecos que este PRD deja sin motor (`DP-001`, `DP-002`) y habilita dos comportamientos nuevos (`DP-004`, `DP-007`), pero que **no conviene comprometerse con el proveedor todavía**: tiene semanas de vida, no publica cifras de latencia y no hay benchmarks independientes. Lo que sí conviene, y cuesta casi nada mientras no haya código, es **declarar la capa**. De ahí D-05: se adopta la *forma*, no el proveedor.
 
@@ -1200,6 +1201,7 @@ Owner y member pueden añadir y re-analizar fuentes. Sólo el owner puede elimin
 
 **System behavior.**
 - El texto es arrastrable sobre el canvas; la posición se guarda en unidades de editor (`position.x/y` 0–100, `widthPercent` 25–100). SUPPORTED `[DEV PATCH /content/:id`]
+- **Decisión del dueño (2026-09-24): cómo se pasan las cajas del editor a píxeles.** `position.x` y `position.y` son el **centro** de la caja, en % del ancho y del alto del lienzo. `widthPercent` es el ancho de la caja en % del ancho del lienzo; el texto se ajusta a ese ancho y la caja crece hacia arriba y hacia abajo desde el centro. `fontSize` y `strokeWidth` usan la regla de `FR-070`: unidades de editor × `canvas.width / 360`. El que sea el centro y no la esquina es elección de implementación: es lo que hace que cambiar el tamaño de la letra no mueva la caja. Cierra el hueco de `P2-CONTENT-004`.
 - `Regenerate Text` reescribe **todas** las cajas de texto preservando media, estructura de cajas, layout y estilo; en slideshows conserva el número exacto de slides y cajas. SUPPORTED
 - Los cambios de copy/tipografía/color/posición son **minor edits**: no crean una nueva fila de contenido, no consumen content save, no generan un evento de facturación. SUPPORTED
 - Cada edición aceptada incrementa `revision`; se requiere concurrencia optimista (`revision` debe coincidir, si no `409 stale_revision`). SUPPORTED

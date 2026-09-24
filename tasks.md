@@ -71,7 +71,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 
 ## Sprint 2 — Edito y agendo
 
-- [ ] **PU-EDIT-001** **Decidir y documentar en el PRD el mapeo editor→px** (propuesta: posición y ancho en % del lienzo; fuente y contorno × `canvas.width/360`) · cierra `P2-CONTENT-004`
+- [x] **PU-EDIT-001** **Decidir y documentar en el PRD el mapeo editor→px** (decidido 2026-09-24, PRD FR-051) (propuesta: posición y ancho en % del lienzo; fuente y contorno × `canvas.width/360`) · cierra `P2-CONTENT-004`
 - [ ] **PU-EDIT-002** Las ediciones llegan al video (rebuild con las cajas editadas) · dep: PU-EDIT-001
 - [ ] **PU-EDIT-003** Editor inline: caption, texto, fondo, música, meme/asset · `= P2-BLITZ-007…011`
 - [ ] **PU-EDIT-004** Preview en vivo en el cliente con la misma escala que el render (lo que ves es lo que sale)
@@ -83,7 +83,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 
 ## Sprint 3 — Se publica solo
 
-- [ ] **PU-RUN-005** **URL pública para la media** (túnel o bucket público) · ⚠️ IG y las fotos de TikTok la traen por URL · decisión del dueño
+- [ ] **PU-RUN-005** **URL pública para la media** con **Cloudflare Tunnel** (`D-17`) · ⚠️ IG y las fotos de TikTok la traen por URL
 - [ ] **PU-PUB-001** Tokens de redes cifrados en reposo · `= P3-OAUTH-007`
 - [ ] **PU-PUB-002** App de Meta: conectar IG (Instagram Login) y FB/Threads (Facebook Login) por marca · `= P3-OAUTH-003`
 - [ ] **PU-PUB-003** Adaptador Instagram: reel, carrusel e imagen · `= P3-SCHED-008`
@@ -102,7 +102,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [ ] **PU-MODEL-003** Puerto `ImageGen` + adaptadores Higgsfield y fal · copiar el resultado a storage propio (Higgsfield lo guarda 7 días)
 - [ ] **PU-MODEL-004** Puerto `VideoGen` + adaptadores Higgsfield y fal (Kling/Wan/Seedance/LTX)
 - [ ] **PU-MODEL-005** Costo estimado antes de generar + **tope mensual** que corta la generación
-- [ ] **PU-SCRAPE-001** Extractores IG / TikTok / X con el scraper open source elegido, **auditado a mano** · `D-13` · `= P1-BRAND-007…009`
+- [ ] **PU-SCRAPE-001** Extractores IG / TikTok / X con el scraper open source elegido, **auditado a mano**, **sin cuentas logueadas** · `D-13` · `= P1-BRAND-007…009`
 - [ ] **PU-SCRAPE-002** IG Business Discovery como vía oficial cuando la cuenta califica
 
 ## Sprint 5 — Piloto automático

@@ -132,8 +132,7 @@ los issues de los últimos dos meses. **Ninguno se ejecutó todavía**: el prime
 | X | **twscrape** | 2,8k · 2026-09-22 · MIT | **Sí**, cuenta secundaria | Es lo más mantenido. snscrape está abandonado desde 2023 y twikit, estancado. |
 | Sitios web | **crawl4ai** (renderiza JS; sube el extractor web a tier C) | 84k · 2026-09-23 · Apache-2.0 | No | firecrawl es AGPL. El extractor actual no ejecuta JS. |
 
-- **Ajuste a D-13:** para Instagram (si falla el modo anónimo) y para X hace falta una cuenta.
-  Tiene que ser una **cuenta secundaria descartable, nunca una de las marcas**.
+- **D-13 corregida (el dueño, 2026-09-24): ninguna cuenta logueada, tampoco una secundaria.** En Instagram se usa el modo anónimo o Business Discovery, y si no alcanza, se pega la bio a mano. En X, lo que se pueda sin login (tweets sueltos), y si no, a mano. instagrapi y twscrape **quedan descartados**.
 - Estas herramientas se rompen cada pocas semanas, y una IP de VPS anda peor que la de tu casa.
   El diseño asume que van a fallar: cada extractor tiene fallback a Business Discovery (IG) o a
   pegar la bio a mano, y el alta de la marca nunca depende de uno solo.
@@ -169,8 +168,7 @@ desarrollo.
 **Bloquea el circuito, en orden**:
 1. **Un LLM configurado.** Sin él, Blitz no tiene cola. Es una variable de entorno: el primer paso.
 2. **Ninguna pantalla de Blitz.**
-3. **Las ediciones no llegan al video.** Falta decidir cómo se mapean las cajas del editor (0–100)
-   a píxeles. **Propuesta**: x, y y ancho como porcentaje del lienzo, y fuente y contorno en unidades
+3. **Las ediciones no llegan al video.** El mapeo ya está **decidido** (PRD FR-051, 2026-09-24): x, y y ancho como porcentaje del lienzo, y fuente y contorno en unidades
    de editor × `canvas.width / 360` (la misma regla que ya decidió el dueño para el texto). Cierra
    `P2-CONTENT-004`.
 4. **Sin adaptadores de publicación ni URL pública de la media.**
@@ -186,7 +184,7 @@ desarrollo.
 | Crear una **app de TikTok** con Content Posting API (Upload) | Borradores en TikTok | Antes del sprint 3 |
 | Cuenta de desarrollador de **X** con crédito cargado | Publicar en X | Antes del sprint 3 |
 | Key de **Higgsfield** (console.higgsfield.ai) y de **fal** | Imagen, video y recorte | Sprint 4 |
-| Decidir el túnel o el bucket público (`PU-RUN-005`) | Que IG y TikTok puedan traer la media | Sprint 3 |
+| ~~Decidir el túnel o el bucket público~~ → **Cloudflare Tunnel** (`D-17`) | Que IG y TikTok puedan traer la media | Decidido |
 
 **Ninguna key se escribe en el repo** (CLAUDE.md). Van a un `.env.local` ignorado por git o al
 archivo local `~/.fastgram/`.
