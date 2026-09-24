@@ -76,7 +76,9 @@ export function NotificationBell({ className }: { className?: string }) {
       <Drawer open={open} onClose={() => setOpen(false)} side="right" size="sm">
         <DrawerHeader>
           <DrawerTitle>{C.panelTitle}</DrawerTitle>
-          <DrawerClose label={C.dismiss} />
+          {/* Cierra el panel: "Close" (default del sistema), no "Dismiss", que
+              en este panel suena a descartar un aviso (P5-A11Y-001). */}
+          <DrawerClose />
         </DrawerHeader>
         <DrawerBody>
           <NotificationPanel list={list} onNavigate={() => setOpen(false)} />

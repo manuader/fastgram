@@ -27,6 +27,7 @@ import { FixedClock } from "@fastgram/adapters";
 import { TokenBucketLimiter } from "../src/http/rate-limit.js";
 import { createMemoryBucketStore } from "../src/support/bucket-store.js";
 import { dataOf, errorOf, startApi, type ApiHarness } from "./helpers/harness.js";
+import { ownedMediaUrl } from "./helpers/owned-media.js";
 
 const HEADER = "x-fastgram-workspace";
 
@@ -458,6 +459,9 @@ describe("modo personal: sin cuotas ni rate limit", () => {
       on conflict (company_id, period)
         do update set content_saves_used = ${tope}, content_saves_purchased = 0, overage_units = 0
     `;
+    // `P2-RENDER-009`: `POST /content` rechaza media ajena; la pieza usa una URL
+    // bajo `media/{companyId}/` de la marca `a`.
+    WALL_OF_TEXT.video.url = await ownedMediaUrl(api.data.a.companyId, "a.mp4");
     const res = await api.request({
       method: "POST",
       path: "/api/v1/content",

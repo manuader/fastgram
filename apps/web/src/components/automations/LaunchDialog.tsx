@@ -63,7 +63,7 @@ export function LaunchDialog({ automation, open, onClose }: LaunchDialogProps) {
       <DialogBody className="flex flex-col gap-3">
         {checking && (
           <p className="flex items-center gap-2 text-sm text-text-muted" role="status">
-            <Spinner size="sm" />
+            <Spinner size="sm" aria-hidden="true" />
             {tw("automations.launch.validating")}
           </p>
         )}

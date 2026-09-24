@@ -285,7 +285,7 @@ function ImportProgress({
         role={failed ? "alert" : "status"}
         className={failed ? "text-sm text-danger" : "flex items-center gap-2 text-sm"}
       >
-        {!settled && !failed && <Spinner />}
+        {!settled && !failed && <Spinner aria-hidden="true" />}
         {tw(importStateCopy(status))}
       </p>
       {background !== undefined && (

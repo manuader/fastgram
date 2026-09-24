@@ -134,7 +134,8 @@ export const listBrandAudioQuerySchema = cursorQuerySchema
   .strict();
 export type ListBrandAudioQuery = z.infer<typeof listBrandAudioQuerySchema>;
 
-export const brandAudioOriginSchema = z.enum(["upload", "import"]);
+/** `extracted` (`0031`): sacada con FFmpeg de un video del Media Bank. */
+export const brandAudioOriginSchema = z.enum(["upload", "import", "extracted"]);
 export type BrandAudioOrigin = z.infer<typeof brandAudioOriginSchema>;
 
 export const brandAudioTrackSchema = z

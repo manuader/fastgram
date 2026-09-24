@@ -54,6 +54,25 @@ body {
   transform: translateY(0);
 }
 
+/* Foco visible para todo lo operable que no lleve una clase del sistema
+   (`P5-A11Y-001`, WCAG 2.4.7). `base.css` sólo pinta el anillo sobre `fg-*` y
+   `.fg-focusable`; un `<a>` de texto, un chip de calendario o un `<button>`
+   de Tailwind quedaban con el anillo por defecto del navegador —que en el
+   cromo oscuro casi no se ve— o sin nada. `:where()` deja la especificidad en
+   cero: cualquier regla propia de un componente gana sin pelear. */
+:where(
+  a[href],
+  button,
+  summary,
+  input,
+  select,
+  textarea,
+  [tabindex]:not([tabindex="-1"])
+):focus-visible {
+  outline: var(--fg-focus-ring-width) solid var(--fg-color-focus-ring);
+  outline-offset: var(--fg-focus-ring-offset);
+}
+
 /* ---------------------------------------------------------- estructura */
 /* Shell 2026 (`PU-UI-001`): la shell es "cromo" (`--fg-color-chrome`) y el
    contenido va en un panel apoyado encima, con leve profundidad

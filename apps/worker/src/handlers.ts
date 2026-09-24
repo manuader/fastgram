@@ -73,6 +73,8 @@ import type { InspirationMount } from "./inspiration/mount.js";
 import { createMetricsSyncHandler } from "./metrics/sync-handler.js";
 import { createAutomationGenerationDispatcher } from "./automations/generation-handler.js";
 import type { MediaImportMount } from "./media-import/mount.js";
+import { createAudioExtractHandler } from "./audio-extract/handler.js";
+import type { AudioExtractMount } from "./audio-extract/ffmpeg.js";
 
 export interface WorkerHandlerDeps {
   readonly db: Database;
@@ -177,6 +179,11 @@ export interface WorkerHandlerDeps {
    * Montarlos enciende sus crons. Ausente = no se montan (tests que no los miran).
    */
   readonly engagement?: Readonly<Record<string, JobHandler<unknown>>>;
+  /**
+   * Sprint 7, segunda tanda (H): `audio-extract` con FFmpeg local
+   * (`audio-extract/ffmpeg.ts`). Ausente = no se monta (tests que no lo miran).
+   */
+  readonly audioExtract?: AudioExtractMount;
 }
 
 export type BrandAnalysisMount =
@@ -563,6 +570,25 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
             ? deps.mediaImport.why
             : "sin cola para encolar la normalización del clip importado",
       });
+    }
+  }
+
+  /*
+   * `audio-extract` (sprint 7, H) — sólo con FFmpeg. Sin él, la extracción
+   * queda `queued`, que es verdad: nadie la corrió.
+   */
+  if (deps.audioExtract !== undefined) {
+    if (deps.audioExtract.kind === "mounted") {
+      handlers[JOB_QUEUES.audioExtract] = createAudioExtractHandler({
+        db,
+        storage,
+        clock,
+        appRole,
+        logger,
+        extractor: deps.audioExtract.extractor,
+      });
+    } else {
+      unmounted.push({ queue: JOB_QUEUES.audioExtract, why: deps.audioExtract.why });
     }
   }
 

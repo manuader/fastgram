@@ -78,9 +78,11 @@
  *
  * ## Lo que este handler sigue sin hacer, y por qué no se inventa
  *
- * - **`remixSourceUrl` y `sourceTrendingItemId` quedan `null`** incluso cuando
- *   la tirada dice remix. *Qué* remixar es `DP-005`/`JV-6` (PRD §25), sin
- *   implementación. La pieza sale original y la explicación lo dice.
+ * - **Remix**: cuando la tirada dice remix y hay referencias guardadas
+ *   (Inspiration), `JV-6` elige una ({@link pickRemixReference}) y la
+ *   sugerencia guarda `sourceTrendingItemId` y `remixSourceUrl` (sprint 7,
+ *   segunda tanda): la tarjeta muestra «Remixed From». Sin referencias, sale
+ *   original y la explicación lo dice.
  * - **Con varios influencers candidatos no se elige ninguno**: es el mismo
  *   `DP-005`/`JV-6`. Ver `plan-blitz-suggestion.ts`.
  * - **La librería compartida no existe**: la media sale siempre del Media Bank,
@@ -143,6 +145,11 @@ import type { BuildLogger } from "../content/build-handler.js";
 import type { SuggestionCopywriter } from "./copywriter.js";
 import { applyJv6, judgeBest, type Jv6JudgmentProvider } from "./jv6.js";
 import { describePlanningMedia } from "./media-descriptors.js";
+import {
+  readInfluencerAngles,
+  restrictToInfluencerAngles,
+  type InfluencerAngles,
+} from "./influencer-config.js";
 
 export interface DiscoveryRefillDeps {
   readonly db: Database;
@@ -240,6 +247,12 @@ export interface RefillSubject {
    * nuevas primero, hasta {@link REMIX_REFERENCES_LIMIT}.
    */
   readonly references: readonly TrendingItemRow[];
+  /**
+   * Sprint 7 (segunda tanda): los ángulos asociados en la Configuration de
+   * cada influencer activo (`influencer-config.ts`). Ausente = sin
+   * restricción, igual que un influencer sin ángulos asociados.
+   */
+  readonly influencerAngles?: InfluencerAngles;
 }
 
 /** Cuántas referencias se leen para elegir qué remixar. */
@@ -388,7 +401,19 @@ export function createDiscoveryRefillHandler(
     const drafts: QueuedSuggestionDraft[] = [];
     let lastRetryable: PortError | null = null;
     for (const planned0 of planned) {
-      const judged = await applyJv6(planned0, {
+      // Sprint 7: el ángulo, dentro de los que el influencer tiene asociados.
+      // Antes de `JV-6`, para que el juicio rankee con el tema final; y otra
+      // vez después, por si el juicio cambió de personaje.
+      const restrict = (x: PlannedBlitzSuggestion): PlannedBlitzSuggestion =>
+        restrictToInfluencerAngles(
+          deps.rng,
+          subject.preferences,
+          subject.planning,
+          subject.influencerAngles,
+          x,
+        );
+      const bound = restrict(planned0);
+      const judged0 = await applyJv6(bound, {
         judgment,
         rng: deps.rng,
         context: subject.planning,
@@ -396,6 +421,8 @@ export function createDiscoveryRefillHandler(
         profile: subject.profile,
         logger: deps.logger,
       });
+      const judged =
+        judged0.influencerId === bound.influencerId ? judged0 : restrict(judged0);
       const remix = await pickRemixReference(judged, subject, judgment, deps.logger);
       const p = remix === null ? judged : withRemixReference(judged, remix.title ?? "");
       try {
@@ -407,7 +434,7 @@ export function createDiscoveryRefillHandler(
           remix === null ? undefined : toCopyRemixReference(remix),
         );
         if (draft.ok) {
-          drafts.push(draft.draft);
+          drafts.push(remix === null ? draft.draft : withRemixSource(draft.draft, remix));
         } else {
           deps.logger.warn(
             { ...base, contentType: p.plan.contentType, reason: draft.reason },
@@ -544,6 +571,11 @@ export async function readRefillSubject(
     queued: await discoveryQueueStore.countQueued(tx, scope),
     language: strategy?.language ?? null,
     references,
+    influencerAngles: await readInfluencerAngles(
+      tx,
+      companyId,
+      rows.map((row) => row.id),
+    ),
   };
 }
 
@@ -553,11 +585,10 @@ export async function readRefillSubject(
  * entre las mejores (sin juicio, la primera del ranking). Sin referencias,
  * `null` y la pieza sale original (la explicación lo dice).
  *
- * **Lo que no hace** (está en el reporte del sprint 7): la sugerencia no
- * guarda `sourceTrendingItemId` ni `remixSourceUrl`, porque el borrador del
- * relleno (`QueuedSuggestionDraft`, `packages/db`) no tiene esos campos. La
- * referencia informa la copy y la explicación la nombra; la tarjeta no
- * muestra el «Remixed From».
+ * La elegida viaja en el borrador ({@link withRemixSource}): la sugerencia
+ * guarda `sourceTrendingItemId` y `remixSourceUrl`, y la tarjeta muestra el
+ * «Remixed From». La sentencia de `refillQueue` descarta una referencia que
+ * no sea global o de esta marca.
  */
 export async function pickRemixReference(
   planned: PlannedBlitzSuggestion,
@@ -594,6 +625,22 @@ export async function pickRemixReference(
     logger,
   );
   return pool.find((r) => r.id === chosen) ?? pool[0] ?? null;
+}
+
+/**
+ * El borrador con la referencia que se remixa (`F-056`, «Remixed From»). El
+ * link es el `permalink` guardado; sin él, la sugerencia guarda sólo el id y
+ * la API cae al permalink de la referencia al mostrarla.
+ */
+export function withRemixSource(
+  draft: QueuedSuggestionDraft,
+  reference: Pick<TrendingItemRow, "id" | "permalink">,
+): QueuedSuggestionDraft {
+  return {
+    ...draft,
+    sourceTrendingItemId: reference.id,
+    remixSourceUrl: reference.permalink ?? null,
+  };
 }
 
 /**

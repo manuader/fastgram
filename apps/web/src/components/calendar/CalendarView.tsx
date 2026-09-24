@@ -275,7 +275,7 @@ export function CalendarView({
         {brand === undefined
           ? tw("calendar.timeZone", { zone: displayZone })
           : tw("calendar.timeZoneBrand", { brand: brand.name, zone: displayZone })}{" "}
-        {tw("calendar.dragHint")}
+        {tw("calendar.dragHint")} {tw("calendar.keyboardHint")}
       </p>
       {calendar.data?.truncated === true && (
         <p className="fgw-calendar__note" role="note">

@@ -9,6 +9,7 @@ import {
   GENERATION_STATUS_COPY,
   GENERATION_STATUS_TONE,
   isInFlight,
+  isSlow,
 } from "@/lib/ai-studio/form";
 import { tw } from "@/lib/i18n/t";
 import { formatUsd } from "@/lib/models/budget";
@@ -66,8 +67,13 @@ export function GenerationCard({ generation: g }: GenerationCardProps) {
         ) : isInFlight(g) ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4">
             <Skeleton className="absolute inset-0 h-full w-full" />
-            <span className="relative text-xs text-text-muted">
+            <span className="relative text-xs text-text-muted" role="status">
               {tw("aiStudio.card.working")}
+              {/* ERR-L09: la galería se vuelve a pedir mientras algo está en
+                  vuelo, así que este `Date.now()` se refresca solo. */}
+              {isSlow(g, Date.now()) && (
+                <span className="mt-1 block">{tw("loading.aiStudioSlow")}</span>
+              )}
             </span>
           </div>
         ) : (

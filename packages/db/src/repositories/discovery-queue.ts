@@ -96,6 +96,19 @@ export interface QueuedSuggestionDraft {
    * `parseSuggestionBuildPlan`.
    */
   readonly buildPlan: unknown;
+  /**
+   * Sprint 7 (`JV-6`, `F-056`): la referencia de Inspiration que el refill
+   * eligió remixar. La sentencia sólo la acepta si es global o de **esta**
+   * marca (la FK no lo impide); si no, la sugerencia entra sin remix.
+   * Ausente = original.
+   */
+  readonly sourceTrendingItemId?: string | null;
+  /**
+   * El link de la referencia («Remixed From»). Con `sourceTrendingItemId`
+   * válido manda el `permalink` guardado de la referencia; sin id, se guarda
+   * este valor tal cual.
+   */
+  readonly remixSourceUrl?: string | null;
 }
 
 export interface RefillResult {
@@ -205,6 +218,8 @@ export async function refillQueue(
       text_style_preset_id: draft.textStylePresetId,
       generated_text: draft.generatedText,
       build_plan: draft.buildPlan ?? null,
+      source_trending_item_id: draft.sourceTrendingItemId ?? null,
+      remix_source_url: draft.remixSourceUrl ?? null,
     })),
   );
 
@@ -214,7 +229,17 @@ export async function refillQueue(
         from jsonb_to_recordset(${payload}::jsonb)
           as d(ord int, content_type text, ai_explanation text,
                angle_id uuid, influencer_id uuid, text_style_preset_id text,
-               generated_text text, build_plan jsonb)
+               generated_text text, build_plan jsonb,
+               source_trending_item_id uuid, remix_source_url text)
+    ),
+    -- Sprint 7 (\`JV-6\`): la referencia de un remix, sólo si es global o de
+    -- esta marca. Una ajena no se guarda (ni su id ni su link).
+    refs as (
+      select t.id, t.permalink
+        from trending_items t
+       where t.id in (select source_trending_item_id from drafts
+                       where source_trending_item_id is not null)
+         and (t.company_id is null or t.company_id = ${scope.companyId}::uuid)
     ),
     queued as (
       select count(*)::int as n
@@ -225,7 +250,8 @@ export async function refillQueue(
     inserted as (
       insert into suggestions
         (company_id, content_type, ai_explanation, angle_id, influencer_id,
-         text_style_preset_id, generated_text, build_plan, status)
+         text_style_preset_id, generated_text, build_plan, status,
+         source_trending_item_id, remix_source_url)
       select ${scope.companyId}::uuid,
              drafts.content_type::suggestion_content_type,
              drafts.ai_explanation,
@@ -234,8 +260,15 @@ export async function refillQueue(
              drafts.text_style_preset_id,
              drafts.generated_text,
              drafts.build_plan,
-             'queued'::suggestion_status
+             'queued'::suggestion_status,
+             refs.id,
+             case
+               when drafts.source_trending_item_id is null then drafts.remix_source_url
+               when refs.id is null then null
+               else coalesce(refs.permalink, drafts.remix_source_url)
+             end
         from drafts cross join queued
+        left join refs on refs.id = drafts.source_trending_item_id
        where drafts.ord <= greatest(0, ${target}::int - queued.n)
       returning id
     )

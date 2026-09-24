@@ -46,6 +46,8 @@ export * from "./resources/inspiration.js";
 export * from "./resources/engagement.js";
 export * from "./resources/automations.js";
 export * from "./resources/notifications.js";
+// Sprint 7, segunda tanda (H): oferta post-análisis y audio extraído.
+export * from "./resources/brand-flow.js";
 
 // OpenAPI
 export * from "./openapi.js";

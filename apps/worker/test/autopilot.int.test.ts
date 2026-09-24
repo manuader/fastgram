@@ -512,3 +512,62 @@ describe("barrido (PU-AUTO-001)", () => {
     expect(queue.of(JOB_QUEUES.automationGeneration)).toHaveLength(0);
   });
 });
+
+/**
+ * Sprint 7 (segunda tanda): la pieza aprobada guarda el influencer de la
+ * sugerencia (`contents.influencer_id`, migración `0032`) y, si su
+ * Configuration marca una sola cuenta activa en la red, el slot la lleva: el
+ * barrido convierte con ésa (`FR-150`) aunque la marca tenga otras.
+ */
+describe("piloto: cuentas del influencer", () => {
+  it("el slot lleva la cuenta marcada en la Configuration del personaje", async () => {
+    const { companyId, suggestionIds } = await seedBrand({
+      autonomy: "autopilot",
+      suggestions: ["Café de especialidad, contado por Vera"],
+    });
+    const rows = await handle.sql<{ id: string }[]>`
+      insert into connections (company_id, platform, platform_user_id, platform_username, scopes, publishable)
+      values (${companyId}, 'instagram', ${`ig-a-${companyId}`}, 'a', '{}', true),
+             (${companyId}, 'instagram', ${`ig-b-${companyId}`}, 'b', '{}', true)
+      returning id
+    `;
+    const marcada = rows[1]?.id as string;
+    const [inf] = await handle.sql<{ id: string }[]>`
+      insert into influencers (company_id, name, gender, age, ethnicity, status, is_active)
+      values (${companyId}, 'Vera', 'female', 27, 'latina', 'ready', true)
+      returning id
+    `;
+    const influencerId = inf?.id as string;
+    await handle.sql`
+      insert into influencer_configs (influencer_id, company_id, publishing_accounts)
+      values (${influencerId}, ${companyId},
+              ${JSON.stringify([{ platform: "instagram", connectionId: marcada, enabled: true }])}::jsonb)
+    `;
+    await handle.sql`
+      update suggestions set influencer_id = ${influencerId}
+      where id = ${suggestionIds[0] as string}
+    `;
+
+    const queue = new RecordingQueue();
+    await run(createAutopilotHandler(deps({ queue })), { companyId });
+
+    const pieces = await contentsOf(companyId);
+    expect(pieces).toHaveLength(1);
+    expect(pieces[0]?.influencerId).toBe(influencerId);
+    const slots = await slotsOf(companyId);
+    expect(slots.map((s) => [s.network, s.connectionId])).toEqual([
+      ["instagram", marcada],
+    ]);
+  });
+
+  it("sin influencer, el slot no fija cuenta (como siempre)", async () => {
+    const { companyId } = await seedBrand({
+      autonomy: "autopilot",
+      suggestions: ["Tostado de los martes"],
+    });
+    const queue = new RecordingQueue();
+    await run(createAutopilotHandler(deps({ queue })), { companyId });
+    const slots = await slotsOf(companyId);
+    expect(slots.map((s) => [s.network, s.connectionId])).toEqual([["instagram", null]]);
+  });
+});

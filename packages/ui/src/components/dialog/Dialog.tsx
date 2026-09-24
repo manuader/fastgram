@@ -21,6 +21,12 @@ interface DialogContextValue {
   titleId: string;
   descriptionId: string;
   onClose: () => void;
+  /**
+   * `<DialogDescription>` avisa que está montada (y con qué id), para que el
+   * modal la enlace con `aria-describedby`. Sin esto el lector de pantalla
+   * anunciaba el título y se salteaba la descripción (`P5-A11Y-001`).
+   */
+  setDescribedBy: (id: string | null) => void;
 }
 
 const DialogContext = createContext<DialogContextValue | null>(null);
@@ -78,6 +84,7 @@ export function Dialog({
 }: DialogProps) {
   const reactId = useId();
   const [mounted, setMounted] = useState(false);
+  const [describedBy, setDescribedBy] = useState<string | null>(null);
   const modalOptions =
     initialFocusRef === undefined
       ? { open, onClose, closeOnEscape }
@@ -95,7 +102,7 @@ export function Dialog({
   const label = props["aria-label"];
 
   return createPortal(
-    <DialogContext.Provider value={{ titleId, descriptionId, onClose }}>
+    <DialogContext.Provider value={{ titleId, descriptionId, onClose, setDescribedBy }}>
       <div
         className={cn("fg-overlay", overlayClassName)}
         onMouseDown={(event) => {
@@ -111,6 +118,7 @@ export function Dialog({
           aria-modal="true"
           aria-label={label}
           aria-labelledby={label === undefined ? titleId : undefined}
+          aria-describedby={describedBy ?? undefined}
           tabIndex={-1}
           className={cn(dialogVariants({ size }), className)}
           onKeyDown={onKeyDown}
@@ -139,13 +147,16 @@ export function DialogDescription({
   id,
   ...props
 }: ComponentPropsWithRef<"p">) {
-  const { descriptionId } = useDialogContext("DialogDescription");
+  const { descriptionId, setDescribedBy } = useDialogContext("DialogDescription");
+  const finalId = id ?? descriptionId;
+  useEffect(() => {
+    setDescribedBy(finalId);
+    return () => {
+      setDescribedBy(null);
+    };
+  }, [finalId, setDescribedBy]);
   return (
-    <p
-      {...props}
-      id={id ?? descriptionId}
-      className={cn("fg-dialog__description", className)}
-    />
+    <p {...props} id={finalId} className={cn("fg-dialog__description", className)} />
   );
 }
 

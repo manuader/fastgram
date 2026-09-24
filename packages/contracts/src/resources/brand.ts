@@ -80,6 +80,19 @@ export const brandSourceFailureReasonSchema = z.enum([
 ]);
 export type BrandSourceFailureReason = z.infer<typeof brandSourceFailureReasonSchema>;
 
+/**
+ * `0031` (`P1-ONB-005`): la etapa real del análisis mientras la fuente está
+ * `analyzing`, en el orden en que el worker las recorre. `reading_links` sólo
+ * en redes (link-in-bio) y `verifying` sólo con verificador (`JV-4`).
+ */
+export const brandSourceAnalysisPhaseSchema = z.enum([
+  "collecting",
+  "reading_links",
+  "synthesizing",
+  "verifying",
+]);
+export type BrandSourceAnalysisPhase = z.infer<typeof brandSourceAnalysisPhaseSchema>;
+
 // --- Recurso -----------------------------------------------------------------
 
 export const brandSourceSchema = z
@@ -94,6 +107,8 @@ export const brandSourceSchema = z
     acquisitionTier: acquisitionTierSchema,
     status: brandSourceStatusSchema,
     failureReason: brandSourceFailureReasonSchema.nullable().optional(),
+    /** `null`/ausente fuera de `analyzing`, o reclamada sin empezar. */
+    analysisPhase: brandSourceAnalysisPhaseSchema.nullable().optional(),
     lastAnalysedAt: msEpochSchema.nullable(),
     analysisCount: z.number().int().nonnegative(),
     createdAt: msEpochSchema,

@@ -9,8 +9,8 @@ import {
 const jobs = Object.values(JOB_CATALOG) as readonly JobPolicy[];
 
 describe("catálogo de jobs — PRD §9.5", () => {
-  it("están los 21 del PRD, más brand-backgrounds (PU-MEDIA-002), media-import (PU-MEME-001) y publishing-sweep (PU-PUB-008)", () => {
-    expect(jobs).toHaveLength(24);
+  it("están los 21 del PRD, más brand-backgrounds (PU-MEDIA-002), media-import (PU-MEME-001) y publishing-sweep (PU-PUB-008) y audio-extract (sprint 7, H)", () => {
+    expect(jobs).toHaveLength(25);
   });
 
   it("ningún nombre de cola repetido", () => {

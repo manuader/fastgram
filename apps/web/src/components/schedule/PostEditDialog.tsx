@@ -15,7 +15,7 @@ import {
   useToast,
 } from "@fastgram/ui";
 import type { Post } from "@fastgram/contracts";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { ApiErrorState } from "@/components/library/ApiErrorState";
 import { presentError } from "@/lib/api/error-presentation";
 import { isApiRequestError } from "@/lib/api/errors";
@@ -123,6 +123,7 @@ interface PostEditFormProps {
 
 function PostEditForm({ post, brandId, timeZone, onClose }: PostEditFormProps) {
   const { toast } = useToast();
+  const inPastId = useId();
   const update = useUpdatePost();
   const retry = useRetryPost();
   const cancel = useCancelPosts();
@@ -274,6 +275,7 @@ function PostEditForm({ post, brandId, timeZone, onClose }: PostEditFormProps) {
                   type="date"
                   value={date}
                   invalid={inPast}
+                  aria-describedby={inPast ? inPastId : undefined}
                   onChange={(e) => {
                     setDate(e.target.value);
                   }}
@@ -285,12 +287,29 @@ function PostEditForm({ post, brandId, timeZone, onClose }: PostEditFormProps) {
                   type="time"
                   value={time}
                   invalid={inPast}
+                  aria-describedby={inPast ? inPastId : undefined}
                   onChange={(e) => {
                     setTime(e.target.value);
                   }}
                 />
               </label>
             </fieldset>
+          )}
+          {/* P5-A11Y-001: el borde rojo solo no dice por qué (WCAG 3.3.1). Y
+              `save` descarta en silencio una hora pasada: acá se avisa. */}
+          <div aria-live="polite">
+            {editable && tooLong && (
+              <p className="text-xs text-danger">
+                {tw("schedule.problem.tooLong", {
+                  network: NETWORK_LABEL[post.platform],
+                })}
+              </p>
+            )}
+          </div>
+          {(editable || failed) && inPast && (
+            <p id={inPastId} role="status" className="text-xs text-danger">
+              {tw("schedule.inPast")}
+            </p>
           )}
 
           {failed && uncertain && (

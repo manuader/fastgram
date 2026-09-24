@@ -183,7 +183,7 @@ function SaveBody({ onClose }: { readonly onClose: () => void }) {
         <Button type="submit" disabled={!canSubmit}>
           {save.isPending ? (
             <span className="inline-flex items-center gap-2">
-              <Spinner size="xs" />
+              <Spinner size="xs" aria-hidden="true" />
               {tw("inspiration.saveDialog.saving")}
             </span>
           ) : (

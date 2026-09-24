@@ -93,6 +93,7 @@ import {
   type BrandProfileProposals,
   type BrandSource as BrandSourceResource,
   type FieldMeta,
+  type PostAnalysisOffer,
   type ResolveBrandSourceResponse,
 } from "@fastgram/contracts";
 import {
@@ -133,6 +134,7 @@ import {
 import { isPortError, type AcquisitionTier } from "@fastgram/ports";
 import {
   brandAnalysisStore,
+  brandFlowStore,
   brandSourceRepository,
   brandSourceSnapshotRepository,
   companyProfileRepository,
@@ -1275,6 +1277,40 @@ export function registerBrandRoutes(app: ZodApp, extras: BrandRoutesExtras = {})
       return reply.status(204).send();
     },
   );
+
+  // ── GET /brand/post-analysis-offer ──
+  //
+  // `P1-ONB-007`, `D-04`, `FR-011.5.1`: la tarjeta de `/brand` que ofrece
+  // conectar las cuentas e importar los posts propios. **Después** del
+  // análisis, nunca antes: `show` exige una fuente que terminó `ready` /
+  // `partial` (o `stale`, que viene de `ready`). Descartada, no vuelve.
+  app.get("/brand/post-analysis-offer", async (request) => {
+    const state = await request.tx((tx) =>
+      brandFlowStore.readPostAnalysisOffer(tx, { companyId: request.auth.companyId }),
+    );
+    const dismissed = state.dismissedAt !== null;
+    const offer: PostAnalysisOffer = {
+      show: !dismissed && state.analysedSource !== null,
+      dismissed,
+      source: state.analysedSource,
+    };
+    return data(offer);
+  });
+
+  // ── POST /brand/post-analysis-offer/dismiss ──
+  //
+  // Idempotente. Sin perfil todavía no hay oferta que descartar: igual `204`,
+  // porque el resultado que pide el usuario («no me la muestres») ya es cierto.
+  app.post("/brand/post-analysis-offer/dismiss", async (request, reply) => {
+    await request.tx((tx) =>
+      brandFlowStore.dismissPostAnalysisOffer(
+        tx,
+        { companyId: request.auth.companyId },
+        new Date(clock.nowMs()),
+      ),
+    );
+    return reply.status(204).send();
+  });
 
   // ── GET /brand/profile ──
   app.get("/brand/profile", async (request) => {

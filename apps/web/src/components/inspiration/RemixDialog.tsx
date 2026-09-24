@@ -98,7 +98,7 @@ function RemixBody({
               </span>
             ) : open ? (
               <>
-                <Spinner size="sm" />
+                <Spinner size="sm" aria-hidden="true" />
                 {tw("inspiration.remix.running")}
               </>
             ) : failure !== null ? (

@@ -205,6 +205,29 @@ describe("formatos: estimar y arrancar", () => {
     expect((dataOf(list) as unknown as unknown[]).length).toBe(1);
   });
 
+  it("desde Blitz (`?source=blitz`) queda registrada la procedencia; otra fuente, 400", async () => {
+    const res = await api.request({
+      method: "POST",
+      path: "/api/v1/ai-studio/formats/cutting-fruit/runs?source=blitz",
+      body,
+    });
+    expect(res.status).toBe(202);
+    const run = dataOf(res) as { id: string };
+    const onDisk = JSON.parse(
+      await readFile(
+        join(home, "format-runs", api.data.a.companyId, `${run.id}.json`),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+    expect(onDisk).toMatchObject({ source: "blitz" });
+    const bad = await api.request({
+      method: "POST",
+      path: "/api/v1/ai-studio/formats/cutting-fruit/runs?source=nope",
+      body,
+    });
+    expect(bad.status).toBe(400);
+  });
+
   it("bloqueado 409, inexistente 404, sin texto 400, tope 402", async () => {
     const blocked = await api.request({
       method: "POST",

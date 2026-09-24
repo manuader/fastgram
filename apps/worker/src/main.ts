@@ -69,6 +69,7 @@ import {
 import { createLlmSource, createResolvingLlm } from "./llm/registry-llm.js";
 import { JOB_CATALOG, type JobPolicy } from "./jobs/catalog.js";
 import { mountMediaImport } from "./media-import/mount.js";
+import { mountAudioExtract } from "./audio-extract/ffmpeg.js";
 import { mountInspiration } from "./inspiration/mount.js";
 import { mountPublishing } from "./publishing/mount.js";
 import { mountEngagement } from "./engagement/mount.js";
@@ -313,6 +314,8 @@ const { handlers: HANDLERS, unmounted } = createHandlers({
   // `PU-MEDIA-002`: para que el refill encole el kit de fondos de una marca sin media.
   queue,
   mediaImport,
+  // Sprint 7, segunda tanda (H): "Extract from a video" con FFmpeg local.
+  audioExtract: await mountAudioExtract(process.env),
   // Sprint 7 (`JV-6`): el juicio que elige meme, fondo, influencer y remix.
   jv6Judgment: createJv6Judgment({ llmSource, db: handle.db, appRole, logger }),
   // Inspiration: lectura sin login de referencias, sobre la misma cola y el mismo yt-dlp.

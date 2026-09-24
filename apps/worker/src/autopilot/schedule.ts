@@ -19,6 +19,8 @@
 import {
   AUTO_SLOT_HORIZON_DAYS,
   planAutoSlots,
+  preferInfluencerAccounts,
+  type InfluencerAccountPreference,
   type OccupiedSlot,
   type SlotStrategy,
   type StrategyNetwork,
@@ -26,6 +28,9 @@ import {
 import {
   CALENDAR_IDLE_POST_STATUSES,
   calendarLocks,
+  connectionRepository,
+  contentRepository,
+  influencerConfigRepository,
   plannedSlotRepository,
   postCalendar,
   withCompany,
@@ -104,12 +109,18 @@ export async function scheduleForAutopilot(
     );
   }
 
+  // Sprint 7 (segunda tanda): una pieza con influencer prefiere las redes y
+  // cuentas de su Configuration. Con una sola cuenta marcada en la red, el
+  // slot la guarda y el barrido convierte con ésa (`FR-150`).
+  const preferred = await influencerPreference(tx, args);
+
   const outcomes = planAutoSlots({
     strategy: args.strategy,
     brandId: args.companyId,
     contentId: args.contentId,
     nowMs: args.nowMs,
     occupied,
+    ...(preferred.networks === undefined ? {} : { networks: preferred.networks }),
   });
 
   const scheduled: ScheduledSlot[] = [];
@@ -122,9 +133,37 @@ export async function scheduleForAutopilot(
         contentId: args.contentId,
         network: outcome.slot.network,
         scheduledAtUtc: new Date(outcome.slot.atMs),
+        connectionId: preferred.pinned.get(outcome.slot.network) ?? null,
       },
     );
     scheduled.push({ network: outcome.slot.network, atMs: outcome.slot.atMs });
   }
   return scheduled;
+}
+
+/** La preferencia de cuentas del influencer de la pieza (sin influencer: ninguna). */
+async function influencerPreference(
+  tx: Transaction,
+  args: {
+    readonly companyId: string;
+    readonly contentId: string;
+    readonly strategy: SlotStrategy;
+  },
+): Promise<InfluencerAccountPreference> {
+  const scope = { companyId: args.companyId };
+  const content = await contentRepository.findById(tx, scope, args.contentId);
+  const config =
+    content?.influencerId == null
+      ? null
+      : await influencerConfigRepository.findById(tx, scope, content.influencerId);
+  if (config === null) return preferInfluencerAccounts(args.strategy, [], null);
+  const connections = await connectionRepository.list(tx, scope, {
+    limit: 100,
+    filter: { status: { eq: "active" } },
+  });
+  return preferInfluencerAccounts(
+    args.strategy,
+    connections.items.map((c) => ({ id: c.id, platform: c.platform })),
+    config.publishingAccounts,
+  );
 }

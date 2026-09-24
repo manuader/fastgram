@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Minus } from "lucide-react";
-import { useCallback, type ComponentPropsWithRef, type ReactNode } from "react";
+import { useCallback, useId, type ComponentPropsWithRef, type ReactNode } from "react";
 import { cn } from "../../cn";
 
 export interface CheckboxProps extends Omit<
@@ -10,7 +10,11 @@ export interface CheckboxProps extends Omit<
 > {
   /** Texto junto a la caja. Va dentro del `<label>`, así que aumenta el área de click. */
   label?: ReactNode;
-  /** Segunda línea, más apagada. Se enlaza con `aria-describedby` si hay `id`. */
+  /**
+   * Segunda línea, más apagada. Siempre se enlaza con `aria-describedby`: con
+   * el `id` del input si lo hay y, si no, con uno propio (`P5-A11Y-001`: antes
+   * sin `id` la descripción quedaba suelta y el lector no la anunciaba).
+   */
   description?: ReactNode;
   /**
    * Estado mixto (una selección parcial en la grid de Library, `F-122`).
@@ -39,8 +43,9 @@ export function Checkbox({
   ref,
   ...props
 }: CheckboxProps) {
+  const ownId = useId();
   const describedBy =
-    description !== undefined && id !== undefined ? `${id}-description` : undefined;
+    description !== undefined ? `${id ?? ownId}-description` : undefined;
 
   const setNode = useCallback(
     (node: HTMLInputElement | null) => {

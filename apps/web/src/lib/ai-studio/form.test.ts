@@ -4,6 +4,8 @@ import { budgetUsedFraction, formatUsd, parseBudgetInput } from "../models/budge
 import {
   galleryRefetchInterval,
   initialForm,
+  isSlow,
+  SLOW_GENERATION_MS,
   specFor,
   toRequest,
   withModel,
@@ -122,5 +124,30 @@ describe("presupuesto (formato)", () => {
     const base = OPTIONS.budget;
     expect(budgetUsedFraction({ ...base, chargedUsd: 15, reservedUsd: 0 })).toBe(0.5);
     expect(budgetUsedFraction({ ...base, chargedUsd: 25, reservedUsd: 10 })).toBe(1);
+  });
+});
+
+describe("ERR-L09 · generación lenta", () => {
+  const T0 = Date.UTC(2026, 8, 24, 12, 0);
+  const at = (ms: number) => new Date(ms).toISOString();
+
+  it("en vuelo y pasado el umbral: lenta", () => {
+    expect(
+      isSlow({ status: "generating", createdAt: at(T0) }, T0 + SLOW_GENERATION_MS),
+    ).toBe(true);
+  });
+
+  it("antes del umbral, no", () => {
+    expect(
+      isSlow({ status: "queued", createdAt: at(T0) }, T0 + SLOW_GENERATION_MS - 1),
+    ).toBe(false);
+  });
+
+  it("lo terminado nunca es lento, por viejo que sea", () => {
+    expect(isSlow({ status: "ready", createdAt: at(T0) }, T0 + 60 * 60_000)).toBe(false);
+  });
+
+  it("una fecha ilegible no inventa el aviso", () => {
+    expect(isSlow({ status: "generating", createdAt: "nope" }, T0)).toBe(false);
   });
 });

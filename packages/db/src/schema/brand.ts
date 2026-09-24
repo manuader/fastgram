@@ -27,6 +27,18 @@ import {
 } from "./enums.js";
 
 /**
+ * Las etapas de `apps/worker/src/brand/analysis-handler.ts`, en orden. El
+ * CHECK de `0031` repite la lista.
+ */
+export const BRAND_SOURCE_ANALYSIS_PHASES = [
+  "collecting",
+  "reading_links",
+  "synthesizing",
+  "verifying",
+] as const;
+export type BrandSourceAnalysisPhase = (typeof BRAND_SOURCE_ANALYSIS_PHASES)[number];
+
+/**
  * DATA-004 — `CompanyProfile` (Brand). 1:1 con company.
  *
  * `fieldMeta` es la EXTENSION que sostiene `FR-011.2` (badges de origen y confianza) y
@@ -67,6 +79,11 @@ export const companyProfiles = pgTable(
     fieldMeta: jsonb()
       .notNull()
       .default(sql`'{}'::jsonb`),
+    /**
+     * `0031` (`P1-ONB-007`): el usuario descartó la oferta post-análisis de
+     * `/brand` (conectar cuentas + importar posts propios). `null` = sigue.
+     */
+    postAnalysisOfferDismissedAt: tsColumn(),
     ...timestamps(),
   },
   (t) => [
@@ -103,6 +120,11 @@ export const brandSources = pgTable(
     connectionId: uuid().references(() => connections.id, { onDelete: "set null" }),
     status: brandSourceStatusEnum().notNull().default("pending"),
     failureReason: brandSourceFailureReasonEnum(),
+    /**
+     * `0031` (`P1-ONB-005`): la etapa real del handler de análisis mientras
+     * la fuente está `analyzing`. `null` fuera de `analyzing` o sin empezar.
+     */
+    analysisPhase: text().$type<BrandSourceAnalysisPhase>(),
     /** `stale` a los 90 días (`BRAND_SOURCE_LIMITS.staleAfterDays`). */
     lastAnalysedAt: tsColumn(),
     /** Para el límite de re-análisis por día. */

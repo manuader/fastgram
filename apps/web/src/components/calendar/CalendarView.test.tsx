@@ -416,3 +416,75 @@ describe("arrastrar para mover", () => {
     expect(requestMock.mock.calls.some(([, o]) => o?.method === "PATCH")).toBe(false);
   });
 });
+
+/**
+ * Abrir un post sin mouse — `P5-A11Y-001`. Enter y Espacio son del arrastre de
+ * dnd-kit en un chip movible, así que abrir va por `E`; en uno que ya salió
+ * (no movible) Enter también abre. El diálogo se ve por su nombre: el GET del
+ * post queda colgado a propósito, alcanza con que el modal esté abierto.
+ */
+describe("abrir un post con el teclado", () => {
+  function serveWithPost(items: readonly CalendarItem[]): void {
+    serve((path) =>
+      path === "calendar"
+        ? Promise.resolve(calendar(items))
+        : new Promise<never>(() => {
+            /* el post no llega nunca: sólo importa que el diálogo se abrió */
+          }),
+    );
+  }
+
+  it("un chip movible se abre con E y anuncia el atajo", async () => {
+    const post = item();
+    serveWithPost([post]);
+    const { container } = renderView();
+    await settled(container);
+    const [chip] = chips(cell(container, "2026-09-23"));
+    if (chip === undefined) throw new Error("no hay chip");
+    expect(chip).toHaveAttribute("aria-keyshortcuts", "E");
+    expect(chip).toHaveAttribute("tabindex", "0");
+
+    const user = userEvent.setup();
+    chip.focus();
+    await user.keyboard("e");
+    expect(await screen.findByRole("dialog", { name: "Post" })).toBeInTheDocument();
+  });
+
+  it("Enter en un chip movible NO abre: es de dnd-kit (levantar para mover)", async () => {
+    const post = item();
+    serveWithPost([post]);
+    const { container } = renderView();
+    await settled(container);
+    const [chip] = chips(cell(container, "2026-09-23"));
+    if (chip === undefined) throw new Error("no hay chip");
+    const user = userEvent.setup();
+    chip.focus();
+    await user.keyboard("{Enter}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await user.keyboard("{Escape}");
+  });
+
+  it("un chip que ya salió es un botón: foco con Tab y Enter abre", async () => {
+    const posted = item({ status: "POSTED", movable: false });
+    serveWithPost([posted]);
+    const { container } = renderView();
+    await settled(container);
+    const [chip] = chips(cell(container, "2026-09-23"));
+    if (chip === undefined) throw new Error("no hay chip");
+    expect(chip).toHaveAttribute("role", "button");
+    expect(chip).toHaveAttribute("tabindex", "0");
+    expect(chip).toHaveAttribute("aria-keyshortcuts", "Enter Space E");
+
+    const user = userEvent.setup();
+    chip.focus();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("dialog", { name: "Post" })).toBeInTheDocument();
+  });
+
+  it("la ayuda de la pantalla dice cuáles son las teclas", async () => {
+    serveWithPost([]);
+    const { container } = renderView();
+    await settled(container);
+    expect(container.textContent).toContain("E opens it");
+  });
+});

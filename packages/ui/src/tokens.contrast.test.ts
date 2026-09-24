@@ -223,6 +223,79 @@ describe("tonos de plataforma · todas las redes", () => {
   );
 });
 
+/**
+ * El **texto** de estado y de acento — `P5-A11Y-001` (sprint 7).
+ *
+ * `apps/web` pintaba `text-warning` / `text-success` / `text-accent` con el
+ * tono de relleno (`-600`), que sobre blanco da 3,2 / 3,3 / 3,6:1. Desde el
+ * sprint 7 su `tailwind.config.ts` manda el texto a los tokens `-text`, y este
+ * bloque es lo que impide que alguien los aclare "porque se ven fuertes".
+ *
+ * Cada `-text` se declara tres veces (claro, oscuro por preferencia, oscuro
+ * explícito), como las plataformas; el valor puede ser un hex o un
+ * `var(--fg-<escala>-<n>)`.
+ */
+const ALL_PRIMITIVES = (() => {
+  const out = new Map<string, string>();
+  for (const m of css.matchAll(/--(fg-[a-z]+-\d+):\s*(#[0-9a-fA-F]{3,6});/g)) {
+    out.set(m[1] as string, m[2] as string);
+  }
+  return out;
+})();
+
+function resolveDeclared(value: string): string {
+  const ref = value.match(/^var\(--(fg-[a-z]+-\d+)\)$/);
+  if (ref === null) return value;
+  const hex = ALL_PRIMITIVES.get(ref[1] as string);
+  if (hex === undefined) throw new Error(`primitiva desconocida: ${value}`);
+  return hex;
+}
+
+function semanticDeclarations(token: string): string[] {
+  const re = new RegExp(`--fg-color-${token}:\\s*([^;]+);`, "g");
+  return [...css.matchAll(re)].map((m) => resolveDeclared((m[1] as string).trim()));
+}
+
+describe("texto de estado y acento (`-text`) · los dos temas", () => {
+  const LIGHT = ["fg-neutral-0", "fg-neutral-50", "fg-neutral-100"];
+  const DARK = ["fg-neutral-900", "fg-neutral-800", "fg-neutral-950", "fg-neutral-975"];
+  const TOKENS = [
+    "accent-text",
+    "success-text",
+    "warning-text",
+    "danger-text",
+    "info-text",
+  ];
+
+  it.each(TOKENS)("%s: claro + los dos oscuros, iguales entre sí", (token) => {
+    const decl = semanticDeclarations(token);
+    expect(decl).toHaveLength(3);
+    expect(decl[1]).toBe(decl[2]);
+  });
+
+  it.each(TOKENS)("%s cumple AA para texto normal en claro y en oscuro", (token) => {
+    const [light, dark] = semanticDeclarations(token) as [string, string, string];
+    for (const bg of LIGHT) {
+      expect(contrastRaw(light, bg), `${token} claro sobre ${bg}`).toBeGreaterThanOrEqual(
+        AA_NORMAL,
+      );
+    }
+    for (const bg of DARK) {
+      expect(contrastRaw(dark, bg), `${token} oscuro sobre ${bg}`).toBeGreaterThanOrEqual(
+        AA_NORMAL,
+      );
+    }
+  });
+
+  it("el tono de relleno de warning y success NO sirve para texto en claro", () => {
+    // El motivo del mapeo de `textColor` en `apps/web/tailwind.config.ts`.
+    const [warning] = semanticDeclarations("warning") as [string];
+    const [success] = semanticDeclarations("success") as [string];
+    expect(contrastRaw(warning, "fg-neutral-0")).toBeLessThan(AA_NORMAL);
+    expect(contrastRaw(success, "fg-neutral-0")).toBeLessThan(AA_NORMAL);
+  });
+});
+
 describe("el cálculo", () => {
   it("negro sobre blanco da 21:1", () => {
     // Control: si esto fallara, todos los números de arriba serían basura.

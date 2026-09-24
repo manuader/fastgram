@@ -305,9 +305,14 @@ export function StudioCreate({ format }: { readonly format: StudioFormat }) {
           <Button variant="ghost" onClick={clear} disabled={create.isPending}>
             {tw("studio.clear")}
           </Button>
+          {/* ERR-L01 (PRD §19.2, literal): mientras se crea, el botón dice
+              `Generating...` y una región viva `Generating your content...`. */}
           <Button onClick={save} disabled={!ready} loading={create.isPending}>
-            {tw("studio.save")}
+            {create.isPending ? tw("loading.studioGeneratingButton") : tw("studio.save")}
           </Button>
+          <span role="status" className="text-xs text-text-muted">
+            {create.isPending ? tw("loading.studioGenerating") : ""}
+          </span>
           {!ready && (
             <span className="text-xs text-text-muted">
               {tw("studio.saveDisabledHint")}

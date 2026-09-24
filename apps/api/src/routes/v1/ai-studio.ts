@@ -605,6 +605,13 @@ export function registerAiStudioRoutes(
  * ------------------------------------------------------------------------ */
 
 const formatParams = z.object({ format: z.string().min(1).max(64) });
+/**
+ * Sprint 7 (segunda tanda): quién pidió la corrida. «Create from prompt» de
+ * Blitz manda `?source=blitz`; sin él, `studio` como siempre. Va por query y
+ * no en el body porque `formatRunRequestSchema` es `.strict()` y es el mismo
+ * pedido en los dos lados: sólo cambia la procedencia que queda en el registro.
+ */
+const formatRunQuery = z.object({ source: z.enum(["studio", "blitz"]).optional() });
 
 interface FormatRouteHelpers {
   readonly taskOptions: (kind: "image" | "video") => Promise<AiStudioTaskOptions>;
@@ -707,6 +714,7 @@ function registerFormatRoutes(
     companyId: string,
     formatId: string,
     body: z.infer<typeof formatRunRequestSchema>,
+    source: FormatRunInput["source"] = "studio",
   ): Promise<FormatRunInput> {
     const profile = await run(
       async (tx) =>
@@ -727,7 +735,7 @@ function registerFormatRoutes(
               productOffering: profile.productOffering,
               coreIdentity: profile.coreIdentity,
             },
-      source: "studio",
+      source,
     };
   }
 
@@ -878,7 +886,13 @@ function registerFormatRoutes(
   // ── POST /ai-studio/formats/:format/runs ──
   app.post(
     "/ai-studio/formats/:format/runs",
-    { schema: { params: formatParams, body: formatRunRequestSchema } },
+    {
+      schema: {
+        params: formatParams,
+        querystring: formatRunQuery,
+        body: formatRunRequestSchema,
+      },
+    },
     async (request, reply) => {
       if (app.deps.queue === undefined) {
         return reply.status(503).send({
@@ -895,6 +909,7 @@ function registerFormatRoutes(
         companyId,
         request.params.format,
         request.body,
+        request.query.source,
       );
       const r = await startGenerativeFormatRun(depsFor(), input);
       if (!r.ok) throw rejectionToApi(r);

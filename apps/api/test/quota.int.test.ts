@@ -19,6 +19,7 @@ import {
 import { billingPeriodKey, nextBillingResetUtc, PLANS } from "@fastgram/core";
 
 import { dataOf, startApi, type ApiHarness } from "./helpers/harness.js";
+import { ownedMediaUrl } from "./helpers/owned-media.js";
 
 let api: ApiHarness;
 
@@ -72,6 +73,9 @@ async function ledger(): Promise<{
 
 beforeAll(async () => {
   api = await startApi();
+  // `P2-RENDER-009`: `POST /content` rechaza media ajena; la pieza usa una URL
+  // bajo `media/{companyId}/` de la marca `a`.
+  WALL_OF_TEXT.video.url = await ownedMediaUrl(api.data.a.companyId, "a.mp4");
 }, 180_000);
 
 afterAll(async () => {

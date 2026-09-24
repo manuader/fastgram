@@ -3,6 +3,7 @@ export * from "./ids.js";
 export * from "./idempotency.js";
 export * from "./sanitization/untrusted-text.js";
 export * from "./jobs/queues.js";
+export * from "./jobs/audio-extract.js";
 export * from "./jobs/content-build.js";
 export * from "./jobs/publish.js";
 export * from "./publishing/error-code.js";

@@ -37,6 +37,7 @@ import {
   companyProfiles,
   contentAngles,
   discoveryQueueStore,
+  influencerConfigs,
   influencers,
   media,
   mediaSets,
@@ -1303,5 +1304,81 @@ describe("payloads y estados que no son de este mundo", () => {
 
     await expect(handler()(ctx({ companyId }))).resolves.toBeUndefined();
     expect(await readQueue(companyId)).toHaveLength(0);
+  });
+});
+
+/**
+ * Sprint 7 (segunda tanda): la Configuration del influencer (`FR-083`) manda
+ * sobre el ángulo. Con el personaje asociado a un solo ángulo, toda sugerencia
+ * con ese personaje sale con ese ángulo, aunque los pesos empujen a otro.
+ */
+describe("discovery-refill · Configuration del influencer", () => {
+  it("con ángulos asociados, las piezas del personaje salen sólo con ésos", async () => {
+    const companyId = await workspaceConMedia();
+    const pesado = await seedAngle(companyId, "El que pesa");
+    const asociado = await seedAngle(companyId, "El del personaje");
+    const influencerId = await seedInfluencerRow(companyId, "Vera");
+    const suyoVideo = await seedMedia(companyId, { type: "video", categories: [] });
+    await withoutCompany(handle.db, async (tx) => {
+      await tx.insert(mediaSets).values({
+        companyId,
+        name: "Vera videos",
+        kind: "VIDEO",
+        influencerId,
+        mediaIds: [suyoVideo],
+      });
+      await tx.insert(influencerConfigs).values({
+        influencerId,
+        companyId,
+        angleIds: [asociado],
+      });
+    });
+    await seedPreferences(companyId, {
+      influencerChance: 100,
+      slideshowWeight: 0,
+      wallOfTextWeight: 100,
+      greenScreenWeight: 0,
+      videoHookWeight: 0,
+      angleWeights: { [pesado]: 99, [asociado]: 1 },
+    });
+
+    await handler()(ctx({ companyId }));
+
+    const cola = await readQueue(companyId);
+    expect(cola).toHaveLength(5);
+    expect(cola.every((s) => s.influencer_id === influencerId)).toBe(true);
+    expect(cola.every((s) => s.angle_id === asociado)).toBe(true);
+    expect(cola[0]?.ai_explanation).toContain("El del personaje");
+  });
+
+  it("sin ángulos asociados, los pesos siguen mandando", async () => {
+    const companyId = await workspaceConMedia();
+    const pesado = await seedAngle(companyId, "El que pesa");
+    const influencerId = await seedInfluencerRow(companyId, "Vera");
+    const suyoVideo = await seedMedia(companyId, { type: "video", categories: [] });
+    await withoutCompany(handle.db, async (tx) => {
+      await tx.insert(mediaSets).values({
+        companyId,
+        name: "Vera videos",
+        kind: "VIDEO",
+        influencerId,
+        mediaIds: [suyoVideo],
+      });
+      await tx.insert(influencerConfigs).values({ influencerId, companyId });
+    });
+    await seedPreferences(companyId, {
+      influencerChance: 100,
+      slideshowWeight: 0,
+      wallOfTextWeight: 100,
+      greenScreenWeight: 0,
+      videoHookWeight: 0,
+      angleWeights: { [pesado]: 100 },
+    });
+
+    await handler()(ctx({ companyId }));
+
+    const cola = await readQueue(companyId);
+    expect(cola).toHaveLength(5);
+    expect(cola.every((s) => s.angle_id === pesado)).toBe(true);
   });
 });

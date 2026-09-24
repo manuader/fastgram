@@ -143,11 +143,18 @@ function PickerBody({
         ) : items.length === 0 ? (
           <EmptyState
             bordered
+            // P5-ERR-001: ERR-E06 (`No available images.`, literal) cuando se
+            // eligen imágenes sin filtro; para video no hay copy en el PRD.
             title={tw(
               q !== "" || category !== null
                 ? "studio.picker.filteredEmpty"
-                : "studio.picker.empty",
+                : type === "image"
+                  ? "empty.imagePicker.title"
+                  : "studio.picker.empty",
             )}
+            {...(q === "" && category === null && type === "image"
+              ? { description: tw("studio.picker.empty") }
+              : {})}
             action={
               q !== "" || category !== null ? (
                 <Button

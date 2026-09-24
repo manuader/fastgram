@@ -82,6 +82,12 @@ export const JOB_QUEUES = {
    * uso personal, no de §9.5.
    */
   publishingSweep: "publishing-sweep",
+  /**
+   * Sprint 7, segunda tanda (H) — sacar el audio de un video del Media Bank a
+   * la biblioteca de audio de la marca (`./audio-extract.ts`). Del plan de uso
+   * personal, no de §9.5.
+   */
+  audioExtract: "audio-extract",
 } as const;
 
 export type JobQueueKey = keyof typeof JOB_QUEUES;

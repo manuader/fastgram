@@ -47,7 +47,9 @@ export function InspirationCard({
           <div className="flex h-full w-full items-center justify-center p-4 text-center text-sm text-text-muted">
             {pending ? (
               <span className="inline-flex items-center gap-2">
-                <Spinner size="sm" />
+                {/* El texto de al lado ya dice qué pasa: sin `aria-hidden` el
+                    lector leía "Loading..." y después el texto (P5-A11Y-001). */}
+                <Spinner size="sm" aria-hidden="true" />
                 {tw("inspiration.card.pending")}
               </span>
             ) : (

@@ -566,6 +566,8 @@ function acceptanceRepository(ctx: AcceptanceContext): {
             ? null
             : content.generatedText,
         remixSourceUrl: content.remixSourceUrl ?? null,
+        // Migración `0032`: el personaje de la sugerencia, para el auto-slot.
+        influencerId: content.influencerId ?? null,
         revision: content.revision,
         // DATA-008: nunca sale por la API; es lo único que el worker lee.
         buildPayload: ctx.buildPayload,

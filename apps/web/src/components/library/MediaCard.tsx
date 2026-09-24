@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge, Button, cn } from "@fastgram/ui";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { tw } from "@/lib/i18n/t";
 import {
   MEDIA_CATEGORY_COPY,
@@ -42,8 +42,14 @@ export interface MediaCardProps {
  *    conocido; se paga porque la alternativa es una grid sin imágenes. La
  *    palanca es un campo de thumbnail en el contrato, no un truco de esta
  *    tarjeta.
- * 2. **Un video no tiene poster.** No hay frame que pedir, así que el hueco
- *    lleva la duración y el tipo, no una imagen rota.
+ * 2. **Un video no tiene poster.** El contrato no publica miniatura, así que
+ *    (sprint 7, segunda tanda) el hueco muestra **el primer frame** con un
+ *    `<video preload="metadata">` apuntando a `#t=0.1`: el navegador pide los
+ *    metadatos y el frame de ese instante con requests de rango, no el archivo
+ *    entero. Sin autoplay, mudo y fuera del orden de tabulación: es una
+ *    imagen. Mientras el asset no está `ready`, o si el navegador no puede
+ *    decodificarlo (un `.mov` en Firefox, por ejemplo), vuelve el rótulo
+ *    "Video" de antes en vez de un cuadro negro.
  * 3. **No hay pantalla de detalle de un asset.** §3.1 no lista ninguna ruta
  *    `/library/media/:id`, así que la tarjeta **no es un enlace**: un enlace a
  *    ninguna parte es peor que ninguno. Las dos acciones que sí hay —editar
@@ -63,6 +69,8 @@ export function MediaCard({
   const notReady = item.status !== "ready";
   const ref = useRef<HTMLLIElement>(null);
   const shownTags = tags !== undefined && tags.length > 0 ? tags : item.tags;
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const showVideoFrame = !isImage && item.status === "ready" && !previewFailed;
 
   useEffect(() => {
     if (focused === true) ref.current?.scrollIntoView?.({ block: "center" });
@@ -103,6 +111,20 @@ export function MediaCard({
              dominios de origen en `next.config.ts`, y esta tarea no sabe
              cuáles son (R2 sigue en revisión, ADR-006). */
           <img className="fgw-media-card__image" src={item.r2Url} alt="" loading="lazy" />
+        ) : showVideoFrame ? (
+          <video
+            className="fgw-media-card__image"
+            src={`${item.r2Url}#t=0.1`}
+            preload="metadata"
+            muted
+            playsInline
+            aria-hidden="true"
+            tabIndex={-1}
+            data-testid="media-video-frame"
+            onError={() => {
+              setPreviewFailed(true);
+            }}
+          />
         ) : (
           <span className="fgw-media-card__placeholder">
             {tw("media.videoNoPreview")}

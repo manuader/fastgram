@@ -18,6 +18,7 @@ import {
 
 import { softDelete, timestamps, tsColumn } from "./_shared.js";
 import { companyRef } from "./identity.js";
+import { influencers } from "./influencers.js";
 import { contentStatusEnum, contentTypeEnum, saveBucketEnum } from "./enums.js";
 import { CONTENT_TEXT_BOX, CONTENT_LIMITS } from "../limits.js";
 
@@ -45,6 +46,13 @@ export const contents = pgTable(
     generatedText: varchar({ length: CONTENT_LIMITS.generatedTextMaxChars }),
     /** Permalink público de la fuente remixada. */
     remixSourceUrl: text(),
+    /**
+     * El personaje con el que se armó la pieza (`Content.influencerId` del
+     * dominio). Migración `0032`: antes el accept de Blitz lo resolvía y nadie
+     * lo guardaba. El auto-slot lo usa para preferir las cuentas de la
+     * Configuration del personaje. `null` = pieza sin influencer.
+     */
+    influencerId: uuid().references(() => influencers.id, { onDelete: "set null" }),
     /** Concurrencia optimista (PRD §9.4). Arranca en 1 y sube con cada edición. */
     revision: integer().notNull().default(1),
     /** NUNCA se devuelve por API. */

@@ -40,6 +40,7 @@ import type { ApiRequestError } from "@/lib/api/errors";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { canAssist } from "@/lib/brand/assist";
 import { AddSourceForm } from "./AddSourceForm";
+import { AnalysisSteps } from "./AnalysisSteps";
 import { AssistedSourcePanel } from "./AssistedSourcePanel";
 
 const STATUS_TONE: Readonly<
@@ -233,6 +234,8 @@ function SourceRow({
               date: dateFormat.format(new Date(source.lastAnalysedAt)),
             })}
       </p>
+      {/* P1-ONB-005: la etapa real del worker, mientras analiza. */}
+      <AnalysisSteps source={source} />
       {busy && (
         <p className="fg-visually-hidden" role="status">
           {tw("brand.sources.working")}

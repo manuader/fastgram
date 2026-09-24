@@ -334,6 +334,8 @@ export const webEn = {
   "calendar.rangeTruncated":
     "There are more items in this range than the calendar shows. Narrow it to the week view.", // nuevo
   "calendar.empty.weekDescription": "Nothing is scheduled or posted this week.", // nuevo
+  "calendar.keyboardHint":
+    "Keyboard: Space picks a post up, the arrows move it and Space drops it; E opens it.", // nuevo · P5-A11Y-001
   "calendar.autoschedule.done": "Scheduled on {networks} · first {when}", // nuevo · `useAutoschedule`
 
   /* --------------------------------- My Posts · F-120, FR-100 (PRD:1603-1611) */
@@ -736,6 +738,28 @@ export const webEn = {
   "brand.assist.empty": "Paste your bio or at least one caption.", // nuevo
   "brand.assist.bioTooLong": "Keep the bio under {max} characters.", // nuevo
   "brand.assist.captionTooLong": "Caption {index} is longer than {max} characters.", // nuevo
+  // ── Sprint 7, segunda tanda (H): sub-pasos reales del análisis (P1-ONB-005) ──
+  "brand.phase.title": "Analysis progress", // nuevo · nombre accesible de la lista
+  "brand.phase.starting": "Starting the analysis…", // nuevo · `analyzing` sin fase todavía
+  "brand.phase.collecting.website": "Reading the site", // nuevo
+  "brand.phase.collecting.social": "Reading the profile and recent posts", // nuevo
+  "brand.phase.reading_links": "Following the links in the bio", // nuevo
+  "brand.phase.synthesizing": "Writing your brand profile", // nuevo
+  "brand.phase.verifying": "Checking each field against the source", // nuevo
+  "brand.phase.done": "done", // nuevo · lectores de pantalla
+  "brand.phase.current": "in progress", // nuevo · lectores de pantalla
+  "brand.phase.pending": "to do", // nuevo · lectores de pantalla
+  // ── P1-ONB-007 / FR-011.5.1: oferta post-análisis (copy propuesto del PRD) ──
+  "brand.offer.title": "Your brand profile is ready", // nuevo
+  "brand.offer.bodyHandle":
+    "Connect @{handle} to publish from it — and bring your photos and videos with you.", // literal FR-011.5.1
+  "brand.offer.bodyGeneric":
+    "Connect your accounts to publish from them — and bring your photos and videos with you.", // nuevo · sin handle
+  "brand.offer.connect": "Connect accounts", // nuevo
+  "brand.offer.importHint":
+    "Importing is optional: nothing is imported unless you tick the box in the next step.", // nuevo
+  "brand.offer.dismiss": "Not now", // nuevo
+  "brand.offer.dismissFailed": "That didn't work. Try again.", // nuevo
   "brand.assist.tooManyCaptions": "That's {count} captions. Paste up to {max}.", // nuevo
   /* ---------------- brand · sprint 7 (agente D): inteligencia de marca */
   // Todo `nuevo` salvo lo marcado: el PRD no trae copy para estas tarjetas.
@@ -869,6 +893,28 @@ export const webEn = {
   "audio.panel.origin.upload": "Uploaded", // nuevo
   "audio.panel.origin.import": "Imported", // nuevo
   "audio.panel.actionFailed": "That didn't work. Try again.", // nuevo
+  // ── Sprint 7, segunda tanda (H): extraer el audio de un video del Media Bank ──
+  "audio.panel.origin.extracted": "From a video", // nuevo
+  "audio.extract.open": "Extract from a video", // nuevo
+  "audio.extract.title": "Extract audio from a video", // nuevo
+  "audio.extract.description":
+    "Pick a video from your Media Bank. Its sound becomes a track in this library. Videos up to {minutes} minutes.", // nuevo
+  "audio.extract.search": "Search videos", // nuevo
+  "audio.extract.empty": "No videos in your Media Bank yet.", // nuevo
+  "audio.extract.noMatches": "No videos match “{q}”.", // nuevo
+  "audio.extract.loadError": "We couldn't load your videos.", // nuevo
+  "audio.extract.retry": "Retry", // nuevo
+  "audio.extract.tooLong": "longer than {minutes} min", // nuevo
+  "audio.extract.start": "Extract audio", // nuevo
+  "audio.extract.running": "Extracting the audio…", // nuevo
+  "audio.extract.done": "Done. The track is in your audio library.", // nuevo
+  "audio.extract.close": "Close", // nuevo
+  "audio.extract.error.media_not_found": "That video isn't in your Media Bank anymore.", // nuevo
+  "audio.extract.error.no_audio": "That video has no sound.", // nuevo
+  "audio.extract.error.too_long": "That video is longer than {minutes} minutes.", // nuevo
+  "audio.extract.error.too_large": "That video file is too big to process.", // nuevo
+  "audio.extract.error.extract_failed": "We couldn't extract the audio. Try again.", // nuevo
+  "audio.extract.error.start": "We couldn't start the extraction. Try again.", // nuevo
 
   // ── Sprint 7 (F): Content Studio, Media Bank y posts propios ──
   "studio.hub.description":
@@ -1182,6 +1228,18 @@ export const webEn = {
   "influencers.base.newPerson":
     "Regenerations produce a brand-new person, not edits to this one.", // literal FR-080
   "influencers.base.cost": "About {cost} per image", // nuevo
+  /* ------ Sprint 7, segunda tanda (I): formatos IA desde «Create from prompt» */
+  "prompt.gen.option": "{label} · AI video", // nuevo
+  "prompt.gen.optionDisabled": "{label} · needs a video model", // nuevo
+  "prompt.gen.estimating": "Checking what this clip costs…", // nuevo
+  "prompt.gen.confirm":
+    "This clip costs about {cost}. It lands in your Library, not in the deck.", // nuevo
+  "prompt.gen.generate": "Generate video", // nuevo
+  "prompt.gen.estimateFailed": "Couldn't check the cost of that clip. Try again.", // nuevo
+  "prompt.gen.startFailed": "Couldn't start that video. Try again.", // nuevo
+  "prompt.gen.ready": "Your video is ready in your Library.", // nuevo
+  "prompt.gen.statusFailed":
+    "Lost track of that video. Check your Library in a few minutes.", // nuevo
 } as const;
 
 export type WebMessageKey = keyof typeof webEn;

@@ -18,6 +18,8 @@ import { anyInProgress, useBrandSources } from "@/lib/brand/sources";
 import { AnglesCard } from "./AnglesCard";
 import { BrandSourcesCard } from "./BrandSourcesCard";
 import { LogoCard } from "./LogoCard";
+import { invalidateOffer } from "./post-analysis-offer";
+import { PostAnalysisOfferCard } from "./PostAnalysisOfferCard";
 import { ProfilingCard } from "./ProfilingCard";
 import { ProposalsCard } from "./ProposalsCard";
 import { ProfileSection } from "./ProfileSection";
@@ -56,6 +58,8 @@ export function BrandProfile() {
   useEffect(() => {
     if (wasInProgress.current && !inProgress) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.brandProfile() });
+      // P1-ONB-007: la oferta aparece recién cuando el análisis terminó.
+      invalidateOffer(queryClient);
     }
     wasInProgress.current = inProgress;
   }, [inProgress, queryClient]);
@@ -92,6 +96,7 @@ export function BrandProfile() {
         {data.status === "failed" && (
           <p className="fgw-brand__notice">{tw("brand.profile.failed")}</p>
         )}
+        <PostAnalysisOfferCard />
         <ProposalsCard poll={inProgress} />
         {quickCheck.length > 0 && (
           <aside className="fgw-brand__quick-check" aria-labelledby="brand-quick-check">

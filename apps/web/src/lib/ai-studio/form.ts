@@ -191,6 +191,26 @@ export function isInFlight(g: Pick<Generation, "status">): boolean {
 }
 
 /**
+ * Pasado este tiempo en vuelo, la tarjeta dice ERR-L09 (*"Taking longer than
+ * expected…"*, PRD §19.2) — `P5-ERR-001`.
+ *
+ * El PRD no da el umbral. 3 minutos es la decisión conservadora: los
+ * proveedores de imagen devuelven en segundos y un video corto tarda del orden
+ * de un minuto o dos, así que antes de eso el aviso sería ruido. Si se ajusta,
+ * que sea con latencias medidas, no a ojo.
+ */
+export const SLOW_GENERATION_MS = 3 * 60_000;
+
+export function isSlow(
+  g: Pick<Generation, "status" | "createdAt">,
+  nowMs: number,
+): boolean {
+  if (!isInFlight(g)) return false;
+  const started = Date.parse(g.createdAt);
+  return Number.isFinite(started) && nowMs - started >= SLOW_GENERATION_MS;
+}
+
+/**
  * Cada cuánto se vuelve a pedir la galería: rápido mientras algo está en
  * vuelo (el worker hace polling al proveedor cada 2–10 s), nada si no.
  */

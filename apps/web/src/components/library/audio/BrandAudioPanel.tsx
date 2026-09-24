@@ -15,6 +15,7 @@ import {
 import { useAudioPreview } from "@/lib/audio/preview";
 import { flattenItems } from "@/lib/editor/api";
 import { tw } from "@/lib/i18n/t";
+import { ExtractFromVideoButton } from "./ExtractFromVideoDialog";
 
 /**
  * La biblioteca de audio de la marca en la Library (sprint 7): ver, buscar,
@@ -72,9 +73,13 @@ export function BrandAudioPanel() {
               e.target.value = "";
             }}
           />
-          <Button loading={upload.isPending} onClick={() => fileRef.current?.click()}>
-            {upload.isPending ? tw("audio.uploading") : tw("audio.upload")}
-          </Button>
+          <div className="flex flex-wrap justify-end gap-2">
+            {/* Sprint 7, segunda tanda (H): el audio de un video del Media Bank. */}
+            <ExtractFromVideoButton />
+            <Button loading={upload.isPending} onClick={() => fileRef.current?.click()}>
+              {upload.isPending ? tw("audio.uploading") : tw("audio.upload")}
+            </Button>
+          </div>
           <span className="text-xs text-text-muted">
             {tw("audio.upload.formats", { max: BRAND_AUDIO_MAX_MB })}
           </span>
@@ -120,15 +125,18 @@ export function BrandAudioPanel() {
       )}
 
       {query.isSuccess && tracks.length === 0 && (
-        <EmptyState
-          bordered
-          title={
-            searching
-              ? tw("audio.picker.noMatches", { q: q.trim() })
-              : tw("audio.panel.emptyTitle")
-          }
-          {...(searching ? {} : { description: tw("audio.panel.emptyBody") })}
-        />
+        // Región viva: el "sin resultados" de la búsqueda se anuncia (J, a11y).
+        <div role="status">
+          <EmptyState
+            bordered
+            title={
+              searching
+                ? tw("audio.picker.noMatches", { q: q.trim() })
+                : tw("audio.panel.emptyTitle")
+            }
+            {...(searching ? {} : { description: tw("audio.panel.emptyBody") })}
+          />
+        </div>
       )}
 
       {tracks.length > 0 && (
@@ -163,6 +171,12 @@ export function BrandAudioPanel() {
     </section>
   );
 }
+
+const ORIGIN_COPY = {
+  upload: "audio.panel.origin.upload",
+  import: "audio.panel.origin.import",
+  extracted: "audio.panel.origin.extracted",
+} as const satisfies Record<BrandAudioTrack["origin"], string>;
 
 function TrackRow({
   track,
@@ -249,15 +263,7 @@ function TrackRow({
           <>
             <p className="m-0 truncate text-sm font-medium">{track.title}</p>
             <p className="m-0 text-xs text-text-muted">
-              {[
-                tw(
-                  track.origin === "import"
-                    ? "audio.panel.origin.import"
-                    : "audio.panel.origin.upload",
-                ),
-                duration,
-                `${track.sizeMb.toFixed(1)} MB`,
-              ]
+              {[tw(ORIGIN_COPY[track.origin]), duration, `${track.sizeMb.toFixed(1)} MB`]
                 .filter((part): part is string => part !== null)
                 .join(" · ")}
             </p>

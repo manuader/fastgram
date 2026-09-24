@@ -170,4 +170,41 @@ describe("ScheduleDialog", () => {
     ).toBe(true);
     expect(screen.getByText("The X text is over the limit.")).toBeTruthy();
   });
+
+  // P5-A11Y-001
+  describe("accesibilidad", () => {
+    it("el modal se describe con su DialogDescription y el contador no es región viva", async () => {
+      renderDialog();
+      await screen.findByDisplayValue("Caption derivada");
+      const dialog = screen.getByRole("dialog", { name: "Schedule post" });
+      const describedBy = dialog.getAttribute("aria-describedby");
+      expect(describedBy).not.toBeNull();
+      expect(document.getElementById(String(describedBy))?.textContent).not.toBe("");
+      // Leer "17/280" en cada tecla es ruido: el contador no es `aria-live`.
+      expect(screen.getByText("16/280").closest("[aria-live]")).toBeNull();
+    });
+
+    it("lo que bloquea el envío vive en una región que se anuncia", async () => {
+      const user = userEvent.setup();
+      renderDialog();
+      const field = await screen.findByDisplayValue("Caption derivada");
+      await user.clear(field);
+      await user.click(field);
+      await user.paste("a".repeat(281));
+      const problem = screen.getByText("The X text is over the limit.");
+      expect(problem.closest("[aria-live='polite']")).not.toBeNull();
+    });
+
+    it("una hora pasada: el campo queda inválido y describe el porqué", async () => {
+      const user = userEvent.setup();
+      renderDialog();
+      await screen.findByDisplayValue("Caption derivada");
+      const date = screen.getByLabelText("Date");
+      await user.clear(date);
+      await user.type(date, "2001-01-01");
+      expect(date).toHaveAttribute("aria-invalid", "true");
+      const hint = document.getElementById(String(date.getAttribute("aria-describedby")));
+      expect(hint?.textContent).toBe("Pick a time in the future, or use Post now.");
+    });
+  });
 });

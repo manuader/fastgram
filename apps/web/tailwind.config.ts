@@ -43,6 +43,21 @@ export default {
         danger: "var(--fg-color-danger)",
         info: "var(--fg-color-info)",
       },
+      // `P5-A11Y-001` (sprint 7): el **texto** de color va con los tokens
+      // `-text`, no con el tono de relleno. `text-warning` pintaba `warning-600`
+      // sobre blanco (3,2:1) y `text-success` `success-600` (3,3:1): los dos por
+      // debajo de AA para texto normal, en 31 lugares. `text-accent` (3,6:1) y
+      // `text-danger` en oscuro sobre raised (4,0:1) tampoco llegaban. Los
+      // `-text` son los que el design system ya usa en sus badges, y
+      // `tokens.contrast.test.ts` los cubre en los dos temas. `bg-*` y
+      // `border-*` siguen con el tono de relleno: ahí manda el 3:1 de UI.
+      textColor: {
+        accent: "var(--fg-color-accent-text)",
+        success: "var(--fg-color-success-text)",
+        warning: "var(--fg-color-warning-text)",
+        danger: "var(--fg-color-danger-text)",
+        info: "var(--fg-color-info-text)",
+      },
       fontFamily: {
         sans: "var(--fg-font-sans)",
         mono: "var(--fg-font-mono)",

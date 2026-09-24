@@ -160,11 +160,17 @@ export function MediaPickerDialog({
             ) : items.length === 0 ? (
               <EmptyState
                 bordered
+                // P5-ERR-001: ERR-E06 literal para imágenes sin filtro.
                 title={tw(
                   filters.size > 0
                     ? "editor.picker.filteredEmpty"
-                    : "editor.picker.empty",
+                    : type === "image"
+                      ? "empty.imagePicker.title"
+                      : "editor.picker.empty",
                 )}
+                {...(filters.size === 0 && type === "image"
+                  ? { description: tw("editor.picker.empty") }
+                  : {})}
               />
             ) : (
               <>

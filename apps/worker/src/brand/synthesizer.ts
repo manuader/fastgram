@@ -46,8 +46,21 @@ export interface BrandSynthesisOutcome {
   readonly model: string;
 }
 
+/**
+ * `P1-ONB-005`: avisos de progreso. El handler los usa para escribir la fase
+ * real de la fuente; un aviso que falla no aborta la síntesis (lo decide
+ * quien lo pasa: el handler traga sus propios errores).
+ */
+export interface SynthesisProgress {
+  /** Se llama justo antes de verificar los campos con `JV-4`, si hay verificador. */
+  readonly onVerifying?: () => Promise<void>;
+}
+
 export interface BrandSynthesizer {
-  synthesize(input: SynthesisInput): Promise<BrandSynthesisOutcome>;
+  synthesize(
+    input: SynthesisInput,
+    progress?: SynthesisProgress,
+  ): Promise<BrandSynthesisOutcome>;
 }
 
 /**
@@ -89,7 +102,10 @@ export function createLlmBrandSynthesizer(
 ): BrandSynthesizer {
   const fence = deps.fence ?? randomFence;
   return {
-    async synthesize(input: SynthesisInput): Promise<BrandSynthesisOutcome> {
+    async synthesize(
+      input: SynthesisInput,
+      progress?: SynthesisProgress,
+    ): Promise<BrandSynthesisOutcome> {
       const request = buildBrandSynthesisRequest(input, fence());
       const completion = await deps.llm.completeJson({
         messages: request.messages,
@@ -106,10 +122,15 @@ export function createLlmBrandSynthesizer(
         corpus: request.corpus,
       });
       if (!parsed.ok) throw new SynthesisRejectedError(parsed.reason);
-      const fields =
+      const verifier =
         deps.verifier === undefined || input.companyId === undefined
+          ? null
+          : deps.verifier;
+      if (verifier !== null) await progress?.onVerifying?.();
+      const fields =
+        verifier === null || input.companyId === undefined
           ? parsed.fields
-          : await deps.verifier.verify(parsed.fields, {
+          : await verifier.verify(parsed.fields, {
               companyId: input.companyId,
               sourceId: input.sourceId,
             });

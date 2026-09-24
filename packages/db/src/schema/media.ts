@@ -166,7 +166,8 @@ export const audioTracks = pgTable(
  * `@fastgram/contracts`): es el prefijo que el build autoriza como librería
  * para el rol `audio` del render.
  */
-export const BRAND_AUDIO_ORIGINS = ["upload", "import"] as const;
+/** `extracted` (`0031`): el audio de un video del Media Bank (cola `audio-extract`). */
+export const BRAND_AUDIO_ORIGINS = ["upload", "import", "extracted"] as const;
 export type BrandAudioOrigin = (typeof BRAND_AUDIO_ORIGINS)[number];
 
 export const brandAudioTracks = pgTable(

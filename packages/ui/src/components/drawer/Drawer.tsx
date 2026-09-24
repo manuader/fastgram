@@ -21,6 +21,8 @@ interface DrawerContextValue {
   titleId: string;
   descriptionId: string;
   onClose: () => void;
+  /** Igual que en `Dialog`: la descripción montada se enlaza con `aria-describedby`. */
+  setDescribedBy: (id: string | null) => void;
 }
 
 const DrawerContext = createContext<DrawerContextValue | null>(null);
@@ -69,6 +71,7 @@ export function Drawer({
 }: DrawerProps) {
   const reactId = useId();
   const [mounted, setMounted] = useState(false);
+  const [describedBy, setDescribedBy] = useState<string | null>(null);
   const modalOptions =
     initialFocusRef === undefined
       ? { open, onClose, closeOnEscape }
@@ -86,7 +89,7 @@ export function Drawer({
   const label = props["aria-label"];
 
   return createPortal(
-    <DrawerContext.Provider value={{ titleId, descriptionId, onClose }}>
+    <DrawerContext.Provider value={{ titleId, descriptionId, onClose, setDescribedBy }}>
       <div
         className={cn("fg-overlay", "fg-overlay--drawer", overlayClassName)}
         onMouseDown={(event) => {
@@ -100,6 +103,7 @@ export function Drawer({
           aria-modal="true"
           aria-label={label}
           aria-labelledby={label === undefined ? titleId : undefined}
+          aria-describedby={describedBy ?? undefined}
           tabIndex={-1}
           className={cn(drawerVariants({ side, size }), className)}
           onKeyDown={onKeyDown}
@@ -128,13 +132,16 @@ export function DrawerDescription({
   id,
   ...props
 }: ComponentPropsWithRef<"p">) {
-  const { descriptionId } = useDrawerContext("DrawerDescription");
+  const { descriptionId, setDescribedBy } = useDrawerContext("DrawerDescription");
+  const finalId = id ?? descriptionId;
+  useEffect(() => {
+    setDescribedBy(finalId);
+    return () => {
+      setDescribedBy(null);
+    };
+  }, [finalId, setDescribedBy]);
   return (
-    <p
-      {...props}
-      id={id ?? descriptionId}
-      className={cn("fg-drawer__description", className)}
-    />
+    <p {...props} id={finalId} className={cn("fg-drawer__description", className)} />
   );
 }
 

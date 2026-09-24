@@ -159,6 +159,8 @@ export async function acceptForAutopilot(
               ? null
               : content.generatedText,
           remixSourceUrl: content.remixSourceUrl ?? null,
+          // Migración `0032`: el personaje de la sugerencia, para el auto-slot.
+          influencerId: content.influencerId ?? null,
           revision: content.revision,
           buildPayload,
           saveBucket: content.saveBucket,

@@ -2,7 +2,7 @@
 
 import { useDraggable } from "@dnd-kit/core";
 import type { CalendarItem, PostStatus } from "@fastgram/contracts";
-import { createContext, useContext, type CSSProperties } from "react";
+import { createContext, useContext, type CSSProperties, type KeyboardEvent } from "react";
 import { dragIdOf, NETWORK_CHIP_COLOR, NETWORK_LABEL } from "@/lib/calendar/board";
 import { formatChipTime } from "@/lib/calendar/calendar";
 import { tw } from "@/lib/i18n/t";
@@ -35,6 +35,24 @@ function statusTone(status: CalendarItem["status"]): string {
 export const CalendarOpenContext = createContext<((item: CalendarItem) => void) | null>(
   null,
 );
+
+/**
+ * La tecla que abre un post desde el teclado — `P5-A11Y-001`.
+ *
+ * Enter y Espacio **ya son de dnd-kit** en un chip movible: arrancan el
+ * arrastre con teclado (y soltarlo con otra Enter). Robarle una rompe mover
+ * sin mouse, que es justo la alternativa que exige WCAG 2.5.7. Así que abrir
+ * va por una tecla propia, `E` ("edit"), anunciada con `aria-keyshortcuts` y
+ * en el texto de ayuda de la pantalla. En un chip **no** movible (ya salió o
+ * falló) Enter y Espacio están libres, y también abren.
+ */
+export const OPEN_POST_KEY = "e";
+
+function isOpenKey(event: KeyboardEvent, movable: boolean): boolean {
+  if (event.altKey || event.ctrlKey || event.metaKey) return false;
+  if (event.key.toLowerCase() === OPEN_POST_KEY) return true;
+  return !movable && (event.key === "Enter" || event.key === " ");
+}
 
 /**
  * Un post o un slot planificado · F-141 (PRD:1659) + `PU-CAL-002`.
@@ -78,6 +96,24 @@ export function CalendarChip({ item, timeZone, showBrand, roomy }: CalendarChipP
     ...(openItem !== null && item.kind === "post" ? { cursor: "pointer" } : {}),
   };
 
+  const open =
+    openItem !== null && item.kind === "post"
+      ? () => {
+          openItem(item);
+        }
+      : null;
+  const dndKeyDown = item.movable ? listeners?.["onKeyDown"] : undefined;
+  const onKeyDown = (event: KeyboardEvent<HTMLLIElement>): void => {
+    // Durante un arrastre con teclado la `E` no abre nada: el foco es del
+    // arrastre hasta que se suelte o se cancele.
+    if (open !== null && !isDragging && isOpenKey(event, item.movable)) {
+      event.preventDefault();
+      open();
+      return;
+    }
+    (dndKeyDown as ((e: KeyboardEvent<HTMLLIElement>) => void) | undefined)?.(event);
+  };
+
   const label = [
     showBrand ? item.brandName : null,
     tw("calendar.chip.label", { title, time, status }),
@@ -96,12 +132,15 @@ export function CalendarChip({ item, timeZone, showBrand, roomy }: CalendarChipP
       title={planned ? tw("calendar.chip.plannedHint", { network }) : label}
       style={style}
       {...(item.movable ? { ...attributes, ...listeners } : {})}
+      // Un chip que ya salió no es arrastrable, pero sí se abre: sin esto era
+      // un `<li>` con `onClick` al que el teclado no llegaba.
+      {...(open !== null && !item.movable ? { role: "button", tabIndex: 0 } : {})}
       aria-label={label}
-      {...(openItem !== null && item.kind === "post"
+      {...(open !== null
         ? {
-            onClick: () => {
-              openItem(item);
-            },
+            onClick: open,
+            onKeyDown,
+            "aria-keyshortcuts": item.movable ? "E" : "Enter Space E",
           }
         : {})}
     >

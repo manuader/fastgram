@@ -182,13 +182,19 @@ export function AudioPickerDialog({
             />
           </div>
         )}
-        {query.isSuccess && tracks.length === 0 && (
-          <p className="mt-3 text-xs text-text-muted">
-            {searching
-              ? tw("audio.picker.noMatches", { q: q.trim() })
-              : tw("audio.picker.empty")}
-          </p>
-        )}
+        {/* Región viva (P5-A11Y-001): al buscar, "no hay resultados" se anuncia
+            sin mover el foco del campo. ERR-E07 (`No audio`, literal) ya es la
+            primera opción de la lista: repetirlo como título del vacío pondría
+            dos "No audio" que significan cosas distintas. */}
+        <div role="status" className="mt-3">
+          {query.isSuccess && tracks.length === 0 && (
+            <p className="m-0 text-xs text-text-muted">
+              {searching
+                ? tw("audio.picker.noMatches", { q: q.trim() })
+                : tw("audio.picker.empty")}
+            </p>
+          )}
+        </div>
         <p className="mt-3 text-xs text-text-muted">
           {format === "green-screen"
             ? tw("audio.picker.hintGreenScreen")

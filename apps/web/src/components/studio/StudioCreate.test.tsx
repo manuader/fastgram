@@ -132,4 +132,26 @@ describe("StudioCreate · wall of text", () => {
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(push).not.toHaveBeenCalled();
   });
+
+  it("ERR-L01: mientras crea, `Generating...` en el botón y la región viva", async () => {
+    const user = userEvent.setup();
+    requestMock.mockReturnValue(
+      new Promise<never>(() => {
+        /* queda creando: sólo importa el estado intermedio */
+      }),
+    );
+    renderStudio();
+    await user.click(screen.getByRole("button", { name: "Choose" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(await within(dialog).findByRole("button", { name: "bg.mp4" }));
+    await user.click(within(dialog).getByRole("button", { name: "Use" }));
+    await user.type(screen.getByRole("textbox", { name: "Text" }), "x");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    const button = await screen.findByRole("button", { name: "Generating..." });
+    expect(button).toBeDisabled();
+    expect(screen.getByText("Generating your content...")).toHaveAttribute(
+      "role",
+      "status",
+    );
+  });
 });

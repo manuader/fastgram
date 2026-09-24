@@ -125,6 +125,13 @@ describe("AudioPickerDialog · biblioteca de la marca", () => {
     expect(await screen.findByText(/audio library is empty/i)).toBeTruthy();
   });
 
+  it("el vacío y el sin-resultados viven en una región viva (P5-A11Y-001)", async () => {
+    listMock.mockResolvedValue({ items: [], cursor: null, hasMore: false });
+    renderPicker();
+    const empty = await screen.findByText(/audio library is empty/i);
+    expect(empty.closest('[role="status"]')).not.toBeNull();
+  });
+
   it("un fallo de la API se ve como error, con reintento", async () => {
     listMock.mockRejectedValue(
       new ApiRequestError({ code: "service_unavailable", status: 503 }),

@@ -53,6 +53,16 @@
  * de ese motivo (`ERR-B07`) nombra a la **plataforma**, y la plataforma
  * respondió bien. La columna es nullable y el contrato lo omite.
  *
+ * ## Fases visibles (`P1-ONB-005`, migración `0031`)
+ *
+ * Al entrar a cada etapa se escribe `brand_sources.analysis_phase`
+ * (`collecting` → `reading_links` → `synthesizing` → `verifying`), con
+ * `WHERE status = 'analyzing'`; completar o fallar la limpian. No son
+ * porcentajes: son las etapas que este código recorre. `reading_links` sólo si
+ * la red tiene links que seguir, y `verifying` sólo con verificador. El tier D
+ * asistido arranca en `synthesizing` (no hay nada que leer). Escribir la fase
+ * es de mejor esfuerzo: si falla, se loguea y el análisis sigue.
+ *
  * ## Idempotencia
  *
  * La forma está en `packages/db/src/repositories/brand-analysis.ts`: reclamar
@@ -84,6 +94,7 @@ import {
 } from "@fastgram/core";
 import {
   brandAnalysisStore,
+  type BrandSourceAnalysisPhase,
   withCompany,
   type BrandSourceRow,
   type Database,
@@ -347,6 +358,28 @@ export function createBrandSourceAnalysisHandler(
     return { kind: "ok", tier, profile, items, signalsFailed };
   }
 
+  /** La fase visible (`0031`). De mejor esfuerzo: nunca aborta el análisis. */
+  async function phase(
+    job: BrandSourceAnalysisJob,
+    next: BrandSourceAnalysisPhase,
+  ): Promise<void> {
+    try {
+      await inCompany(job.companyId, (tx) =>
+        brandAnalysisStore.setBrandSourceAnalysisPhase(
+          tx,
+          { companyId: job.companyId },
+          job.brandSourceId,
+          next,
+        ),
+      );
+    } catch (error: unknown) {
+      deps.logger.warn(
+        { brandSourceId: job.brandSourceId, phase: next, error },
+        "no se pudo escribir la fase del análisis",
+      );
+    }
+  }
+
   async function fail(
     job: BrandSourceAnalysisJob,
     reason: BrandSourceFailureReason | null,
@@ -464,6 +497,7 @@ export function createBrandSourceAnalysisHandler(
         );
         return;
       }
+      await phase(job, "collecting");
       collected = await collect(reader, row, job);
     }
     if (collected.kind === "unavailable") {
@@ -488,10 +522,12 @@ export function createBrandSourceAnalysisHandler(
       sourceType !== "website" &&
       sourceType !== "other_url"
     ) {
-      const extra = await followLinkInBio(
-        linkReader,
-        linkInBioTargets(collected.profile.links, row.canonicalUrl ?? undefined),
+      const targets = linkInBioTargets(
+        collected.profile.links,
+        row.canonicalUrl ?? undefined,
       );
+      if (targets.length > 0) await phase(job, "reading_links");
+      const extra = await followLinkInBio(linkReader, targets);
       if (extra.length > 0) {
         items = [...items, ...extra];
         deps.logger.info({ ...base, links: extra.length }, "link-in-bio leído");
@@ -500,14 +536,18 @@ export function createBrandSourceAnalysisHandler(
 
     // ── Etapa 3: síntesis ───────────────────────────────────────────────────
     let synthesis;
+    await phase(job, "synthesizing");
     try {
-      synthesis = await deps.synthesizer.synthesize({
-        companyId: job.companyId,
-        sourceId: row.id,
-        sourceType,
-        profile: collected.profile,
-        items,
-      });
+      synthesis = await deps.synthesizer.synthesize(
+        {
+          companyId: job.companyId,
+          sourceId: row.id,
+          sourceType,
+          profile: collected.profile,
+          items,
+        },
+        { onVerifying: () => phase(job, "verifying") },
+      );
     } catch (error: unknown) {
       await terminal(classifySynthesisError(error));
       return;

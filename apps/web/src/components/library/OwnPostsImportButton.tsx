@@ -96,7 +96,7 @@ function ImportBody({ onClose }: { readonly onClose: () => void }) {
         <DialogBody>
           {data === undefined || !isOwnImportSettled(data) ? (
             <p className="flex items-center gap-2 text-sm" aria-live="polite">
-              <Spinner size="sm" /> {tw("ownPosts.running")}
+              <Spinner size="sm" aria-hidden="true" /> {tw("ownPosts.running")}
             </p>
           ) : data.state === "failed" ? (
             <p role="alert" className="text-sm text-danger">

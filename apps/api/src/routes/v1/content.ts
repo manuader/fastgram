@@ -40,12 +40,12 @@
  *   (PRD:1186), y por eso encolan en `content-rebuild`, cuyo handler **no
  *   reembolsa** al fallar: el `saveBucket` de la fila es del build original.
  *
- * - **No valida que las URLs del payload pertenezcan al Media Bank** (FR-070,
- *   PRD:1459). La mitad se puede —`media` está scopeado por workspace— pero la
- *   otra mitad, *"o a la librería compartida"*, **no tiene tabla**: el único
- *   catálogo global del schema es `audio_tracks`. Validar sólo contra `media`
- *   devolvería `400` a toda URL legítima de la librería, que es un fallo peor que
- *   el que la validación evita.
+ * - (Hasta el sprint 7 decía que `POST /content` **no** validaba las URLs del
+ *   payload contra el Media Bank, porque la "librería compartida" de FR-070 no
+ *   tenía tabla. Desde `P2-RENDER-009` sí valida: la librería de audio existe y
+ *   es **por marca**, y el render ya rechazaba toda URL fuera de los prefijos del
+ *   workspace — sólo que después de cobrar y encolar. Ver
+ *   {@link foreignPayloadAssets}.)
  *
  * ## Lo que sí queda garantizado
  *
@@ -59,6 +59,7 @@ import { z } from "zod";
 import {
   CONTENT_BUILD_DELETE_GRACE_MINUTES,
   CONTENT_TYPE_EXTENSIONS,
+  brandAudioKeyPrefix,
   contentBuildPayloadSchema,
   contentTextBoxSchema,
   createContentRequestSchema,
@@ -101,12 +102,13 @@ import {
   type AssetSwaps,
   type IncomingAsset,
 } from "@fastgram/core";
-import { MAX_SIGNED_URL_TTL_SECONDS, type Queue } from "@fastgram/ports";
+import { MAX_SIGNED_URL_TTL_SECONDS, type Queue, type Storage } from "@fastgram/ports";
 import { randomUUID } from "node:crypto";
 import type { FastifyReply } from "fastify";
 
 import { rateLimit } from "../../plugins/rate-limit.js";
 import { canFinalize } from "../../http/uploads.js";
+import { canonicalObjectUrl } from "../../support/upload-reservations.js";
 import { toContent, type ContentResource } from "../../support/serializers.js";
 import { consumeContentSave, quotaPolicyFor } from "../../support/quota.js";
 import { crossTenant, data, idempotencyKeyOf, page, withIdempotency } from "./shared.js";
@@ -529,6 +531,101 @@ async function ownsAsset(
   return matches > 0;
 }
 
+/**
+ * Las URLs de un payload de `POST /content` que **no** son de esta marca —
+ * `P2-RENDER-009`, FR-070 (PRD:1459).
+ *
+ * Una URL vale si cae bajo un prefijo del workspace o si es un asset vivo suyo:
+ *
+ *  - Imagen o video: bajo `media/{companyId}/` (Media Bank),
+ *    `influencers/{companyId}/` (imágenes base del personaje) o
+ *    `content/custom-video/{companyId}/` (video propio del Studio). Son los
+ *    mismos prefijos que el render autoriza (`apps/worker/src/content/
+ *    media-authorization.ts`); aceptar menos rechazaría acá piezas que el render
+ *    construye, y aceptar más sólo movería el rechazo a después de cobrar.
+ *  - Audio: bajo `audio/{companyId}/` (la biblioteca de la marca).
+ *  - Si no cae bajo ningún prefijo, {@link ownsAsset}: una fila `ready` del
+ *    Media Bank con esa URL exacta, una pista de la biblioteca de la marca, o del
+ *    catálogo global. Cubre URLs guardadas con otra base (un bucket que cambió
+ *    de `S3_PUBLIC_URL`) sin abrir nada: la fila ya está scopeada por marca.
+ *
+ * Los prefijos se derivan con `canonicalObjectUrl` —la misma función que arma
+ * las URLs que se persisten— y llevan la barra final para que `media/ws-1/` no
+ * matchee `media/ws-10/`. Una URL con `..` se normaliza al parsearla, así que
+ * `…/media/{id}/../{otro}/x.mp4` no pasa el prefijo.
+ */
+async function foreignPayloadAssets(
+  tx: Transaction,
+  storage: Storage,
+  companyId: string,
+  payload: ContentBuildPayload,
+): Promise<string[]> {
+  const mediaPrefixes = await Promise.all(
+    [
+      `media/${companyId}/`,
+      `influencers/${companyId}/`,
+      `content/custom-video/${companyId}/`,
+    ].map((key) => canonicalObjectUrl(storage, key)),
+  );
+  const audioPrefix = await canonicalObjectUrl(
+    storage,
+    `${brandAudioKeyPrefix(companyId)}/`,
+  );
+  const type = contentTypeOf(payload);
+
+  const foreign: string[] = [];
+  for (const asset of payloadAssets(payload)) {
+    const url = normalizedUrl(asset.url);
+    const prefixes = asset.kind === "audio" ? [audioPrefix] : mediaPrefixes;
+    if (url !== null && prefixes.some((prefix) => url.startsWith(prefix))) continue;
+    if (await ownsAsset(tx, companyId, type, asset)) continue;
+    foreign.push(asset.slot);
+  }
+  return foreign;
+}
+
+/** `null` si no parsea; el contrato ya exige `url()`, así que es defensivo. */
+function normalizedUrl(raw: string): string | null {
+  try {
+    const url = new URL(raw);
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Cada URL de media que el payload le va a pedir al render, con su slot.
+ *
+ * Es el espejo de `mediaUrlsOf` del worker, del lado del payload del contrato.
+ * El `switch` implícito por forma cubre los cuatro formatos del contrato: un
+ * formato nuevo que agregue un slot tiene que sumarse acá, o su URL pasaría sin
+ * validar hasta el render (que igual la rechaza).
+ */
+function payloadAssets(payload: ContentBuildPayload): IncomingAsset[] {
+  if ("images" in payload) {
+    return payload.images.map((slide, index) => ({
+      url: slide.image.url,
+      kind: "image",
+      slot: `slides[${String(index)}]`,
+    }));
+  }
+  const out: IncomingAsset[] = [];
+  if ("hook_video" in payload) {
+    out.push({ url: payload.hook_video.url, kind: "video", slot: "hook_video" });
+    out.push({ url: payload.demo_video.url, kind: "video", slot: "demo_video" });
+  } else {
+    if ("image" in payload)
+      out.push({ url: payload.image.url, kind: "image", slot: "image" });
+    out.push({ url: payload.video.url, kind: "video", slot: "video" });
+  }
+  if (payload.audio !== undefined) {
+    out.push({ url: payload.audio.url, kind: "audio", slot: "audio" });
+  }
+  return out;
+}
+
 /** Fila de `contents` tal como la devuelve el repositorio. */
 type ContentRow = Awaited<ReturnType<typeof contentRepository.findById>>;
 type LiveContentRow = NonNullable<ContentRow>;
@@ -753,61 +850,80 @@ export function registerContentRoutes(app: ZodApp): void {
       const companyId = request.auth.companyId;
       const type = contentTypeOf(body);
 
-      return withIdempotency(
-        idempotency,
-        request,
-        reply,
-        {
-          key: idempotencyKeyOf(request.headers),
-          route: "POST /content",
-          body,
-          successStatus: 201,
-        },
-        () =>
-          request.tx(async (tx) => {
-            // **Antes de crear y antes de encolar** — el PRD lo pide literal
-            // (§9.4): *"reserva la allowance antes de la generación del modelo,
-            // y la libera si falla"*. Cobrar después dejaría trabajo hecho y no
-            // pagado si algo se cae en el medio. Si no alcanza, lanza
-            // `content_quota_exceeded`, que sale como `402` (§19.8).
-            const save = await consumeContentSave(
-              tx,
-              { companyId },
-              clock,
-              quotaPolicyFor(app.deps.mode),
-            );
+      try {
+        return await withIdempotency(
+          idempotency,
+          request,
+          reply,
+          {
+            key: idempotencyKeyOf(request.headers),
+            route: "POST /content",
+            body,
+            successStatus: 201,
+          },
+          () =>
+            request.tx(async (tx) => {
+              // `P2-RENDER-009`: media ajena, `400` antes de cobrar y de encolar.
+              // Lanzar acá libera la idempotency key (un rechazo determinista no
+              // la quema) y no deja nada escrito.
+              const foreign = await foreignPayloadAssets(tx, storage, companyId, body);
+              if (foreign.length > 0) {
+                throw new ContentRejection(
+                  400,
+                  "bad_request",
+                  "Pick media from your Media Bank and audio from your library.",
+                  { invalidAssets: foreign },
+                );
+              }
 
-            const row = await contentRepository.create(
-              tx,
-              { companyId },
-              {
-                type,
-                status: "BUILDING",
-                // DATA-008 lo marca como nunca devuelto por la API; se guarda
-                // porque es lo único que el worker necesita para construir.
-                buildPayload: body,
-                // De qué bucket salió y a qué período: `refundSave` devuelve
-                // **al bucket del que salió** y al ledger que lo cobró. Los tres
-                // buckets tienen precio distinto (`FR-050`), y el período se
-                // guarda porque derivarlo depende del ancla, que puede cambiar.
-                saveBucket: save.bucket,
-                savePeriod: save.period,
-              },
-            );
+              // **Antes de crear y antes de encolar** — el PRD lo pide literal
+              // (§9.4): *"reserva la allowance antes de la generación del modelo,
+              // y la libera si falla"*. Cobrar después dejaría trabajo hecho y no
+              // pagado si algo se cae en el medio. Si no alcanza, lanza
+              // `content_quota_exceeded`, que sale como `402` (§19.8).
+              const save = await consumeContentSave(
+                tx,
+                { companyId },
+                clock,
+                quotaPolicyFor(app.deps.mode),
+              );
 
-            // Último, y en la misma transacción: si la cola no responde, el
-            // `throw` aborta el INSERT y no queda una pieza sin trabajo (ADR-005).
-            await enqueueBuild(queue, tx, {
-              companyId,
-              contentId: row.id,
-              contentType: row.type,
-              revision: row.revision,
-              reason: "create",
-            });
+              const row = await contentRepository.create(
+                tx,
+                { companyId },
+                {
+                  type,
+                  status: "BUILDING",
+                  // DATA-008 lo marca como nunca devuelto por la API; se guarda
+                  // porque es lo único que el worker necesita para construir.
+                  buildPayload: body,
+                  // De qué bucket salió y a qué período: `refundSave` devuelve
+                  // **al bucket del que salió** y al ledger que lo cobró. Los tres
+                  // buckets tienen precio distinto (`FR-050`), y el período se
+                  // guarda porque derivarlo depende del ancla, que puede cambiar.
+                  saveBucket: save.bucket,
+                  savePeriod: save.period,
+                },
+              );
 
-            return toContent(row);
-          }),
-      );
+              // Último, y en la misma transacción: si la cola no responde, el
+              // `throw` aborta el INSERT y no queda una pieza sin trabajo (ADR-005).
+              await enqueueBuild(queue, tx, {
+                companyId,
+                contentId: row.id,
+                contentType: row.type,
+                revision: row.revision,
+                reason: "create",
+              });
+
+              return toContent(row);
+            }),
+        );
+      } catch (e) {
+        const rejected = sendRejection(reply, e);
+        if (rejected !== null) return rejected;
+        throw e;
+      }
     },
   );
 

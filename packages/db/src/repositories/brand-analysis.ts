@@ -37,7 +37,12 @@
 import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 
 import type { Executor } from "../client.js";
-import { brandSources, brandSourceSnapshots, companyProfiles } from "../schema/index.js";
+import {
+  brandSources,
+  brandSourceSnapshots,
+  companyProfiles,
+  type BrandSourceAnalysisPhase,
+} from "../schema/index.js";
 import type { TenantScope } from "./base.js";
 
 export type BrandSourceRow = typeof brandSources.$inferSelect;
@@ -87,7 +92,12 @@ export async function claimBrandSourceAnalysis(
 ): Promise<BrandSourceRow | null> {
   const filas = await exec
     .update(brandSources)
-    .set({ status: "analyzing", failureReason: null, updatedAt: now })
+    .set({
+      status: "analyzing",
+      failureReason: null,
+      analysisPhase: null,
+      updatedAt: now,
+    })
     .where(
       and(
         eq(brandSources.companyId, scope.companyId),
@@ -97,6 +107,32 @@ export async function claimBrandSourceAnalysis(
     )
     .returning();
   return filas[0] ?? null;
+}
+
+/**
+ * `0031` (`P1-ONB-005`): la etapa en la que entra el handler. Sólo mientras
+ * la fuente siga `analyzing` —una entrega tardía no pinta una fase sobre un
+ * `ready`—, y sin tocar `updatedAt`: es progreso, no un cambio de la fuente.
+ * `false` si la fuente ya no estaba en `analyzing` (o no es del workspace).
+ */
+export async function setBrandSourceAnalysisPhase(
+  exec: Executor,
+  scope: TenantScope,
+  brandSourceId: string,
+  phase: BrandSourceAnalysisPhase,
+): Promise<boolean> {
+  const filas = await exec
+    .update(brandSources)
+    .set({ analysisPhase: phase })
+    .where(
+      and(
+        eq(brandSources.companyId, scope.companyId),
+        eq(brandSources.id, brandSourceId),
+        eq(brandSources.status, "analyzing"),
+      ),
+    )
+    .returning({ id: brandSources.id });
+  return filas.length > 0;
 }
 
 export interface CompleteBrandSourceInput {
@@ -125,6 +161,7 @@ export async function completeBrandSourceAnalysis(
     .set({
       status: input.status,
       failureReason: null,
+      analysisPhase: null,
       acquisitionTier: input.acquisitionTier,
       lastAnalysedAt: input.now,
       updatedAt: input.now,
@@ -172,6 +209,7 @@ export async function failBrandSourceAnalysis(
     .set({
       status: "failed",
       failureReason: input.failureReason,
+      analysisPhase: null,
       acquisitionTier: input.acquisitionTier,
       lastAnalysedAt: input.now,
       updatedAt: input.now,
@@ -391,6 +429,7 @@ export async function saveMaterializedProfile(
 export const brandAnalysisStore = {
   findBrandSourceForAnalysis,
   claimBrandSourceAnalysis,
+  setBrandSourceAnalysisPhase,
   completeBrandSourceAnalysis,
   failBrandSourceAnalysis,
   insertBrandSourceSnapshot,

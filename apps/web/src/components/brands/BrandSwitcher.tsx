@@ -280,6 +280,11 @@ export function BrandSwitcher({
                 })}
               </div>
             )}
+            {/* ERR-E10 (PRD §19.1, literal): con una sola marca no hay a cuál
+                cambiar; la salida es "New brand", justo debajo. */}
+            {workspaces.isSuccess && list.length === 1 && (
+              <p className="fgw-brand-menu__notice">{tw("empty.workspaces.title")}</p>
+            )}
             <hr className="fgw-brand-menu__separator" />
             <button
               type="button"

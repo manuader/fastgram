@@ -322,6 +322,7 @@ export {
   latestSnapshotsOfOtherSources,
   lockCompanyProfile,
   saveMaterializedProfile,
+  setBrandSourceAnalysisPhase,
   type BrandSourceRow,
   type CompanyProfileRow,
   type CompleteBrandSourceInput,
@@ -425,3 +426,5 @@ export * from "./brand-shutdown.js";
 export * from "./media-usage.js";
 // `0026` (sprint 7, memes desde un prompt): la búsqueda automática del meme.
 export * from "./blitz-prompt-meme.js";
+// `0031` (sprint 7, H): oferta post-análisis de `/brand`.
+export * from "./brand-flow.js";

@@ -294,6 +294,8 @@ export function toBrandSource(row: Row<typeof brandSources>): BrandSource {
     acquisitionTier: row.acquisitionTier,
     status: row.status,
     failureReason: row.failureReason,
+    // `0031` (`P1-ONB-005`): la etapa real, sólo mientras analiza.
+    analysisPhase: row.status === "analyzing" ? row.analysisPhase : null,
     lastAnalysedAt: row.lastAnalysedAt === null ? null : ms(row.lastAnalysedAt),
     analysisCount: row.analysisCount,
     createdAt: ms(row.createdAt),

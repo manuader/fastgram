@@ -487,6 +487,25 @@ export const JOB_CATALOG = {
     concurrency: 1,
     idempotent: true,
   },
+  /**
+   * Sprint 7, segunda tanda (H): "Extract from a video" de Library → Audio.
+   * Idempotente: la pista se crea con `import_id = extractionId`
+   * (`UNIQUE (company_id, import_id)`), un reintento la encuentra.
+   */
+  audioExtract: {
+    name: JOB_QUEUES.audioExtract,
+    what: "Saca con FFmpeg el audio de un video del Media Bank y lo suma a la biblioteca de audio de la marca.",
+    prd: "PLAN-USO-PERSONAL §6 (música), extensión de PU-MEME-001 (fuera de §9.5)",
+    maxAttempts: 2,
+    backoff: "exponential",
+    retryDelaySeconds: 30,
+    // FFmpeg con tope duro de 2 min (`AUDIO_EXTRACT_TIMEOUT_MS`) + bajar y
+    // subir unos MB del storage.
+    timeoutSeconds: 300,
+    // FFmpeg es CPU: de a uno.
+    concurrency: 1,
+    idempotent: true,
+  },
 } as const satisfies Record<string, JobPolicy>;
 
 export type JobKey = keyof typeof JOB_CATALOG;

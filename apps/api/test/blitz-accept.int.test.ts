@@ -32,6 +32,7 @@ import {
   companies,
   companyProfiles,
   createDb,
+  influencers,
   media,
   migrateWithUrl,
   suggestions,
@@ -848,5 +849,45 @@ describe("el buildPayload sale de la sugerencia (AI-002, FR-070)", () => {
     expect(await payloadDe(res.body.data?.["_id"])).toMatchObject({
       video: { url: nueva },
     });
+  });
+});
+
+/**
+ * Sprint 7 (segunda tanda, migración `0032`): la pieza aceptada guarda el
+ * influencer de la sugerencia. El dominio ya lo resolvía (`Content.influencerId`)
+ * y nadie lo persistía; el auto-slot lo necesita para preferir las cuentas de
+ * la Configuration del personaje.
+ */
+describe("la pieza aceptada guarda el influencer de la sugerencia", () => {
+  it("contents.influencer_id = suggestions.influencer_id", async () => {
+    const ws = await nuevoWorkspace();
+    const [sugerencia] = await encolar(ws, 1);
+    const influencerId = await withoutCompany(handle.db, async (tx) => {
+      const [row] = await tx
+        .insert(influencers)
+        .values({
+          companyId: ws.companyId,
+          name: "Vera",
+          gender: "female",
+          age: 27,
+          ethnicity: "latina",
+          status: "ready",
+          isActive: true,
+        })
+        .returning({ id: influencers.id });
+      if (row === undefined) throw new Error("no se creó el influencer");
+      return row.id;
+    });
+    await handle.sql`
+      update suggestions set influencer_id = ${influencerId}::uuid
+      where id = ${sugerencia as string}::uuid
+    `;
+
+    const res = await aceptar(ws);
+    expect(res.status).toBe(202);
+    const [fila] = await handle.sql<{ influencer_id: string | null }[]>`
+      select influencer_id from contents where id = ${String(res.body.data?.["_id"])}::uuid
+    `;
+    expect(fila?.influencer_id).toBe(influencerId);
   });
 });

@@ -184,7 +184,9 @@ export function CustomVideoUpload() {
       )}
 
       {phase.kind === "reserving" && (
-        <p className="fgw-upload__step">{tw("studio.custom.step.reserving")}</p>
+        <p className="fgw-upload__step" role="status">
+          {tw("studio.custom.step.reserving")}
+        </p>
       )}
 
       {phase.kind === "uploading" && (
@@ -212,7 +214,9 @@ export function CustomVideoUpload() {
       )}
 
       {phase.kind === "finalizing" && (
-        <p className="fgw-upload__step">{tw("studio.custom.step.finalizing")}</p>
+        <p className="fgw-upload__step" role="status">
+          {tw("studio.custom.step.finalizing")}
+        </p>
       )}
 
       {phase.kind === "failed" && <Failure phase={phase} onRetry={retry} />}

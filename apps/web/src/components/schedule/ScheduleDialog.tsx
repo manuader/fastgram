@@ -117,6 +117,7 @@ interface ScheduleFormProps {
 
 function ScheduleForm({ contentId, options, onClose, onScheduled }: ScheduleFormProps) {
   const { toast } = useToast();
+  const inPastId = useId();
   const schedule = useSchedulePost(contentId);
   const [drafts, setDrafts] = useState<NetworkDraft[]>(() => initialDrafts(options));
   const initial = useMemo(
@@ -215,6 +216,7 @@ function ScheduleForm({ contentId, options, onClose, onScheduled }: ScheduleForm
                   setDate(e.target.value);
                 }}
                 invalid={inPast}
+                aria-describedby={inPast ? inPastId : undefined}
               />
             </label>
             <label className="flex flex-col gap-1 text-xs text-text-muted">
@@ -226,6 +228,7 @@ function ScheduleForm({ contentId, options, onClose, onScheduled }: ScheduleForm
                   setTime(e.target.value);
                 }}
                 invalid={inPast}
+                aria-describedby={inPast ? inPastId : undefined}
               />
             </label>
             {options.suggestedAtUtc !== null && (
@@ -246,25 +249,31 @@ function ScheduleForm({ contentId, options, onClose, onScheduled }: ScheduleForm
             )}
           </fieldset>
           {inPast && (
-            <p role="status" className="text-xs text-danger">
+            <p id={inPastId} role="status" className="text-xs text-danger">
               {tw("schedule.inPast")}
             </p>
           )}
 
-          {problems.map((p) => (
-            <p
-              key={`${p.kind}:${"network" in p ? p.network : ""}:${"field" in p ? p.field : ""}`}
-              className="text-xs text-danger"
-            >
-              {p.kind === "none_selected"
-                ? tw("schedule.problem.noneSelected")
-                : p.kind === "no_connection"
-                  ? tw("schedule.problem.noConnection", {
-                      network: NETWORK_LABEL[p.network],
-                    })
-                  : tw("schedule.problem.tooLong", { network: NETWORK_LABEL[p.network] })}
-            </p>
-          ))}
+          {/* Región viva siempre montada (P5-A11Y-001): lo que bloquea el envío
+              se anuncia al aparecer, no sólo se pinta en rojo. */}
+          <div aria-live="polite" className="flex flex-col gap-1">
+            {problems.map((p) => (
+              <p
+                key={`${p.kind}:${"network" in p ? p.network : ""}:${"field" in p ? p.field : ""}`}
+                className="text-xs text-danger"
+              >
+                {p.kind === "none_selected"
+                  ? tw("schedule.problem.noneSelected")
+                  : p.kind === "no_connection"
+                    ? tw("schedule.problem.noConnection", {
+                        network: NETWORK_LABEL[p.network],
+                      })
+                    : tw("schedule.problem.tooLong", {
+                        network: NETWORK_LABEL[p.network],
+                      })}
+              </p>
+            ))}
+          </div>
 
           {failure !== null && (
             <p role="alert" className="text-sm text-danger">
@@ -470,7 +479,6 @@ export function CaptionField({
         <span
           id={counterId}
           className={over ? "text-xs text-danger" : "text-xs text-text-muted"}
-          aria-live="polite"
         >
           {max === null
             ? String(codePoints(value))
@@ -525,6 +533,8 @@ export function CaptionField({
           </Button>
         </div>
       )}
+      {/* El contador ya no es región viva: leía el número en cada tecla. Cruzar
+          el tope lo anuncia quien usa el campo, una sola vez (P5-A11Y-001). */}
       {value === "" && (
         <p className="text-xs text-text-muted">{tw("schedule.emptyCaption")}</p>
       )}

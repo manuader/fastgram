@@ -65,6 +65,7 @@ import {
   isMovablePost,
   planAutoSlots,
   planSlotConversion,
+  preferInfluencerAccounts,
   type OccupiedSlot,
   type StrategyNetwork,
 } from "@fastgram/core";
@@ -74,6 +75,7 @@ import {
   companyRepository,
   connectionRepository,
   contentRepository,
+  influencerConfigRepository,
   plannedSlotRepository,
   postCalendar,
   postRepository,
@@ -478,6 +480,24 @@ async function autoschedule(
     ...(await plannedSlotRepository.plannedNetworksOf(tx, scope, contentId)),
   ];
 
+  const connections = await connectionRepository.list(tx, scope, {
+    limit: 100,
+    filter: { status: { eq: "active" } },
+  });
+  // Sprint 7 (segunda tanda): una pieza hecha con un influencer prefiere las
+  // redes y cuentas marcadas en su Configuration (`preferInfluencerAccounts`).
+  // Las redes que el usuario eligió a mano (`input.networks`) mandan igual.
+  const config =
+    content.influencerId === null
+      ? null
+      : await influencerConfigRepository.findById(tx, scope, content.influencerId);
+  const preferred = preferInfluencerAccounts(
+    toSlotStrategy(strategy),
+    connections.items.map((c) => ({ id: c.id, platform: c.platform })),
+    config?.publishingAccounts,
+  );
+  const networks = input.networks ?? preferred.networks;
+
   const outcomes = planAutoSlots({
     strategy: toSlotStrategy(strategy),
     brandId: companyId,
@@ -485,15 +505,11 @@ async function autoschedule(
     nowMs,
     occupied,
     alreadyScheduled,
-    ...(input.networks === undefined ? {} : { networks: input.networks }),
+    ...(networks === undefined ? {} : { networks }),
   });
   if (outcomes.length === 0) return { kind: "no_networks" };
 
-  const connections = await connectionRepository.list(tx, scope, {
-    limit: 100,
-    filter: { status: { eq: "active" } },
-  });
-  const active = connections.items.map((c) => ({ id: c.id, platform: c.platform }));
+  const active = preferred.connections;
 
   // Se decide todo antes de escribir nada: si hace falta un post y no hay cola, no
   // se crea ni siquiera el slot de otra red (la respuesta es un 503 entero).

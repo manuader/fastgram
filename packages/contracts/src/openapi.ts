@@ -47,6 +47,7 @@ import * as inspiration from "./resources/inspiration.js";
 import * as engagement from "./resources/engagement.js";
 import * as automations from "./resources/automations.js";
 import * as notifications from "./resources/notifications.js";
+import * as brandFlow from "./resources/brand-flow.js";
 import {
   imageUploadReservationRequestSchema,
   mediaUploadReservationRequestSchema,
@@ -1285,6 +1286,35 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           },
         },
       },
+      // Sprint 7, segunda tanda (H): sacar el audio de un video del Media Bank.
+      "/audio/library/extract": {
+        post: {
+          operationId: "extractBrandAudio",
+          summary:
+            "Encola la extracción del audio de un video del Media Bank (≤300 s) a la biblioteca de la marca",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(brandFlow.audioExtractRequestSchema)),
+          },
+          responses: {
+            "202": ok("Encolada", dataOf(toJsonSchema(brandFlow.audioExtractionSchema))),
+            "400": errorResponse("bad_request — details.reason = not_a_video | too_long"),
+            "404": errorResponse("not_found — el video no existe o es de otra marca"),
+            "503": errorResponse("service_unavailable — la API no tiene cola"),
+          },
+        },
+      },
+      "/audio/library/extractions/{extraction}": {
+        get: {
+          operationId: "getBrandAudioExtraction",
+          summary: "Estado de una extracción de audio",
+          parameters: [pathParam("extraction")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(brandFlow.audioExtractionSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
       "/media/upload-url": {
         post: {
           operationId: "reserveMediaUpload",
@@ -2050,6 +2080,24 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
               "service_unavailable — sin cola no se encola el análisis",
             ),
           },
+        },
+      },
+      // Sprint 7, segunda tanda (H): P1-ONB-007 / FR-011.5.1.
+      "/brand/post-analysis-offer": {
+        get: {
+          operationId: "getPostAnalysisOffer",
+          summary:
+            "Si /brand ofrece conectar cuentas e importar posts (sólo después de un análisis terminado)",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(brandFlow.postAnalysisOfferSchema))),
+          },
+        },
+      },
+      "/brand/post-analysis-offer/dismiss": {
+        post: {
+          operationId: "dismissPostAnalysisOffer",
+          summary: "Descarta la oferta post-análisis de la marca (idempotente)",
+          responses: { "204": { description: "Descartada" } },
         },
       },
       "/brand/profile": {

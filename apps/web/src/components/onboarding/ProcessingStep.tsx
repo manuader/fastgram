@@ -42,7 +42,9 @@ export function ProcessingStep({
 
   return (
     <section className="fgw-onb" aria-labelledby={titleId}>
-      <header className="fgw-onb__header">
+      {/* Región viva (P5-A11Y-001): el paso de `Analyzing…` a "terminó" se
+          anuncia; la lista de fuentes deja de ser viva cuando nada corre. */}
+      <header className="fgw-onb__header" aria-live="polite">
         <h1 id={titleId} className="fgw-onb__title fgw-onb__title--status">
           {phase === "analyzing" && <Spinner size="sm" aria-hidden="true" />}
           {phase === "analyzing" && tw("loading.onboarding.analyzing")}
