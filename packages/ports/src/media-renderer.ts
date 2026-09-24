@@ -132,6 +132,8 @@ export interface DrawBox {
   readonly drawY: number;
   readonly drawW: number;
   readonly drawH: number;
+  /** Sin él, `cover`. Sprint 7: `contain` para el meme del green screen. */
+  readonly fit?: "cover" | "contain" | "stretch";
 }
 
 export interface RenderImage extends DrawBox {

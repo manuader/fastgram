@@ -802,7 +802,10 @@ function previewOf(
     case "green-screen":
       // `image` es el fondo (`green-screen-background`); el video es el
       // foreground superponible (`blitz-media.ts`).
-      return { ...opt("backgroundUrl", url(media.image)) };
+      return {
+        ...opt("backgroundUrl", url(media.image)),
+        ...opt("overlayVideoUrl", url(media.video)),
+      };
     case "video-hook":
       // Lo primero que se ve es el hook.
       return { ...opt("backgroundUrl", url(media.hookVideo)) };

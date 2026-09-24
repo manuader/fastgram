@@ -8,9 +8,11 @@ import { tw } from "@/lib/i18n/t";
  * Un elemento de media en su rectángulo de dibujo (`drawX/Y/W/H`, px de
  * canvas), escalado al preview.
  *
- * `object-fit: fill` porque el render **estira** al rectángulo (FR-070:
- * *"stretch-to-canvas"*): con `cover` el preview recortaría una imagen que en
- * el video sale deformada, y dejaría de ser lo que sale.
+ * `object-fit` = el `fit` del elemento, y sin él `cover`, que es el default del
+ * render (`services/render`, `fit.ts`, `EXT-006`: recorta, no deforma). Hasta
+ * el sprint 7 esto decía `fill` («el render estira»), y no era cierto: el
+ * preview deformaba lo que el video recortaba. El meme de un green screen
+ * viene `contain` (entero, en el tramo de abajo).
  */
 export interface MediaLayerProps {
   readonly media: MediaElement;
@@ -28,7 +30,8 @@ function rectStyle(media: MediaElement, scale: number): CSSProperties {
     top: media.drawY * scale,
     width: media.drawW * scale,
     height: media.drawH * scale,
-    objectFit: "fill",
+    // `stretch` del render = `fill` de CSS.
+    objectFit: media.fit === "stretch" ? "fill" : (media.fit ?? "cover"),
     pointerEvents: "none",
     userSelect: "none",
   };

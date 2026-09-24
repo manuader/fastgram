@@ -64,7 +64,7 @@ export default async function ContentFormatPage({ params }: PageProps) {
   return (
     <div className="fgw-page">
       <PageHeader title={found.label} description={found.description} />
-      <GenerativeFormatStudio formatId={found.id} />
+      <GenerativeFormatStudio formatId={found.id} showHeader={false} />
     </div>
   );
 }

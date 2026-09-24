@@ -38,7 +38,9 @@ describe("JsonFileDocument", () => {
       ),
     );
     expect(await doc.read()).toEqual({ n: 100 });
-  });
+    // 100 vueltas de lock por disco: solo tarda ~1 s, pero bajo `pnpm verify`
+    // (turbo con todo en paralelo) pasó los 5 s del default (2026-09-24).
+  }, 30_000);
 
   it("un JSON roto no se pisa: provider_contract_violation", async () => {
     await writeFile(join(dir, "bad.json"), "{nope");

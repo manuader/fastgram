@@ -72,6 +72,11 @@ export const blitzSuggestionPreviewSchema = z
     slides: z.array(blitzSuggestionSlideSchema).optional(),
     /** Fondo de los tipos de video: el video (o la imagen de fondo del green screen). */
     backgroundUrl: z.string().url().optional(),
+    /**
+     * Sprint 7: el clip de meme de un `green-screen`, para que la tarjeta lo
+     * muestre recortado sobre el fondo (el croma lo hace el cliente).
+     */
+    overlayVideoUrl: z.string().url().optional(),
     audioUrl: z.string().url().optional(),
     aspectRatio: aspectRatioSchema.optional(),
   })

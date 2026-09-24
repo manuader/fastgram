@@ -63,6 +63,7 @@ import {
 import type { Jv6JudgmentProvider } from "./discovery/jv6.js";
 import {
   MEME_IMPORT_MAX_SECONDS,
+  createLlmMemeKeywords,
   createMemeFinder,
   createYtDlpMemeSearcher,
 } from "./discovery/meme-finder.js";
@@ -379,6 +380,10 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
                   timeoutMs: 45_000,
                 }),
                 logger,
+                // Tema → palabras de reacción («facepalm») con el modelo de texto.
+                ...(deps.copyLlm === undefined
+                  ? {}
+                  : { keywords: createLlmMemeKeywords(deps.copyLlm) }),
               }),
             }
           : {}),

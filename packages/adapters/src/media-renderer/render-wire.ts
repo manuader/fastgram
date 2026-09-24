@@ -75,6 +75,8 @@ export interface WireMediaRef {
    * recortar es decisión de `core`, no del motor.
    */
   readonly draw?: WireDrawRect;
+  /** Sin él, el servicio usa `cover`. */
+  readonly fit?: "cover" | "contain" | "stretch";
 }
 
 export interface WireAudioRef {
@@ -303,6 +305,7 @@ function wireMediaRef(
     readonly drawY: number;
     readonly drawW: number;
     readonly drawH: number;
+    readonly fit?: "cover" | "contain" | "stretch";
   },
   source: string,
 ): WireMediaRef {
@@ -314,6 +317,7 @@ function wireMediaRef(
       width: integer(media.drawW, "drawW", source),
       height: integer(media.drawH, "drawH", source),
     },
+    ...(media.fit === undefined ? {} : { fit: media.fit }),
   };
 }
 

@@ -118,6 +118,7 @@ const toRenderImage = (m: MediaElement): RenderImage => ({
   drawY: m.drawY,
   drawW: m.drawW,
   drawH: m.drawH,
+  ...(m.fit === undefined ? {} : { fit: m.fit }),
 });
 
 const toRenderVideo = (m: MediaElement): RenderVideo => toRenderImage(m);

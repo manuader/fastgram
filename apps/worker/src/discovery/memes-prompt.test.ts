@@ -103,6 +103,36 @@ describe("createMemeFinder", () => {
     expect(out.rejectedMediaIds).toHaveLength(2);
   });
 
+  it("busca primero las palabras de reacción y, sin candidatos, el tema literal", async () => {
+    const queries: string[] = [];
+    const finder = createMemeFinder({
+      searcher: {
+        search: (q) => {
+          queries.push(q);
+          return Promise.resolve(q.includes("facepalm") ? [] : results);
+        },
+      },
+      runImport: (job) =>
+        Promise.resolve({
+          importId: job.importId,
+          kind: "video",
+          state: "imported",
+          sourceUrl: job.url,
+          mediaId: job.mediaId,
+          background: "green_screen",
+          updatedAt: 0,
+        } satisfies MediaImportStatus),
+      logger: silent,
+      keywords: () => Promise.resolve("facepalm"),
+    });
+    const out = await finder.find({ companyId: "c", topic: "los lunes", requestId: "r" });
+    expect(queries).toEqual([
+      "ytsearch8:facepalm green screen meme",
+      "ytsearch8:los lunes green screen meme",
+    ]);
+    expect(out.found).not.toBeNull();
+  });
+
   it("sin resultados no importa nada", async () => {
     const finder = createMemeFinder({
       searcher: { search: () => Promise.resolve([]) },

@@ -146,6 +146,12 @@ export const mediaElementSchema = z
     drawY: z.number(),
     drawW: z.number(),
     drawH: z.number(),
+    /**
+     * Cómo entra la media en su rectángulo (sprint 7). Sin él, `cover` (el
+     * default del render, `EXT-006`). El meme de un green screen va `contain`:
+     * entero, sin recortarle los costados.
+     */
+    fit: z.enum(["cover", "contain", "stretch"]).optional(),
   })
   .strict();
 export type MediaElement = z.infer<typeof mediaElementSchema>;

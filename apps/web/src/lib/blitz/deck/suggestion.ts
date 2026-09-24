@@ -44,6 +44,8 @@ const previewSchema = z.object({
   slides: z.array(slideSchema).optional(),
   /** Fondo de los tipos de video (wall of text, green screen, video hook). */
   backgroundUrl: z.string().url().nullable().optional(),
+  /** Green screen: el clip de meme, recortado en el cliente (sprint 7). */
+  overlayVideoUrl: z.string().url().nullable().optional(),
   audioUrl: z.string().url().nullable().optional(),
   aspectRatio: aspectRatioSchema.nullable().optional(),
 });

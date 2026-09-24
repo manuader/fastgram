@@ -320,9 +320,66 @@ const clean = (s: string): string => s.trim();
  * `ok: false` es una sugerencia que no se encola. No se «arregla» recortando:
  * una copy truncada se leería como la propuesta.
  */
+/**
+ * Idiomas de alfabeto latino: con uno de estos, un texto en otro alfabeto es un
+ * error del modelo, no una elección. Visto con la app el 2026-09-24: qwen2.5 7B
+ * escribió un meme en inglés con el hashtag `#精益求情`.
+ */
+const LATIN_SCRIPT_LANGUAGES = new Set([
+  "en",
+  "es",
+  "pt",
+  "fr",
+  "de",
+  "it",
+  "nl",
+  "ca",
+  "gl",
+  "eu",
+  "ro",
+  "pl",
+  "cs",
+  "sk",
+  "sv",
+  "da",
+  "no",
+  "nb",
+  "fi",
+  "et",
+  "lv",
+  "lt",
+  "hu",
+  "hr",
+  "sl",
+  "tr",
+  "id",
+  "ms",
+  "vi",
+  "tl",
+  "sq",
+]);
+
+const FOREIGN_SCRIPT =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Cyrillic}\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Thai}\p{Script=Devanagari}\p{Script=Greek}]/u;
+
+/** `true` si un texto trae letras de otro alfabeto que el del idioma pedido. */
+export function hasForeignScript(
+  text: string,
+  language: string | null | undefined,
+): boolean {
+  if (language === null || language === undefined) return false;
+  const base = language.toLowerCase().split("-")[0] ?? "";
+  if (!LATIN_SCRIPT_LANGUAGES.has(base)) return false;
+  return FOREIGN_SCRIPT.test(text);
+}
+
 export function parseSuggestionCopy(
   value: unknown,
-  limits: { readonly maxTexts: number },
+  limits: {
+    readonly maxTexts: number;
+    /** Sprint 7: con un idioma de alfabeto latino, otro alfabeto descarta la copy. */
+    readonly language?: string | null | undefined;
+  },
 ): ParsedSuggestionCopy {
   if (typeof value !== "object" || value === null) {
     return { ok: false, reason: "response is not an object" };
@@ -362,6 +419,9 @@ export function parseSuggestionCopy(
 
   if ([...texts, ...explanation].some(looksLikeLeakedInstruction)) {
     return { ok: false, reason: "leaked_instruction" };
+  }
+  if (texts.some((t) => hasForeignScript(t, limits.language))) {
+    return { ok: false, reason: "foreign_script" };
   }
   return { ok: true, copy: { texts, explanation } };
 }

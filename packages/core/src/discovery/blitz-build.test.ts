@@ -16,6 +16,7 @@ import {
   CAPTION_STYLES,
   DEFAULT_CAPTION_STYLE,
   composeBlitzBuildPayload,
+  GREEN_SCREEN_CLIP_TOP,
   finalizeBuildPlan,
   generatedTextOf,
   parseSuggestionBuildPlan,
@@ -393,6 +394,22 @@ describe("el build_plan y el payload (FR-070)", () => {
         textStylePresetId: "comic-sans",
       }),
     ).toThrow(DomainError);
+  });
+
+  it("green-screen: el meme entra entero (contain) en el tramo de abajo", () => {
+    const sel = selectMedia(seeded(1), bank, "green-screen", null);
+    if (sel === null) throw new Error("sin media");
+    const payload = composeBlitzBuildPayload(finalizeBuildPlan(sel, ["meme"]));
+    if (!("image" in payload) || !("video" in payload))
+      throw new Error("no es green-screen");
+    expect(payload.image).toMatchObject({ drawX: 0, drawY: 0, drawW: 1080, drawH: 1920 });
+    expect(payload.video).toMatchObject({
+      drawX: 0,
+      drawY: Math.round(1920 * GREEN_SCREEN_CLIP_TOP),
+      drawW: 1080,
+      drawH: 1920 - Math.round(1920 * GREEN_SCREEN_CLIP_TOP),
+      fit: "contain",
+    });
   });
 
   it("el plan persistido vuelve igual por JSON y por el parser", () => {

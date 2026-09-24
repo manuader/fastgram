@@ -375,6 +375,8 @@ export interface BlitzMediaElement {
   readonly drawY: number;
   readonly drawW: number;
   readonly drawH: number;
+  /** Sin él, `cover`. Ver el green screen en `composeBlitzBuildPayload`. */
+  readonly fit?: "contain";
 }
 
 export type BlitzBuildPayload =
@@ -435,6 +437,12 @@ function textFor(
  * Es el contrato del PRD, con la distorsión que él mismo documenta (`EXT-006`
  * lo mejoraría).
  */
+/**
+ * Dónde empieza el tramo del meme en un green screen, en fracción del alto.
+ * El caption va al 15 % (`TEXT_TOP`); 0,35 le deja lugar a tres líneas.
+ */
+export const GREEN_SCREEN_CLIP_TOP = 0.35;
+
 const fill = (
   m: MediaRef,
   rect: { x: number; y: number; w: number; h: number },
@@ -490,12 +498,22 @@ export function composeBlitzBuildPayload(
       };
     case "green-screen":
       // El fondo ocupa el canvas y el clip con croma se compone **encima**
-      // (`FR-070`), también a canvas completo: lo que no es croma es lo único
-      // que se ve de él.
+      // (`FR-070`). Hasta el sprint 7 el clip iba `cover` a canvas completo:
+      // un meme 16:9 en un lienzo 9:16 perdía ~70 % de los costados (visto en
+      // la app con un clip real). Ahora entra **entero** (`contain`) en el
+      // tramo de abajo, debajo del caption, como en Fastlane.
       return {
         canvas,
         image: fill(media.image, full),
-        video: fill(media.video, full),
+        video: {
+          ...fill(media.video, {
+            x: 0,
+            y: Math.round(canvas.height * GREEN_SCREEN_CLIP_TOP),
+            w: canvas.width,
+            h: canvas.height - Math.round(canvas.height * GREEN_SCREEN_CLIP_TOP),
+          }),
+          fit: "contain",
+        },
         ...audio,
         text: textFor(first, canvas, "green-screen", style),
       };

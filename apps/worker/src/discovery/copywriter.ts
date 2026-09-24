@@ -62,7 +62,10 @@ export function createLlmCopywriter(deps: LlmCopywriterDeps): SuggestionCopywrit
           model: completion.model,
         };
       }
-      const parsed = parseSuggestionCopy(completion.value, { maxTexts: input.maxTexts });
+      const parsed = parseSuggestionCopy(completion.value, {
+        maxTexts: input.maxTexts,
+        language: input.language,
+      });
       if (!parsed.ok)
         return { ok: false, reason: parsed.reason, model: completion.model };
       return { ok: true, copy: parsed.copy, model: completion.model };

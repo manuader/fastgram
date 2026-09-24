@@ -198,6 +198,8 @@ function RunProgress({
 export interface GenerativeFormatStudioProps {
   /** El `id` de `F-070` (el segmento de `/content/<id>`). */
   readonly formatId: string;
+  /** `false` cuando la página ya pone el título (`/content/<id>`). */
+  readonly showHeader?: boolean;
 }
 
 /**
@@ -210,7 +212,10 @@ export interface GenerativeFormatStudioProps {
  *
  * Lo monta la página `/content/[format]` (agente F).
  */
-export function GenerativeFormatStudio({ formatId }: GenerativeFormatStudioProps) {
+export function GenerativeFormatStudio({
+  formatId,
+  showHeader = true,
+}: GenerativeFormatStudioProps) {
   const ids = { overlay: useId(), topic: useId(), model: useId(), brand: useId() };
   const view = useGenerativeFormats();
   const format = view.data?.formats.find((f) => f.id === formatId);
@@ -263,7 +268,7 @@ export function GenerativeFormatStudio({ formatId }: GenerativeFormatStudioProps
     return <EmptyState bordered title={tw("formats.notGenerative")} />;
   }
 
-  const header = (
+  const header = !showHeader ? null : (
     <header className="flex flex-col gap-1">
       <h2 className="m-0 flex items-center gap-2 text-xl font-semibold text-text">
         <ClapperboardIcon size={18} className="text-accent" />

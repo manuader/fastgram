@@ -10,6 +10,7 @@ import {
   type PreviewSlide,
 } from "@/lib/blitz/deck/suggestion";
 import type { BlitzContentType } from "@fastgram/contracts";
+import { ChromaKeyVideo } from "./ChromaKeyVideo";
 import { ChevronLeftIcon, ChevronRightIcon, MuteIcon, VolumeIcon } from "./icons";
 
 /**
@@ -43,6 +44,7 @@ export function CardFace({ card, interactive }: CardFaceProps) {
       contentType={suggestion.contentType}
       slides={slidesOf(suggestion)}
       audioUrl={hasAudio(suggestion) ? (suggestion.preview?.audioUrl ?? null) : null}
+      overlayVideoUrl={suggestion.preview?.overlayVideoUrl ?? null}
       interactive={interactive}
     />
   );
@@ -52,6 +54,8 @@ interface SuggestionFaceProps {
   readonly contentType: BlitzContentType;
   readonly slides: readonly PreviewSlide[];
   readonly audioUrl: string | null;
+  /** Green screen: el meme, recortado en el cliente. Sólo en la de arriba. */
+  readonly overlayVideoUrl: string | null;
   readonly interactive: boolean;
 }
 
@@ -59,6 +63,7 @@ function SuggestionFace({
   contentType,
   slides,
   audioUrl,
+  overlayVideoUrl,
   interactive,
 }: SuggestionFaceProps) {
   const [index, setIndex] = useState(0);
@@ -83,8 +88,19 @@ function SuggestionFace({
         />
       )}
 
+      {interactive && contentType === "green-screen" && overlayVideoUrl !== null && (
+        <ChromaKeyVideo url={overlayVideoUrl} />
+      )}
+
       {current?.text != null && (
-        <div className="absolute inset-0 flex items-center justify-center p-[8%]">
+        <div
+          className={
+            // Green screen: caption arriba, como el build (`blitz-build.ts`, 15 %).
+            contentType === "green-screen"
+              ? "absolute inset-x-0 top-[8%] flex justify-center p-[8%]"
+              : "absolute inset-0 flex items-center justify-center p-[8%]"
+          }
+        >
           <p
             className="whitespace-pre-line text-center font-extrabold leading-tight text-white"
             style={{

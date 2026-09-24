@@ -262,6 +262,21 @@ export interface GreenScreenInputs {
   readonly video: SourceGeometry;
 }
 
+/**
+ * Duración mínima de un green screen (sprint 7). Un meme de reacción dura 2–3 s
+ * (el primero que la app encontró sola duraba 2,27 s) e Instagram no acepta
+ * Reels de menos de 3 s. El clip se repite entero hasta pasar este mínimo;
+ * con duración desconocida o suficiente, nada cambia (los goldens lo fijan).
+ */
+export const GREEN_SCREEN_MIN_SECONDS = 5;
+
+export function greenScreenLoopArgs(durationSeconds: number | null): string[] {
+  if (durationSeconds === null || !(durationSeconds > 0)) return [];
+  if (durationSeconds >= GREEN_SCREEN_MIN_SECONDS) return [];
+  const extra = Math.ceil(GREEN_SCREEN_MIN_SECONDS / durationSeconds) - 1;
+  return ["-stream_loop", String(extra)];
+}
+
 export function planGreenScreenBase(
   payload: GreenScreenPayload,
   inputs: GreenScreenInputs,
@@ -322,6 +337,7 @@ export function planGreenScreenBase(
     "-i",
     inputs.backgroundPath,
     ...(alphaDecoder === null ? [] : ["-c:v", alphaDecoder]),
+    ...greenScreenLoopArgs(inputs.video.durationSeconds),
     "-i",
     inputs.videoPath,
     // La música, cuando viene, es el input 2 (en loop; ver arriba).

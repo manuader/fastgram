@@ -263,7 +263,15 @@ describe("planGreenScreenBase", () => {
     expect(plan.filterGraph).not.toContain("chromakey");
     expect(plan.filterGraph).toContain("[1:v]format=yuva420p,");
     const i = plan.args.indexOf("/v.webm");
-    expect(plan.args.slice(i - 3, i)).toEqual(["-c:v", "libvpx-vp9", "-i"]);
+    // Sprint 7: el clip de 2 s se repite hasta 5 s (`-stream_loop`), también
+    // opción de entrada: las dos van antes de su `-i`.
+    expect(plan.args.slice(i - 5, i)).toEqual([
+      "-c:v",
+      "libvpx-vp9",
+      "-stream_loop",
+      "2",
+      "-i",
+    ]);
   });
 
   it("sin alfa: la rama de croma de siempre", () => {

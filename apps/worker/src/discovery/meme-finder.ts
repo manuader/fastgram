@@ -38,11 +38,15 @@ import { minimalChildEnv, runProcess } from "@fastgram/adapters";
 import {
   GREEN_SCREEN_CATEGORY,
   MEME_SEARCH_LIMITS,
+  memeKeywordsPrompt,
   memeSearchQuery,
+  MEME_KEYWORDS_SCHEMA,
+  parseMemeKeywords,
   parseMemeSearchResults,
   rankMemeResults,
   type MemeSearchResult,
 } from "@fastgram/core";
+import type { Llm } from "@fastgram/ports";
 
 import type { BuildLogger } from "../content/build-handler.js";
 import type { MediaImportRunner } from "../media-import/handler.js";
@@ -115,15 +119,64 @@ export interface MemeFinder {
   }): Promise<MemeFindOutcome>;
 }
 
+/**
+ * Tema → palabras de reacción con el modelo de texto (ver `memeKeywordsPrompt`).
+ * `null` si no hay modelo o no contestó algo usable: se busca el tema literal.
+ */
+export type MemeKeywords = (topic: string) => Promise<string | null>;
+
+export function createLlmMemeKeywords(llm: () => Promise<Llm | null>): MemeKeywords {
+  return async (topic) => {
+    try {
+      const model = await llm();
+      if (model === null) return null;
+      const prompt = memeKeywordsPrompt(topic);
+      const out = await model.completeJson({
+        messages: [
+          { role: "system", content: prompt.system },
+          { role: "user", content: prompt.user },
+        ],
+        schema: MEME_KEYWORDS_SCHEMA,
+        schemaName: "meme_keywords",
+        temperature: 0.2,
+        maxOutputTokens: 60,
+        timeoutMs: 20_000,
+      });
+      return parseMemeKeywords(out.value);
+    } catch {
+      return null;
+    }
+  };
+}
+
 export function createMemeFinder(deps: {
   readonly searcher: MemeSearcher;
   readonly runImport: MediaImportRunner;
   readonly logger: BuildLogger;
+  readonly keywords?: MemeKeywords;
 }): MemeFinder {
+  /** Primero las palabras de reacción; si no dan candidatos, el tema literal. */
+  async function candidates(topic: string, requestId: string) {
+    const reaction = deps.keywords === undefined ? null : await deps.keywords(topic);
+    const queries = reaction === null ? [topic] : [reaction, topic];
+    let total = 0;
+    for (const q of queries) {
+      const results = await deps.searcher.search(memeSearchQuery(q));
+      total += results.length;
+      const ranked = rankMemeResults(q, results).slice(0, MEME_IMPORTS_PER_SEARCH);
+      deps.logger.info(
+        { requestId, query: q, results: results.length, candidates: ranked.length },
+        "búsqueda de meme",
+      );
+      if (ranked.length > 0) return { ranked, total };
+    }
+    return { ranked: [], total };
+  }
+
   return {
     async find({ companyId, topic, requestId }) {
-      const results = await deps.searcher.search(memeSearchQuery(topic));
-      const ranked = rankMemeResults(topic, results).slice(0, MEME_IMPORTS_PER_SEARCH);
+      const { ranked, total } = await candidates(topic, requestId);
+      const results = { length: total };
       const rejected: string[] = [];
       for (const r of ranked) {
         const mediaId = randomUUID();
