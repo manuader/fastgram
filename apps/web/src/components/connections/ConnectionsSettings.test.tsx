@@ -46,6 +46,9 @@ function app(
     https: platform === "tiktok" ? "verified" : "no",
     redirectAllowed: platform !== "tiktok",
     scopes: ["a", "b"],
+    optionalScopes: [],
+    optionalScopesNote: null,
+    optionalScopesEnabled: false,
     consoleUrl: "https://console.example",
     docsUrl: "https://docs.example",
     setupNote: "note",
@@ -65,6 +68,12 @@ const OVERVIEW: IntegrationsOverview = {
     }),
     app("threads"),
     app("facebook"),
+    app("youtube"),
+    app("linkedin", {
+      https: "verified",
+      optionalScopes: ["w_organization_social", "r_organization_admin"],
+      optionalScopesNote: "Also let me post as a Page I manage.",
+    }),
   ],
   redirectBase: "http://localhost:3000",
   redirectSource: "local",
@@ -256,5 +265,95 @@ describe("Settings → Connections", () => {
         method: "DELETE",
       }),
     );
+  });
+});
+
+describe("YouTube y LinkedIn · PU-LATER-001/002", () => {
+  it("Integrations: YouTube avisa que sin auditoría todo queda privado", async () => {
+    server(() => Promise.resolve(OVERVIEW));
+    render(<IntegrationsSettings />, { wrapper });
+    const card = await screen.findByTestId("integration-youtube");
+    expect(within(card).getByTestId("youtube-audit-note")).toHaveTextContent(
+      /stays private/,
+    );
+  });
+
+  it("Integrations: LinkedIn manda optionalScopes al tildar la casilla de Páginas", async () => {
+    const calls = server((path) =>
+      path === "/integrations"
+        ? Promise.resolve(OVERVIEW)
+        : Promise.resolve(app("linkedin", { optionalScopesEnabled: true })),
+    );
+    render(<IntegrationsSettings />, { wrapper });
+    const card = await screen.findByTestId("integration-linkedin");
+    fireEvent.change(within(card).getByLabelText("Client ID"), {
+      target: { value: "li-client" },
+    });
+    expect(
+      within(card).getByText("Also let me post as a Page I manage."),
+    ).toBeInTheDocument();
+    fireEvent.click(within(card).getByRole("checkbox"));
+    fireEvent.click(within(card).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.path === "/integrations/linkedin")).toBe(true),
+    );
+    expect(calls.find((c) => c.path === "/integrations/linkedin")!.options).toMatchObject(
+      {
+        method: "PUT",
+        body: { clientId: "li-client", optionalScopes: true },
+      },
+    );
+  });
+
+  it("Connections: una cuenta de YouTube activa muestra el aviso de auditoría", async () => {
+    server((path) => {
+      if (path === "/integrations") return Promise.resolve(OVERVIEW);
+      if (path === "/connections/accounts")
+        return Promise.resolve([account({ platform: "youtube", username: "marca" })]);
+      return Promise.reject(new Error(`unexpected ${path}`));
+    });
+    render(<ConnectionsSettings />, { wrapper });
+    const row = await screen.findByTestId("account-c1");
+    expect(within(row).getByTestId("youtube-audit-warning")).toBeInTheDocument();
+    expect(within(row).getByText("YouTube · @marca")).toBeInTheDocument();
+  });
+
+  it("Connections: la vuelta de LinkedIn con varias cuentas abre el selector y conecta la elegida", async () => {
+    const calls = server((path) => {
+      if (path === "/integrations") return Promise.resolve(OVERVIEW);
+      if (path === "/connections/accounts") return Promise.resolve([]);
+      if (path === "/connections/linkedin/pages/sel-1")
+        return Promise.resolve({
+          platform: "linkedin",
+          selectionId: "sel-1",
+          pages: [
+            { id: "urn:li:person:782bbtaQ", name: "John Doe", avatarUrl: null },
+            { id: "urn:li:organization:2414183", name: "Devtestco", avatarUrl: null },
+          ],
+          expiresAt: 1,
+        });
+      if (path === "/connections/linkedin/pages")
+        return Promise.resolve(account({ platform: "linkedin", username: "Devtestco" }));
+      return Promise.reject(new Error(`unexpected ${path}`));
+    });
+    render(<ConnectionsSettings notice={{ select: "sel-1", platform: "linkedin" }} />, {
+      wrapper,
+    });
+    const picker = await screen.findByTestId("linkedin-picker");
+    expect(
+      within(picker).getByText("Choose where this brand posts on LinkedIn"),
+    ).toBeInTheDocument();
+    await within(picker).findByText("Devtestco");
+    const buttons = within(picker).getAllByRole("button", { name: "Use this account" });
+    fireEvent.click(buttons[1]!);
+    await waitFor(() =>
+      expect(calls.some((c) => c.path === "/connections/linkedin/pages")).toBe(true),
+    );
+    expect(
+      calls.find((c) => c.path === "/connections/linkedin/pages")!.options,
+    ).toMatchObject({
+      method: "POST",
+      body: { selectionId: "sel-1", pageId: "urn:li:organization:2414183" },
+    });
   });
 });

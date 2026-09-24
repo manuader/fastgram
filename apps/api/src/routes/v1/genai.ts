@@ -95,6 +95,12 @@ export function defaultGenAiRouteDeps(env: SecretEnv = process.env): GenAiRouteD
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
         timeoutMs: GENAI_API_TIMEOUT_MS,
+        // ComfyUI (`PU-LATER-003`): el workflow es el modelo.
+        task: config.task,
+        model: config.model,
+        ...(config.comfyWorkflow === undefined
+          ? {}
+          : { comfyWorkflow: config.comfyWorkflow }),
       });
     },
   };

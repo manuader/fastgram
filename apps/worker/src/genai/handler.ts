@@ -116,7 +116,15 @@ export interface AiStudioHandlerDeps {
   readonly generations: GenerationStore;
   readonly clientFor: (config: ResolvedGenAiConfig) => GenClient;
   readonly semaphoreFor: (provider: string) => Semaphore;
-  readonly download: (url: string) => Promise<DownloadedMedia>;
+  /**
+   * Baja una salida del proveedor. Recibe la configuración resuelta para que
+   * el montaje decida qué se permite: ComfyUI (`PU-LATER-003`) sirve por
+   * `http://` local, y sólo desde su propia base.
+   */
+  readonly download: (
+    url: string,
+    config: ResolvedGenAiConfig,
+  ) => Promise<DownloadedMedia>;
   readonly now?: () => Date;
   readonly sleep?: (ms: number) => Promise<void>;
   readonly random?: () => number;
@@ -320,10 +328,11 @@ export function createAiStudioGenerationHandler(
   async function store(
     record: GenerationRecord,
     outputs: readonly GenOutput[],
+    config: ResolvedGenAiConfig,
   ): Promise<string[]> {
     const rows: BrandKitMediaInput[] = [];
     for (const [i, output] of outputs.entries()) {
-      const media = await deps.download(output.url);
+      const media = await deps.download(output.url, config);
       const contentType = (media.contentType || output.contentType || "")
         .split(";")[0]
         ?.trim()
@@ -527,7 +536,7 @@ export function createAiStudioGenerationHandler(
 
         let mediaIds: string[];
         try {
-          mediaIds = await store(current, state.outputs);
+          mediaIds = await store(current, state.outputs, config);
         } catch (error) {
           if (!lastAttempt) throw new RetryLater("download failed, retry");
           await close(
@@ -570,6 +579,12 @@ export function httpDownloader(options: {
   readonly timeoutMs: number;
   readonly maxBytes: number;
   readonly fetch?: typeof fetch;
+  /**
+   * Un origen al que se le acepta `http://` (ComfyUI local, `PU-LATER-003`:
+   * `GET /view` en `http://127.0.0.1:8188`). Cualquier otro sigue exigiendo
+   * `https`.
+   */
+  readonly allowHttpOrigin?: string;
 }): (url: string) => Promise<DownloadedMedia> {
   const doFetch = options.fetch ?? fetch;
   return async (url) => {
@@ -581,7 +596,15 @@ export function httpDownloader(options: {
         source: "worker/ai-studio",
       });
     }
-    if (parsed.protocol !== "https:") {
+    let httpAllowed = false;
+    if (options.allowHttpOrigin !== undefined) {
+      try {
+        httpAllowed = new URL(options.allowHttpOrigin).origin === parsed.origin;
+      } catch {
+        httpAllowed = false;
+      }
+    }
+    if (parsed.protocol !== "https:" && !(httpAllowed && parsed.protocol === "http:")) {
       throw new PortError("provider_contract_violation", "Output URL is not https", {
         source: "worker/ai-studio",
       });

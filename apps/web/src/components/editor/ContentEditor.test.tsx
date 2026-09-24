@@ -206,3 +206,100 @@ describe("ContentEditor · estados", () => {
     expect(await screen.findByText("This piece can't be edited here.")).toBeTruthy();
   });
 });
+
+describe("ContentEditor · por qué falló la última edición", () => {
+  it("al abrir, un Regenerate fallido sin modelo lo dice y manda a Settings → Models", async () => {
+    requestMock.mockImplementation(async (path, options = {}) => {
+      const raw = path.endsWith("/editable")
+        ? EDITABLE
+        : content({
+            lastEdit: {
+              at: 1,
+              outcome: "failed",
+              kind: "regenerate",
+              failureReason: "llm_not_configured",
+            },
+          });
+      const schema = options.schema;
+      return (schema === undefined ? raw : schema.parse(raw)) as never;
+    });
+    render(<ContentEditor contentId={ID} />, { wrapper });
+
+    const banner = await screen.findByTestId("editor-failure");
+    expect(banner.textContent).toContain(
+      "Couldn't regenerate the text. The previous version is still available.",
+    );
+    expect(banner.textContent).toContain("There's no AI model set up to write the text.");
+    expect(
+      screen.getByRole("link", { name: "Set one up in Settings → Models" }),
+    ).toHaveAttribute("href", "/settings/models");
+  });
+
+  it("una edición que el render no puede dibujar vuelve con el motivo, sin link a modelos", async () => {
+    let afterPatch = false;
+    requestMock.mockImplementation(async (path, options = {}) => {
+      const method = options.method ?? "GET";
+      let raw: unknown;
+      if (method === "PATCH") {
+        afterPatch = true;
+        raw = content({ status: "BUILDING", revision: 4 });
+      } else if (path.endsWith("/editable")) raw = EDITABLE;
+      else
+        raw = afterPatch
+          ? content({
+              revision: 4,
+              lastEdit: {
+                at: 2,
+                outcome: "failed",
+                kind: "edit",
+                failureReason: "edit_not_renderable",
+              },
+            })
+          : content();
+      const schema = options.schema;
+      return (schema === undefined ? raw : schema.parse(raw)) as never;
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <ContentEditor contentId={ID} />
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByTestId("editor-failure")).toBeNull();
+
+    const user = await editTextTo("Chau");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await screen.findByText("Rebuilding the piece with your changes…");
+    // El polling de `BUILDING` es de 10 s: se adelanta el siguiente GET.
+    await client.refetchQueries({ queryKey: ["content", ID] });
+
+    const banner = await screen.findByTestId("editor-failure");
+    expect(banner.textContent).toContain(
+      "The last edit couldn't be rendered. The previous version is still available.",
+    );
+    expect(banner.textContent).toContain(
+      "The render can't draw some of these changes yet. Undo the last change and save again.",
+    );
+    expect(screen.queryByRole("link", { name: /Settings → Models/ })).toBeNull();
+  });
+
+  it("un código desconocido sólo muestra el titular, sin inventar un motivo", async () => {
+    requestMock.mockImplementation(async (path, options = {}) => {
+      const raw = path.endsWith("/editable")
+        ? EDITABLE
+        : content({
+            lastEdit: { at: 1, outcome: "failed", kind: "edit", failureReason: "otro" },
+          });
+      const schema = options.schema;
+      return (schema === undefined ? raw : schema.parse(raw)) as never;
+    });
+    render(<ContentEditor contentId={ID} />, { wrapper });
+
+    const banner = await screen.findByTestId("editor-failure");
+    expect(banner.textContent).toBe(
+      "The last edit couldn't be rendered. The previous version is still available.",
+    );
+  });
+});

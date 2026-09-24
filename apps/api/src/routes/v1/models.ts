@@ -243,9 +243,11 @@ export function registerModelRoutes(
       }
       const body = request.body;
       // Imagen/video: el id tiene que estar en el catálogo verificado del
-      // adaptador; si no, no hay cuerpo documentado que mandarle.
+      // adaptador; si no, no hay cuerpo documentado que mandarle. ComfyUI no
+      // tiene catálogo: el «modelo» es el nombre de su workflow (`PU-LATER-003`).
       if (
         isGenProvider(body.provider) &&
+        body.provider !== "comfyui" &&
         taskSpec(task).kind === "genai" &&
         !genModelsFor(body.provider, task).some((m) => m.id === body.model.trim())
       ) {
@@ -267,6 +269,7 @@ export function registerModelRoutes(
           apiKey: body.apiKey,
           apiKeyEnv: body.apiKeyEnv,
           contextWindowTokens: body.contextWindowTokens,
+          comfyWorkflow: body.comfyWorkflow,
         },
         app.deps.clock.now().toISOString(),
       );
@@ -313,8 +316,11 @@ export function registerModelRoutes(
           models: genModelsFor(genProvider, body.task),
         };
         let completion: ModelCompletionOutcome | null = null;
-        if (body.model !== undefined) {
-          if (key === undefined) {
+        // ComfyUI es local y sin key: «Test connection» es `GET /system_stats`
+        // y no depende del workflow (`PU-LATER-003`).
+        const local = genProvider === "comfyui";
+        if (body.model !== undefined || local) {
+          if (key === undefined && !local) {
             completion = {
               ok: false,
               error: { code: "unauthorized", message: "Paste the API key to test it." },
@@ -324,10 +330,11 @@ export function registerModelRoutes(
               const client = (deps.genClientFor ?? createGenClient)({
                 provider: genProvider,
                 baseUrl: base.baseUrl,
-                apiKey: key,
+                apiKey: key ?? "",
               });
-              const done = await client.checkCredentials(body.model);
-              completion = { ok: true, model: body.model, latencyMs: done.latencyMs };
+              const model = body.model ?? "ComfyUI";
+              const done = await client.checkCredentials(model);
+              completion = { ok: true, model, latencyMs: done.latencyMs };
             } catch (error) {
               request.log.info(
                 { probe: "genai", code: probeError(error).code },

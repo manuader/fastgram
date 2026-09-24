@@ -34,6 +34,7 @@ import {
   PLATFORM_HINT,
   PLATFORM_LABEL,
   STATUS_COPY,
+  YOUTUBE_AUDIT_WARNING,
   reasonCopy,
 } from "@/lib/connections/copy";
 import { useIntegrations } from "@/lib/integrations/api";
@@ -58,7 +59,10 @@ function reasonOf(error: unknown): string | null {
 }
 
 function handleOf(a: ConnectionAccount): string {
-  return a.platform === "facebook" ? a.username : `@${a.username}`;
+  // Páginas y perfiles de LinkedIn se muestran por nombre, no por @handle.
+  return a.platform === "facebook" || a.platform === "linkedin"
+    ? a.username
+    : `@${a.username}`;
 }
 
 function AccountRow({ account }: { account: ConnectionAccount }) {
@@ -92,6 +96,11 @@ function AccountRow({ account }: { account: ConnectionAccount }) {
         </span>
         {permissionsMissing && (
           <span className="text-xs text-warning">{C.permissionsMissing}</span>
+        )}
+        {account.platform === "youtube" && account.status === "active" && (
+          <span className="text-xs text-warning" data-testid="youtube-audit-warning">
+            {YOUTUBE_AUDIT_WARNING}
+          </span>
         )}
         {account.status === "active" && (
           <span className="text-xs text-text-muted">
@@ -253,7 +262,11 @@ export function ConnectionsSettings({ notice = {} }: ConnectionsSettingsProps) {
     <div className="flex flex-col gap-8">
       {banner}
       {selecting !== null && (
-        <FacebookPagePicker selectionId={selecting} onDone={() => setDismissed(true)} />
+        <FacebookPagePicker
+          selectionId={selecting}
+          platform={notice.platform === "linkedin" ? "linkedin" : "facebook"}
+          onDone={() => setDismissed(true)}
+        />
       )}
 
       <section aria-labelledby="connections-accounts" className="flex flex-col gap-3">

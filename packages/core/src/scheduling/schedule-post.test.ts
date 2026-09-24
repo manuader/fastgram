@@ -365,11 +365,11 @@ describe("topes de caracteres — sólo los que el PRD confirma", () => {
     ).toThrow(DomainError);
   });
 
-  it("YouTube y LinkedIn quedan en null: sin verificar, NO sin límite", () => {
-    // Poner un número a ojo produciría un rechazo de la plataforma que el
-    // pre-flight de EXT-007 no vería venir.
-    expect(PLATFORM_FIELD_LIMITS.youtube.caption).toBeNull();
-    expect(PLATFORM_FIELD_LIMITS.linkedin.caption).toBeNull();
+  it("YouTube 100/5 000 y LinkedIn 3 000: los de la doc citada en schedule-post.ts", () => {
+    expect(PLATFORM_FIELD_LIMITS.youtube).toEqual({ caption: 100, description: 5000 });
+    expect(PLATFORM_FIELD_LIMITS.linkedin).toEqual({ caption: 3000, description: null });
+    // Reddit sigue sin número: sin verificar, NO sin límite.
+    expect(PLATFORM_FIELD_LIMITS.reddit.caption).toBeNull();
   });
 
   it("X 280, Threads 500 y Facebook 2 200: los de sus adaptadores", () => {

@@ -114,3 +114,60 @@ describe("FileModelRegistry", () => {
     await expect(new FileModelRegistry({ path }).read()).rejects.toThrow();
   });
 });
+
+describe("FileModelRegistry — workflow de ComfyUI (PU-LATER-003)", () => {
+  const COMFY: ModelTaskConfig = {
+    provider: "comfyui",
+    baseUrl: "http://127.0.0.1:8188",
+    model: "sdxl-basic",
+    comfyWorkflow: {
+      workflow: {
+        "6": { class_type: "CLIPTextEncode", inputs: { text: "a cat", clip: ["4", 1] } },
+        "5": {
+          class_type: "EmptyLatentImage",
+          inputs: { width: 1024, height: 1024, batch_size: 1 },
+        },
+      },
+      prompt: { nodeId: "6", input: "text" },
+      width: { nodeId: "5", input: "width" },
+      height: { nodeId: "5", input: "height" },
+    },
+    updatedAt: "2026-09-24T00:00:00.000Z",
+  };
+
+  it("guarda y relee el workflow con sus inputs marcados", async () => {
+    const registry = new FileModelRegistry({ path });
+    await registry.write("image", COMFY);
+    const again = await new FileModelRegistry({ path }).read();
+    expect(again.tasks.image).toEqual(COMFY);
+  });
+
+  it("un models.json sin comfyWorkflow (los de antes) sigue leyéndose igual", async () => {
+    const registry = new FileModelRegistry({ path });
+    await registry.write("text", ENTRY);
+    const raw = JSON.parse(await readFile(path, "utf8")) as { version: number };
+    expect(raw.version).toBe(1);
+    expect((await registry.read()).tasks.text).toEqual(ENTRY);
+  });
+
+  it("un comfyWorkflow sin prompt marcado es un archivo roto, no se repara", async () => {
+    await writeFile(
+      path.replace("home/", ""),
+      JSON.stringify({
+        version: 1,
+        tasks: {
+          image: {
+            provider: "comfyui",
+            baseUrl: "http://127.0.0.1:8188",
+            model: "x",
+            comfyWorkflow: { workflow: {} },
+          },
+        },
+      }),
+    );
+    const error = await new FileModelRegistry({ path: path.replace("home/", "") })
+      .read()
+      .catch((e: unknown) => e);
+    expect(isPortError(error) && error.code).toBe("provider_contract_violation");
+  });
+});

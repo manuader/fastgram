@@ -46,11 +46,6 @@ export const deckEn = {
   "deck.remaining": "{count} in queue", // nuevo
   "deck.remainingOne": "1 in queue", // nuevo
 
-  "deck.blind.title": "Next suggestion", // nuevo
-  "deck.blind.description":
-    "Previews aren't available yet — the API can't list the queue. Accepting builds the next queued piece; it shows up under Recent builds when it's ready.", // nuevo
-  "deck.blind.skipUnavailable": "Skipping needs the queue API — coming in sprint 2", // nuevo
-
   "deck.accept.title": "What would you like to do?", // literal M-04
   "deck.accept.step": "Step 1 of 3", // literal M-04
   "deck.accept.save": "Save to Library", // literal
@@ -71,8 +66,6 @@ export const deckEn = {
   "deck.empty.title": "Your queue is being generated", // nuevo
   "deck.empty.description":
     "The discovery queue has no ready items yet. New suggestions show up here on their own — no need to reload.", // paráfrasis ERR-E11
-  "deck.empty.blindDescription":
-    "The discovery queue has no ready items yet. It refills in the background; try again in a minute.", // paráfrasis ERR-E11
   "deck.empty.llmHint":
     "Still empty after a few minutes? Blitz needs an AI model to generate suggestions.", // nuevo
   "deck.empty.llmLink": "Check AI models", // nuevo

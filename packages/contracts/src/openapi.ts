@@ -400,6 +400,18 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           },
         },
       },
+      "/blitz/queue/counts": {
+        get: {
+          operationId: "countBlitzQueues",
+          summary:
+            "Tarjetas en cola por marca (brands=current|all, sólo marcas del mismo dueño). No pide relleno ni cobra.",
+          parameters: queryParams(blitz.blitzQueueCountsQuerySchema),
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(blitz.blitzQueueCountsSchema))),
+            "400": errorResponse("bad_request"),
+          },
+        },
+      },
       "/blitz/queue/{id}/discard": {
         post: {
           operationId: "discardBlitzSuggestion",
@@ -735,6 +747,36 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           responses: {
             "200": ok("OK", dataOf(toJsonSchema(connections.connectionAccountSchema))),
             "404": errorResponse("not_found — selection_expired o Página desconocida"),
+          },
+        },
+      },
+      /** LinkedIn (`PU-LATER-002`): perfil y Páginas que administra, para elegir. */
+      "/connections/linkedin/pages/{selectionId}": {
+        get: {
+          operationId: "getLinkedInPageSelection",
+          summary:
+            "Perfil y Páginas de LinkedIn ofrecidos tras el login, para elegir uno",
+          parameters: [pathParam("selectionId")],
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(connections.facebookPageSelectionSchema)),
+            ),
+            "404": errorResponse("not_found — selection_expired"),
+          },
+        },
+      },
+      "/connections/linkedin/pages": {
+        post: {
+          operationId: "selectLinkedInPage",
+          summary: "Conecta el perfil o la Página de LinkedIn elegida",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(connections.selectFacebookPageRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(connections.connectionAccountSchema))),
+            "404": errorResponse("not_found — selection_expired o cuenta desconocida"),
           },
         },
       },

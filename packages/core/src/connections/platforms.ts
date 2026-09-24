@@ -24,6 +24,17 @@ export interface OAuthPlatformSpec {
    */
   readonly insightsScopes: readonly string[];
   /**
+   * Scopes que se suman a {@link scopes} sólo si la app de la instalación lo
+   * pide (`IntegrationAppConfig.optionalScopes`). Existen porque LinkedIn
+   * rechaza el login entero si se pide un scope de un producto que la app no
+   * tiene aprobado (*"Invalid scope"*, 401 —
+   * https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow ).
+   * Vacío en el resto.
+   */
+  readonly optionalScopes: readonly string[];
+  /** Qué habilitan los {@link optionalScopes}, para la pantalla. `null` si no hay. */
+  readonly optionalScopesNote: string | null;
+  /**
    * `verified`: la doc oficial dice que la redirect URI tiene que ser https.
    * `recommended`: la doc no lo dice de esta plataforma, pero la app de Meta
    * trae "Enforce HTTPS" prendido por default — se avisa, no se bloquea.
@@ -76,6 +87,8 @@ export const OAUTH_PLATFORM_SPECS: Readonly<Record<OAuthPlatform, OAuthPlatformS
       "instagram_business_manage_insights",
     ],
     insightsScopes: ["instagram_business_manage_insights"],
+    optionalScopes: [],
+    optionalScopesNote: null,
     https: "recommended",
     consoleUrl: "https://developers.facebook.com/apps/",
     docsUrl:
@@ -105,6 +118,8 @@ export const OAUTH_PLATFORM_SPECS: Readonly<Record<OAuthPlatform, OAuthPlatformS
     // Sin métricas: pedirían `video.list` y el id del video, que el Upload a
     // borrador no da (ver `packages/adapters/src/metrics/index.ts`).
     insightsScopes: [],
+    optionalScopes: [],
+    optionalScopesNote: null,
     https: "verified",
     consoleUrl: "https://developers.tiktok.com/apps/",
     docsUrl: "https://developers.tiktok.com/doc/login-kit-web",
@@ -129,6 +144,8 @@ export const OAUTH_PLATFORM_SPECS: Readonly<Record<OAuthPlatform, OAuthPlatformS
     // `GET /2/tweets` con `public_metrics` pide `tweet.read` + `users.read`,
     // que ya se piden para publicar: no hay scope sólo de métricas.
     insightsScopes: [],
+    optionalScopes: [],
+    optionalScopesNote: null,
     https: "no",
     consoleUrl: "https://developer.x.com/en/portal/dashboard",
     docsUrl:
@@ -155,6 +172,8 @@ export const OAUTH_PLATFORM_SPECS: Readonly<Record<OAuthPlatform, OAuthPlatformS
     label: "Threads",
     scopes: ["threads_basic", "threads_content_publish", "threads_manage_insights"],
     insightsScopes: ["threads_manage_insights"],
+    optionalScopes: [],
+    optionalScopesNote: null,
     https: "recommended",
     consoleUrl: "https://developers.facebook.com/apps/",
     docsUrl:
@@ -194,6 +213,8 @@ export const OAUTH_PLATFORM_SPECS: Readonly<Record<OAuthPlatform, OAuthPlatformS
       "pages_manage_engagement",
     ],
     insightsScopes: ["read_insights", "pages_manage_engagement"],
+    optionalScopes: [],
+    optionalScopesNote: null,
     https: "recommended",
     consoleUrl: "https://developers.facebook.com/apps/",
     docsUrl:
@@ -202,6 +223,86 @@ export const OAUTH_PLATFORM_SPECS: Readonly<Record<OAuthPlatform, OAuthPlatformS
     minTokenAgeForRefreshMs: 0,
     setupNote:
       "In your Meta app, add Facebook Login and use the App ID and App secret from App settings → Basic. You pick the Page after logging in.",
+  },
+  /**
+   * YouTube (`PU-LATER-001`) — OAuth 2.0 de Google para apps de servidor.
+   * `youtube.upload` lo pide `videos.insert` —
+   * https://developers.google.com/youtube/v3/docs/videos/insert
+   * `youtube.readonly` (*"View your YouTube account"*) para leer el canal
+   * propio (`channels.list?mine=true`) y las estadísticas de los videos
+   * (`videos.list`), incluso los que quedan privados sin auditoría —
+   * https://developers.google.com/youtube/v3/guides/auth/server-side-web-apps
+   * No va en `insightsScopes`: sin él no se sabe qué canal se conectó.
+   *
+   * https: *"HTTPS required (localhost exempt)"* —
+   * https://developers.google.com/identity/protocols/oauth2/web-server
+   * Como localhost está exento y el túnel ya es https, queda en `no`.
+   * Vida: el `expires_in` de la respuesta; el refresh token dura mientras no
+   * se revoque, **salvo** con la pantalla de consentimiento en «Testing»:
+   * vence a los 7 días — https://developers.google.com/identity/protocols/oauth2
+   *
+   * Sin la auditoría del proyecto, *"All videos uploaded via the
+   * `videos.insert` endpoint from unverified API projects created after 28
+   * July 2020 will be restricted to private viewing mode"* (videos/insert).
+   */
+  youtube: {
+    platform: "youtube",
+    label: "YouTube",
+    scopes: [
+      "https://www.googleapis.com/auth/youtube.upload",
+      "https://www.googleapis.com/auth/youtube.readonly",
+    ],
+    insightsScopes: [],
+    optionalScopes: [],
+    optionalScopesNote: null,
+    https: "no",
+    consoleUrl: "https://console.cloud.google.com/apis/credentials",
+    docsUrl: "https://developers.google.com/youtube/v3/guides/auth/server-side-web-apps",
+    refreshMarginMs: 5 * 60 * 1000,
+    minTokenAgeForRefreshMs: 0,
+    setupNote:
+      "In Google Cloud, enable the YouTube Data API v3 and create an OAuth client of type “Web application”. Until Google audits your project, every video you upload stays private — request the audit early, it takes a while. While the consent screen is in “Testing”, you must reconnect every 7 days.",
+  },
+  /**
+   * LinkedIn (`PU-LATER-002`) — 3-legged OAuth.
+   * `w_member_social` (producto «Share on LinkedIn») y `openid` + `profile`
+   * (producto «Sign In with LinkedIn using OpenID Connect») son permisos
+   * abiertos, sin aprobación —
+   * https://learn.microsoft.com/en-us/linkedin/shared/authentication/getting-access
+   * `sub` de `/v2/userinfo` arma el Person URN —
+   * https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/sign-in-with-linkedin-v2
+   *
+   * Opcionales, para publicar como Página: `w_organization_social` (Posts
+   * API) y `r_organization_admin` (listar las Páginas que administra, con
+   * `organizationAcls`) —
+   * https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api
+   * https://learn.microsoft.com/en-us/linkedin/marketing/community-management/organizations/organization-access-control-by-role
+   * Son del producto Community Management API, que **requiere aprobación**.
+   *
+   * https: *"Add the redirect (callback) URL via HTTPS"* —
+   * https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow
+   * Vida: *"all access tokens are issued with a 60-day lifespan"*; el refresh
+   * token programático sólo existe para socios aprobados (misma página y
+   * https://learn.microsoft.com/en-us/linkedin/shared/authentication/programmatic-refresh-tokens ).
+   * Sin refresh token, a los 60 días hay que reconectar.
+   */
+  linkedin: {
+    platform: "linkedin",
+    label: "LinkedIn",
+    scopes: ["openid", "profile", "w_member_social"],
+    insightsScopes: [],
+    optionalScopes: ["w_organization_social", "r_organization_admin"],
+    optionalScopesNote:
+      "My LinkedIn app has the Community Management API approved — also let me post as a Page I manage.",
+    https: "verified",
+    consoleUrl: "https://www.linkedin.com/developers/apps",
+    docsUrl:
+      "https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow",
+    // Una semana antes de los 60 días, como Meta.
+    refreshMarginMs: 7 * DAY_MS,
+    minTokenAgeForRefreshMs: 0,
+    setupNote:
+      "In your LinkedIn app, add the “Share on LinkedIn” and “Sign In with LinkedIn using OpenID Connect” products. LinkedIn only accepts https redirect URLs, so set FASTGRAM_PUBLIC_URL to your tunnel first. Without programmatic refresh tokens (partners only), reconnect every 60 days.",
   },
 };
 
@@ -218,4 +319,20 @@ export function oauthPlatformSpec(platform: OAuthPlatform): OAuthPlatformSpec {
 export function publishScopesOf(platform: OAuthPlatform): readonly string[] {
   const spec = OAUTH_PLATFORM_SPECS[platform];
   return spec.scopes.filter((s) => !spec.insightsScopes.includes(s));
+}
+
+/**
+ * Lo que se pide en la autorización: {@link OAuthPlatformSpec.scopes} más los
+ * opcionales si la app de la instalación los habilitó. Los opcionales nunca
+ * entran en {@link publishScopesOf}: una cuenta sin ellos publica igual (en
+ * LinkedIn, como perfil).
+ */
+export function requestedScopesOf(
+  platform: OAuthPlatform,
+  config: { readonly optionalScopes?: boolean } | undefined,
+): readonly string[] {
+  const spec = OAUTH_PLATFORM_SPECS[platform];
+  return config?.optionalScopes === true
+    ? [...spec.scopes, ...spec.optionalScopes]
+    : spec.scopes;
 }

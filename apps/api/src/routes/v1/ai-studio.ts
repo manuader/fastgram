@@ -185,7 +185,11 @@ export function registerAiStudioRoutes(
       durationSeconds: body.durationSeconds,
       imageUrl: body.imageUrl?.trim() === "" ? undefined : body.imageUrl?.trim(),
     };
-    const check = checkGenerationInput(spec, input);
+    // ComfyUI (`PU-LATER-003`) corre acá y la imagen de entrada la baja el
+    // adaptador: vale también la URL `http://` del MinIO local.
+    const check = checkGenerationInput(spec, input, {
+      localImageFetch: config.provider === "comfyui",
+    });
     if (!check.ok || spec === undefined) {
       throw new ApiRejection(
         400,

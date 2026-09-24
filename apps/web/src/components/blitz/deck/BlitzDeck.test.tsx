@@ -494,63 +494,21 @@ describe("BlitzDeck · estados (P2-BLITZ-013)", () => {
   });
 });
 
-describe("BlitzDeck · modo blind (sin GET /blitz/queue)", () => {
-  const missingRoute = () => Promise.reject(apiError(404, "not_found"));
-
-  it("muestra la siguiente de la cola, no ofrece descartar y acepta con POST /blitz sin cuerpo", async () => {
-    installBackend({ queue: missingRoute });
+describe("BlitzDeck · 404 de la cola", () => {
+  // Hasta el 2026-09-24 un 404 se leía como "la API no lista la cola" y el deck
+  // pasaba a un modo sin previews. La ruta existe: un 404 es una marca inválida.
+  it("es un error con ApiErrorState, no un deck sin previews, y no acepta nada", async () => {
+    installBackend({ queue: () => Promise.reject(apiError(404, "not_found")) });
     const { user } = renderDeck();
 
-    expect(
-      await screen.findByText("Next suggestion", { selector: "p" }),
-    ).toBeInTheDocument();
-    const skip = screen.getByRole("button", { name: "Skip" });
-    expect(skip).toHaveAttribute("aria-disabled", "true");
+    expect(await screen.findByText("We couldn't find that")).toBeInTheDocument();
+    expect(screen.queryByText(/Previews aren't available yet/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("deck-top-card")).not.toBeInTheDocument();
+    expect(screen.queryByText("Your queue is being generated")).not.toBeInTheDocument();
 
-    await user.click(skip);
-    await user.keyboard("{ArrowLeft}");
-    expect(sendMock).not.toHaveBeenCalled();
-
+    // Las flechas no deciden sobre una tarjeta que no existe.
     await user.keyboard("{ArrowRight}");
-    await user.click(
-      within(await screen.findByRole("dialog")).getByRole("button", {
-        name: /Save to Library/,
-      }),
-    );
-
-    const calls = acceptCalls();
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.[1]?.body).toEqual({});
-    expect(await screen.findByText("Content saved!")).toBeInTheDocument();
-    // Sigue habiendo una tarjeta: la próxima de la cola.
-    await waitFor(() => {
-      expect(topCardLabel()).toBe("Next suggestion");
-    });
-  });
-
-  it("POST /blitz con cola vacía → estado de espera con reintento manual (nunca automático)", async () => {
-    installBackend({
-      queue: missingRoute,
-      accept: () => Promise.reject(apiError(404, "not_found")),
-    });
-    const { user } = renderDeck();
-
-    await screen.findByText("Next suggestion", { selector: "p" });
-    await user.keyboard("{ArrowRight}");
-    await user.click(
-      within(await screen.findByRole("dialog")).getByRole("button", {
-        name: /Save to Library/,
-      }),
-    );
-
-    expect(await screen.findByText("Your queue is being generated")).toBeInTheDocument();
-    expect(acceptCalls()).toHaveLength(1);
-
-    await user.click(screen.getByRole("button", { name: "Try again" }));
-    expect(
-      await screen.findByText("Next suggestion", { selector: "p" }),
-    ).toBeInTheDocument();
-    // Reintentar vuelve a mostrar la tarjeta; aceptar sigue siendo decisión del usuario.
-    expect(acceptCalls()).toHaveLength(1);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(acceptCalls()).toHaveLength(0);
   });
 });

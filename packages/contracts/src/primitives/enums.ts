@@ -67,12 +67,15 @@ export type Platform = z.infer<typeof platformSchema>;
  *
  * `x`, `threads` y `facebook` son de `D-09` (migración `0015_social_platforms.sql`
  * los sumó a `post_platform`; los publicadores están en
- * `packages/adapters/src/publishers/{x,threads,facebook}`).
+ * `packages/adapters/src/publishers/{x,threads,facebook}`). `linkedin` entra en
+ * REST con su publicador (`PU-LATER-002`): el enum de la base ya lo tenía, en
+ * este mismo orden.
  */
 export const postPlatformSchema = z.enum([
   "tiktok",
   "instagram",
   "youtube",
+  "linkedin",
   "reddit",
   "x",
   "threads",

@@ -369,6 +369,7 @@ export const webEn = {
   "posts.platform.x": "X", // literal · D-09
   "posts.platform.threads": "Threads", // literal · D-09
   "posts.platform.facebook": "Facebook", // literal · D-09
+  "posts.platform.linkedin": "LinkedIn", // literal · PU-LATER-002
 
   // Los diez estados de FR-060 (PRD:1387). El enum es normativo; el texto de
   // pantalla no está en el PRD, así que los diez son `nuevo`.
@@ -605,15 +606,16 @@ export const webEn = {
   "brand.pendingTooLong":
     "The analysis hasn't started yet. It's still queued — you can keep going with setup meanwhile.", // nuevo
   // `unsupported_platform` no tiene copy en §19.5.1. FR-011.4 pide que al
-  // degradar a D la UI «lo diga explícitamente y pida la ayuda concreta»
-  // (pegar bio, capturas, describir la marca) — y **ningún endpoint** recibe
-  // hoy esa ayuda: `POST /brand/sources` rechaza `manual` y no hay otro. Así que
-  // se dice lo que pasó y se pide la única ayuda que sí funciona. «Add a
-  // different one» era falso: el worker da este motivo a **toda** plataforma
-  // social (sólo hay extractor de web), así que otra red social falla igual.
-  // Una web sí se lee: el handler sólo se monta con el extractor de web.
+  // degradar a D la UI «lo diga explícitamente y pida la ayuda concreta». En el
+  // onboarding (paso 4) no hay panel para pegar la bio, así que se pide la
+  // ayuda que ahí sí funciona: una web. «Add a different one» era falso: otra
+  // red social puede fallar igual. En `/brand` va la variante `…Assist`.
   "brand.failure.unsupportedPlatform":
     "We can't read {platform} profiles yet, so this source won't shape your brand profile. If you have a website, add it instead.", // nuevo
+  // La misma falla en `/brand`, donde abajo sí está el panel del tier D
+  // (`AssistedSourcePanel`): el copy invita a usarlo en vez de mandar a la web.
+  "brand.failure.unsupportedPlatformAssist":
+    "We can't read {platform} profiles on our own yet. Paste your bio and a few recent captions below and we'll build your brand profile from them.", // nuevo
   // FR-011.2 (PRD:835) — sub-pasos de Instagram en Fase 1, literales.
   "brand.substep.readingProfile": "Reading profile", // literal PRD:835
   "brand.substep.readingPosts": "Reading recent posts", // literal PRD:835

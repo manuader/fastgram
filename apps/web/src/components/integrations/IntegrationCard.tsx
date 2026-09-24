@@ -9,6 +9,7 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
+  Checkbox,
   Input,
   useToast,
 } from "@fastgram/ui";
@@ -31,10 +32,11 @@ export interface IntegrationCardProps {
  * el aviso de https donde la plataforma lo exige.
  */
 export function IntegrationCard({ app }: IntegrationCardProps) {
-  const ids = { clientId: useId(), secret: useId() };
+  const ids = { clientId: useId(), secret: useId(), optional: useId() };
   const [clientId, setClientId] = useState(app.clientId ?? "");
   const [secret, setSecret] = useState("");
   const [touched, setTouched] = useState(false);
+  const [optionalScopes, setOptionalScopes] = useState(app.optionalScopesEnabled);
   const [copied, setCopied] = useState(false);
   const save = useSaveIntegration(app.platform);
   const remove = useRemoveIntegration(app.platform);
@@ -44,9 +46,16 @@ export function IntegrationCard({ app }: IntegrationCardProps) {
   useEffect(() => {
     setClientId(app.clientId ?? "");
   }, [app.clientId]);
+  useEffect(() => {
+    setOptionalScopes(app.optionalScopesEnabled);
+  }, [app.optionalScopesEnabled]);
 
   const clientIdError = touched && clientId.trim() === "" ? C.errorClientId : undefined;
-  const dirty = clientId.trim() !== (app.clientId ?? "") || secret.trim() !== "";
+  const hasOptional = app.optionalScopes.length > 0;
+  const dirty =
+    clientId.trim() !== (app.clientId ?? "") ||
+    secret.trim() !== "" ||
+    (hasOptional && optionalScopes !== app.optionalScopesEnabled);
 
   const onSave = () => {
     setTouched(true);
@@ -55,6 +64,7 @@ export function IntegrationCard({ app }: IntegrationCardProps) {
       {
         clientId: clientId.trim(),
         ...(secret.trim() === "" ? {} : { clientSecret: secret.trim() }),
+        ...(hasOptional ? { optionalScopes } : {}),
       },
       {
         onSuccess: () => {
@@ -91,6 +101,15 @@ export function IntegrationCard({ app }: IntegrationCardProps) {
           </Badge>
         </div>
         <CardDescription>{app.setupNote}</CardDescription>
+        {app.platform === "youtube" && (
+          <p
+            className="m-0 text-xs text-warning"
+            role="note"
+            data-testid="youtube-audit-note"
+          >
+            {C.youtubeAudit}
+          </p>
+        )}
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
@@ -151,6 +170,17 @@ export function IntegrationCard({ app }: IntegrationCardProps) {
             <p className="m-0 text-xs text-text-muted">{C.httpsRecommended}</p>
           ) : null}
         </div>
+
+        {hasOptional && (
+          <Checkbox
+            id={ids.optional}
+            checked={optionalScopes}
+            onChange={(e) => setOptionalScopes(e.target.checked)}
+            label={app.optionalScopesNote ?? C.optionalScopesFallback}
+            description={C.optionalScopesHint(app.optionalScopes.join(", "))}
+            data-testid={`optional-scopes-${app.platform}`}
+          />
+        )}
 
         <div className="flex flex-col gap-1">
           <span className="text-sm font-medium text-text">{C.scopesLabel}</span>

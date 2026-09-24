@@ -41,6 +41,7 @@ import {
   MODEL_PROVIDERS,
   MODEL_TASKS,
   PortError,
+  type ComfyWorkflowConfig,
   type ModelRegistry,
   type ModelRegistrySnapshot,
   type ModelTask,
@@ -83,6 +84,45 @@ const httpUrl = z
   .url()
   .refine((v) => /^https?:\/\//i.test(v), "http(s) only");
 
+/** `PU-LATER-003`: un input de un nodo de un workflow de ComfyUI. */
+const comfyRefSchema = z
+  .object({ nodeId: z.string().min(1), input: z.string().min(1) })
+  .strict();
+
+/**
+ * El workflow de ComfyUI de una tarea. Campo **opcional**: un `models.json`
+ * sin él (todos los anteriores) sigue siendo válido y la versión no cambia.
+ * La forma de los nodos la valida `core` al guardar; acá sólo que sea un
+ * objeto, para no rechazar un archivo por un detalle de un nodo.
+ */
+const comfyWorkflowSchema = z
+  .object({
+    workflow: z.record(z.string(), z.unknown()),
+    prompt: comfyRefSchema,
+    width: comfyRefSchema.optional(),
+    height: comfyRefSchema.optional(),
+    seed: comfyRefSchema.optional(),
+    image: comfyRefSchema.optional(),
+    durationSeconds: z.number().int().positive().optional(),
+  })
+  .strict();
+
+type ComfyEntry = z.infer<typeof comfyWorkflowSchema>;
+
+function toComfy(entry: ComfyEntry): ComfyWorkflowConfig {
+  return {
+    workflow: entry.workflow,
+    prompt: entry.prompt,
+    ...(entry.width === undefined ? {} : { width: entry.width }),
+    ...(entry.height === undefined ? {} : { height: entry.height }),
+    ...(entry.seed === undefined ? {} : { seed: entry.seed }),
+    ...(entry.image === undefined ? {} : { image: entry.image }),
+    ...(entry.durationSeconds === undefined
+      ? {}
+      : { durationSeconds: entry.durationSeconds }),
+  };
+}
+
 const entrySchema = z
   .object({
     provider: z.enum(MODEL_PROVIDERS),
@@ -94,6 +134,7 @@ const entrySchema = z
       .regex(/^[A-Z_][A-Z0-9_]*$/)
       .optional(),
     contextWindowTokens: z.number().int().positive().optional(),
+    comfyWorkflow: comfyWorkflowSchema.optional(),
     updatedAt: z.string().optional(),
   })
   .strict();
@@ -120,6 +161,9 @@ function toConfig(entry: z.infer<typeof entrySchema>): ModelTaskConfig {
     ...(entry.contextWindowTokens === undefined
       ? {}
       : { contextWindowTokens: entry.contextWindowTokens }),
+    ...(entry.comfyWorkflow === undefined
+      ? {}
+      : { comfyWorkflow: toComfy(entry.comfyWorkflow) }),
     ...(entry.updatedAt === undefined ? {} : { updatedAt: entry.updatedAt }),
   };
 }

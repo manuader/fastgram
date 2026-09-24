@@ -11,6 +11,8 @@ export const PLATFORM_LABEL: Readonly<Record<OAuthPlatformId, string>> = {
   x: "X",
   threads: "Threads",
   facebook: "Facebook Page",
+  youtube: "YouTube",
+  linkedin: "LinkedIn",
 };
 
 /** Una línea bajo el botón: qué se conecta y qué hace FastGram con eso. */
@@ -20,7 +22,34 @@ export const PLATFORM_HINT: Readonly<Record<OAuthPlatformId, string>> = {
   x: "Posts and media. Pay-per-use on X's side.",
   threads: "Text, images, video and carousels.",
   facebook: "Reels on a Page you manage. You pick the Page after logging in.",
+  youtube:
+    "Shorts: vertical videos up to 3 minutes. Until Google audits your project, uploads stay private.",
+  linkedin: "Your profile, or a Page you manage. Videos, images and multi-image posts.",
 };
+
+/** Redes donde la cuenta se elige después del login (una de varias). */
+export const PICKER_COPY: Readonly<
+  Partial<Record<OAuthPlatformId, { title: string; body: string; choose: string }>>
+> = {
+  facebook: {
+    title: "Choose the Facebook Page",
+    body: "Your Facebook account manages more than one Page. Pick the one this brand publishes to.",
+    choose: "Use this Page",
+  },
+  linkedin: {
+    title: "Choose where this brand posts on LinkedIn",
+    body: "Your LinkedIn account can post as yourself or as a Page you manage. Pick one for this brand.",
+    choose: "Use this account",
+  },
+};
+
+/**
+ * YouTube sin auditoría: *"All videos uploaded via the videos.insert endpoint
+ * from unverified API projects created after 28 July 2020 will be restricted
+ * to private viewing mode"* — developers.google.com/youtube/v3/docs/videos/insert
+ */
+export const YOUTUBE_AUDIT_WARNING =
+  "Until Google audits your Google Cloud project, every video FastGram uploads stays private on YouTube. Request the audit in the YouTube API Services form — it can take weeks.";
 
 export const CONNECTIONS_COPY = {
   pageTitle: "Connections",
@@ -36,7 +65,7 @@ export const CONNECTIONS_COPY = {
   setupLink: "Settings → Integrations",
   emptyTitle: "No accounts connected yet",
   emptyBody:
-    "Connect Instagram, TikTok, X, Threads or a Facebook Page to publish from FastGram.",
+    "Connect Instagram, TikTok, X, Threads, a Facebook Page, YouTube or LinkedIn to publish from FastGram.",
   reconnect: "Reconnect",
   disconnect: "Disconnect",
   disconnectConfirm: (handle: string) =>
@@ -79,8 +108,9 @@ export const REASON_COPY: Readonly<Record<string, string>> = {
     "We could not confirm the connection yet. Check the redirect URI in the developer console and try again.",
   oauth_provider_unavailable:
     "Connecting isn't available right now. Try again in a moment.",
-  no_pages: "This Facebook account does not manage any Page.",
-  selection_expired: "The Page selection expired. Connect Facebook again.",
+  no_pages:
+    "This account has nothing to publish to (no Facebook Page, or no YouTube channel).",
+  selection_expired: "The account selection expired. Connect again.",
   connection_expired: "Connection Expired. Reconnect to keep posting.",
   connection_inactive: "Paused: reconnect needed.",
   service_unavailable: "Connecting isn't available right now.",

@@ -315,12 +315,24 @@ mismaLista("aspect ratios de slideshow (FR-050 / F-068) · 4 paquetes", [
   ["services/render/src/domain/canvas.ts", "ASPECT_RATIOS"],
 ]);
 
-mismaLista("plataformas de publicación (D-02 / DATA-016) · 5 lugares", [
+// `postPlatformSchema` entra con LinkedIn en REST (PU-LATER-002): antes le
+// faltaba `linkedin` y por eso no podía estar en esta lista.
+mismaLista("plataformas de publicación (D-02 / DATA-016) · 6 lugares", [
   ["packages/ports/src/social-publisher.ts", "PUBLISH_PLATFORMS"],
   ["packages/db/src/schema/enums.ts", "SOCIAL_PLATFORM"],
   ["packages/db/src/schema/enums.ts", "POST_PLATFORM"],
   ["packages/contracts/src/primitives/enums.ts", "platformSchema"],
+  ["packages/contracts/src/primitives/enums.ts", "postPlatformSchema"],
   ["packages/ui/src/components/badge/badge.variants.ts", "PLATFORM_TONES"],
+]);
+
+// Las redes que se conectan por OAuth: el puerto (clientes y specs), el
+// contrato (`/integrations`, `/connections/:platform/…`) y la web (botones y
+// callback). YouTube y LinkedIn entraron juntas en los tres (PU-LATER-001/002).
+mismaLista("plataformas con OAuth (D-09 · PU-LATER-001/002) · 3 paquetes", [
+  ["packages/ports/src/oauth.ts", "OAUTH_PLATFORMS"],
+  ["packages/contracts/src/resources/connections.ts", "oauthPlatformSchema"],
+  ["apps/web/src/lib/connections/callback.ts", "OAUTH_PLATFORM_IDS"],
 ]);
 
 mismaLista("tipo de cuenta de un Post (DATA-020) · 3 paquetes", [

@@ -3,7 +3,8 @@
  *
  * Instagram, Threads y Facebook se montan siempre que haya tokens (leer no
  * cuesta plata; sin el scope de insights, el sync lo dice por post con
- * `metrics_permission_missing`). **X sólo con `METRICS_X_ENABLED=true`**:
+ * `metrics_permission_missing`). YouTube también (`videos.list`, 1 unidad de
+ * la cuota general, no de la de subidas). **X sólo con `METRICS_X_ENABLED=true`**:
  * leer cuesta US$0,005 por post (`adapters/metrics/x.ts`), y un costo así no
  * se prende por default. TikTok no tiene adaptador (ver
  * `packages/adapters/src/metrics/index.ts`).
@@ -20,6 +21,7 @@ import {
   InstagramMetrics,
   ThreadsMetrics,
   XMetrics,
+  YouTubeMetrics,
 } from "@fastgram/adapters/metrics";
 import type { SocialMetrics } from "@fastgram/ports";
 
@@ -49,6 +51,7 @@ export function createMetricsAdapters(
     facebook: new FacebookReelsMetrics(
       metaVersion === undefined ? {} : { apiVersion: metaVersion },
     ),
+    youtube: new YouTubeMetrics(),
     ...(xMetricsEnabled(env) ? { x: new XMetrics() } : {}),
   };
 }

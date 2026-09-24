@@ -15,7 +15,7 @@
  * política de la marca y lo que hay alrededor en **todas** las marcas del
  * mismo dueño.
  *
- * ## Las tres reglas, y qué hace cada una cuando no se cumple
+ * ## Las cuatro reglas, y qué hace cada una cuando no se cumple
  *
  * 1. **Nunca la misma pieza en dos marcas** (§5.4). Si el contenido
  *    renderizado (su huella, un hash de los bytes) ya salió en **otra** marca,
@@ -27,6 +27,13 @@
  * 3. **Separación mínima entre marcas del mismo dueño** (§5.3, default 10 min).
  *    Si otra marca publicó hace menos que eso, se **reprograma** a la hora de
  *    esa publicación más la separación.
+ * 4. **Cuota oficial de la plataforma, de la instalación entera**
+ *    ({@link PLATFORM_DAILY_QUOTAS}). Hoy sólo YouTube: 100 `videos.insert`
+ *    por día **por proyecto de Google**, y el proyecto es uno para todas las
+ *    marcas (las credenciales son de la instalación). Si el día de la cuota
+ *    ya está lleno sumando todas las marcas, se **reprograma** al día
+ *    siguiente a la misma hora. Sin esto, cinco marcas con tope propio de 24
+ *    agotarían la cuota y los posts fallarían en la plataforma.
  *
  * El jitter (§5.3) no está acá: ya se aplicó al programar, y aplicarlo otra vez
  * al publicar sólo movería la hora que el usuario ve en el calendario.
@@ -57,9 +64,34 @@ const DAY_MS = 86_400_000;
 /** Cuántos días hacia adelante se busca un hueco antes de rendirse. */
 export const PUBLISH_GUARD_HORIZON_DAYS = 30;
 
+/**
+ * Topes **oficiales** por red, compartidos por todas las marcas (regla 4).
+ *
+ * YouTube: *"100 calls per day. A call to this method has a quota cost of 1
+ * unit in the Video Uploads quota bucket"* —
+ * https://developers.google.com/youtube/v3/docs/videos/insert — y *"search.list
+ * and videos.insert methods have their own quota buckets"*; las cuotas
+ * diarias vuelven a cero a la medianoche del Pacífico —
+ * https://developers.google.com/youtube/v3/determine_quota_cost
+ *
+ * Cuentan los posts que ya salieron y los pendientes de antes: una subida que
+ * falló en la plataforma también gasta cuota y no se ve acá (queda en el
+ * reporte de `PU-LATER-001`).
+ */
+export const PLATFORM_DAILY_QUOTAS: Readonly<
+  Partial<Record<string, { readonly max: number; readonly timezone: string }>>
+> = {
+  youtube: { max: 100, timezone: "America/Los_Angeles" },
+};
+
 export interface PublishGuardPolicy {
   /** Tope de la marca en esta red por día local. `0` = la red no recibe nada. */
   readonly dailyCap: number;
+  /** Regla 4. Ausente = la red no tiene cuota oficial de instalación. */
+  readonly platformDailyQuota?: {
+    readonly max: number;
+    readonly timezone: string;
+  };
   /** Separación mínima con otras marcas del mismo dueño, en minutos. */
   readonly brandGapMinutes: number;
   /** Zona de la marca: el «día» del tope es el suyo, no el UTC. */
@@ -100,7 +132,7 @@ export type GuardDecision =
       readonly kind: "reschedule";
       readonly atMs: number;
       /** La primera regla que obligó a mover. */
-      readonly reason: "daily_cap" | "brand_gap";
+      readonly reason: "daily_cap" | "brand_gap" | "platform_quota";
     }
   | {
       readonly kind: "reject";
@@ -127,7 +159,7 @@ export interface EvaluateGuardsParams {
   readonly neighbors: readonly GuardNeighbor[];
 }
 
-/** Evalúa las tres reglas. Ver la cabecera. */
+/** Evalúa las cuatro reglas. Ver la cabecera. */
 export function evaluatePublishGuards(params: EvaluateGuardsParams): GuardDecision {
   const { subject, nowMs, policy } = params;
   const neighbors = params.neighbors.filter((n) => n.id !== subject.id);
@@ -168,10 +200,13 @@ export function evaluatePublishGuards(params: EvaluateGuardsParams): GuardDecisi
     (n) => n.brandId === subject.brandId && n.network === subject.network,
   );
   const others = neighbors.filter((n) => n.brandId !== subject.brandId);
+  const quota = policy.platformDailyQuota;
+  const sameNetwork =
+    quota === undefined ? [] : neighbors.filter((n) => n.network === subject.network);
 
   const start = Math.max(nowMs, subject.scheduledAtMs);
   let at = start;
-  let reason: "daily_cap" | "brand_gap" | null = null;
+  let reason: "daily_cap" | "brand_gap" | "platform_quota" | null = null;
 
   // Cada vuelta avanza `at` estrictamente, y el horizonte la corta.
   for (let guard = 0; guard < 10_000; guard += 1) {
@@ -187,6 +222,12 @@ export function evaluatePublishGuards(params: EvaluateGuardsParams): GuardDecisi
     if (usedOnDay(own, at, tz) >= cap) {
       at = sameWallTimeNextDay(at, tz);
       reason ??= "daily_cap";
+      continue;
+    }
+
+    if (quota !== undefined && usedOnDay(sameNetwork, at, quota.timezone) >= quota.max) {
+      at = sameWallTimeNextDay(at, quota.timezone);
+      reason ??= "platform_quota";
       continue;
     }
 
@@ -274,11 +315,14 @@ export function publishGuardPolicyFor(
   network: string,
   timezone: string,
 ): PublishGuardPolicy {
+  const quota = PLATFORM_DAILY_QUOTAS[network];
+  const platformDailyQuota = quota === undefined ? {} : { platformDailyQuota: quota };
   if (stored === null) {
     return {
       dailyCap: ANTI_BOT_DAILY_CAP_DEFAULT,
       brandGapMinutes: BRAND_GAP_MINUTES_DEFAULT,
       timezone,
+      ...platformDailyQuota,
     };
   }
   let dailyCap = ANTI_BOT_DAILY_CAP_DEFAULT;
@@ -295,7 +339,7 @@ export function publishGuardPolicyFor(
     Number.isFinite(stored.brandGapMinutes) && stored.brandGapMinutes >= 0
       ? stored.brandGapMinutes
       : BRAND_GAP_MINUTES_DEFAULT;
-  return { dailyCap, brandGapMinutes: gap, timezone };
+  return { dailyCap, brandGapMinutes: gap, timezone, ...platformDailyQuota };
 }
 
 export * from "./retry.js";

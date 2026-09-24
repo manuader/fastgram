@@ -38,9 +38,19 @@ const fail = (field: GenerationInputField, message: string): GenerationInputChec
   message,
 });
 
+export interface GenerationInputOptions {
+  /**
+   * El proveedor corre en esta máquina y la imagen de entrada la baja el
+   * adaptador (ComfyUI, `PU-LATER-003`), no un tercero desde internet: vale
+   * también `http://` (el MinIO local). Default `false`.
+   */
+  readonly localImageFetch?: boolean;
+}
+
 export function checkGenerationInput(
   spec: GenModelSpec | undefined,
   input: GenerationInput,
+  options: GenerationInputOptions = {},
 ): GenerationInputCheck {
   if (spec === undefined) {
     return fail("model", "That model is not available for this provider.");
@@ -86,8 +96,12 @@ export function checkGenerationInput(
     } catch {
       return fail("imageUrl", "Use a full https:// URL.");
     }
-    // El proveedor la descarga desde internet: tiene que ser pública.
-    if (url.protocol !== "https:" || url.username !== "" || url.password !== "") {
+    // El proveedor la descarga desde internet: tiene que ser pública. Con un
+    // proveedor local la baja el adaptador, y `http://` (MinIO local) sirve.
+    const protocolOk =
+      url.protocol === "https:" ||
+      (options.localImageFetch === true && url.protocol === "http:");
+    if (!protocolOk || url.username !== "" || url.password !== "") {
       return fail("imageUrl", "Use a public https:// URL the provider can download.");
     }
   }

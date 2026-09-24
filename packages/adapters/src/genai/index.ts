@@ -20,3 +20,9 @@ export { HIGGSFIELD_MODELS } from "../higgsfield/catalog.js";
 export { HIGGSFIELD_BASE_URL, HiggsfieldClient } from "../higgsfield/client.js";
 export { FAL_MODELS, FLUX_SIZES } from "../fal/catalog.js";
 export { FAL_PLATFORM_BASE_URL, FAL_QUEUE_BASE_URL, FalClient } from "../fal/client.js";
+export {
+  COMFYUI_DEFAULT_BASE_URL,
+  ComfyUiClient,
+  type ComfyFetch,
+  type ComfyUiClientConfig,
+} from "../comfyui/client.js";

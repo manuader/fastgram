@@ -25,11 +25,13 @@ export const TASK_COPY: Readonly<
   },
   image: {
     title: "Image",
-    description: "Backgrounds and slides for AI Studio, with Higgsfield or fal.",
+    description:
+      "Backgrounds and slides for AI Studio, with Higgsfield, fal or your own ComfyUI.",
   },
   video: {
     title: "Video",
-    description: "Background clips for AI Studio, with Higgsfield or fal.",
+    description:
+      "Background clips for AI Studio, with Higgsfield, fal or your own ComfyUI.",
   },
   background_removal: {
     title: "Background removal",
@@ -141,6 +143,39 @@ export const BUDGET_COPY = {
     default: "Default ($30). Change it here.",
   },
   estimateNote:
-    "Higgsfield quotes each generation for your account; fal uses the list price from the model page, so it's an estimate.",
+    "Higgsfield quotes each generation for your account; fal uses the list price from the model page, so it's an estimate. ComfyUI runs on your machine and costs nothing.",
   error: "Couldn't load the budget.",
+} as const;
+
+/** El workflow de ComfyUI en las tarjetas de imagen y video (`PU-LATER-003`). */
+export const COMFY_COPY = {
+  modelLabel: "Workflow name",
+  modelPlaceholder: "e.g. sdxl-basic",
+  modelHint: "How this workflow shows up in AI Studio.",
+  workflow: "Workflow (API format)",
+  workflowHint:
+    "In ComfyUI, export the workflow in API format and paste the JSON here, or load the file.",
+  workflowPlaceholder: '{ "3": { "class_type": "KSampler", "inputs": { … } }, … }',
+  loadFile: "Load .json file",
+  fileError: "Couldn't read that file.",
+  nodes: (n: number) => (n === 1 ? "1 node" : `${String(n)} nodes`),
+  detected: "Detected automatically — check them before saving.",
+  bindingsTitle: "Where FastGram writes each value",
+  notSet: "— not set —",
+  bindings: {
+    prompt: "Prompt",
+    width: "Width",
+    height: "Height",
+    seed: "Seed",
+    image: "Start image",
+  },
+  bindingHints: {
+    prompt: "Required. Usually the positive CLIPTextEncode text.",
+    size: "Optional. Without them, the workflow's own size is used and the aspect ratio can't be picked.",
+    seed: "Optional. A new random seed each run; without it every run repeats the same seed.",
+    image: "Optional. The LoadImage input that receives the first frame.",
+  },
+  duration: "Clip length (seconds)",
+  durationHint: "What this workflow produces — FastGram doesn't change it.",
+  noInputs: "No plain inputs of this type in the workflow.",
 } as const;

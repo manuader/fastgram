@@ -39,7 +39,13 @@
  */
 
 /** Las redes que tienen adaptador de métricas. TikTok no: ver `adapters/metrics`. */
-export const METRICS_PLATFORMS = ["instagram", "threads", "facebook", "x"] as const;
+export const METRICS_PLATFORMS = [
+  "instagram",
+  "threads",
+  "facebook",
+  "x",
+  "youtube",
+] as const;
 export type MetricsPlatform = (typeof METRICS_PLATFORMS)[number];
 
 /** Lo que una red puede devolver por post. Cada adaptador declara el subconjunto. */

@@ -3,8 +3,10 @@
  * para `apps/api` (rutas de conexión) y `apps/worker` (el publisher, vía
  * `resolveAccessToken` / `createConnectionTokens` de `@fastgram/core`).
  *
- * Lee sólo `FASTGRAM_HOME` del entorno que recibe: la clave
- * (`secret.key`) y las credenciales (`integrations.json`) viven ahí.
+ * Lee `FASTGRAM_HOME` del entorno que recibe: la clave (`secret.key`) y las
+ * credenciales (`integrations.json`) viven ahí. Y `PUBLISH_LINKEDIN_VERSION`
+ * (la `LinkedIn-Version` de las APIs versionadas, la misma que usa el
+ * publicador), si `config` no trae una.
  */
 import type { IntegrationStore, OAuthClient, OAuthPlatform } from "@fastgram/ports";
 
@@ -32,10 +34,20 @@ export function createLocalOAuthKit(
   config: OAuthClientsConfig = {},
 ): LocalOAuthKit {
   const keyring = new LocalKeyring({ path: localKeyPath(env) });
+  const linkedinVersion = config.linkedinVersion ?? linkedinVersionFrom(env);
   return {
     cipher: new LocalTokenCipher(keyring),
     signer: new LocalStateSigner(keyring),
     integrations: new FileIntegrationStore({ path: integrationsPath(env) }),
-    clients: createOAuthClients(config),
+    clients: createOAuthClients(
+      linkedinVersion === undefined ? config : { ...config, linkedinVersion },
+    ),
   };
+}
+
+function linkedinVersionFrom(
+  env: Readonly<Record<string, string | undefined>>,
+): string | undefined {
+  const v = env["PUBLISH_LINKEDIN_VERSION"]?.trim();
+  return v === undefined || !/^\d{6}$/.test(v) ? undefined : v;
 }

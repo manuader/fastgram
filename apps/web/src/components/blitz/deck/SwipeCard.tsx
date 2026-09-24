@@ -45,8 +45,6 @@ export interface SwipeCardProps {
   readonly reducedMotion: boolean;
   /** `true` mientras el diálogo de aceptar está abierto: la tarjeta queda inclinada. */
   readonly leaning: boolean;
-  /** `false` en modo blind: arrastrar a la izquierda no decide. */
-  readonly canSkip: boolean;
   readonly onDecide: (decision: Decision) => void;
 }
 
@@ -77,7 +75,6 @@ export function SwipeCard({
   label,
   reducedMotion,
   leaning,
-  canSkip,
   onDecide,
 }: SwipeCardProps) {
   const x = useMotionValue(0);
@@ -109,7 +106,6 @@ export function SwipeCard({
   function onDragEnd(_event: unknown, info: PanInfo): void {
     const decision = decisionFromDrag(info.offset.x, info.velocity.x);
     if (decision === null) return;
-    if (decision === "skip" && !canSkip) return;
     onDecide(decision);
   }
 
@@ -150,21 +146,19 @@ export function SwipeCard({
       >
         {td("deck.indicator.accept")}
       </motion.span>
-      {canSkip && (
-        <motion.span
-          aria-hidden="true"
-          className="pointer-events-none absolute left-4 top-12 rounded-md border-4 px-3 py-1 text-2xl font-black uppercase tracking-wider"
-          style={{
-            opacity: skipOpacity,
-            rotate: -12,
-            color: "var(--fg-color-danger)",
-            borderColor: "var(--fg-color-danger)",
-            background: "rgba(0,0,0,.35)",
-          }}
-        >
-          {td("deck.indicator.skip")}
-        </motion.span>
-      )}
+      <motion.span
+        aria-hidden="true"
+        className="pointer-events-none absolute left-4 top-12 rounded-md border-4 px-3 py-1 text-2xl font-black uppercase tracking-wider"
+        style={{
+          opacity: skipOpacity,
+          rotate: -12,
+          color: "var(--fg-color-danger)",
+          borderColor: "var(--fg-color-danger)",
+          background: "rgba(0,0,0,.35)",
+        }}
+      >
+        {td("deck.indicator.skip")}
+      </motion.span>
     </motion.div>
   );
 }

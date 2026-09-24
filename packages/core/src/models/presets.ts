@@ -120,6 +120,22 @@ export const MODEL_PROVIDER_PRESETS: readonly ModelProviderPreset[] = [
     local: false,
     note: "Prices shown for fal are list prices from each model's page — an estimate.",
   },
+  /*
+   * `PU-LATER-003`: ComfyUI en la máquina del usuario. «The server runs at
+   * http://127.0.0.1:8188 by default»
+   * (https://docs.comfy.org/development/comfyui-server/comms_overview; el
+   * ejemplo oficial `script_examples/websockets_api_example.py` usa
+   * `server_address = "127.0.0.1:8188"`). Sin key: el servidor no la pide.
+   * El «modelo» es un workflow en formato API (`comfyWorkflow`).
+   */
+  {
+    id: "comfyui",
+    label: "ComfyUI",
+    baseUrl: "http://127.0.0.1:8188",
+    requiresKey: false,
+    local: true,
+    note: "Runs on your own ComfyUI: no cost, no budget used. Paste a workflow exported in API format.",
+  },
   {
     id: "custom",
     label: "Custom",
@@ -160,7 +176,7 @@ export interface ModelTaskSpec {
 }
 
 /** Los de imagen y video: no hablan OpenAI, no sirven para texto. */
-export const GENAI_PROVIDERS: readonly ModelProvider[] = ["higgsfield", "fal"];
+export const GENAI_PROVIDERS: readonly ModelProvider[] = ["higgsfield", "fal", "comfyui"];
 const LLM_PROVIDERS: readonly ModelProvider[] = MODEL_PROVIDER_PRESETS.map(
   (p) => p.id,
 ).filter((id) => !GENAI_PROVIDERS.includes(id));

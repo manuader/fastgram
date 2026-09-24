@@ -72,19 +72,17 @@ export type DeckSuggestion = z.infer<typeof deckSuggestionSchema>;
 export const deckQueueSchema = z.array(deckSuggestionSchema);
 
 /**
- * Lo que dibuja una tarjeta.
+ * Lo que dibuja una tarjeta: **esa** sugerencia de `GET /blitz/queue`.
  *
- * · `preview` — hay `GET /blitz/queue`: la tarjeta es **esa** sugerencia.
- * · `blind`   — no lo hay: la tarjeta es "la siguiente de la cola", sin ver cuál.
- *   Aceptar funciona igual (es `POST /blitz`); descartar no se puede.
+ * Hasta el 2026-09-24 había un modo `blind` —"la siguiente de la cola", sin
+ * verla— para cuando la API no listaba la cola. La ruta existe desde
+ * `PU-BLITZ-002` y el modo se sacó: un 404 de la cola es un error.
  */
-export type DeckCard =
-  | {
-      readonly kind: "preview";
-      readonly key: string;
-      readonly suggestion: DeckSuggestion;
-    }
-  | { readonly kind: "blind"; readonly key: string };
+export interface DeckCard {
+  readonly kind: "preview";
+  readonly key: string;
+  readonly suggestion: DeckSuggestion;
+}
 
 /** Una slide lista para dibujar: fondo opcional y texto opcional. */
 export interface PreviewSlide {

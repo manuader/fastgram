@@ -133,9 +133,9 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 
 ## Después
 
-- [ ] **PU-LATER-001** YouTube Shorts (pedir la auditoría de Google **al empezar el sprint 3**, porque tarda)
-- [ ] **PU-LATER-002** LinkedIn
-- [ ] **PU-LATER-003** Modelos locales: endpoint compatible con OpenAI (ya funciona) + adaptador ComfyUI
+- [x] **PU-LATER-001** YouTube Shorts (pedir la auditoría de Google **al empezar el sprint 3**, porque tarda)
+- [x] **PU-LATER-002** LinkedIn
+- [x] **PU-LATER-003** Modelos locales: endpoint compatible con OpenAI (ya funciona) + adaptador ComfyUI
 - [ ] **PU-LATER-004** Influencers, **sólo si** Higgsfield expone personajes consistentes por API (no verificado)
 - [x] **PU-LATER-005** AI Studio sobre `ImageGen` / `VideoGen`
 - [ ] **PU-LATER-006** Engagement Reddit e Inspiration · `D-15`

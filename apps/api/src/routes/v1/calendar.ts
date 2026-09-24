@@ -330,7 +330,7 @@ function homeCompanyOf(request: FastifyRequest): string {
  * corre sin scope de tenant por la razón de su cabecera — y **sólo** lista:
  * los datos de cada marca se leen después con su propio scope.
  */
-async function brandContext(
+export async function brandContext(
   db: Database,
   appRole: string | undefined,
   mode: FastgramMode,
@@ -549,6 +549,7 @@ const SCHEDULABLE_PLATFORMS = [
   "tiktok",
   "instagram",
   "youtube",
+  "linkedin", // PU-LATER-002
   "reddit",
   "x",
   "threads",
@@ -837,6 +838,15 @@ function postItem(
     status: post.status,
     at: (post.postedAt ?? post.scheduledAtUtc).getTime(),
     movable: isMovablePost(movableOf(post)),
+    // El motivo sólo tiene sentido en un fallido: un post reprogramado después
+    // de un fallo puede arrastrar el `errorCode` viejo y no hay que mostrarlo.
+    ...(post.status === "FAILED" && post.errorCode !== null
+      ? { errorCode: post.errorCode }
+      : {}),
+    ...(post.status === "FAILED" && post.errorMessage !== null
+      ? { errorMessage: post.errorMessage }
+      : {}),
+    ...(post.postUrl !== null && isUrl(post.postUrl) ? { postUrl: post.postUrl } : {}),
   };
 }
 

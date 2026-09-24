@@ -116,7 +116,7 @@ describe("los enums del contrato son los de core/ports", () => {
 });
 
 describe("Settings → Models: imagen y video", () => {
-  it("image y video son `genai`, están en uso y sólo aceptan Higgsfield o fal", async () => {
+  it("image y video son `genai`, están en uso y sólo aceptan Higgsfield, fal o ComfyUI", async () => {
     const res = await app.inject({ method: "GET", url: "/models" });
     const overview = modelsOverviewSchema.parse(data(res));
     for (const task of ["image", "video"] as const) {
@@ -124,7 +124,7 @@ describe("Settings → Models: imagen y video", () => {
       expect(t).toMatchObject({
         kind: "genai",
         wired: true,
-        providers: ["higgsfield", "fal"],
+        providers: ["higgsfield", "fal", "comfyui"],
       });
     }
     expect(overview.providers.find((p) => p.id === "higgsfield")?.baseUrl).toBe(

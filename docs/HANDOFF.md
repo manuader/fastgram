@@ -1194,6 +1194,19 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 193
     alfa es la tag `alpha_mode=1`, y para decodificarlo hay que forzar
     `-c:v libvpx-vp9` **antes** del `-i`; si no, el foreground sale opaco.
 
+56. **Un parámetro de ruta que termina en `…Id` y no es uuid da 404 siempre.** El
+    hook `neutralizeMalformedIds` reescribe cualquier `:…Id` no-uuid. El id de la
+    elección de Página de Facebook era un nonce: el selector nunca mostró Páginas.
+    Ids de ruta: uuid, o un nombre de parámetro que no termine en `Id`.
+
+57. **Un workflow de ComfyUI tiene que exportarse en formato API**, no el del
+    editor (que la UI rechaza con ese mensaje). Y ComfyUI sirve sus resultados por
+    `http://`: el descargador lo permite **sólo** desde la base URL configurada de
+    ComfyUI; todo lo demás sigue siendo https.
+
+58. **`*/` dentro de un comentario de bloque lo cierra.** Un `*/TOTAL` en una
+    cabecera rompió el parseo de un archivo entero (`pnpm lint` → Parsing error).
+
 ## 8. Qué falta
 
 El backlog real es `tasks.md`. El estado de hoy está en §6.

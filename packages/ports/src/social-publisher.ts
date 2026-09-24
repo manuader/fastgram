@@ -201,6 +201,13 @@ export interface PublishMedia {
    */
   readonly urls: readonly string[];
   readonly durationSeconds?: number;
+  /**
+   * Píxeles del render (el `canvas` del payload de build), si se conocen.
+   * YouTube los usa para decidir si un video es un Short (vertical o
+   * cuadrado) **antes** de gastar una subida de la cuota diaria.
+   */
+  readonly width?: number;
+  readonly height?: number;
 }
 
 export interface PublishRequest {

@@ -42,13 +42,15 @@ export type Connection = z.infer<typeof connectionSchema>;
 //    `errorCodeSchema` es del PRD y no se amplía por esto.
 // ---------------------------------------------------------------------------
 
-/** Las redes con OAuth en uso personal (`D-09`, en orden). */
+/** Las redes con OAuth en uso personal (`D-09`, en orden; YouTube y LinkedIn al final). */
 export const oauthPlatformSchema = z.enum([
   "instagram",
   "tiktok",
   "x",
   "threads",
   "facebook",
+  "youtube",
+  "linkedin",
 ]);
 export type OAuthPlatformId = z.infer<typeof oauthPlatformSchema>;
 
@@ -68,9 +70,9 @@ export const connectionErrorReasonSchema = z.enum([
   "oauth_exchange_failed",
   /** La plataforma no respondió. Reintentable. */
   "oauth_provider_unavailable",
-  /** Facebook: la cuenta no administra ninguna Página. */
+  /** Facebook: la cuenta no administra ninguna Página (YouTube: la cuenta no tiene canal). */
   "no_pages",
-  /** Facebook: la elección de Página venció o ya se usó. */
+  /** Facebook / LinkedIn: la elección de Página venció o ya se usó. */
   "selection_expired",
   /** La plataforma rechazó el refresco: hay que reconectar (ERR-D01). */
   "connection_expired",
@@ -95,7 +97,13 @@ export const integrationAppSchema = z
     https: z.enum(["verified", "recommended", "no"]),
     /** `false` si la plataforma exige https y la redirect URI no lo es. */
     redirectAllowed: z.boolean(),
+    /** Lo que se pide hoy (incluye los opcionales si están habilitados). */
     scopes: z.array(z.string()),
+    /** Scopes que se piden sólo si se habilitan (hoy: Páginas de LinkedIn). */
+    optionalScopes: z.array(z.string()),
+    /** Qué habilitan los opcionales. `null` si la plataforma no tiene. */
+    optionalScopesNote: z.string().nullable(),
+    optionalScopesEnabled: z.boolean(),
     consoleUrl: z.string(),
     docsUrl: z.string(),
     setupNote: z.string(),
@@ -119,6 +127,8 @@ export const updateIntegrationRequestSchema = z
   .object({
     clientId: z.string().max(256),
     clientSecret: z.string().max(1024).optional(),
+    /** Pedir los scopes opcionales. Ausente = conservar lo guardado. */
+    optionalScopes: z.boolean().optional(),
   })
   .strict();
 export type UpdateIntegrationRequest = z.infer<typeof updateIntegrationRequestSchema>;
@@ -186,7 +196,11 @@ export const connectionCallbackResultSchema = z.discriminatedUnion("kind", [
   z
     .object({ kind: z.literal("connected"), connection: connectionAccountSchema })
     .strict(),
-  /** Facebook con más de una Página: hay que elegir (`POST /connections/facebook/pages`). */
+  /**
+   * Más de una cuenta para elegir: Páginas de Facebook
+   * (`POST /connections/facebook/pages`) o perfil y Páginas de LinkedIn
+   * (`POST /connections/linkedin/pages`).
+   */
   z
     .object({
       kind: z.literal("choose_page"),
@@ -200,6 +214,8 @@ export type ConnectionCallbackResult = z.infer<typeof connectionCallbackResultSc
 
 export const facebookPageSelectionSchema = z
   .object({
+    /** De qué red es la elección. Ausente en respuestas viejas = `facebook`. */
+    platform: oauthPlatformSchema.optional(),
     selectionId: z.string(),
     pages: z.array(facebookPageOptionSchema),
     expiresAt: z.number().int(),

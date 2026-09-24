@@ -15,6 +15,10 @@
  * moderación. Sumar `video.list` sin tener el id del video no alcanza, así que
  * no se pide ni se implementa. Los posts de TikTok quedan fuera del sync y la
  * pantalla lo dice.
+ *
+ * **LinkedIn tampoco** (`PU-LATER-002`): leer los posts de un miembro pide
+ * `r_member_social`, *"restricted and is available to approved users only"* —
+ * https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api
  */
 export {
   InstagramMetrics,
@@ -39,5 +43,10 @@ export {
   X_POST_READ_USD,
   type XMetricsConfig,
 } from "./x.js";
+export {
+  YouTubeMetrics,
+  YOUTUBE_METRICS_CAPABILITIES,
+  type YouTubeMetricsConfig,
+} from "./youtube.js";
 export { META_INSIGHTS_CONCURRENCY } from "./meta-insights.js";
 export type { MetricsFetch } from "./shared.js";

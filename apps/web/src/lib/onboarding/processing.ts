@@ -101,10 +101,9 @@ export interface Notice {
  *
  * `unsupported_platform` es la degradación a D de `FR-011.4` (el worker la
  * escribe con `acquisitionTier: D_assisted`), y el PRD pide ofrecer ahí la
- * ayuda asistida. **No se ofrece porque no hay endpoint que la reciba** — ver
- * la nota de la clave en `messages.ts`. Tampoco `private` e
- * `insufficient_content`: sus literales (ERR-B05, ERR-E13) ya piden «paste your
- * bio» / «describe your brand», que hoy no tienen adónde ir.
+ * ayuda asistida. `/brand` la ofrece (`AssistedSourcePanel`, `P1-BRAND-014`) y
+ * el copy lo invita a pegar la bio (`assistOffered` en {@link sourceNotice});
+ * el onboarding no dibuja el panel y conserva el copy que manda a la web.
  */
 const FAILURE_COPY: Readonly<Record<BrandSourceFailureReason, CopyKey>> = {
   not_found: "error.brand.handleNotFound.title", // ERR-B04
@@ -123,13 +122,26 @@ function varsOf(source: BrandSource): MessageVars {
   };
 }
 
+export interface SourceNoticeOptions {
+  /**
+   * Debajo de la fuente se ofrece el panel de pegar bio y captions (tier D,
+   * `/brand`). Cambia el copy de `unsupported_platform`: en vez de mandar a
+   * agregar una web —que contradecía al panel de abajo—, invita a pegar.
+   */
+  readonly assistOffered?: boolean;
+}
+
 /**
  * Qué se dice debajo de una fuente, además de su badge.
  *
  * `now` entra por parámetro para que la función sea pura: el reloj lo pone
  * quien dibuja (`useNow`), y el test lo fija.
  */
-export function sourceNotice(source: BrandSource, now: number): Notice | null {
+export function sourceNotice(
+  source: BrandSource,
+  now: number,
+  options: SourceNoticeOptions = {},
+): Notice | null {
   switch (source.status) {
     case "pending":
       // `createdAt`: una fuente en `pending` no cambió desde que se creó.
@@ -147,7 +159,11 @@ export function sourceNotice(source: BrandSource, now: number): Notice | null {
     case "failed": {
       const reason = source.failureReason ?? null;
       if (reason === null) return { key: "common.somethingWentWrong", problem: true };
-      return { key: FAILURE_COPY[reason], vars: varsOf(source), problem: true };
+      const key =
+        reason === "unsupported_platform" && options.assistOffered === true
+          ? "brand.failure.unsupportedPlatformAssist"
+          : FAILURE_COPY[reason];
+      return { key, vars: varsOf(source), problem: true };
     }
     case "ready":
     case "stale":

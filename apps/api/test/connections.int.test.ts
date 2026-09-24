@@ -183,7 +183,7 @@ describe("integraciones (credenciales de las apps)", () => {
   it("plataforma sin OAuth → 404", async () => {
     const res = await api.request({
       method: "PUT",
-      path: "/api/v1/integrations/youtube",
+      path: "/api/v1/integrations/reddit",
       body: { clientId: "a" },
     });
     expect(res.status).toBe(404);
@@ -404,6 +404,18 @@ describe("callback", () => {
       token: api.data.b.token,
     });
     expect(cross.status).toBe(404);
+
+    // La propia marca sí la ve. Antes de PU-LATER-002 esto daba 404: el
+    // selectionId no era uuid y `neutralizeMalformedIds` lo reescribía.
+    const own = await api.request({
+      method: "GET",
+      path: `/api/v1/connections/facebook/pages/${choose.selectionId}`,
+    });
+    expect(own.status).toBe(200);
+    expect((dataOf(own) as { pages: { id: string }[] }).pages.map((p) => p.id)).toEqual([
+      "page-1",
+      "page-2",
+    ]);
 
     const picked = await api.request({
       method: "POST",

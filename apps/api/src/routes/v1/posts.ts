@@ -267,7 +267,14 @@ export interface FlatTarget {
    * hasta la columna `post_platform` sin que el compilador dijera nada.
    */
   readonly platform:
-    "tiktok" | "instagram" | "youtube" | "reddit" | "x" | "threads" | "facebook";
+    | "tiktok"
+    | "instagram"
+    | "youtube"
+    | "linkedin"
+    | "reddit"
+    | "x"
+    | "threads"
+    | "facebook";
   readonly connectionId: string | null;
   readonly warmedAccountId: string | null;
   readonly caption: string | null;
@@ -337,11 +344,13 @@ export function flattenTarget(target: ScheduleTarget): FlatTarget {
         caption: target.caption ?? null,
         description: target.description ?? null,
       };
-    // X, Threads y Facebook (`D-09`): sólo OAuth, como Reddit, y un único campo
-    // de copy. En Facebook la `caption` es la `description` del reel.
+    // X, Threads y Facebook (`D-09`), y LinkedIn (`PU-LATER-002`): sólo OAuth,
+    // como Reddit, y un único campo de copy. En Facebook la `caption` es la
+    // `description` del reel; en LinkedIn, el `commentary`.
     case "x":
     case "threads":
     case "facebook":
+    case "linkedin":
       return { ...shared, platform: target.platform, caption: target.caption ?? null };
     default:
       // Reddit. Es la rama por defecto y no un `case` porque su esquema es el único que

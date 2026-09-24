@@ -28,6 +28,14 @@ export interface IntegrationAppConfig {
   readonly clientSecret?: string;
   /** ISO-8601. La pone el adaptador al escribir. */
   readonly updatedAt?: string;
+  /**
+   * Pedir también los scopes **opcionales** de la plataforma
+   * (`OAuthPlatformSpec.optionalScopes`). Hoy sólo LinkedIn los tiene: los de
+   * Páginas (`w_organization_social`, `r_organization_admin`) sólo existen si
+   * la app tiene aprobado el producto Community Management API, y pedirlos sin
+   * tenerlo hace fallar el login entero. Ausente = `false`.
+   */
+  readonly optionalScopes?: boolean;
 }
 
 export interface IntegrationsSnapshot {

@@ -85,6 +85,7 @@ export const POST_PLATFORM_COPY: Readonly<Record<PostPlatform, CopyKey>> = {
   tiktok: "posts.platform.tiktok",
   instagram: "posts.platform.instagram",
   youtube: "posts.platform.youtube",
+  linkedin: "posts.platform.linkedin",
   reddit: "posts.platform.reddit",
   x: "posts.platform.x",
   threads: "posts.platform.threads",

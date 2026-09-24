@@ -258,6 +258,7 @@ export const PLATFORM_CHIP_TONE: Readonly<Record<PostPlatform, PlatformTone>> = 
   tiktok: "tiktok",
   instagram: "instagram",
   youtube: "youtube",
+  linkedin: "linkedin",
   reddit: "reddit",
   x: "x",
   threads: "threads",

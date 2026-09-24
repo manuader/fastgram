@@ -46,10 +46,10 @@ describe("montaje de publicación", () => {
     expect(handlers[JOB_QUEUES.publishingSweep]).toBeDefined();
   });
 
-  it("los cinco publicadores reales, uno por red de D-09", () => {
+  it("los siete publicadores reales, uno por red de D-09 (YouTube y LinkedIn al final)", () => {
     const publishers = createRealPublishers({});
     expect(Object.keys(publishers).sort()).toEqual(
-      ["facebook", "instagram", "threads", "tiktok", "x"].sort(),
+      ["facebook", "instagram", "threads", "tiktok", "x", "youtube", "linkedin"].sort(),
     );
     for (const [platform, publisher] of Object.entries(publishers)) {
       expect(publisher.capabilities().platform).toBe(platform);
@@ -58,5 +58,20 @@ describe("montaje de publicación", () => {
 
   it("sin tokens no se monta ninguno", () => {
     expect(publishersFor(null, {})).toEqual({});
+  });
+
+  it("PUBLISH_YOUTUBE_PRIVACY y PUBLISH_LINKEDIN_VERSION: un valor inválido se ignora", () => {
+    // Construir con valores basura no debe tirar (se usan los defaults).
+    expect(() =>
+      createRealPublishers({
+        PUBLISH_YOUTUBE_PRIVACY: "secreto",
+        PUBLISH_LINKEDIN_VERSION: "latest",
+      }),
+    ).not.toThrow();
+    expect(
+      createRealPublishers({ PUBLISH_YOUTUBE_PRIVACY: "Unlisted" })[
+        "youtube"
+      ]?.capabilities().platform,
+    ).toBe("youtube");
   });
 });

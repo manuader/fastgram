@@ -23,7 +23,8 @@ import { useApiQuery } from "../api/hooks";
 
 export const connectionsKeys = {
   all: () => ["connection-accounts"] as const,
-  selection: (id: string) => ["connection-accounts", "fb-selection", id] as const,
+  selection: (platform: string, id: string) =>
+    ["connection-accounts", "selection", platform, id] as const,
 };
 
 export function useConnectionAccounts(): UseQueryResult<
@@ -79,18 +80,24 @@ export function useRefreshConnection(): UseMutationResult<
   });
 }
 
+/** Redes con elección de cuenta tras el login (`/connections/:platform/pages`). */
+export type PickerPlatform = "facebook" | "linkedin";
+
 export function useFacebookPageSelection(
   selectionId: string | null,
+  platform: PickerPlatform = "facebook",
 ): UseQueryResult<FacebookPageSelection, ApiRequestError> {
   return useApiQuery<FacebookPageSelection>({
-    queryKey: connectionsKeys.selection(selectionId ?? "none"),
-    path: `/connections/facebook/pages/${selectionId ?? "none"}`,
+    queryKey: connectionsKeys.selection(platform, selectionId ?? "none"),
+    path: `/connections/${platform}/pages/${selectionId ?? "none"}`,
     schema: facebookPageSelectionSchema,
     enabled: selectionId !== null,
   });
 }
 
-export function useSelectFacebookPage(): UseMutationResult<
+export function useSelectFacebookPage(
+  platform: PickerPlatform = "facebook",
+): UseMutationResult<
   ConnectionAccount,
   ApiRequestError,
   { selectionId: string; pageId: string }
@@ -102,7 +109,7 @@ export function useSelectFacebookPage(): UseMutationResult<
     { selectionId: string; pageId: string }
   >({
     mutationFn: (body) =>
-      apiRequest<ConnectionAccount>("/connections/facebook/pages", {
+      apiRequest<ConnectionAccount>(`/connections/${platform}/pages`, {
         method: "POST",
         body,
         schema: connectionAccountSchema,

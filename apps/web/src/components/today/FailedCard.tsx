@@ -7,30 +7,27 @@ import { BrandAvatar } from "@/components/brands/BrandAvatar";
 import { CloseIcon } from "@/icons";
 import { NETWORK_LABEL } from "@/lib/calendar/board";
 import { tw } from "@/lib/i18n/t";
-import type { PostDetail } from "@/lib/today/data";
+import { failureReason } from "@/lib/today/failure";
 import { formatShortDate } from "@/lib/today/today";
 import { libraryHref } from "./TodayTimeline";
 import { useEnsureBrand } from "./use-brand-switch";
 
 export interface FailedCardProps {
   readonly failed: readonly CalendarItem[] | undefined;
-  readonly details: ReadonlyMap<string, PostDetail> | undefined;
   readonly timeZone: string;
 }
 
 /**
  * Fallidos de los últimos 7 días · `PU-UI-002`.
  *
- * El motivo es `errorMessage`, que FR-060 declara *"siempre seguro de mostrar"*
- * (el mismo criterio de `PostCard`). Sólo llega para la marca activa —el
- * calendario no lo trae, ver `lib/today/data.ts`—; para las otras, un texto que
- * manda a la pieza.
+ * El motivo sale del `errorCode`/`errorMessage` que el calendario trae para
+ * cualquier marca; el orden está en `lib/today/failure.ts`.
  *
  * La acción es **"Open"** y no "Retry": no hay endpoint para reintentar un post
  * fallido (y reprogramar a ciegas uno de TikTok puede duplicarlo, NFR-015). El
  * detalle de la pieza es donde se decide qué hacer.
  */
-export function FailedCard({ failed, details, timeZone }: FailedCardProps) {
+export function FailedCard({ failed, timeZone }: FailedCardProps) {
   const ensureBrand = useEnsureBrand();
 
   return (
@@ -57,8 +54,7 @@ export function FailedCard({ failed, details, timeZone }: FailedCardProps) {
       ) : (
         <ul className="flex flex-col gap-2">
           {failed.map((item) => {
-            const reason =
-              details?.get(item.id)?.errorMessage ?? tw("today.failedFallback");
+            const reason = failureReason(item);
             return (
               <li
                 key={`${item.kind}:${item.id}`}

@@ -32,6 +32,8 @@ export const OAUTH_PLATFORM_IDS = [
   "x",
   "threads",
   "facebook",
+  "youtube",
+  "linkedin",
 ] as const;
 export type OAuthPlatformId = (typeof OAUTH_PLATFORM_IDS)[number];
 
@@ -129,7 +131,12 @@ export function returnOrigin(
 /** El sobre de la API, leído sin confiar en él. */
 export type CallbackOutcome =
   | { readonly kind: "connected"; readonly platform: OAuthPlatformId }
-  | { readonly kind: "choose_page"; readonly selectionId: string }
+  | {
+      readonly kind: "choose_page";
+      readonly selectionId: string;
+      /** Facebook (Páginas) o LinkedIn (perfil y Páginas). */
+      readonly platform: OAuthPlatformId;
+    }
   | {
       readonly kind: "error";
       readonly platform: OAuthPlatformId;
@@ -147,7 +154,7 @@ export function outcomeFromApi(
   };
   if (status >= 200 && status < 300) {
     if (env.data?.kind === "choose_page" && typeof env.data.selectionId === "string") {
-      return { kind: "choose_page", selectionId: env.data.selectionId };
+      return { kind: "choose_page", selectionId: env.data.selectionId, platform };
     }
     if (env.data?.kind === "connected") return { kind: "connected", platform };
   }
@@ -174,6 +181,7 @@ export function returnPath(outcome: CallbackOutcome): string {
       break;
     case "choose_page":
       q.set("select", outcome.selectionId);
+      q.set("platform", outcome.platform);
       break;
     case "error":
       q.set("error", outcome.reason);

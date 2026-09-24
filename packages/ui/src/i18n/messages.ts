@@ -485,6 +485,15 @@ export const en = {
   "editor.audio.title": "Select Audio", // literal
   "editor.audio.empty": "The shared audio library is empty.",
   "editor.audio.error": "Couldn't load the audio library.",
+  // Por qué falló la última edición o el Regenerate: `lastEdit.failureReason`,
+  // un código estable del worker (`apps/worker/src/content/build-handler.ts`).
+  "editor.failure.llm_not_configured": "There's no AI model set up to write the text.",
+  "editor.failure.llmLink": "Set one up in Settings → Models",
+  "editor.failure.llm_failed": "The AI model didn't answer. Try again in a moment.",
+  "editor.failure.copy_rejected":
+    "The AI model's text didn't pass our checks, so we kept the previous one. Try again, or change the prompt.",
+  "editor.failure.edit_not_renderable":
+    "The render can't draw some of these changes yet. Undo the last change and save again.",
   /* ------------------------------- Today · PU-UI-002, PLAN-USO-PERSONAL §7 */
   // Copy nuevo, ninguna clave es literal del PRD salvo el camino de TikTok
   // (`Inbox → System notifications → Post`, FR-060 PRD:1410).
@@ -498,7 +507,6 @@ export const en = {
   "today.counter.posted": "Posted today",
   "today.counter.scheduled": "Scheduled today",
   "today.counter.approval": "Waiting for approval",
-  "today.counter.approvalIn": "in {brand}",
   "today.counter.failed": "Failed · last 7 days",
   "today.counter.unavailable": "Not available",
   "today.timeline.title": "Today's timeline",
@@ -530,7 +538,6 @@ export const en = {
   "today.approval.cardsOne": "1 card",
   "today.approval.cardsMany": "{count} cards",
   "today.approval.none": "Nothing waiting",
-  "today.approval.otherBrand": "Switch to see its queue",
   "today.approval.review": "Review",
   "today.approval.current": "Current brand",
   "today.failed.title": "Failed recently",

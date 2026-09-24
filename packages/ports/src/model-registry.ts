@@ -59,6 +59,9 @@ export const MODEL_PROVIDERS = [
   // adaptador propio (`packages/adapters/src/{higgsfield,fal}`).
   "higgsfield",
   "fal",
+  // `PU-LATER-003`: ComfyUI local (imagen y video). El «modelo» es un workflow
+  // en formato API que el usuario exporta y guarda en `comfyWorkflow`.
+  "comfyui",
 ] as const;
 
 export type ModelProvider = (typeof MODEL_PROVIDERS)[number];
@@ -86,8 +89,44 @@ export interface ModelTaskConfig {
    * del proveedor (o de lo que devuelva su `/models`, si la publica).
    */
   readonly contextWindowTokens?: number;
+  /**
+   * Sólo `comfyui` (`PU-LATER-003`): el workflow y qué inputs son el prompt,
+   * el tamaño, la semilla y la imagen de entrada. Ausente en todo lo demás.
+   */
+  readonly comfyWorkflow?: ComfyWorkflowConfig;
   /** ISO-8601. La pone el adaptador al escribir. */
   readonly updatedAt?: string;
+}
+
+/** Un input de un nodo de un workflow de ComfyUI: `workflow[nodeId].inputs[input]`. */
+export interface ComfyInputRef {
+  readonly nodeId: string;
+  readonly input: string;
+}
+
+/**
+ * Un workflow de ComfyUI **en formato API** (el que exporta «Export (API)» y
+ * que `POST /prompt` recibe en `prompt`): un objeto `{ [nodeId]: { class_type,
+ * inputs } }`. Los ids de nodo son los del usuario, arbitrarios.
+ *
+ * Los `ComfyInputRef` dicen dónde inyectar cada cosa. Sólo `prompt` es
+ * obligatorio; sin `width`/`height` el tamaño es el del workflow, sin `seed`
+ * se repite la del workflow, y con `image` el workflow toma una imagen de
+ * entrada (video: primer cuadro).
+ */
+export interface ComfyWorkflowConfig {
+  readonly workflow: Readonly<Record<string, unknown>>;
+  readonly prompt: ComfyInputRef;
+  readonly width?: ComfyInputRef;
+  readonly height?: ComfyInputRef;
+  readonly seed?: ComfyInputRef;
+  readonly image?: ComfyInputRef;
+  /**
+   * Sólo video: cuántos segundos produce el workflow. Lo declara el usuario
+   * (el largo lo fija el workflow, no FastGram); sirve para la ficha y para la
+   * duración de la media.
+   */
+  readonly durationSeconds?: number;
 }
 
 /** Todo el registro. Una tarea sin entrada = sin configurar. */

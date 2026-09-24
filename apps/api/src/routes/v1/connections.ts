@@ -11,6 +11,8 @@
  *   POST   /connections/:platform/callback        lo llama la web con `code` + `state`
  *   GET    /connections/facebook/pages/:selectionId   Páginas para elegir
  *   POST   /connections/facebook/pages            conecta la Página elegida
+ *   GET    /connections/linkedin/pages/:selectionId   perfil y Páginas para elegir
+ *   POST   /connections/linkedin/pages            conecta el perfil o la Página elegida
  *   POST   /connections/accounts/:connectionId/refresh   refresca ya (o marca `expired`)
  *   DELETE /connections/accounts/:connectionId           desconectar (`revoked`, sin tokens)
  *
@@ -42,6 +44,15 @@
  * - El `state` pendiente y la elección de Página viven **en memoria** del
  *   proceso de la API (10 min). Un reinicio en medio de un login lo corta y
  *   el usuario vuelve a tocar «Connect».
+ * - **Elegir cuenta** (`PU-LATER-002`): cuando la plataforma devuelve más de
+ *   una cuenta (Facebook: una por Página; LinkedIn: el perfil y cada Página
+ *   que administra; YouTube: cada canal de la cuenta de Google) se ofrece la
+ *   elección en vez de conectar la primera. La elección recuerda la
+ *   plataforma, y sólo se puede resolver por la ruta de esa plataforma
+ *   (`/connections/{facebook|linkedin}/pages`). YouTube con varios canales
+ *   **no** tiene ruta de elección todavía: se conecta el primero (con
+ *   `mine=true` la API devuelve los canales del usuario autenticado; tener
+ *   más de uno en la misma identidad no es el caso común).
  * - **Barrido al conectar** (`PU-PUB-008`): conectar, reconectar, elegir la
  *   Página de Facebook o refrescar con éxito encola `publishing-sweep` con
  *   `{ companyId }`, que reanuda los posts en `AWAITING_RECONNECT` y convierte
@@ -51,6 +62,8 @@
  *   entero) y se loguea. La clave lleva el instante (trampas 39 y 45): dos
  *   conexiones seguidas no se deduplican contra un barrido viejo.
  */
+import { randomUUID } from "node:crypto";
+
 import {
   authorizeConnectionResponseSchema,
   connectionCallbackRequestSchema,
@@ -68,6 +81,7 @@ import {
   JOB_QUEUES,
   OAUTH_PLATFORM_SPECS,
   publishScopesOf,
+  requestedScopesOf,
   OAUTH_STATE_TTL_MS,
   applyIntegrationUpdate,
   consumeOAuthState,
@@ -117,14 +131,26 @@ import type { ZodApp } from "../../server/types.js";
  * Dependencias
  * ------------------------------------------------------------------------ */
 
-/** Una Página de Facebook ofrecida para elegir, con su token **ya cifrado**. */
+/**
+ * Una cuenta ofrecida para elegir (Página de Facebook; perfil o Página de
+ * LinkedIn), con sus tokens **ya cifrados**.
+ */
 interface PendingPage {
   readonly identity: OAuthAccountIdentity;
   readonly accessTokenCipher: string;
+  /** LinkedIn con refresh tokens programáticos. `null` si no hay. */
+  readonly refreshTokenCipher: string | null;
+  readonly expiresAt: Date | null;
+  readonly refreshExpiresAt: Date | null;
 }
+
+/** Las plataformas cuya elección de cuenta tiene ruta. */
+type PickerPlatform = "facebook" | "linkedin";
+const PICKER_PLATFORMS: readonly OAuthPlatform[] = ["facebook", "linkedin"];
 
 interface PendingSelection {
   readonly companyId: string;
+  readonly platform: PickerPlatform;
   readonly expiresAt: number;
   readonly scopes: readonly string[];
   readonly pages: readonly PendingPage[];
@@ -140,10 +166,21 @@ export class PageSelectionStore {
     this.#entries.set(id, entry);
   }
 
-  /** Sin consumir. `null` si no existe, venció o es de otra marca. */
-  peek(id: string, companyId: string, nowMs: number): PendingSelection | null {
+  /** Sin consumir. `null` si no existe, venció, es de otra marca o de otra red. */
+  peek(
+    id: string,
+    companyId: string,
+    nowMs: number,
+    platform: PickerPlatform = "facebook",
+  ): PendingSelection | null {
     const e = this.#entries.get(id);
-    if (e === undefined || e.companyId !== companyId || e.expiresAt <= nowMs) return null;
+    if (
+      e === undefined ||
+      e.companyId !== companyId ||
+      e.expiresAt <= nowMs ||
+      e.platform !== platform
+    )
+      return null;
     return e;
   }
 
@@ -207,6 +244,10 @@ function reject(
   return new ApiRejection(status, code, message, { reason, ...extra });
 }
 
+function isPickerPlatform(p: OAuthPlatform): p is PickerPlatform {
+  return (PICKER_PLATFORMS as readonly string[]).includes(p);
+}
+
 function platformOr404(raw: string): OAuthPlatform {
   if (!isOAuthPlatform(raw))
     throw new ApiRejection(404, "not_found", "platform not found");
@@ -242,6 +283,7 @@ export function toConnectionAccount(row: ConnectionRow): ConnectionAccount {
  * Un `false` es ERR-D03 (`Permissions Missing`) en la pantalla.
  */
 function grantedScopes(platform: OAuthPlatform, account: OAuthGrantedAccount) {
+  // Sin `scope` en la respuesta se asume lo obligatorio, no los opcionales.
   const requested = OAUTH_PLATFORM_SPECS[platform].scopes;
   const granted = account.tokens.scopes ?? requested;
   // Sólo los de publicación: una cuenta que rechaza los de métricas (insights)
@@ -318,23 +360,29 @@ export function registerConnectionRoutes(
       snapshot.apps[platform],
       resolveRedirectBase(deps.env),
     );
-    return { ...view, scopes: [...view.scopes] };
+    return {
+      ...view,
+      scopes: [...view.scopes],
+      optionalScopes: [...view.optionalScopes],
+    };
   }
 
   async function saveAccount(
     request: FastifyRequest,
     platform: OAuthPlatform,
     account: OAuthGrantedAccount,
-    accessTokenCipher?: string,
+    ciphers?: { readonly access: string; readonly refresh: string | null },
   ): Promise<ConnectionRow> {
     const companyId = request.auth.companyId;
     const { granted, publishable } = grantedScopes(platform, account);
     const encryptedAccess =
-      accessTokenCipher ?? (await cipher.encrypt(account.tokens.accessToken));
+      ciphers?.access ?? (await cipher.encrypt(account.tokens.accessToken));
     const encryptedRefresh =
-      account.tokens.refreshToken === undefined
-        ? null
-        : await cipher.encrypt(account.tokens.refreshToken);
+      ciphers !== undefined
+        ? ciphers.refresh
+        : account.tokens.refreshToken === undefined
+          ? null
+          : await cipher.encrypt(account.tokens.refreshToken);
     const row = await request.tx((tx) =>
       connectionAccountRepository.upsertAccount(
         tx,
@@ -410,6 +458,7 @@ export function registerConnectionRoutes(
       apps: toPublicIntegrations(snapshot, base).map((a) => ({
         ...a,
         scopes: [...a.scopes],
+        optionalScopes: [...a.optionalScopes],
       })),
       redirectBase: base.origin,
       redirectSource: base.source,
@@ -427,7 +476,11 @@ export function registerConnectionRoutes(
       const snapshot = await integrations.read();
       const result = applyIntegrationUpdate(
         snapshot.apps[platform],
-        { clientId: request.body.clientId, clientSecret: request.body.clientSecret },
+        {
+          clientId: request.body.clientId,
+          clientSecret: request.body.clientSecret,
+          optionalScopes: request.body.optionalScopes,
+        },
         now().toISOString(),
       );
       if (!result.ok) {
@@ -508,7 +561,7 @@ export function registerConnectionRoutes(
             credentials: { clientId: appConfig.clientId },
             redirectUri,
             state,
-            scopes: spec.scopes,
+            scopes: requestedScopesOf(platform, appConfig),
             ...(pkce === undefined ? {} : { codeChallenge: pkce.codeChallenge }),
           }),
           redirectUri,
@@ -603,22 +656,39 @@ export function registerConnectionRoutes(
           "no_pages",
           platform === "facebook"
             ? "This Facebook account does not manage any Page."
-            : "The platform returned no account.",
+            : platform === "youtube"
+              ? "This Google account has no YouTube channel."
+              : "The platform returned no account.",
         );
       }
 
-      if (platform === "facebook" && accounts.length > 1) {
-        const selectionId = deps.nonce();
+      if (isPickerPlatform(platform) && accounts.length > 1) {
+        // Un uuid y no `deps.nonce()`: `:selectionId` termina en `Id`, y el hook
+        // `neutralizeMalformedIds` (`http/route-ids.ts`) reescribe cualquier
+        // `…Id` que no sea uuid al uuid nulo. Con el nonce base64url, `GET
+        // /connections/facebook/pages/:selectionId` respondía siempre 404
+        // `selection_expired` y el selector de la web nunca mostraba las
+        // Páginas (bug anterior a PU-LATER-002, encontrado con LinkedIn).
+        // `randomUUID` son 122 bits aleatorios: igual de imposible de adivinar,
+        // y además va atado a la marca y a la red (`peek`).
+        const selectionId = randomUUID();
         const expiresAt = now().getTime() + OAUTH_STATE_TTL_MS;
         const pages: PendingPage[] = [];
         for (const a of accounts) {
           pages.push({
             identity: a.identity,
             accessTokenCipher: await cipher.encrypt(a.tokens.accessToken),
+            refreshTokenCipher:
+              a.tokens.refreshToken === undefined
+                ? null
+                : await cipher.encrypt(a.tokens.refreshToken),
+            expiresAt: a.tokens.expiresAt,
+            refreshExpiresAt: a.tokens.refreshExpiresAt ?? null,
           });
         }
         selections.put(selectionId, {
           companyId,
+          platform,
           expiresAt,
           scopes: grantedScopes(platform, first).granted,
           pages,
@@ -650,54 +720,72 @@ export function registerConnectionRoutes(
     };
   }
 
-  // ── GET /connections/facebook/pages/:selectionId ──
-  app.get(
-    "/connections/facebook/pages/:selectionId",
-    { schema: { params: selectionParams } },
-    async (request) => {
-      const entry = selections.peek(
-        request.params.selectionId,
-        request.auth.companyId,
-        now().getTime(),
-      );
-      if (entry === null) {
-        throw reject(404, "not_found", "selection_expired", "Page selection not found");
-      }
-      return data({
-        selectionId: request.params.selectionId,
-        pages: entry.pages.map((p) => pageOption(p.identity)),
-        expiresAt: entry.expiresAt,
-      });
-    },
-  );
+  // ── GET /connections/{facebook|linkedin}/pages/:selectionId ──
+  // ── POST /connections/{facebook|linkedin}/pages ──
+  // Rutas literales por red (no `/:platform/pages`): una elección sólo se
+  // resuelve por la ruta de su plataforma (`peek` la compara).
+  for (const picker of PICKER_PLATFORMS) {
+    if (!isPickerPlatform(picker)) continue;
+    app.get(
+      `/connections/${picker}/pages/:selectionId`,
+      { schema: { params: selectionParams } },
+      async (request) => {
+        const entry = selections.peek(
+          request.params.selectionId,
+          request.auth.companyId,
+          now().getTime(),
+          picker,
+        );
+        if (entry === null) {
+          throw reject(404, "not_found", "selection_expired", "Page selection not found");
+        }
+        return data({
+          platform: picker,
+          selectionId: request.params.selectionId,
+          pages: entry.pages.map((p) => pageOption(p.identity)),
+          expiresAt: entry.expiresAt,
+        });
+      },
+    );
 
-  // ── POST /connections/facebook/pages ──
-  app.post(
-    "/connections/facebook/pages",
-    { schema: { body: selectFacebookPageRequestSchema } },
-    async (request) => {
-      const { selectionId, pageId } = request.body;
-      const entry = selections.peek(selectionId, request.auth.companyId, now().getTime());
-      if (entry === null) {
-        throw reject(404, "not_found", "selection_expired", "Page selection not found");
-      }
-      const page = entry.pages.find((p) => p.identity.platformUserId === pageId);
-      if (page === undefined) throw new ApiRejection(404, "not_found", "page not found");
-      selections.delete(selectionId);
-      const row = await saveAccount(
-        request,
-        "facebook",
-        {
-          identity: page.identity,
-          // El token real va cifrado en `accessTokenCipher`; éste no se usa.
-          tokens: { accessToken: "", expiresAt: null, scopes: entry.scopes },
-        },
-        page.accessTokenCipher,
-      );
-      await armPublishingSweep(request, row);
-      return data(toConnectionAccount(row));
-    },
-  );
+    app.post(
+      `/connections/${picker}/pages`,
+      { schema: { body: selectFacebookPageRequestSchema } },
+      async (request) => {
+        const { selectionId, pageId } = request.body;
+        const entry = selections.peek(
+          selectionId,
+          request.auth.companyId,
+          now().getTime(),
+          picker,
+        );
+        if (entry === null) {
+          throw reject(404, "not_found", "selection_expired", "Page selection not found");
+        }
+        const page = entry.pages.find((p) => p.identity.platformUserId === pageId);
+        if (page === undefined)
+          throw new ApiRejection(404, "not_found", "page not found");
+        selections.delete(selectionId);
+        const row = await saveAccount(
+          request,
+          picker,
+          {
+            identity: page.identity,
+            // Los tokens reales van cifrados en `ciphers`; éstos no se usan.
+            tokens: {
+              accessToken: "",
+              expiresAt: page.expiresAt,
+              refreshExpiresAt: page.refreshExpiresAt,
+              scopes: entry.scopes,
+            },
+          },
+          { access: page.accessTokenCipher, refresh: page.refreshTokenCipher },
+        );
+        await armPublishingSweep(request, row);
+        return data(toConnectionAccount(row));
+      },
+    );
+  }
 
   // ── POST /connections/accounts/:connectionId/refresh ──
   app.post(

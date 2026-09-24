@@ -198,11 +198,11 @@ describe("programación", () => {
     ).toThrow();
   });
 
-  it("una plataforma que el PRD no lista para posts v1 se rechaza", () => {
+  it("una plataforma que no es de posts se rechaza", () => {
     expect(() =>
       scheduleContentRequestSchema.parse({
         scheduledAtUtc: 1,
-        targets: [{ platform: "linkedin", caption: "hola" }],
+        targets: [{ platform: "pinterest", caption: "hola" }],
       }),
     ).toThrow();
   });
@@ -267,5 +267,36 @@ describe("listado de posts · §12 · PRD:2720", () => {
     expect(postStatusFilterSchema.options).toHaveLength(9);
     expect(postStatusFilterSchema.options).not.toContain("CANCELLED");
     expect(() => listPostsQuerySchema.parse({ status: "CANCELLED" })).toThrow();
+  });
+});
+
+describe("youtube y linkedin · PU-LATER-001/002", () => {
+  const request = (target: Record<string, unknown>) =>
+    scheduleContentRequestSchema.safeParse({ scheduledAtUtc: 1, targets: [target] });
+
+  it("youtube: título hasta 100 y descripción hasta 5000 (por code point)", () => {
+    expect(request({ platform: "youtube", caption: "a".repeat(100) }).success).toBe(true);
+    expect(request({ platform: "youtube", caption: "a".repeat(101) }).success).toBe(
+      false,
+    );
+    expect(request({ platform: "youtube", caption: "🎬".repeat(100) }).success).toBe(
+      true,
+    );
+    expect(
+      request({ platform: "youtube", caption: "t", description: "d".repeat(5001) })
+        .success,
+    ).toBe(false);
+  });
+
+  it("linkedin: hasta 3000 y sólo OAuth", () => {
+    expect(request({ platform: "linkedin", caption: "a".repeat(3000) }).success).toBe(
+      true,
+    );
+    expect(request({ platform: "linkedin", caption: "a".repeat(3001) }).success).toBe(
+      false,
+    );
+    expect(request({ platform: "linkedin", warmedAccountId: "wa_1" }).success).toBe(
+      false,
+    );
   });
 });

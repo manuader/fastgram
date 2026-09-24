@@ -9,11 +9,7 @@ import { copyKeyForError } from "@/lib/api/errors";
 import { browserTimeZone } from "@/lib/calendar/calendar";
 import { tw, type CopyKey } from "@/lib/i18n/t";
 import { ROUTES } from "@/lib/nav/routes";
-import {
-  useBlitzQueueCount,
-  useTodayCalendar,
-  useTodayPostDetails,
-} from "@/lib/today/data";
+import { useBlitzQueueCounts, useTodayCalendar } from "@/lib/today/data";
 import {
   buildTodayView,
   dayPartOf,
@@ -68,20 +64,19 @@ function useClock(): Clock | null {
  * dashboard de FR-030 en `/home`: la pantalla de todos los días no son KPIs de
  * vanidad sino qué sale hoy, qué falló y qué espera al usuario.
  *
- * Qué viene de dónde —y los dos datos que sólo existen para la marca activa— está
- * en la cabecera de `lib/today/data.ts`.
+ * Qué viene de dónde está en la cabecera de `lib/today/data.ts`. Todo es de
+ * todas las marcas del dueño.
  */
 export function TodayScreen() {
   const clock = useClock();
-  const { active, workspaces, isPersonal } = useWorkspace();
+  const { workspaces, isPersonal } = useWorkspace();
   const range = useMemo(
     () => (clock === null ? null : todayWindow(clock.nowMs, clock.timeZone)),
     [clock],
   );
 
   const calendar = useTodayCalendar(range);
-  const details = useTodayPostDetails(range);
-  const blitz = useBlitzQueueCount();
+  const blitz = useBlitzQueueCounts();
 
   const view = useMemo(
     () =>
@@ -95,7 +90,12 @@ export function TodayScreen() {
   const multiBrand = isPersonal && brandCount > 1;
   const timeZone = clock?.timeZone ?? "UTC";
 
-  const blitzValue = blitz.isPending ? undefined : blitz.isError ? null : blitz.data;
+  const blitzCounts = blitz.isPending ? undefined : blitz.isError ? null : blitz.data;
+  // El contador suma todas las marcas: la tarjeta de la derecha las separa.
+  const blitzTotal =
+    blitzCounts === undefined || blitzCounts === null
+      ? blitzCounts
+      : [...blitzCounts.values()].reduce((a, b) => a + b, 0);
   const older =
     calendar.data === undefined || view === null
       ? 0
@@ -129,14 +129,9 @@ export function TodayScreen() {
           values={{
             posted: calendar.isError ? null : view?.counts.postedToday,
             scheduled: calendar.isError ? null : view?.counts.scheduledToday,
-            approval: blitzValue,
+            approval: blitzTotal,
             failed: calendar.isError ? null : view?.counts.failedRecent,
           }}
-          approvalHint={
-            multiBrand && active !== null
-              ? tw("today.counter.approvalIn", { brand: active.name })
-              : null
-          }
         />
       </div>
 
@@ -187,7 +182,6 @@ export function TodayScreen() {
               ) : (
                 <TodayTimeline
                   items={view?.timeline}
-                  details={details.data}
                   timeZone={timeZone}
                   multiBrand={multiBrand}
                 />
@@ -198,14 +192,10 @@ export function TodayScreen() {
             </section>
           </div>
           <aside className="flex min-w-0 flex-col gap-6">
-            <ApprovalCard activeCount={blitzValue ?? null} loading={blitz.isPending} />
+            <ApprovalCard counts={blitzCounts} />
             {/* `PU-AUTO-003`: sólo se dibuja con alguna marca en piloto. */}
             <AutopilotCard timeZone={timeZone} />
-            <FailedCard
-              failed={view?.failed}
-              details={details.data}
-              timeZone={timeZone}
-            />
+            <FailedCard failed={view?.failed} timeZone={timeZone} />
           </aside>
         </div>
       )}

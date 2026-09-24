@@ -435,10 +435,16 @@ describe("planSlotConversion", () => {
     }
   });
 
-  it("LinkedIn sigue siendo sólo slot planificado", () => {
+  it("LinkedIn y YouTube ya se convierten en post (PU-LATER-001/002)", () => {
     expect(planSlotConversion("linkedin", [{ id: "k", platform: "linkedin" }])).toEqual({
-      kind: "wait",
-      reason: "network_not_postable",
+      kind: "convert",
+      platform: "linkedin",
+      connectionId: "k",
+    });
+    expect(planSlotConversion("youtube", [{ id: "y", platform: "youtube" }])).toEqual({
+      kind: "convert",
+      platform: "youtube",
+      connectionId: "y",
     });
   });
 });

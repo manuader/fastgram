@@ -10,14 +10,13 @@ import { NETWORK_CHIP_COLOR, NETWORK_LABEL } from "@/lib/calendar/board";
 import { formatChipTime } from "@/lib/calendar/calendar";
 import { tw } from "@/lib/i18n/t";
 import { ROUTES } from "@/lib/nav/routes";
-import type { PostDetail } from "@/lib/today/data";
+import { failureReason } from "@/lib/today/failure";
 import { ItemThumb } from "./ItemThumb";
 import { statusOf } from "./status";
 import { useEnsureBrand } from "./use-brand-switch";
 
 export interface TodayTimelineProps {
   readonly items: readonly CalendarItem[] | undefined;
-  readonly details: ReadonlyMap<string, PostDetail> | undefined;
   readonly timeZone: string;
   /** Para no repetir la marca en cada fila cuando hay una sola. */
   readonly multiBrand: boolean;
@@ -34,12 +33,7 @@ export const libraryHref = (contentId: string): string =>
  * anidados no son HTML válido). Entran con un resorte corto, escalonado; con
  * `prefers-reduced-motion` aparecen sin moverse.
  */
-export function TodayTimeline({
-  items,
-  details,
-  timeZone,
-  multiBrand,
-}: TodayTimelineProps) {
+export function TodayTimeline({ items, timeZone, multiBrand }: TodayTimelineProps) {
   const reduce = useReducedMotion();
   const ensureBrand = useEnsureBrand();
 
@@ -70,13 +64,9 @@ export function TodayTimeline({
     <ol className="flex flex-col gap-2" aria-label={tw("today.timeline.title")}>
       {items.map((item, index) => {
         const status = statusOf(item.status);
-        const detail = item.kind === "post" ? details?.get(item.id) : undefined;
         const time = formatChipTime(item.at, timeZone);
         const network = NETWORK_LABEL[item.network];
-        const reason =
-          item.status === "FAILED"
-            ? (detail?.errorMessage ?? tw("today.failedFallback"))
-            : undefined;
+        const reason = item.status === "FAILED" ? failureReason(item) : undefined;
         return (
           <motion.li
             key={`${item.kind}:${item.id}`}
@@ -138,9 +128,9 @@ export function TodayTimeline({
               <Badge tone={status.tone} size="sm">
                 {tw(status.key)}
               </Badge>
-              {item.status === "POSTED" && detail?.postUrl !== undefined && (
+              {item.status === "POSTED" && item.postUrl !== undefined && (
                 <a
-                  href={detail.postUrl}
+                  href={item.postUrl}
                   target="_blank"
                   rel="noopener"
                   className="fg-focusable inline-flex items-center gap-1 text-xs text-accent hover:underline"

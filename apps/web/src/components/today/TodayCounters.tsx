@@ -51,14 +51,7 @@ const TILES: readonly Tile[] = [
  * Los cuatro contadores de "Today". Un valor desconocido se muestra como tal,
  * no como `0`: "0 fallidos" es una afirmación (el mismo criterio que `KpiRow`).
  */
-export function TodayCounters({
-  values,
-  approvalHint,
-}: {
-  values: TodayCounterValues;
-  /** "in Acme": el de aprobación es sólo de la marca activa. */
-  approvalHint: string | null;
-}) {
+export function TodayCounters({ values }: { values: TodayCounterValues }) {
   return (
     <ul className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {TILES.map((tile) => {
@@ -103,9 +96,6 @@ export function TodayCounters({
                 <span data-testid={`today-counter-${tile.id}-value`}>{value}</span>
               )}
             </div>
-            {tile.id === "approval" && approvalHint !== null && (
-              <span className="text-xs text-text-subtle">{approvalHint}</span>
-            )}
           </li>
         );
       })}

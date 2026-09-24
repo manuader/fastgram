@@ -20,13 +20,18 @@
  * | `PUBLISH_META_GRAPH_VERSION` | `v26.0` | Instagram y Facebook |
  * | `PUBLISH_THREADS_API_VERSION` | `v1.0` | Threads |
  * | `PUBLISH_X_ALLOW_LINKS` | `false` | `true` deja las URLs en el texto (US$0,20 por post en vez de 0,015) |
+ * | `PUBLISH_YOUTUBE_PRIVACY` | `public` | `public`, `unlisted` o `private`. **Sin la auditoría del proyecto de Google, YouTube deja todo privado igual** |
+ * | `PUBLISH_LINKEDIN_VERSION` | `202609` | `LinkedIn-Version` (YYYYMM) de la Posts API; cada versión dura al menos un año |
  */
 import {
   FacebookReelsPublisher,
   InstagramPublisher,
+  LinkedInPublisher,
   ThreadsPublisher,
   TikTokInboxPublisher,
   XPublisher,
+  YouTubeShortsPublisher,
+  isYouTubePrivacyStatus,
 } from "@fastgram/adapters/publishers";
 import { createLocalOAuthKit } from "@fastgram/adapters";
 import { publicMediaUrlsFromEnv } from "@fastgram/adapters/public-media";
@@ -53,6 +58,8 @@ export function createRealPublishers(
   const igHost = nonEmpty(env["PUBLISH_INSTAGRAM_GRAPH_HOST"]);
   const threadsVersion = nonEmpty(env["PUBLISH_THREADS_API_VERSION"]);
   const allowLinks = nonEmpty(env["PUBLISH_X_ALLOW_LINKS"])?.toLowerCase() === "true";
+  const ytPrivacy = nonEmpty(env["PUBLISH_YOUTUBE_PRIVACY"])?.toLowerCase();
+  const linkedinVersion = nonEmpty(env["PUBLISH_LINKEDIN_VERSION"]);
 
   return {
     instagram: new InstagramPublisher({
@@ -67,6 +74,18 @@ export function createRealPublishers(
     ),
     x: new XPublisher({ allowLinks }),
     tiktok: new TikTokInboxPublisher(),
+    // Un valor que no es de la API se ignora (default `public`) en vez de
+    // mandarlo y gastar una subida en un 400.
+    youtube: new YouTubeShortsPublisher(
+      ytPrivacy !== undefined && isYouTubePrivacyStatus(ytPrivacy)
+        ? { privacyStatus: ytPrivacy }
+        : {},
+    ),
+    linkedin: new LinkedInPublisher(
+      linkedinVersion !== undefined && /^\d{6}$/.test(linkedinVersion)
+        ? { apiVersion: linkedinVersion }
+        : {},
+    ),
   };
 }
 

@@ -20,8 +20,8 @@
 
 /**
  * Las redes que se conectan por OAuth en uso personal (`D-09`, en orden).
- * YouTube y LinkedIn quedan para después; están en `social_platform` desde
- * antes, pero no tienen cliente.
+ * YouTube y LinkedIn (`PU-LATER-001`, `PU-LATER-002`) van al final: están en
+ * `social_platform` desde antes y ahora tienen cliente.
  */
 export const OAUTH_PLATFORMS = [
   "instagram",
@@ -29,6 +29,8 @@ export const OAUTH_PLATFORMS = [
   "x",
   "threads",
   "facebook",
+  "youtube",
+  "linkedin",
 ] as const;
 export type OAuthPlatform = (typeof OAUTH_PLATFORMS)[number];
 

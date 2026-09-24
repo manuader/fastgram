@@ -25,7 +25,14 @@ import {
   useSaveModelTask,
   useTestModelConnection,
 } from "@/lib/models/api";
-import { MODELS_COPY, TASK_COPY } from "@/lib/models/copy";
+import { COMFY_COPY, MODELS_COPY, TASK_COPY } from "@/lib/models/copy";
+import {
+  comfyDirty,
+  comfyDraftFrom,
+  comfyErrors,
+  toComfyWorkflow,
+  type ComfyDraft,
+} from "@/lib/models/comfy";
 import {
   draftErrors,
   draftFrom,
@@ -39,6 +46,7 @@ import {
   type DraftField,
   type TaskDraft,
 } from "@/lib/models/draft";
+import { ComfyWorkflowFields } from "./ComfyWorkflowFields";
 import { ConnectionResult } from "./ConnectionResult";
 
 const OTHER_MODEL = "__other__";
@@ -120,6 +128,10 @@ export function TaskModelCard({ config, presets }: TaskModelCardProps) {
   };
 
   const [draft, setDraft] = useState<TaskDraft>(() => draftFrom(config));
+  // `PU-LATER-003`: el workflow de ComfyUI va aparte del borrador común.
+  const [comfy, setComfy] = useState<ComfyDraft>(() =>
+    comfyDraftFrom(config.comfyWorkflow),
+  );
   const [listed, setListed] = useState<readonly ListedModel[] | null>(null);
   const [typingModel, setTypingModel] = useState(false);
   const [result, setResult] = useState<ModelConnectionTest | null>(null);
@@ -141,7 +153,9 @@ export function TaskModelCard({ config, presets }: TaskModelCardProps) {
   // puede borrar lo que el usuario está escribiendo.
   const signature = JSON.stringify(config);
   useEffect(() => {
-    setDraft(draftFrom(JSON.parse(signature) as ModelTaskConfig));
+    const saved = JSON.parse(signature) as ModelTaskConfig;
+    setDraft(draftFrom(saved));
+    setComfy(comfyDraftFrom(saved.comfyWorkflow));
     setTouched(false);
   }, [signature]);
 
@@ -176,9 +190,26 @@ export function TaskModelCard({ config, presets }: TaskModelCardProps) {
     (touched ? errors[field] : undefined) ??
     (serverField === field ? serverMessage : undefined);
 
-  const dirty = isDirty(draft, config);
-  const request = toUpdateRequest(draft, config);
-  const canSave = dirty && request !== null && Object.keys(errors).length === 0;
+  const isComfy = draft.provider === "comfyui";
+  const comfyErrs = isComfy ? comfyErrors(comfy, config.task) : {};
+  const comfyServerError = serverField === "comfyWorkflow" ? serverMessage : undefined;
+  const dirty =
+    isDirty(draft, config) || (isComfy && comfyDirty(comfy, config.comfyWorkflow));
+  const baseRequest = toUpdateRequest(draft, config);
+  const comfyWorkflow = isComfy ? toComfyWorkflow(comfy, config.task) : null;
+  const request =
+    baseRequest === null
+      ? null
+      : isComfy
+        ? comfyWorkflow === null
+          ? null
+          : { ...baseRequest, comfyWorkflow }
+        : baseRequest;
+  const canSave =
+    dirty &&
+    request !== null &&
+    Object.keys(errors).length === 0 &&
+    Object.keys(comfyErrs).length === 0;
   const dropsKey = keyWillBeDropped(draft, config);
 
   const update = (next: TaskDraft): void => {
@@ -238,7 +269,7 @@ export function TaskModelCard({ config, presets }: TaskModelCardProps) {
     keyHint = MODELS_COPY.apiKeySaved(config.apiKey.last4);
   } else if (config.apiKey.hasKey && config.apiKey.source === "env") {
     keyHint = MODELS_COPY.apiKeyFromEnv(config.apiKey.envVar);
-  } else if (preset !== undefined && !preset.requiresKey) {
+  } else if (preset !== undefined && !preset.requiresKey && !isComfy) {
     keyHint = MODELS_COPY.apiKeyOptional;
   }
 
@@ -330,44 +361,46 @@ export function TaskModelCard({ config, presets }: TaskModelCardProps) {
           />
         </Field>
 
-        <Field id={ids.apiKey} label={MODELS_COPY.apiKey} hint={keyHint}>
-          <div className="flex items-center gap-2">
-            <Input
-              id={ids.apiKey}
-              aria-describedby={describedBy(ids.apiKey, undefined, keyHint)}
-              type="password"
-              autoComplete="new-password"
-              spellCheck={false}
-              placeholder={MODELS_COPY.apiKeyPlaceholder}
-              value={draft.apiKey}
-              wrapperClassName="flex-1"
-              className="flex-1"
-              onChange={(e) => {
-                update({ ...draft, apiKey: e.target.value, clearKey: false });
-              }}
-            />
-            {config.apiKey.hasKey && config.apiKey.source === "file" && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  update({ ...draft, apiKey: "", clearKey: !draft.clearKey });
+        {!isComfy && (
+          <Field id={ids.apiKey} label={MODELS_COPY.apiKey} hint={keyHint}>
+            <div className="flex items-center gap-2">
+              <Input
+                id={ids.apiKey}
+                aria-describedby={describedBy(ids.apiKey, undefined, keyHint)}
+                type="password"
+                autoComplete="new-password"
+                spellCheck={false}
+                placeholder={MODELS_COPY.apiKeyPlaceholder}
+                value={draft.apiKey}
+                wrapperClassName="flex-1"
+                className="flex-1"
+                onChange={(e) => {
+                  update({ ...draft, apiKey: e.target.value, clearKey: false });
                 }}
-              >
-                {draft.clearKey ? MODELS_COPY.keepKey : MODELS_COPY.removeKey}
-              </Button>
-            )}
-          </div>
-        </Field>
-        {dropsKey && (
+              />
+              {config.apiKey.hasKey && config.apiKey.source === "file" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    update({ ...draft, apiKey: "", clearKey: !draft.clearKey });
+                  }}
+                >
+                  {draft.clearKey ? MODELS_COPY.keepKey : MODELS_COPY.removeKey}
+                </Button>
+              )}
+            </div>
+          </Field>
+        )}
+        {dropsKey && !isComfy && (
           <p className="-mt-2 m-0 text-xs text-warning">{MODELS_COPY.keyWillBeDropped}</p>
         )}
 
         <Field
           id={ids.model}
-          label={MODELS_COPY.model}
+          label={isComfy ? COMFY_COPY.modelLabel : MODELS_COPY.model}
           error={errorFor("model")}
-          hint={modelHint}
+          hint={isComfy ? COMFY_COPY.modelHint : modelHint}
         >
           <div className="flex items-center gap-2">
             {showSelect ? (
@@ -399,7 +432,9 @@ export function TaskModelCard({ config, presets }: TaskModelCardProps) {
                 className="flex-1"
                 spellCheck={false}
                 autoComplete="off"
-                placeholder={MODELS_COPY.modelPlaceholder}
+                placeholder={
+                  isComfy ? COMFY_COPY.modelPlaceholder : MODELS_COPY.modelPlaceholder
+                }
                 value={draft.model}
                 invalid={errorFor("model") !== undefined}
                 onChange={(e) => {
@@ -407,7 +442,7 @@ export function TaskModelCard({ config, presets }: TaskModelCardProps) {
                 }}
               />
             )}
-            {canProbe && (
+            {canProbe && !isComfy && (
               <Button
                 variant="secondary"
                 size="sm"
@@ -420,6 +455,21 @@ export function TaskModelCard({ config, presets }: TaskModelCardProps) {
             )}
           </div>
         </Field>
+
+        {isComfy && (
+          <ComfyWorkflowFields
+            task={config.task}
+            draft={comfy}
+            errors={{
+              ...(touched || comfy.text.trim() !== "" ? comfyErrs : {}),
+              ...(comfyServerError === undefined ? {} : { workflow: comfyServerError }),
+            }}
+            onChange={(next) => {
+              setComfy(next);
+              setJustSaved(false);
+            }}
+          />
+        )}
 
         {isLlm && (
           <Field
@@ -462,11 +512,12 @@ export function TaskModelCard({ config, presets }: TaskModelCardProps) {
               {serverList.error.serverMessage ?? serverList.error.code}
             </p>
           )}
-          {save.isError && serverField === undefined && (
-            <p className="m-0 text-sm text-danger">
-              {MODELS_COPY.saveFailed} {serverMessage ?? ""}
-            </p>
-          )}
+          {save.isError &&
+            (serverField === undefined || serverField === "comfyWorkflow") && (
+              <p className="m-0 text-sm text-danger">
+                {MODELS_COPY.saveFailed} {serverMessage ?? ""}
+              </p>
+            )}
         </div>
       </CardContent>
 
@@ -482,6 +533,7 @@ export function TaskModelCard({ config, presets }: TaskModelCardProps) {
             size="sm"
             onClick={() => {
               setDraft(draftFrom(config));
+              setComfy(comfyDraftFrom(config.comfyWorkflow));
               setTouched(false);
               setResult(null);
               save.reset();

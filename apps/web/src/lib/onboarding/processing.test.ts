@@ -79,7 +79,7 @@ describe("sourceNotice", () => {
     ).toBe("error.brand.privateProfile.title");
   });
 
-  it("`unsupported_platform` nombra la plataforma y no promete el tier D que no existe", () => {
+  it("`unsupported_platform` sin panel (onboarding) nombra la plataforma y manda a la web", () => {
     const notice = sourceNotice(
       source({
         status: "failed",
@@ -93,6 +93,23 @@ describe("sourceNotice", () => {
       vars: { handle: "mimarca", platform: "Instagram" },
       problem: true,
     });
+  });
+
+  it("`unsupported_platform` con el panel del tier D debajo invita a pegar la bio", () => {
+    const failed = source({
+      status: "failed",
+      failureReason: "unsupported_platform",
+      acquisitionTier: "D_assisted",
+    });
+    expect(sourceNotice(failed, T0, { assistOffered: true })?.key).toBe(
+      "brand.failure.unsupportedPlatformAssist",
+    );
+    // Otro motivo no cambia aunque haya panel.
+    expect(
+      sourceNotice(source({ status: "failed", failureReason: "private" }), T0, {
+        assistOffered: true,
+      })?.key,
+    ).toBe("error.brand.privateProfile.title");
   });
 
   it("`partial` es ERR-B09 y no es un problema: no bloquea el alta", () => {

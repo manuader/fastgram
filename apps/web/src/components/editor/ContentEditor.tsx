@@ -33,6 +33,12 @@ import {
   useSaveContentEdit,
 } from "@/lib/editor/api";
 import { useEditorFonts, useElementWidth } from "@/lib/editor/dom";
+import {
+  editFailureOf,
+  failureReasonKey,
+  needsModelSetup,
+  type EditFailure,
+} from "@/lib/editor/failure";
 import { EDITOR_REFERENCE_WIDTH, zoomPercentOf, zoomRect } from "@/lib/editor/geometry";
 import {
   buildPatchBody,
@@ -179,7 +185,9 @@ function LoadError({
 
 type Banner =
   | { readonly tone: "info" | "success" | "danger"; readonly key: CopyKey }
-  | { readonly tone: "stale" };
+  | { readonly tone: "stale" }
+  /** La última edición o el Regenerate falló: titular + el porqué. */
+  | { readonly tone: "failed"; readonly failure: EditFailure };
 
 type PickerState =
   | {
@@ -209,7 +217,13 @@ function LoadedEditor({
 }) {
   const [state, dispatch] = useReducer(editorReducer, editable, initialEditorState);
   const [view, setView] = useState<"preview" | "rendered">("preview");
-  const [banner, setBanner] = useState<Banner | null>(null);
+  // Al abrir, si la última edición falló se dice —y por qué—: la pieza que se
+  // ve es la versión anterior, y sin esto el usuario no sabe que su cambio no
+  // llegó.
+  const [banner, setBanner] = useState<Banner | null>(() => {
+    const failure = editFailureOf(content.lastEdit);
+    return failure === null ? null : { tone: "failed", failure };
+  });
   const [picker, setPicker] = useState<PickerState>(null);
   const [prompt, setPrompt] = useState("");
   const [mention, setMention] = useState<boolean | null>(null);
@@ -245,15 +259,10 @@ function LoadedEditor({
   useEffect(() => {
     if (pending === null || content.status === "BUILDING") return;
     if (content.revision < pending.revision) return;
-    const outcome = content.lastEdit?.["outcome"];
-    if (outcome === "failed") {
-      setBanner({
-        tone: "danger",
-        key:
-          pending.kind === "regenerate"
-            ? "editor.regenerate.failed"
-            : "editor.editFailed",
-      });
+    const failure = editFailureOf(content.lastEdit);
+    if (failure !== null) {
+      // El titular es el de lo que **este** editor mandó; el porqué, del worker.
+      setBanner({ tone: "failed", failure: { ...failure, kind: pending.kind } });
     } else {
       setBanner({ tone: "success", key: "editor.rebuilt" });
       setView("rendered");
@@ -517,6 +526,7 @@ function BannerView({
   readonly banner: Banner;
   readonly onReload: () => void;
 }) {
+  if (banner.tone === "failed") return <FailureBanner failure={banner.failure} />;
   if (banner.tone === "stale") {
     return (
       <div
@@ -544,6 +554,39 @@ function BannerView({
         <Spinner size="sm" aria-hidden />
       )}
       {tw(banner.key)}
+    </div>
+  );
+}
+
+/**
+ * Una edición o un Regenerate que no llegó: qué pasó, por qué (si el código es
+ * conocido) y, cuando falta el modelo, adónde ir a configurarlo.
+ */
+function FailureBanner({ failure }: { readonly failure: EditFailure }) {
+  const reasonKey = failureReasonKey(failure.reason);
+  return (
+    <div
+      role="alert"
+      data-testid="editor-failure"
+      data-reason={failure.reason ?? undefined}
+      className="flex flex-col gap-1 rounded-lg border border-danger bg-surface p-3 text-sm"
+    >
+      <span className="font-medium text-text">
+        {tw(
+          failure.kind === "regenerate"
+            ? "editor.regenerate.failed"
+            : "editor.editFailed",
+        )}
+      </span>
+      {reasonKey !== null && <span className="text-text-muted">{tw(reasonKey)}</span>}
+      {needsModelSetup(failure.reason) && (
+        <Link
+          href={ROUTES.settingsModels}
+          className="fg-focusable w-fit font-medium text-accent hover:underline"
+        >
+          {tw("editor.failure.llmLink")}
+        </Link>
+      )}
     </div>
   );
 }

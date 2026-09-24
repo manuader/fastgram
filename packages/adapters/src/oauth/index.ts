@@ -1,6 +1,6 @@
 /**
- * OAuth de plataformas — `PU-PUB-002`, `P3-OAUTH-002`. Ver `meta.ts` y
- * `tiktok-x.ts` para los endpoints y sus citas.
+ * OAuth de plataformas — `PU-PUB-002`, `P3-OAUTH-002`, `PU-LATER-001/002`. Ver
+ * `meta.ts`, `tiktok-x.ts`, `youtube.ts` y `linkedin.ts` para los endpoints y sus citas.
  */
 import type { OAuthClient, OAuthPlatform } from "@fastgram/ports";
 
@@ -10,6 +10,8 @@ import {
   ThreadsOAuthClient,
 } from "./meta.js";
 import { TikTokOAuthClient, XOAuthClient } from "./tiktok-x.js";
+import { YouTubeOAuthClient } from "./youtube.js";
+import { LinkedInOAuthClient } from "./linkedin.js";
 import type { OAuthFetch } from "./http.js";
 
 export {
@@ -26,6 +28,20 @@ export {
   type MetaClientConfig,
 } from "./meta.js";
 export { TikTokOAuthClient, XOAuthClient, type TikTokXClientConfig } from "./tiktok-x.js";
+export {
+  YouTubeOAuthClient,
+  GOOGLE_AUTHORIZE_URL,
+  GOOGLE_TOKEN_URL,
+  YOUTUBE_CHANNELS_URL,
+  type YouTubeClientConfig,
+} from "./youtube.js";
+export {
+  LinkedInOAuthClient,
+  LINKEDIN_DEFAULT_VERSION,
+  LINKEDIN_ORG_SCOPES,
+  linkedinPersonUrn,
+  type LinkedInClientConfig,
+} from "./linkedin.js";
 export { MemoryOAuthStateLedger } from "./memory-state-ledger.js";
 
 export interface OAuthClientsConfig {
@@ -35,6 +51,8 @@ export interface OAuthClientsConfig {
   readonly now?: () => Date;
   /** Ver `MetaClientConfig.graphVersion`. */
   readonly graphVersion?: string;
+  /** Ver `LinkedInClientConfig.linkedinVersion`. */
+  readonly linkedinVersion?: string;
 }
 
 /** Un cliente por plataforma de `OAUTH_PLATFORMS`. */
@@ -47,5 +65,7 @@ export function createOAuthClients(
     x: new XOAuthClient(config),
     threads: new ThreadsOAuthClient(config),
     facebook: new FacebookPagesOAuthClient(config),
+    youtube: new YouTubeOAuthClient(config),
+    linkedin: new LinkedInOAuthClient(config),
   };
 }

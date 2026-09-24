@@ -1,5 +1,5 @@
 /**
- * Publicadores reales por plataforma — `PU-PUB-003…006`.
+ * Publicadores reales por plataforma — `PU-PUB-003…006`, `PU-LATER-001/002`.
  *
  * Se importan por el subpath `@fastgram/adapters/publishers` (el `exports`
  * del paquete publica `./*`), así el índice general del paquete no cambia.
@@ -33,6 +33,23 @@ export {
   planChunks,
   type TikTokInboxPublisherConfig,
 } from "./tiktok/tiktok-inbox-publisher.js";
+export {
+  YouTubeShortsPublisher,
+  YOUTUBE_SHORTS_CAPABILITIES,
+  YOUTUBE_SHORTS_MAX_SECONDS,
+  YOUTUBE_PRIVACY_STATUSES,
+  isYouTubePrivacyStatus,
+  type YouTubePrivacyStatus,
+  type YouTubeShortsPublisherConfig,
+} from "./youtube/youtube-shorts-publisher.js";
+export { probeMp4, type Mp4Probe } from "./youtube/mp4-probe.js";
+export {
+  LinkedInPublisher,
+  LINKEDIN_CAPABILITIES,
+  LINKEDIN_API_VERSION_DEFAULT,
+  escapeLittleText,
+  type LinkedInPublisherConfig,
+} from "./linkedin/linkedin-publisher.js";
 export {
   UnavailablePublicMediaUrls,
   UnavailableConnectionTokens,

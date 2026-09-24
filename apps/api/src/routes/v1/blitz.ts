@@ -129,6 +129,7 @@ import { z } from "zod";
 
 import {
   DISCOVERY_QUEUE_TARGET_ITEMS,
+  blitzQueueCountsQuerySchema,
   contentBuildPayloadSchema,
   generateBlitzRequestSchema,
   idempotencyHeaderSchema,
@@ -167,6 +168,7 @@ import {
 import {
   blitzPreferencesRepository,
   claimNextQueuedSuggestion,
+  countQueued,
   companyProfileRepository,
   createPromptRequest,
   findPromptRequest,
@@ -189,11 +191,13 @@ import {
 } from "@fastgram/db";
 import type { Clock, Queue } from "@fastgram/ports";
 
+import { runScoped } from "../../auth/scope.js";
 import { ApiRejection } from "../../http/errors.js";
 import { isUuid } from "../../http/route-ids.js";
 import { rateLimit } from "../../plugins/rate-limit.js";
 import { lockLedger, quotaPolicyFor, type QuotaPolicy } from "../../support/quota.js";
 import { toBlitzPreferences, toContent } from "../../support/serializers.js";
+import { brandContext } from "./calendar.js";
 import { data, idempotencyKeyOf, notFound, withIdempotency } from "./shared.js";
 import type { ZodApp } from "../../server/types.js";
 
@@ -1161,6 +1165,36 @@ export function registerBlitzRoutes(app: ZodApp): void {
       // futuras. La cola existente **no** se toca, ni acá ni en un job disparado
       // desde acá.
       return reply.status(200).send(data(toBlitzPreferences(row)));
+    },
+  );
+
+  // ── GET /blitz/queue/counts ── ("Today", `PU-UI-002`)
+  //
+  // Cuántas tarjetas esperan en cada marca del dueño. Las marcas salen de
+  // `brandContext` —el mismo "todas las del dueño" del calendario— y cada cuenta
+  // se lee con el scope de **su** marca: RLS aplica marca por marca. A diferencia
+  // de `GET /blitz/queue`, **no** pide relleno: esta ruta la pide "Today" cada
+  // 30 s para todas las marcas, y rellenar marcas que nadie está mirando sería
+  // gastar el modelo en balde.
+  app.get(
+    "/blitz/queue/counts",
+    { schema: { querystring: blitzQueueCountsQuerySchema } },
+    async (request) => {
+      const context = await brandContext(
+        app.deps.db,
+        app.deps.appRole,
+        app.deps.mode ?? "standard",
+        request,
+        request.query.brands,
+      );
+      const out: { brandId: string; queued: number }[] = [];
+      for (const brand of context.brands) {
+        const queued = await runScoped(app.deps.db, brand.id, app.deps.appRole, (tx) =>
+          countQueued(tx, { companyId: brand.id }),
+        );
+        out.push({ brandId: brand.id, queued });
+      }
+      return data(out);
     },
   );
 

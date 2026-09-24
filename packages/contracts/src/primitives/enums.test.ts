@@ -83,11 +83,12 @@ describe("enums literales del PRD", () => {
     ]);
   });
 
-  it("Post.platform · DATA-020 · PRD:2126 — sin linkedin (sólo en automations, que son MCP); x, threads y facebook de D-09", () => {
+  it("Post.platform · DATA-020 · PRD:2126 — x, threads y facebook de D-09; linkedin entra con su publicador (PU-LATER-002)", () => {
     expect(postPlatformSchema.options).toEqual([
       "tiktok",
       "instagram",
       "youtube",
+      "linkedin",
       "reddit",
       "x",
       "threads",

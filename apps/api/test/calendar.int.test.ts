@@ -534,27 +534,9 @@ describe("convertPlannedSlot (sprint 3)", () => {
     expect(api.queue.enqueued).toHaveLength(0);
   });
 
-  it("linkedin sigue sin poder ser un post: espera aunque tenga conexión", async () => {
-    const contentId = await newContent(api.data.a.companyId);
-    const slotId = await insertSlot(contentId, "linkedin");
-    await api.handle.sql`
-      insert into connections (company_id, platform, platform_user_id, platform_username, scopes, publishable)
-      values (${api.data.a.companyId}, 'linkedin', 'li-slot', 'li', '{}', true)
-    `;
-    try {
-      expect(await convert(slotId)).toEqual({
-        kind: "wait",
-        reason: "network_not_postable",
-      });
-      expect(api.queue.enqueued).toHaveLength(0);
-    } finally {
-      await api.handle.sql`
-        update connections set status = 'revoked' where platform_user_id = 'li-slot'
-      `;
-    }
-  });
-
-  it.each(["x", "threads", "facebook"] as const)(
+  // YouTube y LinkedIn se suman con PU-LATER-001/002 (antes LinkedIn esperaba
+  // con `network_not_postable` aunque tuviera conexión).
+  it.each(["x", "threads", "facebook", "youtube", "linkedin"] as const)(
     "%s (D-09) con una conexión activa única pasa a post de esa red",
     async (network) => {
       const contentId = await newContent(api.data.a.companyId);

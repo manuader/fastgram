@@ -204,7 +204,8 @@ function SourceRow({
   readonly failure: Failure | null;
   readonly onAction: (action: SourceAction) => void;
 }) {
-  const notice = sourceNotice(source, now);
+  const assist = canAssist(source) && !busy;
+  const notice = sourceNotice(source, now, { assistOffered: assist });
   return (
     <li className="fgw-brand-source" data-status={source.status}>
       <div className="fgw-brand-source__head">
@@ -263,7 +264,7 @@ function SourceRow({
         </p>
       )}
       {failure !== null && <ActionProblem failure={failure} />}
-      {canAssist(source) && !busy && (
+      {assist && (
         // P1-BRAND-014 / FR-011.4: degradada a D, se pide la ayuda concreta.
         <AssistedSourcePanel source={source} />
       )}

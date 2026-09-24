@@ -25,7 +25,11 @@ import {
   type OAuthPlatform,
 } from "@fastgram/ports";
 
-import { OAUTH_PLATFORM_SPECS, type OAuthPlatformSpec } from "./platforms.js";
+import {
+  OAUTH_PLATFORM_SPECS,
+  requestedScopesOf,
+  type OAuthPlatformSpec,
+} from "./platforms.js";
 
 /** El origen de la web en uso local (`apps/web`, `next dev -p 3000`). */
 export const LOCAL_WEB_ORIGIN = "http://localhost:3000";
@@ -103,7 +107,12 @@ export interface PublicIntegrationApp {
   readonly https: OAuthPlatformSpec["https"];
   /** La redirect URI actual cumple lo que la plataforma documenta. */
   readonly redirectAllowed: boolean;
+  /** Lo que se pide hoy: los de la plataforma más los opcionales si están habilitados. */
   readonly scopes: readonly string[];
+  /** Los scopes opcionales de la plataforma (vacío si no tiene). */
+  readonly optionalScopes: readonly string[];
+  readonly optionalScopesNote: string | null;
+  readonly optionalScopesEnabled: boolean;
   readonly consoleUrl: string;
   readonly docsUrl: string;
   readonly setupNote: string;
@@ -144,7 +153,11 @@ export function toPublicIntegrationApp(
     redirectUri: redirectUriFor(platform, base),
     https: spec.https,
     redirectAllowed: redirectAllowed(spec, base),
-    scopes: spec.scopes,
+    scopes: requestedScopesOf(platform, config),
+    optionalScopes: spec.optionalScopes,
+    optionalScopesNote: spec.optionalScopesNote,
+    optionalScopesEnabled:
+      spec.optionalScopes.length > 0 && config?.optionalScopes === true,
     consoleUrl: spec.consoleUrl,
     docsUrl: spec.docsUrl,
     setupNote: spec.setupNote,
@@ -166,6 +179,11 @@ export interface IntegrationUpdateInput {
   readonly clientId: string;
   /** Vacío o ausente = conservar el guardado (si el client id no cambió). */
   readonly clientSecret?: string | undefined;
+  /**
+   * Pedir los scopes opcionales (`OAuthPlatformSpec.optionalScopes`).
+   * Ausente = conservar lo guardado si la app es la misma; con otra app, no.
+   */
+  readonly optionalScopes?: boolean | undefined;
 }
 
 export type IntegrationUpdateResult =
@@ -209,11 +227,17 @@ export function applyIntegrationUpdate(
       ? current.clientSecret
       : undefined;
   const secret = typed.length > 0 ? typed : kept;
+  const optionalScopes =
+    input.optionalScopes ??
+    (current !== undefined && current.clientId === clientId
+      ? current.optionalScopes
+      : undefined);
   return {
     ok: true,
     config: {
       clientId,
       ...(secret === undefined ? {} : { clientSecret: secret }),
+      ...(optionalScopes === true ? { optionalScopes: true } : {}),
       updatedAt: nowIso,
     },
   };

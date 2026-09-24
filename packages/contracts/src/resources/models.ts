@@ -52,6 +52,8 @@ export const modelProviderSchema = z.enum([
   // Imagen y video (`PU-MODEL-003`/`004`): adaptador propio, no OpenAI.
   "higgsfield",
   "fal",
+  // `PU-LATER-003`: ComfyUI local. El «modelo» es un workflow (`comfyWorkflow`).
+  "comfyui",
 ]);
 export type ModelProvider = z.infer<typeof modelProviderSchema>;
 
@@ -65,6 +67,33 @@ export const modelProviderPresetSchema = z.object({
   note: z.string().nullable(),
 });
 export type ModelProviderPreset = z.infer<typeof modelProviderPresetSchema>;
+
+/** Un input de un nodo de un workflow de ComfyUI (`PU-LATER-003`). */
+export const comfyInputRefSchema = z
+  .object({ nodeId: z.string().min(1).max(128), input: z.string().min(1).max(128) })
+  .strict();
+export type ComfyInputRef = z.infer<typeof comfyInputRefSchema>;
+
+/**
+ * Un workflow de ComfyUI **en formato API** (`{ [nodeId]: { class_type,
+ * inputs } }`, lo que `POST /prompt` recibe) y qué inputs son el prompt, el
+ * tamaño, la semilla y la imagen de entrada. Sólo `prompt` es obligatorio. La
+ * validación fina (que existan, que no sean links) la hace el servidor y
+ * vuelve como `400` con `details.field = "comfyWorkflow"`.
+ */
+export const comfyWorkflowSchema = z
+  .object({
+    workflow: z.record(z.string(), z.unknown()),
+    prompt: comfyInputRefSchema,
+    width: comfyInputRefSchema.optional(),
+    height: comfyInputRefSchema.optional(),
+    seed: comfyInputRefSchema.optional(),
+    image: comfyInputRefSchema.optional(),
+    /** Sólo video: cuántos segundos dura el clip que produce el workflow. */
+    durationSeconds: z.number().int().positive().optional(),
+  })
+  .strict();
+export type ComfyWorkflow = z.infer<typeof comfyWorkflowSchema>;
 
 export const modelKeyInfoSchema = z.object({
   hasKey: z.boolean(),
@@ -97,6 +126,8 @@ export const modelTaskConfigSchema = z.object({
   apiKeyEnv: z.string().nullable(),
   missing: z.array(z.enum(["apiKey", "contextWindowTokens"])),
   providers: z.array(modelProviderSchema),
+  /** Sólo `comfyui`: el workflow guardado, para editarlo. Opcional por compatibilidad. */
+  comfyWorkflow: comfyWorkflowSchema.nullable().optional(),
   updatedAt: z.string().nullable(),
 });
 export type ModelTaskConfig = z.infer<typeof modelTaskConfigSchema>;
@@ -122,6 +153,8 @@ export const updateModelTaskRequestSchema = z
     apiKey: z.string().max(1024).nullable().optional(),
     apiKeyEnv: z.string().max(128).nullable().optional(),
     contextWindowTokens: z.number().int().positive().nullable().optional(),
+    /** Sólo `comfyui`. Ausente = dejar el guardado; `null` = borrarlo. */
+    comfyWorkflow: comfyWorkflowSchema.nullable().optional(),
   })
   .strict();
 export type UpdateModelTaskRequest = z.infer<typeof updateModelTaskRequestSchema>;

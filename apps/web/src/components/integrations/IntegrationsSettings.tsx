@@ -29,7 +29,7 @@ function CardSkeleton() {
  *
  * Las credenciales de las apps de desarrollador (de la instalación, no de una
  * marca). Estados: `loading` (esqueletos), `error` (`ApiErrorState`) y
- * "empty" — que acá no es "no hay nada" (siempre vienen las cinco) sino
+ * "empty" — que acá no es "no hay nada" (siempre vienen las siete) sino
  * ninguna configurada, que se ve en cada tarjeta como `Not set up`.
  */
 export function IntegrationsSettings() {

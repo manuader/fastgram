@@ -43,4 +43,9 @@ export const INTEGRATIONS_COPY = {
   publicUrlInvalid:
     "FASTGRAM_PUBLIC_URL is set but is not a bare http(s) origin, so it is ignored.",
   errorClientId: "Client ID is required.",
+  youtubeAudit:
+    "Until Google audits this project, every video uploaded through the API stays private — whatever privacy FastGram asks for. Request the audit early: it takes a while.",
+  optionalScopesFallback: "Also request the optional permissions",
+  optionalScopesHint: (scopes: string) =>
+    `Adds ${scopes}. Only tick it if your app has them approved: otherwise the platform rejects the whole login.`,
 } as const;

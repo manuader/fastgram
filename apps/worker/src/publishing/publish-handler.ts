@@ -147,6 +147,8 @@ interface PublishSubject {
   readonly revision: number;
   readonly mediaKind: PublishMediaKind;
   readonly files: readonly string[];
+  /** Del `canvas` del payload de build (`renderDimensionsOf`). */
+  readonly dimensions: { readonly width: number; readonly height: number } | null;
   readonly scheduledAtMs: number;
   readonly caption: string;
   readonly description: string | undefined;
@@ -176,6 +178,41 @@ type ReadOutcome =
  */
 function mediaKindOf(contentType: string): PublishMediaKind {
   return contentType === "slideshow" ? "slideshow" : "video";
+}
+
+/**
+ * Ancho y alto del render, leídos del `canvas` del payload de build
+ * (`FR-070`: `{canvas:{width,height},…}` en los formatos de video,
+ * `{images:[{canvas}]}` en slideshow). `null` si el payload no los trae.
+ *
+ * YouTube los necesita para saber si la pieza es un Short **antes** de gastar
+ * una subida de la cuota (`PU-LATER-001`); el resto de los publicadores los
+ * ignora.
+ */
+export function renderDimensionsOf(
+  buildPayload: unknown,
+): { readonly width: number; readonly height: number } | null {
+  const dims = (canvas: unknown) => {
+    if (typeof canvas !== "object" || canvas === null) return null;
+    const { width, height } = canvas as { width?: unknown; height?: unknown };
+    return typeof width === "number" &&
+      typeof height === "number" &&
+      width > 0 &&
+      height > 0
+      ? { width, height }
+      : null;
+  };
+  if (typeof buildPayload !== "object" || buildPayload === null) return null;
+  const payload = buildPayload as { canvas?: unknown; images?: unknown };
+  const direct = dims(payload.canvas);
+  if (direct !== null) return direct;
+  if (Array.isArray(payload.images) && payload.images.length > 0) {
+    const first: unknown = payload.images[0];
+    return typeof first === "object" && first !== null
+      ? dims((first as { canvas?: unknown }).canvas)
+      : null;
+  }
+  return null;
 }
 
 /** Los estados de `posts` que este handler escribe tras publicar. */
@@ -306,6 +343,7 @@ export function createPublishHandler(deps: PublishDeps): JobHandler<unknown> {
           revision: content.revision,
           mediaKind: mediaKindOf(content.type),
           files: content.files,
+          dimensions: renderDimensionsOf(content.buildPayload),
           scheduledAtMs: post.scheduledAtUtc.getTime(),
           caption: post.caption ?? "",
           description: post.description ?? undefined,
@@ -655,7 +693,11 @@ export function createPublishHandler(deps: PublishDeps): JobHandler<unknown> {
           ? {}
           : { platformUserId: subject.platformUserId }),
       },
-      media: { kind: subject.mediaKind, urls },
+      media: {
+        kind: subject.mediaKind,
+        urls,
+        ...(subject.dimensions === null ? {} : subject.dimensions),
+      },
       caption: subject.caption,
       ...(subject.description === undefined ? {} : { description: subject.description }),
       ...(subject.postingMode === undefined ? {} : { postingMode: subject.postingMode }),

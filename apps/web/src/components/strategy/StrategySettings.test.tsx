@@ -65,7 +65,7 @@ describe("Settings → Strategy", () => {
     expect(await screen.findByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
-  it("muestra las siete redes, marca YouTube/LinkedIn como Later y dice que son defaults", async () => {
+  it("muestra las siete redes, ninguna como Later (PU-LATER-001/002) y dice que son defaults", async () => {
     requestMock.mockResolvedValue(strategy());
     renderView();
     expect(await screen.findByText(/These are the defaults/)).toBeInTheDocument();
@@ -82,7 +82,8 @@ describe("Settings → Strategy", () => {
     }
     expect(screen.getByLabelText("Instagram")).toBeChecked();
     expect(screen.getByLabelText("X")).not.toBeChecked();
-    expect(screen.getAllByText("Later")).toHaveLength(2);
+    // YouTube y LinkedIn ya publican: sin la marca "Later".
+    expect(screen.queryAllByText("Later")).toHaveLength(0);
   });
 
   it("advierte al subir el tope y bloquea perDay > dailyCap", async () => {

@@ -41,7 +41,7 @@ import {
 
 const MINUTE_MS = 60_000;
 
-/** Las redes de la estrategia (`D-09`). YouTube y LinkedIn existen, "después". */
+/** Las redes de la estrategia (`D-09`). YouTube y LinkedIn van al final del orden. */
 export const STRATEGY_NETWORKS = [
   "instagram",
   "tiktok",
@@ -53,8 +53,12 @@ export const STRATEGY_NETWORKS = [
 ] as const;
 export type StrategyNetwork = (typeof STRATEGY_NETWORKS)[number];
 
-/** `D-09`: van al final del orden. Se pueden guardar; la UI las marca "later". */
-export const LATER_NETWORKS: readonly StrategyNetwork[] = ["youtube", "linkedin"];
+/**
+ * `D-09`: redes que se pueden guardar pero todavía no publican (la UI las
+ * marca "later"). Vacía desde `PU-LATER-001`/`PU-LATER-002`: YouTube y
+ * LinkedIn tienen OAuth y publicador. Se conserva para la próxima red.
+ */
+export const LATER_NETWORKS: readonly StrategyNetwork[] = [];
 
 /** §5.2 — "Topes propios por red por debajo de los oficiales (default: 3 por día y por red)". */
 export const ANTI_BOT_DAILY_CAP_DEFAULT = 3;
@@ -329,10 +333,9 @@ export function planAutoSlots(params: PlanAutoSlotsParams): readonly AutoSlotOut
 /**
  * Las redes de la estrategia que hoy pueden ser un `Post` por el flujo de
  * `FR-060` (`POST /content/:id/schedule`). X, Threads y Facebook entraron con
- * sus adaptadores (`D-09`, migración `0015`). LinkedIn está en el enum
- * `post_platform` pero el contrato de programación no lo acepta (entra por
- * automations): sigue siendo sólo slot planificado. Reddit se puede programar
- * pero no es una red de la estrategia.
+ * sus adaptadores (`D-09`, migración `0015`); YouTube (Shorts) y LinkedIn con
+ * los suyos (`PU-LATER-001`, `PU-LATER-002`). Reddit se puede programar pero
+ * no es una red de la estrategia.
  */
 export const POSTABLE_NETWORKS: readonly StrategyNetwork[] = [
   "instagram",
@@ -341,6 +344,7 @@ export const POSTABLE_NETWORKS: readonly StrategyNetwork[] = [
   "threads",
   "facebook",
   "youtube",
+  "linkedin",
 ];
 
 export interface ConnectionCandidate {

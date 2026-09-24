@@ -42,7 +42,7 @@ import { postSchema } from "./posts.js";
 
 // --- Números -------------------------------------------------------------------
 
-/** `D-09`, en orden. YouTube y LinkedIn van "después". */
+/** `D-09`, en orden. YouTube y LinkedIn van al final. */
 export const STRATEGY_NETWORKS = [
   "instagram",
   "tiktok",
@@ -55,11 +55,11 @@ export const STRATEGY_NETWORKS = [
 export const strategyNetworkSchema = z.enum(STRATEGY_NETWORKS);
 export type StrategyNetwork = z.infer<typeof strategyNetworkSchema>;
 
-/** `D-09`: se pueden guardar; la UI las marca "later". */
-export const LATER_STRATEGY_NETWORKS: readonly StrategyNetwork[] = [
-  "youtube",
-  "linkedin",
-];
+/**
+ * `D-09`: se pueden guardar pero todavía no publican; la UI las marca "later".
+ * Vacía desde que YouTube y LinkedIn tienen publicador (`PU-LATER-001/002`).
+ */
+export const LATER_STRATEGY_NETWORKS: readonly StrategyNetwork[] = [];
 
 /** §5.2 — tope propio por red y por día. Subirlo es posible; la UI advierte. */
 export const ANTI_BOT_DAILY_CAP_DEFAULT = 3;
@@ -294,6 +294,16 @@ export const calendarItemSchema = z
     at: msEpochSchema,
     /** Si el calendario puede ofrecer arrastrarlo (sólo lo que no salió). */
     movable: z.boolean(),
+    /**
+     * Sólo en posts `FAILED`: los mismos `errorCode`/`errorMessage` de `Post`
+     * (FR-060: el mensaje es "siempre seguro de mostrar"). Están acá para que
+     * "Today" diga por qué falló un post de **cualquier** marca, no sólo de la
+     * activa.
+     */
+    errorCode: z.string().optional(),
+    errorMessage: z.string().optional(),
+    /** El permalink en la plataforma, si el post salió y se conoce. */
+    postUrl: z.string().url().optional(),
   })
   .strict();
 export type CalendarItem = z.infer<typeof calendarItemSchema>;

@@ -13,7 +13,7 @@ import {
   SWIPE_VELOCITY_PX_S,
   type KeyLike,
 } from "./gestures";
-import { deckViewFor, isMissingQueueEndpoint } from "./state";
+import { deckViewFor } from "./state";
 import {
   compactNumber,
   deckSuggestionSchema,
@@ -94,7 +94,7 @@ describe("keyToDecision", () => {
 });
 
 describe("deckViewFor", () => {
-  const ok = { queueError: null, blindEmpty: false, profileBlocked: false } as const;
+  const ok = { queueError: null, profileBlocked: false } as const;
 
   it("cargando, vacío y deck", () => {
     expect(deckViewFor({ ...ok, queueStatus: "pending", pending: [] }).kind).toBe(
@@ -102,28 +102,17 @@ describe("deckViewFor", () => {
     );
     expect(deckViewFor({ ...ok, queueStatus: "success", pending: [] })).toEqual({
       kind: "empty",
-      mode: "preview",
     });
     expect(deckViewFor({ ...ok, queueStatus: "success", pending: [base] }).kind).toBe(
       "deck",
     );
   });
 
-  it("404 en GET /blitz/queue = endpoint ausente → modo blind, no error", () => {
+  it("404 en GET /blitz/queue (marca inválida) es un error, no un modo sin previews", () => {
     const missing = new ApiRequestError({ code: "not_found", status: 404 });
-    expect(isMissingQueueEndpoint(missing)).toBe(true);
     expect(
       deckViewFor({ ...ok, queueStatus: "error", queueError: missing, pending: [] }),
-    ).toEqual({ kind: "deck", mode: "blind" });
-    expect(
-      deckViewFor({
-        ...ok,
-        queueStatus: "error",
-        queueError: missing,
-        pending: [],
-        blindEmpty: true,
-      }),
-    ).toEqual({ kind: "empty", mode: "blind" });
+    ).toEqual({ kind: "error", error: missing });
   });
 
   it("un 500 o un fallo de red son error, nunca vacío", () => {
@@ -233,7 +222,7 @@ describe("relleno de la cola", () => {
     expect(pendingSuggestions([base, other], new Set(["s1"]))).toEqual([other]);
   });
 
-  it("queuePollInterval: pregunta con la cola corta o con error, nunca contra el 404", () => {
+  it("queuePollInterval: pregunta con la cola corta o con un error transitorio, no con un 4xx", () => {
     const five = Array.from({ length: 5 }, (_, i) => ({ ...base, id: `s${String(i)}` }));
     expect(queuePollInterval(five, null)).toBe(false);
     expect(queuePollInterval([base], null)).toBe(QUEUE_POLL_MS);
@@ -248,6 +237,12 @@ describe("relleno de la cola", () => {
       queuePollInterval(
         undefined,
         new ApiRequestError({ code: "service_unavailable", status: 500 }),
+      ),
+    ).toBe(QUEUE_POLL_MS);
+    expect(
+      queuePollInterval(
+        undefined,
+        new ApiRequestError({ code: "network_error", status: 0 }),
       ),
     ).toBe(QUEUE_POLL_MS);
   });

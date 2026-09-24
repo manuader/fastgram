@@ -431,3 +431,66 @@ describe("watcher del carril lento — P3-PUB-004", () => {
     });
   });
 });
+
+describe("regla 4 · cuota oficial de la instalación (YouTube, PU-LATER-001)", () => {
+  const LA = "America/Los_Angeles";
+  const yt = (brandId: string, atMs: number, state: "out" | "pending" = "out") =>
+    out({ brandId, network: "youtube", atMs, state, fingerprint: null });
+
+  it("la política de youtube trae 100 por día del Pacífico; las demás redes no", () => {
+    expect(publishGuardPolicyFor(null, "youtube", BA).platformDailyQuota).toEqual({
+      max: 100,
+      timezone: LA,
+    });
+    expect(
+      publishGuardPolicyFor(null, "linkedin", BA).platformDailyQuota,
+    ).toBeUndefined();
+    expect(
+      publishGuardPolicyFor({ networks: [], brandGapMinutes: 0 }, "youtube", BA)
+        .platformDailyQuota,
+    ).toEqual({ max: 100, timezone: LA });
+  });
+
+  it("con la cuota del día llena sumando TODAS las marcas, reprograma al día siguiente", () => {
+    // 100 subidas hoy (día del Pacífico), repartidas en 50 marcas: ninguna
+    // pasa su tope propio, pero el proyecto de Google sí.
+    const neighbors: GuardNeighbor[] = [];
+    for (let i = 0; i < 100; i += 1) {
+      neighbors.push(yt(`brand-${String(i % 50)}`, NOW - HOUR + i * 1000));
+    }
+    const decision = evaluatePublishGuards({
+      subject: subject({ network: "youtube", fingerprint: null }),
+      nowMs: NOW,
+      policy: {
+        dailyCap: 24,
+        brandGapMinutes: 0,
+        timezone: BA,
+        platformDailyQuota: { max: 100, timezone: LA },
+      },
+      neighbors,
+    });
+    expect(decision).toMatchObject({ kind: "reschedule", reason: "platform_quota" });
+    if (decision.kind === "reschedule") {
+      expect(decision.atMs).toBe(NOW + 24 * HOUR);
+    }
+  });
+
+  it("99 subidas: todavía hay lugar, publica", () => {
+    const neighbors = Array.from({ length: 99 }, (_, i) =>
+      yt(`brand-${String(i % 50)}`, NOW - HOUR + i * 1000),
+    );
+    expect(
+      evaluatePublishGuards({
+        subject: subject({ network: "youtube", fingerprint: null }),
+        nowMs: NOW,
+        policy: {
+          dailyCap: 24,
+          brandGapMinutes: 0,
+          timezone: BA,
+          platformDailyQuota: { max: 100, timezone: LA },
+        },
+        neighbors,
+      }),
+    ).toEqual({ kind: "publish" });
+  });
+});

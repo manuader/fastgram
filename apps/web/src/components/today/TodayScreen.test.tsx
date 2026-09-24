@@ -41,7 +41,6 @@ import type * as CalendarLib from "@/lib/calendar/calendar";
 vi.mock("@/lib/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof ApiClient>()),
   apiRequest: vi.fn(),
-  apiList: vi.fn(),
 }));
 
 vi.mock("@/lib/calendar/calendar", async (importOriginal) => ({
@@ -55,10 +54,9 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/home",
 }));
 
-import { apiList, apiRequest } from "@/lib/api/client";
+import { apiRequest } from "@/lib/api/client";
 
 const requestMock = vi.mocked(apiRequest);
-const listMock = vi.mocked(apiList);
 
 const NOW = Date.parse("2026-09-24T15:00:00.000Z");
 
@@ -84,8 +82,10 @@ function item(
   status: CalendarItem["status"],
   at: string,
   network: CalendarItem["network"] = "instagram",
+  extra: Partial<CalendarItem> = {},
 ): CalendarItem {
   return calendarItemSchema.parse({
+    ...extra,
     kind: status === "PLANNED" ? "slot" : "post",
     id: uuid(n),
     brandId: brand.id,
@@ -98,17 +98,26 @@ function item(
   });
 }
 
-const POSTED_9 = item(1, ACME, "POSTED", "2026-09-24T09:00:00Z");
+const POSTED_9 = item(1, ACME, "POSTED", "2026-09-24T09:00:00Z", "instagram", {
+  postUrl: "https://www.instagram.com/p/abc/",
+});
 const PLANNED_12 = item(2, BETA, "PLANNED", "2026-09-24T12:00:00Z", "x");
 const SCHEDULED_18 = item(3, ACME, "SCHEDULED", "2026-09-24T18:00:00Z");
-const FAILED_RECENT = item(4, ACME, "FAILED", "2026-09-22T10:00:00Z");
+const FAILED_RECENT = item(4, ACME, "FAILED", "2026-09-22T10:00:00Z", "instagram", {
+  errorMessage: "Instagram rejected the caption.",
+});
+// De la marca que **no** es la activa, con un código que la web sabe decir.
+const FAILED_BETA = item(8, BETA, "FAILED", "2026-09-23T10:00:00Z", "instagram", {
+  errorCode: "instagram_post_limit_exceeded",
+  errorMessage: "raw text that should not win",
+});
 const FAILED_OLD = item(5, BETA, "FAILED", "2026-09-10T10:00:00Z");
 const DRAFT = item(6, BETA, "IN_USER_INBOX", "2026-09-20T10:00:00Z", "tiktok");
 const CANCELLED_TODAY = item(7, ACME, "CANCELLED", "2026-09-24T11:00:00Z");
 
 interface Backend {
   items: CalendarItem[];
-  queue: unknown[];
+  queue: { brandId: string; queued: number }[];
   calendarError: ApiRequestError | null;
 }
 
@@ -119,13 +128,17 @@ function installBackend(over: Partial<Backend> = {}): void {
     items: [
       SCHEDULED_18,
       FAILED_RECENT,
+      FAILED_BETA,
       POSTED_9,
       FAILED_OLD,
       DRAFT,
       PLANNED_12,
       CANCELLED_TODAY,
     ],
-    queue: [{}, {}, {}],
+    queue: [
+      { brandId: ACME.id, queued: 3 },
+      { brandId: BETA.id, queued: 2 },
+    ],
     calendarError: null,
     ...over,
   };
@@ -143,7 +156,10 @@ function installBackend(over: Partial<Backend> = {}): void {
         truncated: false,
       };
     }
-    if (path === "blitz/queue") return backend.queue;
+    if (path === "blitz/queue/counts") {
+      expect(options?.query).toEqual({ brands: "all" });
+      return backend.queue;
+    }
     // `PU-AUTO-003`: sin marcas en piloto la tarjeta no se dibuja.
     if (path === "autopilot/digest") return { brands: [] };
     if (path === markPostedPath(DRAFT.id)) {
@@ -167,31 +183,6 @@ function installBackend(over: Partial<Backend> = {}): void {
       });
     }
     throw new Error(`ruta inesperada: ${path}`);
-  });
-
-  // Los detalles de la marca activa: el motivo del fallo de Acme.
-  listMock.mockImplementation(async (path: string) => {
-    if (path !== "posts") throw new Error(`listado inesperado: ${path}`);
-    return {
-      items: [
-        postSchema.parse({
-          _id: FAILED_RECENT.id,
-          contentId: FAILED_RECENT.contentId,
-          platform: "instagram",
-          accountType: "oauth",
-          scheduledAtUtc: FAILED_RECENT.at,
-          caption: "",
-          description: "",
-          status: "FAILED",
-          errorMessage: "Instagram rejected the caption.",
-          views: 0,
-          likes: 0,
-          comments: 0,
-        }),
-      ],
-      cursor: null,
-      hasMore: false,
-    };
   });
 }
 
@@ -233,7 +224,7 @@ afterEach(() => {
 });
 
 describe("TodayScreen", () => {
-  it("saluda con la fecha y cuenta hoy, la cola y los fallidos de 7 días", async () => {
+  it("saluda con la fecha y cuenta hoy, la cola de todas las marcas y los fallidos de 7 días", async () => {
     renderToday();
 
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
@@ -248,13 +239,13 @@ describe("TodayScreen", () => {
     expect(await counter("posted")).toBe("1");
     // El programado de las 18 y el slot planificado de las 12. El cancelado no.
     expect(await counter("scheduled")).toBe("2");
-    expect(await counter("approval")).toBe("3");
-    // El del 22; el del 10 queda fuera de la semana.
-    expect(await counter("failed")).toBe("1");
-    expect(screen.getByText("in Acme")).toBeInTheDocument();
+    // 3 en Acme + 2 en Beta: el contador ya no es sólo de la marca activa.
+    expect(await counter("approval")).toBe("5");
+    // El del 22 y el del 23; el del 10 queda fuera de la semana.
+    expect(await counter("failed")).toBe("2");
   });
 
-  it("ordena el timeline por hora, con el estado y el motivo legible del fallo", async () => {
+  it("ordena el timeline por hora, con el estado, el link y el motivo legible del fallo de cualquier marca", async () => {
     renderToday();
 
     await waitFor(() => {
@@ -267,19 +258,30 @@ describe("TodayScreen", () => {
       "SCHEDULED",
     ]);
     expect(within(rows[0] as HTMLElement).getByText("Posted")).toBeInTheDocument();
+    expect(
+      within(rows[0] as HTMLElement).getByRole("link", { name: /view post/i }),
+    ).toHaveAttribute("href", "https://www.instagram.com/p/abc/");
     // Con más de una marca, cada fila dice de cuál es (cuando llega la lista).
     expect(await within(rows[1] as HTMLElement).findByText("Beta")).toBeInTheDocument();
 
     const failed = await screen.findAllByTestId("today-failed-item");
-    expect(failed).toHaveLength(1);
+    expect(failed).toHaveLength(2);
+    const acme = failed.find((f) => within(f).queryByText(/^Acme/) !== null);
+    const beta = failed.find((f) => within(f).queryByText(/^Beta/) !== null);
+    // El mensaje del post (FR-060: seguro de mostrar), de la marca activa…
     expect(
-      await within(failed[0] as HTMLElement).findByText(
-        "Instagram rejected the caption.",
-      ),
+      within(acme as HTMLElement).getByText("Instagram rejected the caption."),
     ).toBeInTheDocument();
     expect(
-      within(failed[0] as HTMLElement).getByRole("link", { name: "Open" }),
+      within(acme as HTMLElement).getByRole("link", { name: "Open" }),
     ).toHaveAttribute("href", `/library/${FAILED_RECENT.contentId}`);
+    // …y de la otra: un código conocido gana al texto crudo.
+    expect(
+      within(beta as HTMLElement).getByText("You've hit this platform's posting limit"),
+    ).toBeInTheDocument();
+    expect(
+      within(beta as HTMLElement).queryByText("raw text that should not win"),
+    ).not.toBeInTheDocument();
   });
 
   it("Mark as posted llama al endpoint con la marca del post y actualiza la pantalla", async () => {
@@ -308,7 +310,13 @@ describe("TodayScreen", () => {
   });
 
   it("un día sin nada invita a Blitz y a crear desde un prompt", async () => {
-    installBackend({ items: [], queue: [] });
+    installBackend({
+      items: [],
+      queue: [
+        { brandId: ACME.id, queued: 0 },
+        { brandId: BETA.id, queued: 0 },
+      ],
+    });
     renderToday();
 
     expect(await screen.findByText("A quiet day")).toBeInTheDocument();
@@ -337,7 +345,7 @@ describe("TodayScreen", () => {
     expect(screen.getByRole("button", { name: /try again|retry/i })).toBeInTheDocument();
     expect(screen.queryByTestId("today-counter-posted-value")).not.toBeInTheDocument();
     // La cola de Blitz no depende del calendario: sigue contando.
-    expect(await counter("approval")).toBe("3");
+    expect(await counter("approval")).toBe("5");
   });
 
   it("Review de otra marca cambia a esa marca y abre Blitz", async () => {
@@ -346,6 +354,9 @@ describe("TodayScreen", () => {
 
     const other = await screen.findByTestId("today-approval-brand");
     expect(within(other).getByText("Beta")).toBeInTheDocument();
+    // Cada marca con su número, no sólo la activa.
+    expect(await within(other).findByText("2 cards")).toBeInTheDocument();
+    expect(screen.getByTestId("today-approval-count")).toHaveTextContent("3 cards");
     await user.click(within(other).getByRole("button", { name: /review/i }));
 
     expect(push).toHaveBeenCalledWith("/blitz");

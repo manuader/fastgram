@@ -200,8 +200,13 @@ export function budgetSummary(
   };
 }
 
-/** ¿Entra `estimateUsd` en lo que queda? En el borde exacto, sí. */
+/**
+ * ¿Entra `estimateUsd` en lo que queda? En el borde exacto, sí. Lo que no
+ * cuesta (ComfyUI local, `PU-LATER-003`) entra siempre: aunque el mes ya esté
+ * pasado de tope (porque se bajó el tope), una generación gratis no lo mueve.
+ */
 export function fitsBudget(summary: BudgetSummary, estimateUsd: number): boolean {
+  if (toUnits(estimateUsd) === 0) return true;
   return (
     toUnits(summary.chargedUsd) + toUnits(summary.reservedUsd) + toUnits(estimateUsd) <=
     toUnits(summary.budgetUsd)

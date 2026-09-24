@@ -5,7 +5,6 @@ import {
   EmptyState,
   Skeleton,
   Spinner,
-  Tooltip,
   buttonVariants,
   useToast,
 } from "@fastgram/ui";
@@ -91,8 +90,6 @@ export function BlitzDeck() {
   const whyPanelId = useId();
 
   const [decided, setDecided] = useState<ReadonlySet<string>>(() => new Set());
-  const [blindRound, setBlindRound] = useState(0);
-  const [blindEmpty, setBlindEmpty] = useState(false);
   const [profileBlocked, setProfileBlocked] = useState(false);
   const [pending, setPending] = useState<DeckCard | null>(null);
   const [attemptKey, setAttemptKey] = useState("");
@@ -112,10 +109,9 @@ export function BlitzDeck() {
     queueStatus: queue.status,
     queueError: queue.error,
     pending: items,
-    blindEmpty,
     profileBlocked,
   });
-  const top = topCard(view, blindRound);
+  const top = topCard(view);
 
   const markDecided = useCallback(
     (id: string) => {
@@ -137,8 +133,6 @@ export function BlitzDeck() {
         setPending(top);
         return;
       }
-      // Rechazar: sólo con la cola visible. En modo blind no hay qué descartar.
-      if (top.kind !== "preview") return;
       const id = top.suggestion.id;
       setExitDir(-1);
       setWhyOpen(false);
@@ -163,15 +157,14 @@ export function BlitzDeck() {
       const card = pending;
       if (card === null) return;
       setIntent(next);
-      const suggestionId = card.kind === "preview" ? card.suggestion.id : undefined;
+      const suggestionId = card.suggestion.id;
       accept.mutate(
         { suggestionId, idempotencyKey: attemptKey },
         {
           onSuccess: (content) => {
             setExitDir(1);
             setWhyOpen(false);
-            if (suggestionId === undefined) setBlindRound((n) => n + 1);
-            else markDecided(suggestionId);
+            markDecided(suggestionId);
             setBuilds((prev) =>
               [content._id, ...prev.filter((id) => id !== content._id)].slice(
                 0,
@@ -229,8 +222,7 @@ export function BlitzDeck() {
             }
             if (isEmptyQueue(error)) {
               setPending(null);
-              if (suggestionId === undefined) setBlindEmpty(true);
-              else markDecided(suggestionId);
+              markDecided(suggestionId);
               void queryClient.invalidateQueries({ queryKey: blitzQueueKey() });
               return;
             }
@@ -238,8 +230,7 @@ export function BlitzDeck() {
               // La API ya la descartó y no cobró (ver la ruta): se va del deck.
               setPending(null);
               setExitDir(-1);
-              if (suggestionId === undefined) setBlindRound((n) => n + 1);
-              else markDecided(suggestionId);
+              markDecided(suggestionId);
               toast({ title: td("deck.unbuildable"), tone: "warning" });
               return;
             }
@@ -281,8 +272,7 @@ export function BlitzDeck() {
     };
   }, []);
 
-  const topSuggestion = top?.kind === "preview" ? top.suggestion : null;
-  const canSkip = top?.kind === "preview";
+  const topSuggestion = top?.suggestion ?? null;
 
   return (
     <div className="fgw-page">
@@ -325,7 +315,6 @@ export function BlitzDeck() {
             reducedMotion={reducedMotion}
             exitDir={exitDir}
             leaning={pending !== null}
-            canSkip={canSkip}
             whyOpen={whyOpen}
             whyPanelId={whyPanelId}
             onToggleWhy={() => {
@@ -341,7 +330,6 @@ export function BlitzDeck() {
             }}
             editDisabled={top === null || pending !== null}
             onRetry={() => {
-              setBlindEmpty(false);
               void queue.refetch();
             }}
           />
@@ -371,9 +359,8 @@ export function BlitzDeck() {
   );
 }
 
-function topCard(view: DeckView, blindRound: number): DeckCard | null {
+function topCard(view: DeckView): DeckCard | null {
   if (view.kind !== "deck") return null;
-  if (view.mode === "blind") return { kind: "blind", key: `blind-${String(blindRound)}` };
   const first = view.items[0];
   return first === undefined
     ? null
@@ -388,7 +375,6 @@ interface DeckBodyProps {
   readonly reducedMotion: boolean;
   readonly exitDir: number;
   readonly leaning: boolean;
-  readonly canSkip: boolean;
   readonly whyOpen: boolean;
   readonly whyPanelId: string;
   readonly onToggleWhy: () => void;
@@ -424,13 +410,7 @@ function DeckBody(props: DeckBodyProps) {
         />
       );
     case "empty":
-      return (
-        <EmptyQueue
-          mode={view.mode}
-          refetching={props.refetching}
-          onRetry={props.onRetry}
-        />
-      );
+      return <EmptyQueue refetching={props.refetching} />;
     case "deck":
       return <Deck {...props} />;
   }
@@ -439,40 +419,31 @@ function DeckBody(props: DeckBodyProps) {
 function Deck({
   onEdit,
   editDisabled,
-  view,
   top,
   items,
   reducedMotion,
   exitDir,
   leaning,
-  canSkip,
   whyOpen,
   whyPanelId,
   onToggleWhy,
   onDecide,
 }: DeckBodyProps) {
   if (top === null) return null;
-  const suggestion = top.kind === "preview" ? top.suggestion : null;
+  const suggestion = top.suggestion;
   // Detrás se ven 2 tarjetas (FR-050 *Centro*: "2–3 tarjetas apiladas").
-  const behind: DeckCard[] =
-    view.kind === "deck" && view.mode === "preview"
-      ? items.slice(1, 3).map((s) => ({ kind: "preview", key: s.id, suggestion: s }))
-      : [
-          { kind: "blind", key: "blind-behind-1" },
-          { kind: "blind", key: "blind-behind-2" },
-        ];
-  const label =
-    suggestion === null
-      ? td("deck.blind.title")
-      : td("deck.cardLabel", { type: tw(BLITZ_TYPE_COPY[suggestion.contentType]) });
+  const behind: DeckCard[] = items
+    .slice(1, 3)
+    .map((s) => ({ kind: "preview", key: s.id, suggestion: s }));
+  const label = td("deck.cardLabel", {
+    type: tw(BLITZ_TYPE_COPY[suggestion.contentType]),
+  });
 
   return (
     <>
       <div className="flex min-h-[2rem] flex-col items-center gap-2">
-        {suggestion !== null && <CardChips suggestion={suggestion} />}
-        {suggestion !== null && (
-          <WhyToggle open={whyOpen} panelId={whyPanelId} onToggle={onToggleWhy} />
-        )}
+        <CardChips suggestion={suggestion} />
+        <WhyToggle open={whyOpen} panelId={whyPanelId} onToggle={onToggleWhy} />
       </div>
 
       <div className={CARD_BOX}>
@@ -501,7 +472,6 @@ function Deck({
             label={label}
             reducedMotion={reducedMotion}
             leaning={leaning}
-            canSkip={canSkip}
             onDecide={onDecide}
           />
         </AnimatePresence>
@@ -512,8 +482,6 @@ function Deck({
       <div className="mt-6 flex items-center justify-center gap-5">
         <DecisionButton
           kind="skip"
-          disabled={!canSkip}
-          disabledReason={td("deck.blind.skipUnavailable")}
           onClick={() => {
             onDecide("skip");
           }}
@@ -528,7 +496,6 @@ function Deck({
         </Button>
         <DecisionButton
           kind="accept"
-          disabled={false}
           onClick={() => {
             onDecide("accept");
           }}
@@ -537,30 +504,16 @@ function Deck({
 
       <p className="text-xs text-text-subtle">
         {td("deck.keyHint")}
-        {view.kind === "deck" && view.mode === "preview" && (
-          <>
-            {" · "}
-            {items.length === 1
-              ? td("deck.remainingOne")
-              : td("deck.remaining", { count: items.length })}
-          </>
-        )}
+        {" · "}
+        {items.length === 1
+          ? td("deck.remainingOne")
+          : td("deck.remaining", { count: items.length })}
       </p>
     </>
   );
 }
 
-function DecisionButton({
-  kind,
-  disabled,
-  disabledReason,
-  onClick,
-}: {
-  kind: Decision;
-  disabled: boolean;
-  disabledReason?: string;
-  onClick: () => void;
-}) {
+function DecisionButton({ kind, onClick }: { kind: Decision; onClick: () => void }) {
   const isAccept = kind === "accept";
   const label = isAccept ? td("deck.accept") : td("deck.skip");
   const button = (
@@ -568,26 +521,19 @@ function DecisionButton({
       type="button"
       aria-label={label}
       aria-keyshortcuts={isAccept ? "ArrowRight" : "ArrowLeft"}
-      aria-disabled={disabled || undefined}
-      className="fg-focusable flex h-16 w-16 items-center justify-center rounded-full border-2 bg-surface shadow-md transition-transform hover:scale-105 active:scale-95 aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:hover:scale-100"
+      className="fg-focusable flex h-16 w-16 items-center justify-center rounded-full border-2 bg-surface shadow-md transition-transform hover:scale-105 active:scale-95"
       style={{
         color: isAccept ? "var(--fg-color-success)" : "var(--fg-color-danger)",
         borderColor: isAccept ? "var(--fg-color-success)" : "var(--fg-color-danger)",
       }}
-      onClick={() => {
-        if (!disabled) onClick();
-      }}
+      onClick={onClick}
     >
       {isAccept ? <CheckIcon size={28} /> : <XIcon size={28} />}
     </button>
   );
   return (
     <div className="flex flex-col items-center gap-1">
-      {disabled && disabledReason !== undefined ? (
-        <Tooltip content={disabledReason}>{button}</Tooltip>
-      ) : (
-        button
-      )}
+      {button}
       <kbd
         className="rounded border border-border px-1.5 text-xs text-text-subtle"
         aria-hidden="true"
@@ -621,39 +567,21 @@ function DeckSkeleton() {
 /**
  * Cola vacía (ERR-E11, FR-050 `empty`).
  *
- * Con la cola visible la pantalla **reintenta sola** (criterio 4): el polling de
- * `useBlitzQueue` sigue corriendo. En modo blind no puede: la única forma de
- * preguntar es `POST /blitz`, que acepta y cobra, y nunca se dispara solo
- * (NFR-005). Ahí el reintento es un botón.
+ * La pantalla **reintenta sola** (criterio 4): el polling de `useBlitzQueue`
+ * sigue corriendo mientras la cola esté corta.
  *
  * El aviso del LLM va siempre, como pista secundaria: la API no dice *por qué*
  * la cola está vacía, y la causa número uno en uso personal es no tener un
  * modelo configurado (PLAN-USO-PERSONAL §8).
  */
-function EmptyQueue({
-  mode,
-  refetching,
-  onRetry,
-}: {
-  mode: "preview" | "blind";
-  refetching: boolean;
-  onRetry: () => void;
-}) {
+function EmptyQueue({ refetching }: { refetching: boolean }) {
   return (
     <EmptyState
       bordered
       title={td("deck.empty.title")}
-      description={
-        mode === "blind"
-          ? td("deck.empty.blindDescription")
-          : td("deck.empty.description")
-      }
+      description={td("deck.empty.description")}
       action={
-        mode === "blind" ? (
-          <Button variant="primary" onClick={onRetry}>
-            {tw("common.tryAgain")}
-          </Button>
-        ) : refetching ? (
+        refetching ? (
           <span className="inline-flex items-center gap-2 text-sm text-text-muted">
             <Spinner size="sm" aria-hidden />
             {td("deck.refilling")}

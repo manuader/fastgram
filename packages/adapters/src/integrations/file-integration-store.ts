@@ -42,6 +42,7 @@ const entrySchema = z
     clientId: z.string().min(1),
     clientSecret: z.string().min(1).optional(),
     updatedAt: z.string().optional(),
+    optionalScopes: z.boolean().optional(),
   })
   .strict();
 
@@ -61,6 +62,7 @@ function toConfig(entry: z.infer<typeof entrySchema>): IntegrationAppConfig {
     clientId: entry.clientId,
     ...(entry.clientSecret === undefined ? {} : { clientSecret: entry.clientSecret }),
     ...(entry.updatedAt === undefined ? {} : { updatedAt: entry.updatedAt }),
+    ...(entry.optionalScopes === true ? { optionalScopes: true } : {}),
   };
 }
 

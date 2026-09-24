@@ -48,6 +48,20 @@ export const THREADS_TEXT_MAX = 500;
  * adaptador toma el de Instagram como techo conservador (**no verificado**).
  */
 export const FACEBOOK_CAPTION_MAX = 2200;
+/**
+ * YouTube · `snippet.title` *"Maximum 100 characters"*; `snippet.description`
+ * *"Maximum 5000 bytes"* — https://developers.google.com/youtube/v3/docs/videos
+ * (`PU-LATER-001`). El contrato cuenta caracteres (code points); el adaptador
+ * mide los bytes UTF-8 de la descripción antes de subir.
+ */
+export const YOUTUBE_TITLE_MAX = 100;
+export const YOUTUBE_DESCRIPTION_MAX = 5000;
+/**
+ * LinkedIn · *"The maximum length of the text of a UGC Post is 3,000
+ * characters"* — https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/ugc-post-api
+ * (la Posts API usa el mismo campo, `commentary`; `PU-LATER-002`).
+ */
+export const LINKEDIN_COMMENTARY_MAX = 3000;
 /** NFR-012 (PRD:2962) / F-162 (PRD:630) — máx. 100 ids por lote. */
 export const BATCH_POST_IDS_MAX = 100;
 /** FR-060 (PRD:1394) — "Warmed-account posts can only be scheduled up to 30 days ahead." */
@@ -236,15 +250,29 @@ export type InstagramScheduleTarget = z.infer<typeof instagramScheduleTargetSche
 
 /**
  * YouTube · FR-060 (PRD:1353): "`caption` = título del video, `description` =
- * cuerpo". El PRD no da límites de longitud para YouTube: no se inventan.
+ * cuerpo". Los topes son los de la API ({@link YOUTUBE_TITLE_MAX},
+ * {@link YOUTUBE_DESCRIPTION_MAX}). El publicador es de Shorts por OAuth
+ * (`PU-LATER-001`); una cuenta warmed de YouTube la rechaza core (FR-130).
+ * Los topes van por code point y con `refine` escrito acá porque
+ * `codePointText` se declara más abajo.
  */
 export const youtubeScheduleTargetSchema = mutuallyExclusiveAccount(
   z
     .object({
       ...targetBase,
       platform: z.literal("youtube"),
-      caption: z.string().optional(),
-      description: z.string().optional(),
+      caption: z
+        .string()
+        .refine((s) => [...s].length <= YOUTUBE_TITLE_MAX, {
+          message: `must be ${String(YOUTUBE_TITLE_MAX)} characters or fewer`,
+        })
+        .optional(),
+      description: z
+        .string()
+        .refine((s) => [...s].length <= YOUTUBE_DESCRIPTION_MAX, {
+          message: `must be ${String(YOUTUBE_DESCRIPTION_MAX)} characters or fewer`,
+        })
+        .optional(),
     })
     .strict(),
 );
@@ -318,6 +346,22 @@ export const facebookScheduleTargetSchema = z
   .strict();
 export type FacebookScheduleTarget = z.infer<typeof facebookScheduleTargetSchema>;
 
+/**
+ * LinkedIn (`PU-LATER-002`). Sólo OAuth, como X/Threads/Facebook. `caption` es
+ * el `commentary` del post. Perfil o Página se elige al conectar: es la
+ * conexión (`connectionId`), creada en `POST /connections/linkedin/pages`
+ * cuando la cuenta administra Páginas.
+ */
+export const linkedinScheduleTargetSchema = z
+  .object({
+    ...targetBase,
+    platform: z.literal("linkedin"),
+    caption: codePointText(LINKEDIN_COMMENTARY_MAX).optional(),
+  })
+  .omit({ warmedAccountId: true })
+  .strict();
+export type LinkedinScheduleTarget = z.infer<typeof linkedinScheduleTargetSchema>;
+
 export const scheduleTargetSchema = z.union([
   tiktokScheduleTargetSchema,
   instagramScheduleTargetSchema,
@@ -326,6 +370,7 @@ export const scheduleTargetSchema = z.union([
   xScheduleTargetSchema,
   threadsScheduleTargetSchema,
   facebookScheduleTargetSchema,
+  linkedinScheduleTargetSchema,
 ]);
 export type ScheduleTarget = z.infer<typeof scheduleTargetSchema>;
 

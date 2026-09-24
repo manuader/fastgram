@@ -24,12 +24,14 @@
 import {
   MODEL_PROVIDERS,
   MODEL_TASKS,
+  type ComfyWorkflowConfig,
   type ModelProvider,
   type ModelRegistrySnapshot,
   type ModelTask,
   type ModelTaskConfig,
 } from "@fastgram/ports";
 
+import { checkComfyWorkflowConfig, type ComfyWorkflowInput } from "./comfy-workflow.js";
 import { providerPreset, taskSpec, type ModelTaskKind } from "./presets.js";
 
 /** Topes de sanidad del input, no del producto. Ninguno es un número del PRD. */
@@ -194,10 +196,22 @@ export interface ModelTaskUpdate {
   readonly apiKey?: string | null | undefined;
   readonly apiKeyEnv?: string | null | undefined;
   readonly contextWindowTokens?: number | null | undefined;
+  /**
+   * Sólo `comfyui` (`PU-LATER-003`). Ausente = dejar el guardado (si la
+   * entrada ya era de ComfyUI); `null` = borrarlo, lo que con `comfyui` es un
+   * error: sin workflow no hay qué ejecutar.
+   */
+  readonly comfyWorkflow?: ComfyWorkflowInput | null | undefined;
 }
 
 export type ModelTaskUpdateField =
-  "provider" | "baseUrl" | "model" | "apiKey" | "apiKeyEnv" | "contextWindowTokens";
+  | "provider"
+  | "baseUrl"
+  | "model"
+  | "apiKey"
+  | "apiKeyEnv"
+  | "contextWindowTokens"
+  | "comfyWorkflow";
 
 export type ApplyTaskUpdateResult =
   | { readonly ok: true; readonly config: ModelTaskConfig }
@@ -308,6 +322,29 @@ export function applyTaskUpdate(
     contextWindowTokens = current.contextWindowTokens;
   }
 
+  // ComfyUI: el workflow es el modelo. Los demás proveedores no lo llevan.
+  let comfyWorkflow: ComfyWorkflowConfig | undefined;
+  if (update.provider === "comfyui") {
+    const raw =
+      update.comfyWorkflow === undefined
+        ? current?.provider === "comfyui"
+          ? current.comfyWorkflow
+          : undefined
+        : (update.comfyWorkflow ?? undefined);
+    if (raw === undefined) {
+      return {
+        ok: false,
+        field: "comfyWorkflow",
+        message: "Paste a ComfyUI workflow exported in API format.",
+      };
+    }
+    const checked = checkComfyWorkflowConfig(task, raw);
+    if (!checked.ok) {
+      return { ok: false, field: "comfyWorkflow", message: checked.message };
+    }
+    comfyWorkflow = checked.config;
+  }
+
   return {
     ok: true,
     config: {
@@ -317,6 +354,7 @@ export function applyTaskUpdate(
       ...(apiKey === undefined ? {} : { apiKey }),
       ...(apiKeyEnv === undefined ? {} : { apiKeyEnv }),
       ...(contextWindowTokens === undefined ? {} : { contextWindowTokens }),
+      ...(comfyWorkflow === undefined ? {} : { comfyWorkflow }),
       updatedAt: now,
     },
   };
@@ -488,6 +526,8 @@ export interface PublicTaskConfig {
   readonly apiKey: PublicKeyInfo;
   readonly apiKeyEnv: string | null;
   readonly missing: readonly MissingField[];
+  /** Sólo `comfyui`: el workflow guardado (no es un secreto: la UI lo edita). */
+  readonly comfyWorkflow: ComfyWorkflowConfig | null;
   readonly updatedAt: string | null;
 }
 
@@ -536,6 +576,10 @@ export function toPublicTaskConfig(
       apiKey: publicKey(resolveApiKey(config, secrets)),
       apiKeyEnv: config.apiKeyEnv ?? null,
       missing,
+      comfyWorkflow:
+        found.entry === task && config.provider === "comfyui"
+          ? (config.comfyWorkflow ?? null)
+          : null,
       updatedAt: config.updatedAt ?? null,
     };
   }
@@ -557,6 +601,7 @@ export function toPublicTaskConfig(
       }),
       apiKeyEnv: null,
       missing: [],
+      comfyWorkflow: null,
       updatedAt: null,
     };
   }
@@ -573,6 +618,7 @@ export function toPublicTaskConfig(
     apiKey: NO_KEY,
     apiKeyEnv: null,
     missing: [],
+    comfyWorkflow: null,
     updatedAt: null,
   };
 }
@@ -586,7 +632,10 @@ export interface ResolvedGenAiConfig {
   readonly provider: ModelProvider;
   readonly baseUrl: string;
   readonly model: string;
+  /** Vacía para un proveedor local sin key (`comfyui`). */
   readonly apiKey: string;
+  /** Sólo `comfyui`: el workflow y dónde inyectar cada cosa. */
+  readonly comfyWorkflow?: ComfyWorkflowConfig;
 }
 
 /**
@@ -604,6 +653,18 @@ export function resolveGenAiConfig(
   if (!taskSpec(task).providers.includes(config.provider)) return null;
   if (missingFields(task, config, secrets).length > 0) return null;
   const key = resolveApiKey(config, secrets);
+  if (config.provider === "comfyui") {
+    // Local y sin key (`PU-LATER-003`); sin workflow no hay qué ejecutar.
+    if (config.comfyWorkflow === undefined) return null;
+    return {
+      task,
+      provider: config.provider,
+      baseUrl: config.baseUrl,
+      model: config.model,
+      apiKey: key?.key ?? "",
+      comfyWorkflow: config.comfyWorkflow,
+    };
+  }
   if (key === null) return null;
   return {
     task,

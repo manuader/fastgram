@@ -124,6 +124,16 @@ describe("tier D asistido en /brand", () => {
     expect(within(panel()).getByLabelText("Recent captions")).toBeTruthy();
   });
 
+  it("el aviso de la fuente invita a pegar la bio, no a agregar una web", async () => {
+    await mount();
+    expect(
+      screen.getByText(
+        "We can't read Instagram profiles on our own yet. Paste your bio and a few recent captions below and we'll build your brand profile from them.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/add it instead/)).toBeNull();
+  });
+
   it("vacío: lo dice y NO manda nada", async () => {
     await mount();
     fireEvent.change(within(panel()).getByLabelText("Bio"), { target: { value: "   " } });

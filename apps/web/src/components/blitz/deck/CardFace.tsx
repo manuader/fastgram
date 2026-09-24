@@ -10,13 +10,7 @@ import {
   type PreviewSlide,
 } from "@/lib/blitz/deck/suggestion";
 import type { BlitzContentType } from "@fastgram/contracts";
-import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  MuteIcon,
-  SparkIcon,
-  VolumeIcon,
-} from "./icons";
+import { ChevronLeftIcon, ChevronRightIcon, MuteIcon, VolumeIcon } from "./icons";
 
 /**
  * La cara de una tarjeta: la preview de la pieza, 9:16 (FR-050 *Centro*).
@@ -43,7 +37,6 @@ export interface CardFaceProps {
 const TEXT_SIZE_UNITS = 22;
 
 export function CardFace({ card, interactive }: CardFaceProps) {
-  if (card.kind === "blind") return <BlindFace detailed={interactive} />;
   const { suggestion } = card;
   return (
     <SuggestionFace
@@ -52,29 +45,6 @@ export function CardFace({ card, interactive }: CardFaceProps) {
       audioUrl={hasAudio(suggestion) ? (suggestion.preview?.audioUrl ?? null) : null}
       interactive={interactive}
     />
-  );
-}
-
-/** Las de atrás son sólo el fondo: repetir el texto tres veces es ruido. */
-function BlindFace({ detailed }: { detailed: boolean }) {
-  return (
-    <div
-      className="relative flex h-full w-full flex-col items-center justify-center gap-4 p-6 text-center"
-      style={{
-        background:
-          "radial-gradient(120% 80% at 50% 0%, var(--fg-color-accent-subtle), var(--fg-color-surface-sunken))",
-      }}
-    >
-      {detailed && (
-        <>
-          <span className="text-accent">
-            <SparkIcon size={40} />
-          </span>
-          <p className="text-xl font-semibold text-text">{td("deck.blind.title")}</p>
-          <p className="text-sm text-text-muted">{td("deck.blind.description")}</p>
-        </>
-      )}
-    </div>
   );
 }
 

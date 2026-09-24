@@ -10,9 +10,11 @@ import { ROUTES } from "@/lib/nav/routes";
 import { useEnsureBrand } from "./use-brand-switch";
 
 export interface ApprovalCardProps {
-  /** Tarjetas en el Blitz de la marca activa. `null` = no se pudo saber. */
-  readonly activeCount: number | null;
-  readonly loading: boolean;
+  /**
+   * Tarjetas en cola por marca (`GET /blitz/queue/counts?brands=all`).
+   * `undefined` = cargando; `null` = no se pudo saber.
+   */
+  readonly counts: ReadonlyMap<string, number> | null | undefined;
 }
 
 function cardsCopy(count: number): string {
@@ -21,20 +23,37 @@ function cardsCopy(count: number): string {
   return tw("today.approval.cardsMany", { count });
 }
 
+/** El número de una marca, o por qué no lo hay. */
+function CountLine({
+  counts,
+  brandId,
+}: {
+  counts: ReadonlyMap<string, number> | null | undefined;
+  brandId: string | undefined;
+}) {
+  if (counts === undefined) return <Skeleton width={56} height={12} />;
+  const count =
+    brandId === undefined || counts === null ? undefined : counts.get(brandId);
+  return <>{count === undefined ? tw("today.counter.unavailable") : cardsCopy(count)}</>;
+}
+
 /**
  * Esperando aprobación, por marca · `PU-UI-002`.
  *
- * **El número es sólo el de la marca activa**: la cola de Blitz es por marca y
- * el proxy no deja pedir la de otra (ver la cabecera de `lib/today/data.ts`).
- * Las demás marcas aparecen con su botón "Review" —que cambia a esa marca con el
- * mismo `switchTo` del selector y abre `/blitz`— y sin un número inventado.
+ * Cada marca con su número (la cola agregada del dueño, ver
+ * `lib/today/data.ts`) y su botón "Review", que cambia a esa marca con el mismo
+ * `switchTo` del selector y abre `/blitz`. La activa va primera y resaltada.
  */
-export function ApprovalCard({ activeCount, loading }: ApprovalCardProps) {
+export function ApprovalCard({ counts }: ApprovalCardProps) {
   const router = useRouter();
   const { active, workspaces } = useWorkspace();
   const ensureBrand = useEnsureBrand();
 
   const others = (workspaces.data ?? []).filter((w) => w.id !== active?.id);
+  const activeCount =
+    active === null || counts === undefined || counts === null
+      ? undefined
+      : counts.get(active.id);
 
   const review = (brandId: string | null) => {
     if (brandId !== null) ensureBrand(brandId);
@@ -64,18 +83,14 @@ export function ApprovalCard({ activeCount, loading }: ApprovalCardProps) {
               {active?.name ?? tw("today.approval.current")}
             </span>
             <div className="text-xs text-text-muted" data-testid="today-approval-count">
-              {loading ? (
-                <Skeleton width={56} height={12} />
-              ) : activeCount === null ? (
-                tw("today.counter.unavailable")
-              ) : (
-                cardsCopy(activeCount)
-              )}
+              <CountLine counts={counts} brandId={active?.id} />
             </div>
           </div>
           <Button
             size="sm"
-            variant={activeCount !== null && activeCount > 0 ? "primary" : "secondary"}
+            variant={
+              activeCount !== undefined && activeCount > 0 ? "primary" : "secondary"
+            }
             onClick={() => {
               review(null);
             }}
@@ -83,31 +98,40 @@ export function ApprovalCard({ activeCount, loading }: ApprovalCardProps) {
             {tw("today.approval.review")}
           </Button>
         </li>
-        {others.map((brand) => (
-          <li
-            key={brand.id}
-            data-testid="today-approval-brand"
-            className="flex items-center gap-3 rounded-lg p-3"
-          >
-            <BrandAvatar id={brand.id} name={brand.name} size="sm" />
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-sm font-medium text-text">{brand.name}</span>
-              <span className="text-xs text-text-muted">
-                {tw("today.approval.otherBrand")}
-              </span>
-            </span>
-            <Button
-              size="sm"
-              variant="ghost"
-              aria-label={`${tw("today.approval.review")} · ${brand.name}`}
-              onClick={() => {
-                review(brand.id);
-              }}
+        {others.map((brand) => {
+          const count =
+            counts === undefined || counts === null ? undefined : counts.get(brand.id);
+          return (
+            <li
+              key={brand.id}
+              data-testid="today-approval-brand"
+              className="flex items-center gap-3 rounded-lg p-3"
             >
-              {tw("today.approval.review")}
-            </Button>
-          </li>
-        ))}
+              <BrandAvatar id={brand.id} name={brand.name} size="sm" />
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate text-sm font-medium text-text">
+                  {brand.name}
+                </span>
+                <span
+                  className="text-xs text-text-muted"
+                  data-testid="today-approval-brand-count"
+                >
+                  <CountLine counts={counts} brandId={brand.id} />
+                </span>
+              </span>
+              <Button
+                size="sm"
+                variant={count !== undefined && count > 0 ? "secondary" : "ghost"}
+                aria-label={`${tw("today.approval.review")} · ${brand.name}`}
+                onClick={() => {
+                  review(brand.id);
+                }}
+              >
+                {tw("today.approval.review")}
+              </Button>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

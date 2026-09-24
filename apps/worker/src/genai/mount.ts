@@ -51,6 +51,10 @@ export function createAiStudioMount(deps: AiStudioMountDeps): {
 } {
   const concurrency = genAiConcurrencyFromEnv(deps.env);
   const semaphores = new Map<string, Semaphore>();
+  const httpsOnly = httpDownloader({
+    timeoutMs: DOWNLOAD_TIMEOUT_MS,
+    maxBytes: DOWNLOAD_MAX_BYTES,
+  });
   const handler = createAiStudioGenerationHandler({
     db: deps.db,
     storage: deps.storage,
@@ -71,6 +75,12 @@ export function createAiStudioMount(deps: AiStudioMountDeps): {
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
         timeoutMs: PROVIDER_TIMEOUT_MS,
+        // ComfyUI (`PU-LATER-003`): el workflow es el modelo.
+        task: config.task,
+        model: config.model,
+        ...(config.comfyWorkflow === undefined
+          ? {}
+          : { comfyWorkflow: config.comfyWorkflow }),
       });
     },
     semaphoreFor: (provider) => {
@@ -81,10 +91,15 @@ export function createAiStudioMount(deps: AiStudioMountDeps): {
       }
       return s;
     },
-    download: httpDownloader({
-      timeoutMs: DOWNLOAD_TIMEOUT_MS,
-      maxBytes: DOWNLOAD_MAX_BYTES,
-    }),
+    download: (url, config) =>
+      (config.provider === "comfyui"
+        ? // `GET /view` del ComfyUI local, por `http://` y sólo desde su base.
+          httpDownloader({
+            timeoutMs: DOWNLOAD_TIMEOUT_MS,
+            maxBytes: DOWNLOAD_MAX_BYTES,
+            allowHttpOrigin: config.baseUrl,
+          })
+        : httpsOnly)(url),
   });
   return { handler, concurrency };
 }

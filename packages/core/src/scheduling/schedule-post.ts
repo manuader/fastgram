@@ -63,10 +63,18 @@ export const SCHEDULING_ERROR_CODES = {
  * Topes de caracteres por plataforma.
  *
  * Instagram y TikTok están **confirmados** en `FR-060` (contadores observados
- * en la UI). YouTube y LinkedIn aparecen en el PRD sin número: quedan en
- * `null`, que significa "sin verificar", **no** "sin límite". Poner un número
- * a ojo produciría un rechazo de la plataforma que el pre-flight no vería
- * venir, que es justo lo que `EXT-007` existe para evitar.
+ * en la UI). `null` significa "sin verificar", **no** "sin límite": poner un
+ * número a ojo produciría un rechazo de la plataforma que el pre-flight no
+ * vería venir, que es justo lo que `EXT-007` existe para evitar.
+ *
+ * YouTube (`PU-LATER-001`): `caption` es el título, *"Maximum 100
+ * characters"*; `description`, *"Maximum 5000 bytes"* —
+ * https://developers.google.com/youtube/v3/docs/videos — acá va 5 000 como
+ * techo de caracteres; el adaptador mide los **bytes** UTF-8 antes de subir.
+ * LinkedIn (`PU-LATER-002`): *"The maximum length of the text of a UGC Post
+ * is 3,000 characters"* —
+ * https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/ugc-post-api
+ * (la página de la Posts API no repite el número; es el mismo campo).
  *
  * X (280), Threads (500) y Facebook (2 200) son los de sus adaptadores
  * (`packages/adapters/src/publishers/*`, con la doc citada allí). El de
@@ -77,8 +85,8 @@ export const PLATFORM_FIELD_LIMITS: Readonly<
 > = {
   instagram: { caption: 2_200, description: null },
   tiktok: { caption: 90, description: 4_000 },
-  youtube: { caption: null, description: null },
-  linkedin: { caption: null, description: null },
+  youtube: { caption: 100, description: 5_000 },
+  linkedin: { caption: 3_000, description: null },
   reddit: { caption: null, description: null },
   x: { caption: 280, description: null },
   threads: { caption: 500, description: null },

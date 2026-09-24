@@ -111,6 +111,28 @@ export type BlitzSuggestion = z.infer<typeof blitzSuggestionSchema>;
 export const blitzQueueSchema = z.array(blitzSuggestionSchema);
 export type BlitzQueue = z.infer<typeof blitzQueueSchema>;
 
+/**
+ * `GET /blitz/queue/counts?brands=current|all` → cuántas tarjetas esperan en
+ * cada marca del dueño ("Today", `PU-UI-002`). Sólo lee: **no** pide relleno
+ * (al revés que `GET /blitz/queue`) y no cobra. En `standard`, "all" es la
+ * marca de la request.
+ */
+export const BLITZ_QUEUE_COUNT_SCOPES = ["current", "all"] as const;
+export const blitzQueueCountsQuerySchema = z
+  .object({ brands: z.enum(BLITZ_QUEUE_COUNT_SCOPES).default("current") })
+  .strict();
+export type BlitzQueueCountsQuery = z.infer<typeof blitzQueueCountsQuerySchema>;
+
+export const blitzQueueCountSchema = z
+  .object({
+    brandId: z.string().uuid(),
+    queued: z.number().int().nonnegative(),
+  })
+  .strict();
+export type BlitzQueueCount = z.infer<typeof blitzQueueCountSchema>;
+export const blitzQueueCountsSchema = z.array(blitzQueueCountSchema);
+export type BlitzQueueCounts = z.infer<typeof blitzQueueCountsSchema>;
+
 // --- Crear desde prompt · `POST /blitz/generate` (PU-BLITZ-003, EXT-009) ------
 //
 // El usuario escribe un tema y, si quiere, fuerza el formato y la cantidad. La

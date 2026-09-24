@@ -103,7 +103,18 @@ describe("GET /api/fastgram/oauth/[platform]/callback", () => {
       "facebook",
     );
     expect(res.headers.get("location")).toBe(
-      "http://localhost:3000/settings/connections?select=sel-1",
+      "http://localhost:3000/settings/connections?select=sel-1&platform=facebook",
+    );
+  });
+
+  it("LinkedIn con perfil y Páginas → select con la plataforma (PU-LATER-002)", async () => {
+    respondWith(200, { data: { kind: "choose_page", selectionId: "sel-2", pages: [] } });
+    const res = await call(
+      `http://localhost:3000/api/fastgram/oauth/linkedin/callback?code=c&state=${stateFor(BRAND)}`,
+      "linkedin",
+    );
+    expect(res.headers.get("location")).toBe(
+      "http://localhost:3000/settings/connections?select=sel-2&platform=linkedin",
     );
   });
 

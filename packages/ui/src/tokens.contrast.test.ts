@@ -134,16 +134,19 @@ describe("modo claro · shell 2026", () => {
 });
 
 /**
- * Los tonos de plataforma de `D-09` (X, Threads, Facebook). El chip pinta el
- * **texto** con el color de marca, así que se les pide AA de texto normal.
+ * Los tonos de **todas** las plataformas. El chip pinta el **texto** con el
+ * color de marca, así que se les pide AA de texto normal.
  *
  * Cada token se declara tres veces, en orden: claro (`:root`), oscuro por
  * preferencia del sistema y oscuro explícito (`[data-theme="dark"]`). Los dos
  * oscuros tienen que coincidir.
  *
- * Las cinco plataformas anteriores **no** entran: usan el color de marca tal
- * cual y varias no llegan a 4,5:1 (YouTube #FF0000 da 4,0:1 sobre blanco). Es
- * una deuda anotada, no un criterio.
+ * Hasta el 2026-09-24 sólo entraban X, Threads y Facebook (`D-09`): las cinco
+ * de antes usaban el color de marca tal cual y varias no llegaban a 4,5:1
+ * (YouTube #FF0000 daba 4,0:1 sobre blanco). Ahora se ajustan con el mismo
+ * criterio que Facebook —el mismo tono, más oscuro en claro y más claro en
+ * oscuro— y la lista sale del CSS: una red nueva sin sus tres declaraciones, o
+ * por debajo de AA, rompe este test.
  */
 function platformDeclarations(platform: string): string[] {
   const re = new RegExp(`--fg-platform-${platform}:\\s*([^;]+);`, "g");
@@ -157,7 +160,12 @@ function contrastRaw(fg: string, bgToken: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-describe("tonos de plataforma · x, threads, facebook", () => {
+/** Todas las `--fg-platform-*` que declara el CSS, sin repetir. */
+const PLATFORMS = [
+  ...new Set([...css.matchAll(/--fg-platform-([a-z]+):/g)].map((m) => m[1] as string)),
+];
+
+describe("tonos de plataforma · todas las redes", () => {
   const LIGHT_SURFACES = ["fg-neutral-0", "fg-neutral-50", "fg-neutral-100"];
   const DARK_SURFACES = [
     "fg-neutral-900",
@@ -166,16 +174,28 @@ describe("tonos de plataforma · x, threads, facebook", () => {
     "fg-neutral-975",
   ];
 
-  it.each(["x", "threads", "facebook"])(
-    "%s: claro + los dos oscuros, iguales entre sí",
-    (p) => {
-      const decl = platformDeclarations(p);
-      expect(decl).toHaveLength(3);
-      expect(decl[1]).toBe(decl[2]);
-    },
-  );
+  it("la lista cubre al menos las ocho redes conocidas", () => {
+    for (const p of [
+      "tiktok",
+      "instagram",
+      "youtube",
+      "linkedin",
+      "reddit",
+      "x",
+      "threads",
+      "facebook",
+    ]) {
+      expect(PLATFORMS).toContain(p);
+    }
+  });
 
-  it.each(["x", "threads", "facebook"])("%s cumple AA en claro y en oscuro", (p) => {
+  it.each(PLATFORMS)("%s: claro + los dos oscuros, iguales entre sí", (p) => {
+    const decl = platformDeclarations(p);
+    expect(decl).toHaveLength(3);
+    expect(decl[1]).toBe(decl[2]);
+  });
+
+  it.each(PLATFORMS)("%s cumple AA en claro y en oscuro", (p) => {
     const [light, dark] = platformDeclarations(p) as [string, string, string];
     for (const bg of LIGHT_SURFACES) {
       expect(contrastRaw(light, bg), `${p} claro sobre ${bg}`).toBeGreaterThanOrEqual(
@@ -189,10 +209,18 @@ describe("tonos de plataforma · x, threads, facebook", () => {
     }
   });
 
-  it("el #1877F2 de marca no llega a AA sobre surface: por eso el token es otro", () => {
-    expect(contrastRaw("#1877f2", "fg-neutral-0")).toBeLessThan(AA_NORMAL);
-    expect(platformDeclarations("facebook")[0]).not.toBe("#1877f2");
-  });
+  it.each([
+    ["facebook", "#1877f2"],
+    ["instagram", "#e1306c"],
+    ["youtube", "#ff0000"],
+    ["reddit", "#ff4500"],
+  ])(
+    "el color de marca de %s (%s) no llega a AA en claro: por eso el token es otro",
+    (p, brand) => {
+      expect(contrastRaw(brand, "fg-neutral-100")).toBeLessThan(AA_NORMAL);
+      expect(platformDeclarations(p)[0]).not.toBe(brand);
+    },
+  );
 });
 
 describe("el cálculo", () => {

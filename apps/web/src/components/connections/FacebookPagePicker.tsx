@@ -10,28 +10,48 @@ import {
   CardTitle,
   Skeleton,
 } from "@fastgram/ui";
-import { useFacebookPageSelection, useSelectFacebookPage } from "@/lib/connections/api";
-import { CONNECTIONS_COPY as C, reasonCopy } from "@/lib/connections/copy";
+import {
+  useFacebookPageSelection,
+  useSelectFacebookPage,
+  type PickerPlatform,
+} from "@/lib/connections/api";
+import { CONNECTIONS_COPY as C, PICKER_COPY, reasonCopy } from "@/lib/connections/copy";
 import { isApiRequestError } from "@/lib/api/errors";
 
 export interface FacebookPagePickerProps {
   readonly selectionId: string;
+  /** Default `facebook`. LinkedIn usa el mismo selector (perfil o Página). */
+  readonly platform?: PickerPlatform;
   readonly onDone: () => void;
 }
 
 /**
- * Elegir la Página de Facebook tras el login (`PU-PUB-002`). Los tokens de las
- * Páginas se quedan en la API; acá sólo llegan id, nombre y avatar.
+ * Elegir la Página de Facebook tras el login (`PU-PUB-002`), o el perfil o la
+ * Página de LinkedIn (`PU-LATER-002`). Los tokens se quedan en la API; acá
+ * sólo llegan id, nombre y avatar.
  */
-export function FacebookPagePicker({ selectionId, onDone }: FacebookPagePickerProps) {
-  const selection = useFacebookPageSelection(selectionId);
-  const select = useSelectFacebookPage();
+export function FacebookPagePicker({
+  selectionId,
+  platform = "facebook",
+  onDone,
+}: FacebookPagePickerProps) {
+  const selection = useFacebookPageSelection(selectionId, platform);
+  const select = useSelectFacebookPage(platform);
+  const copy = PICKER_COPY[platform] ?? {
+    title: C.choosePageTitle,
+    body: C.choosePageBody,
+    choose: C.choosePage,
+  };
 
   return (
-    <Card data-testid="facebook-page-picker">
+    <Card
+      data-testid={
+        platform === "facebook" ? "facebook-page-picker" : `${platform}-picker`
+      }
+    >
       <CardHeader>
-        <CardTitle>{C.choosePageTitle}</CardTitle>
-        <CardDescription>{C.choosePageBody}</CardDescription>
+        <CardTitle>{copy.title}</CardTitle>
+        <CardDescription>{copy.body}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
         {selection.isPending ? (
@@ -60,7 +80,7 @@ export function FacebookPagePicker({ selectionId, onDone }: FacebookPagePickerPr
                     select.mutate({ selectionId, pageId: page.id }, { onSuccess: onDone })
                   }
                 >
-                  {C.choosePage}
+                  {copy.choose}
                 </Button>
               </li>
             ))}
