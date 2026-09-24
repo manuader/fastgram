@@ -78,6 +78,31 @@ El detalle está en `docs/IMPLEMENTATION-PLAN.md` §2. No lo repito acá para qu
 
 ## 4. Qué cambió, sesión por sesión
 
+### Sesión 2026-09-24 (2) — Uso personal: sprints 1 a 4 construidos y probados en la app real
+
+Cuatro tandas de agentes en paralelo y una pasada en el navegador por cada una. **Para usarla:**
+[`GUIA-DE-USO.md`](GUIA-DE-USO.md). Estado por tarea en `tasks.md` §PU (36 cerradas).
+
+**Verificado en la app real, sin simular nada:** `pnpm start`; modelo local (Ollama
+`qwen2.5:7b-instruct`, instalado con Homebrew) configurado desde la UI; marca nueva →
+análisis de una web real → perfil `partial` con origen y confianza por campo; kit de fondos
+automático cuando no hay media (11 fondos en 18 s); Blitz (deck, crear desde prompt,
+aceptar, Edit, Schedule Post); el editor cambia el texto y el video rehecho lo trae; Regenerate
+con el LLM real; calendario; Today; pantallas de Integrations, Connections y AI Studio.
+
+**Construido y testeado, sin probar contra el mundo real** (faltan credenciales del dueño):
+OAuth y publicación en IG/Threads/FB/X/TikTok (borrador), Higgsfield/fal, recorte con fal,
+`pnpm start --tunnel` completo.
+
+Bugs que sólo aparecieron en el navegador (todos arreglados, trampas 50–53): aceptar con perfil
+`partial` daba 409; las marcas nacían en UTC; `test:int` vaciaba la base de la app; cookie de
+marca vieja sin salida; el editor abría vacío (ahora deriva las cajas del payload);
+`width_percent` era `integer` (migración 0016).
+
+Decisiones: `D-13` corregida (sin ninguna cuenta logueada para scrapers), `D-17` (Cloudflare
+Tunnel), mapeo editor→px (PRD FR-051); el proceso de media pública reenvía **sólo** el callback de
+OAuth a la web; perfil `partial` alcanza para aceptar en Blitz.
+
 ### Sesión 2026-09-24 — El plan cambia: uso personal y piloto automático
 
 **Decisión del dueño:** la app es para él, sin auth, límites ni billing, y tiene que manejar
@@ -1137,6 +1162,37 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 193
     fallo**, y la de build reembolsa. Una pieza editada ya entregó su save:
     cada edición fallida devolvía uno. Cuando dos flujos comparten motor y no
     comparten reglas de cobro, van por colas —o al menos por cierres— distintos.
+
+50. **`pnpm test:int` de la API borraba la base de la app.** Los fixtures hacen
+    `truncate … cascade` y el default era `…/fastgram`, la misma de `pnpm start`:
+    correrlos con la app levantada dejaba la web en "Access Denied" sin marcas ni
+    piezas. Ahora cada suite deriva su base (`fastgram_api`, `fastgram_worker`) y
+    un `globalSetup` la crea, la migra y crea el esquema de pg-boss (el test de
+    health dependía, sin decirlo, de que `pnpm start` lo hubiera creado antes).
+
+51. **Una cookie de marca vieja dejaba la web sin salida.** Con `fg_workspace`
+    apuntando a una marca borrada, **todo** daba 404, incluido `/mode`, y la web
+    leía eso como "no es modo personal": escondía el selector y no había forma de
+    volver. `/mode` y `/workspaces…` son rutas del dueño e ignoran el header.
+
+52. **Dos agentes, dos migraciones y un `when` al revés.** La 0013 quedó con un
+    `when` mayor que la 0014, y el migrador de Drizzle corre sólo lo que tiene
+    `when` mayor que la última aplicada: una base con la 0013 y sin la 0014 se
+    saltearía la 0014 para siempre y sin error. `packages/db/test/journal.test.ts`
+    exige `when` estrictamente creciente en el orden de `idx`.
+
+53. **Con el panel del navegador oculto, los timers de la página se frenan.** El
+    polling del editor "no avanzaba" con la pieza ya `CREATED` en la base. No es
+    un bug de la app: recargar o leer el estado por JS.
+
+54. **El quick tunnel de Cloudflare sirve para Instagram y no para TikTok fotos.**
+    `PULL_FROM_URL` de TikTok exige un dominio verificado por DNS; un
+    `*.trycloudflare.com` aleatorio no se puede verificar. Y un quick tunnel no
+    arranca si existe `~/.cloudflared/config.yaml`.
+
+55. **En un webm VP9 con alfa, ffprobe dice `yuv420p`.** Lo único que delata el
+    alfa es la tag `alpha_mode=1`, y para decodificarlo hay que forzar
+    `-c:v libvpx-vp9` **antes** del `-i`; si no, el foreground sale opaco.
 
 ## 8. Qué falta
 
