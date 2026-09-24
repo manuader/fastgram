@@ -59,9 +59,9 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 
 ## Sprint 1 — Arranca y genera
 
-- [ ] **PU-RUN-001** `pnpm start`: levanta infra, migra, render (con fuentes), API, worker y web **en orden**, con el secreto de render efímero y compartido; un solo Ctrl+C baja todo
+- [x] **PU-RUN-001** `pnpm start`: levanta infra, migra, render (con fuentes), API, worker y web **en orden**, con el secreto de render efímero y compartido; un solo Ctrl+C baja todo
 - [ ] **PU-RUN-002** Modo `personal` (`FASTGRAM_MODE=personal`): sin cuotas ni rate limiting, API y web atadas a `127.0.0.1` · `D-06`
-- [ ] **PU-RUN-003** La web obtiene su key sola al arrancar (sin copiar `FASTGRAM_API_KEY` a mano), guardada fuera del repo (`~/.fastgram/`)
+- [x] **PU-RUN-003** La web obtiene su key sola al arrancar (sin copiar `FASTGRAM_API_KEY` a mano); vive sólo en el entorno del proceso de la web, nunca en disco
 - [ ] **PU-MODEL-001** Registro de modelos **por tarea** (texto, juicio, visión, imagen, video, recorte) con presets OpenRouter / DeepSeek / Groq / Cerebras / Gemini / Ollama / LM Studio; keys sólo en entorno o `~/.fastgram/` · `D-14`, `ADR-009`
 - [ ] **PU-MODEL-002** Pantalla `Settings → Modelos`: elegir proveedor y modelo por tarea, probar conexión, ver gasto estimado del mes
 - [ ] **PU-UI-001** Shell 2026: sidebar compacta con **selector de marca**, `⌘K`, oscuro por defecto, transiciones · ⚠️ dependencias nuevas las instala el coordinador
