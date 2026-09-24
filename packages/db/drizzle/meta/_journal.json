@@ -169,6 +169,55 @@
       "when": 1790008494123,
       "tag": "0023_automation_campaigns",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790008495123,
+      "tag": "0024_publish_flow",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790008496123,
+      "tag": "0025_brand_audio",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1790008497123,
+      "tag": "0026_memes_prompt",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1790008498123,
+      "tag": "0027_brand_intel",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1790008499123,
+      "tag": "0028_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1790008500123,
+      "tag": "0029_studio_media",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1790008501123,
+      "tag": "0030_influencers_formats",
+      "breakpoints": true
     }
   ]
 }
