@@ -1,0 +1,91 @@
+/**
+ * Copy del deck de Blitz · FR-050 (PRD:1105-1180), `PU-BLITZ-001/002`.
+ *
+ * ## Por qué un catálogo local y no `lib/i18n/messages.ts`
+ *
+ * Este sprint corre con varios agentes en paralelo y `lib/i18n/**` no es de este
+ * módulo. El catálogo vive acá con la **misma forma** que `webEn` —clave →
+ * plantilla, con `{huecos}` que resuelve `interpolate` de `@fastgram/ui`— para
+ * que mudarlo a `messages.ts` sea cortar y pegar y cambiar `td` por `tw`.
+ *
+ * Convención de los comentarios, la de `messages.ts`: `literal` = texto del
+ * PRD tal cual; `nuevo` = el PRD no lo da y lo escribió esta tarea.
+ */
+import { interpolate, type MessageVars } from "@fastgram/ui";
+
+export const deckEn = {
+  "deck.title": "Blitz", // literal
+  "deck.configure": "Configure", // literal FR-050 · `⚙ Configure`
+  "deck.skip": "Skip", // nuevo · el PRD sólo dibuja `✕`
+  "deck.accept": "Accept", // nuevo · el PRD sólo dibuja `✓`
+  "deck.edit": "Edit", // literal
+  "deck.comingSoon": "Coming soon — sprint 2", // nuevo
+  "deck.keyHint": "Use ← to skip and → to accept", // nuevo
+  "deck.indicator.accept": "Accept", // nuevo
+  "deck.indicator.skip": "Skip", // nuevo
+  "deck.cardLabel": "{type} suggestion", // nuevo · nombre accesible de la tarjeta
+  "deck.cardHelp": "Drag right or press → to accept. Drag left or press ← to skip.", // nuevo
+  "deck.why": "Why This Content?", // literal
+  "deck.why.title": "Why This Content", // literal
+  "deck.why.empty": "No explanation was stored with this suggestion.", // nuevo
+  "deck.remixedFrom": "Remixed From", // literal
+  "deck.remix.open": "Open original", // nuevo
+  "deck.remix.likes": "{count} likes", // nuevo · el PRD sólo muestra el icono
+  "deck.remix.views": "{count} views", // nuevo · ídem
+  "deck.mute": "Mute", // literal
+  "deck.unmute": "Unmute", // literal
+  "deck.slide.prev": "Previous slide", // nuevo
+  "deck.slide.next": "Next slide", // nuevo
+  "deck.slide.position": "Slide {current} of {total}", // nuevo
+  "deck.influencer": "👤 {name}", // literal (forma) F-054
+  "deck.tags": "Content tags", // nuevo · nombre accesible de la fila de chips
+  "deck.remaining": "{count} in queue", // nuevo
+  "deck.remainingOne": "1 in queue", // nuevo
+
+  "deck.blind.title": "Next suggestion", // nuevo
+  "deck.blind.description":
+    "Previews aren't available yet — the API can't list the queue. Accepting builds the next queued piece; it shows up under Recent builds when it's ready.", // nuevo
+  "deck.blind.skipUnavailable": "Skipping needs the queue API — coming in sprint 2", // nuevo
+
+  "deck.accept.title": "What would you like to do?", // literal M-04
+  "deck.accept.step": "Step 1 of 3", // literal M-04
+  "deck.accept.save": "Save to Library", // literal
+  "deck.accept.saveDescription": "Save this content for later", // literal
+  "deck.accept.schedule": "Schedule Post", // literal
+  "deck.accept.scheduleDescription": "Post or schedule to your platforms", // literal
+  "deck.accept.cancel": "Cancel", // literal
+  "deck.accept.saving": "Saving…", // nuevo
+
+  "deck.builds.title": "Recent builds", // nuevo
+  "deck.builds.building": "Building…", // nuevo · mismo texto que la Library
+  "deck.builds.ready": "Ready", // nuevo
+  "deck.builds.failed": "Build failed", // nuevo
+  "deck.builds.open": "Open", // nuevo
+  "deck.builds.viewInLibrary": "View in Library", // literal (toast §3.5)
+  "deck.builds.hint": "Builds take about 30 s to 2 min. You can keep swiping meanwhile.", // nuevo · FR-050 `processing`
+
+  "deck.empty.title": "Your queue is being generated", // nuevo
+  "deck.empty.description":
+    "The discovery queue has no ready items yet. New suggestions show up here on their own — no need to reload.", // paráfrasis ERR-E11
+  "deck.empty.blindDescription":
+    "The discovery queue has no ready items yet. It refills in the background; try again in a minute.", // paráfrasis ERR-E11
+  "deck.empty.llmHint":
+    "Still empty after a few minutes? Blitz needs an AI model to generate suggestions.", // nuevo
+  "deck.empty.llmLink": "Check AI models", // nuevo
+  "deck.refilling": "Loading more suggestions…", // nuevo
+
+  "deck.profile.title": "Your brand profile isn't ready yet", // nuevo · ERR-P08 da sólo el código
+  "deck.profile.description":
+    "Blitz builds everything on top of your brand profile. Finish it and suggestions start arriving.", // nuevo
+
+  "deck.unbuildable":
+    "That suggestion can't be built anymore, so it was skipped and nothing was charged.", // paráfrasis del 422 de la API
+  "deck.skipFailed": "Couldn't skip that suggestion. It's back in the deck.", // nuevo
+} as const;
+
+export type DeckMessageKey = keyof typeof deckEn;
+
+/** Traduce una clave del catálogo del deck. */
+export function td(key: DeckMessageKey, vars?: MessageVars): string {
+  return interpolate(deckEn[key], vars);
+}
