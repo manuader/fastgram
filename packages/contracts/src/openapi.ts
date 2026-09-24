@@ -39,6 +39,7 @@ import * as sounds from "./resources/tiktok-sounds.js";
 import * as brand from "./resources/brand.js";
 import * as onboarding from "./resources/onboarding.js";
 import * as models from "./resources/models.js";
+import * as genai from "./resources/genai.js";
 import * as workspaces from "./resources/workspaces.js";
 import * as strategy from "./resources/strategy.js";
 import {
@@ -611,6 +612,158 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           },
         },
       },
+      /**
+       * OAuth por marca y credenciales de las apps — `PU-PUB-001`, `PU-PUB-002`,
+       * `P3-OAUTH-002`. Fuera de la §9.3 del PRD (uso personal). Ninguna
+       * respuesta lleva un token ni un secret; los errores llevan el motivo en
+       * `details.reason` (ver `resources/connections.ts`).
+       */
+      "/integrations": {
+        get: {
+          operationId: "getIntegrations",
+          summary: "Apps de desarrollador por plataforma (sin secrets) y redirect URIs",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(connections.integrationsOverviewSchema))),
+          },
+        },
+      },
+      "/integrations/{platform}": {
+        put: {
+          operationId: "updateIntegration",
+          summary: "Guarda client id y (opcional) secret de la app de una plataforma",
+          parameters: [pathParam("platform")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(connections.updateIntegrationRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(connections.integrationAppSchema))),
+            "400": errorResponse("bad_request — con details.field"),
+            "404": errorResponse("not_found — plataforma sin OAuth"),
+          },
+        },
+        delete: {
+          operationId: "deleteIntegration",
+          summary: "Borra las credenciales de la app de una plataforma",
+          parameters: [pathParam("platform")],
+          responses: {
+            "204": { description: "Borradas" },
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/connections/accounts": {
+        get: {
+          operationId: "listConnectionAccounts",
+          summary: "Cuentas conectadas de la marca, con avatar y estado (sin tokens)",
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf({
+                type: "array",
+                items: toJsonSchema(connections.connectionAccountSchema),
+              }),
+            ),
+          },
+        },
+      },
+      "/connections/{platform}/authorize": {
+        get: {
+          operationId: "authorizeConnection",
+          summary:
+            "URL de autorización de la plataforma con `state` firmado (marca + nonce + vencimiento)",
+          parameters: [pathParam("platform")],
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(connections.authorizeConnectionResponseSchema)),
+            ),
+            "404": errorResponse("not_found — plataforma sin OAuth"),
+            "409": errorResponse(
+              "conflict — integration_not_configured | https_redirect_required",
+            ),
+          },
+        },
+      },
+      "/connections/{platform}/callback": {
+        post: {
+          operationId: "completeConnection",
+          summary:
+            "Intercambia el code (lo llama la ruta de callback de la web) y crea/actualiza la conexión de la marca",
+          parameters: [pathParam("platform")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(connections.connectionCallbackRequestSchema)),
+          },
+          responses: {
+            "200": ok(
+              "Conectada, o Páginas de Facebook para elegir",
+              dataOf(toJsonSchema(connections.connectionCallbackResultSchema)),
+            ),
+            "400": errorResponse(
+              "bad_request — oauth_state_invalid | oauth_state_wrong_brand | oauth_denied | oauth_exchange_failed | no_pages",
+            ),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — integration_not_configured"),
+            "503": errorResponse("service_unavailable — oauth_provider_unavailable"),
+          },
+        },
+      },
+      "/connections/facebook/pages/{selectionId}": {
+        get: {
+          operationId: "getFacebookPageSelection",
+          summary: "Páginas de Facebook ofrecidas tras el login, para elegir una",
+          parameters: [pathParam("selectionId")],
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(connections.facebookPageSelectionSchema)),
+            ),
+            "404": errorResponse("not_found — selection_expired"),
+          },
+        },
+      },
+      "/connections/facebook/pages": {
+        post: {
+          operationId: "selectFacebookPage",
+          summary: "Conecta la Página elegida",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(connections.selectFacebookPageRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(connections.connectionAccountSchema))),
+            "404": errorResponse("not_found — selection_expired o Página desconocida"),
+          },
+        },
+      },
+      "/connections/accounts/{connectionId}/refresh": {
+        post: {
+          operationId: "refreshConnection",
+          summary:
+            "Refresca el token ya; si la plataforma lo rechaza, la conexión queda `expired`",
+          parameters: [pathParam("connectionId")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(connections.connectionAccountSchema))),
+            "404": errorResponse("not_found"),
+            "409": errorResponse(
+              "conflict — connection_expired | connection_inactive | integration_not_configured",
+            ),
+            "503": errorResponse("service_unavailable — oauth_provider_unavailable"),
+          },
+        },
+      },
+      "/connections/accounts/{connectionId}": {
+        delete: {
+          operationId: "disconnectConnection",
+          summary: "Desconecta: `revoked` y sin tokens (la fila queda por los posts)",
+          parameters: [pathParam("connectionId")],
+          responses: {
+            "204": { description: "Desconectada" },
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
       "/warmed-accounts": {
         get: {
           operationId: "listWarmedAccounts",
@@ -715,6 +868,48 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
             "400": errorResponse("bad_request"),
             "409": errorResponse("conflict — misma Idempotency-Key con otro body"),
             "503": errorResponse("service_unavailable — la API no tiene cola"),
+          },
+        },
+      },
+      "/media/import": {
+        post: {
+          operationId: "importMedia",
+          summary:
+            "Importa un video o audio por link con yt-dlp (PU-MEME-001). Asíncrono: " +
+            "el estado se consulta en /media/import/{id}. Idempotency-Key opcional.",
+          parameters: [{ ...idempotencyParam, required: false }],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(media.mediaImportRequestSchema)),
+          },
+          responses: {
+            "202": ok("Import encolado", dataOf(toJsonSchema(media.mediaImportSchema))),
+            "400": errorResponse("bad_request — details.reason = unsupported_url"),
+            "409": errorResponse("conflict — misma Idempotency-Key con otro body"),
+            "503": errorResponse("service_unavailable — la API no tiene cola"),
+          },
+        },
+      },
+      "/media/import/{id}": {
+        get: {
+          operationId: "getMediaImport",
+          summary: "Estado de un import por link (queued, downloading, imported, failed)",
+          parameters: [pathParam("id")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(media.mediaImportSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/media/meta": {
+        get: {
+          operationId: "getMediaMeta",
+          summary:
+            "Origen, etiquetas y recorte de los clips importados (PU-MEME-003); ids separados por coma",
+          parameters: queryParams(media.mediaMetaQuerySchema),
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(media.mediaMetaListSchema))),
+            "400": errorResponse("bad_request"),
           },
         },
       },
@@ -873,7 +1068,7 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           responses: {
             "201": ok("Programado", dataOf({ type: "array", items: postJs })),
             "400": errorResponse(
-              "connection_ambiguous / posting_mode_not_supported_for_platform / privacy_level_required / invalid_privacy_level",
+              "connection_ambiguous / posting_mode_not_supported_for_platform / privacy_level_required / invalid_privacy_level / caption de x > 280, threads > 500 o facebook > 2200 (por code point)",
             ),
             "402": errorResponse("payment_required — autoCaptions o post slots warmed"),
             "403": errorResponse("forbidden — falta tiktokDirect o warmed posting"),
@@ -951,6 +1146,23 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           responses: {
             "200": ok("Borrados", dataOf({ type: "array", items: postJs })),
             "409": errorResponse("conflict — details.failures con el motivo por id"),
+          },
+        },
+      },
+      "/posts/{id}/mark-posted": {
+        post: {
+          operationId: "markPostPosted",
+          summary:
+            "Borrador de TikTok terminado en la app: IN_USER_INBOX → POSTED (brandId opcional, del mismo dueño)",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: false,
+            content: json(toJsonSchema(posts.markPostedRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(postJs)),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — el post no está IN_USER_INBOX"),
           },
         },
       },
@@ -1327,6 +1539,95 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
             "200": ok("OK", dataOf(toJsonSchema(models.providerModelsSchema))),
             "400": errorResponse("bad_request — base URL inválida o faltante"),
             "404": errorResponse("not_found — el proveedor no existe"),
+          },
+        },
+      },
+      /**
+       * AI Studio y el tope mensual — `PU-LATER-005`, `PU-MODEL-003`/`004`/`005`.
+       * Fuera de la §9.3 del PRD (uso personal). Ver la cabecera de
+       * `resources/genai.ts`.
+       */
+      "/models/budget": {
+        get: {
+          operationId: "getModelBudget",
+          summary: "Gasto de generación del mes (UTC) y tope mensual",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(genai.budgetSummarySchema))),
+          },
+        },
+        put: {
+          operationId: "updateModelBudget",
+          summary: "Cambia el tope mensual; null vuelve al entorno o al default",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(genai.updateBudgetRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(genai.budgetSummarySchema))),
+            "400": errorResponse("bad_request — monto inválido"),
+          },
+        },
+      },
+      "/ai-studio/options": {
+        get: {
+          operationId: "getAiStudioOptions",
+          summary: "Modelos de imagen y video configurados, su catálogo y el presupuesto",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(genai.aiStudioOptionsSchema))),
+          },
+        },
+      },
+      "/ai-studio/estimate": {
+        post: {
+          operationId: "estimateAiStudioGeneration",
+          summary: "Costo estimado de un pedido y si entra en el tope",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(genai.generationRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(genai.generationEstimateSchema))),
+            "400": errorResponse("bad_request — con details.field"),
+            "409": errorResponse("conflict — la tarea no está configurada"),
+            "503": errorResponse(
+              "service_unavailable — el proveedor falló (details.reason)",
+            ),
+          },
+        },
+      },
+      "/ai-studio/generations": {
+        get: {
+          operationId: "listAiStudioGenerations",
+          summary: "Generaciones de la marca, más nuevas primero",
+          parameters: [...queryParams(genai.generationListQuerySchema)],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(genai.generationListSchema))),
+          },
+        },
+        post: {
+          operationId: "createAiStudioGeneration",
+          summary: "Estima, reserva el gasto y encola (202)",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(genai.generationRequestSchema)),
+          },
+          responses: {
+            "202": ok("Accepted", dataOf(toJsonSchema(genai.generationSchema))),
+            "400": errorResponse("bad_request — con details.field"),
+            "402": errorResponse("payment_required — details.reason = budget_exceeded"),
+            "409": errorResponse("conflict — la tarea no está configurada"),
+            "503": errorResponse("service_unavailable — sin cola"),
+          },
+        },
+      },
+      "/ai-studio/generations/{id}": {
+        get: {
+          operationId: "getAiStudioGeneration",
+          summary: "Una generación con su estado y su media",
+          parameters: [pathParam("id")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(genai.generationSchema))),
+            "404": errorResponse("not_found — no existe o es de otra marca"),
           },
         },
       },

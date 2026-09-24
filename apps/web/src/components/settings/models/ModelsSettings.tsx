@@ -5,6 +5,7 @@ import type { ModelTaskConfig } from "@fastgram/contracts";
 import { ApiErrorState } from "@/components/library/ApiErrorState";
 import { useModelsOverview } from "@/lib/models/api";
 import { MODELS_COPY } from "@/lib/models/copy";
+import { BudgetCard } from "./BudgetCard";
 import { TaskModelCard } from "./TaskModelCard";
 
 /** `text` y `judgment`: las que algo del código usa hoy. */
@@ -82,6 +83,14 @@ export function ModelsSettings() {
             <TaskModelCard key={config.task} config={config} presets={providers} />
           ))}
         </div>
+      </section>
+
+      {/* `PU-MODEL-005`: gasto del mes contra el tope de imagen y video. */}
+      <section
+        aria-label="Monthly AI budget"
+        className="grid items-start gap-4 lg:grid-cols-2"
+      >
+        <BudgetCard />
       </section>
 
       <section aria-labelledby="models-reserved" className="flex flex-col gap-4">

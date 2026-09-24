@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   BATCH_POST_IDS_MAX,
+  FACEBOOK_CAPTION_MAX,
   INSTAGRAM_CAPTION_MAX,
+  THREADS_TEXT_MAX,
   TIKTOK_DESCRIPTION_MAX,
   TIKTOK_SLOW_LANE_RETRY_HOURS,
   TIKTOK_TITLE_MAX,
   WARMED_MAX_SCHEDULE_DAYS_AHEAD,
+  X_TEXT_MAX,
   cancelPostsRequestSchema,
   deletePostsRequestSchema,
   instagramScheduleTargetSchema,
@@ -203,6 +206,43 @@ describe("programación", () => {
       }),
     ).toThrow();
   });
+});
+
+describe("x, threads y facebook · D-09", () => {
+  const request = (target: Record<string, unknown>) =>
+    scheduleContentRequestSchema.safeParse({ scheduledAtUtc: 1, targets: [target] });
+
+  it("los topes son los de los adaptadores: 280, 500 y 2200", () => {
+    expect(X_TEXT_MAX).toBe(280);
+    expect(THREADS_TEXT_MAX).toBe(500);
+    expect(FACEBOOK_CAPTION_MAX).toBe(2200);
+  });
+
+  it.each([
+    ["x", X_TEXT_MAX],
+    ["threads", THREADS_TEXT_MAX],
+    ["facebook", FACEBOOK_CAPTION_MAX],
+  ] as const)("%s: caption hasta el tope, uno más se rechaza", (platform, max) => {
+    expect(request({ platform, caption: "c".repeat(max) }).success).toBe(true);
+    expect(request({ platform, caption: "c".repeat(max + 1) }).success).toBe(false);
+    expect(request({ platform }).success).toBe(true);
+  });
+
+  it("el largo se cuenta por code point, como el pre-flight del adaptador", () => {
+    // 280 emojis fuera del BMP son 560 unidades UTF-16: `.max(280)` los rechazaría.
+    expect(request({ platform: "x", caption: "😀".repeat(280) }).success).toBe(true);
+    expect(request({ platform: "x", caption: "😀".repeat(281) }).success).toBe(false);
+  });
+
+  it.each(["x", "threads", "facebook"])(
+    "%s es sólo OAuth y no lleva opciones de TikTok",
+    (platform) => {
+      expect(request({ platform, warmedAccountId: "wa_1" }).success).toBe(false);
+      expect(request({ platform, postingMode: "inbox" }).success).toBe(false);
+      expect(request({ platform, privacyLevel: "SELF_ONLY" }).success).toBe(false);
+      expect(request({ platform, title: "t" }).success).toBe(false);
+    },
+  );
 });
 
 describe("otros números de publicación", () => {

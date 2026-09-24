@@ -97,3 +97,18 @@
   border-color: var(--fg-platform-reddit);
   color: var(--fg-platform-reddit);
 }
+
+.fg-badge--x {
+  border-color: var(--fg-platform-x);
+  color: var(--fg-platform-x);
+}
+
+.fg-badge--threads {
+  border-color: var(--fg-platform-threads);
+  color: var(--fg-platform-threads);
+}
+
+.fg-badge--facebook {
+  border-color: var(--fg-platform-facebook);
+  color: var(--fg-platform-facebook);
+}

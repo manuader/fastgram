@@ -55,6 +55,10 @@ export const MODEL_PROVIDERS = [
   "ollama",
   "lmstudio",
   "custom",
+  // `PU-MODEL-003`/`004`: imagen y video. No hablan la API de OpenAI: tienen
+  // adaptador propio (`packages/adapters/src/{higgsfield,fal}`).
+  "higgsfield",
+  "fal",
 ] as const;
 
 export type ModelProvider = (typeof MODEL_PROVIDERS)[number];

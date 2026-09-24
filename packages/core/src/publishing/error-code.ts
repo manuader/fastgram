@@ -190,6 +190,11 @@ export const PUBLISH_ERROR_TABLE: {
     youtube: coded("youtube_post_limit_exceeded", "ERR-R05"),
     linkedin: LIMITE_GENERICO,
     reddit: LIMITE_GENERICO,
+    // D-09: Threads (250/24 h), Facebook Pages (30 reels/24 h) y X no tienen
+    // código diferenciado en el PRD: el genérico de FR-060, igual que LinkedIn.
+    x: LIMITE_GENERICO,
+    threads: LIMITE_GENERICO,
+    facebook: LIMITE_GENERICO,
   }),
 
   // FR-060, INT-002, DP-006. `captionAdjustmentReason` «actualmente sólo vale
@@ -200,6 +205,9 @@ export const PUBLISH_ERROR_TABLE: {
     youtube: SIN_CODIGO,
     linkedin: SIN_CODIGO,
     reddit: SIN_CODIGO,
+    x: SIN_CODIGO,
+    threads: SIN_CODIGO,
+    facebook: SIN_CODIGO,
   }),
 
   // ERR-D05 es el de TikTok con copy propia; ERR-D03 el general.
@@ -211,6 +219,9 @@ export const PUBLISH_ERROR_TABLE: {
     youtube: PERMISOS_D03,
     linkedin: PERMISOS_D03,
     reddit: PERMISOS_D03,
+    x: PERMISOS_D03,
+    threads: PERMISOS_D03,
+    facebook: PERMISOS_D03,
   }),
 
   account_changed: Object.freeze({
@@ -222,6 +233,9 @@ export const PUBLISH_ERROR_TABLE: {
     youtube: CUENTA_CAMBIADA_D06,
     linkedin: CUENTA_CAMBIADA_D06,
     reddit: CUENTA_CAMBIADA_D06,
+    x: CUENTA_CAMBIADA_D06,
+    threads: CUENTA_CAMBIADA_D06,
+    facebook: CUENTA_CAMBIADA_D06,
   }),
 
   // ERR-D16 es de TikTok (privacy levels = INT-001). Su copy **afirma** «Your
@@ -234,6 +248,9 @@ export const PUBLISH_ERROR_TABLE: {
     youtube: SIN_CODIGO,
     linkedin: SIN_CODIGO,
     reddit: SIN_CODIGO,
+    x: SIN_CODIGO,
+    threads: SIN_CODIGO,
+    facebook: SIN_CODIGO,
   }),
 
   unsupported_media: Object.freeze({
@@ -242,6 +259,9 @@ export const PUBLISH_ERROR_TABLE: {
     youtube: MEDIA_P11,
     linkedin: MEDIA_P11,
     reddit: MEDIA_P11,
+    x: MEDIA_P11,
+    threads: MEDIA_P11,
+    facebook: MEDIA_P11,
   }),
 
   // Lo único que DP-006 delega: no hay nada determinístico que mirar.
@@ -251,6 +271,9 @@ export const PUBLISH_ERROR_TABLE: {
     youtube: ESCALATE,
     linkedin: ESCALATE,
     reddit: ESCALATE,
+    x: ESCALATE,
+    threads: ESCALATE,
+    facebook: ESCALATE,
   }),
 });
 
@@ -276,3 +299,5 @@ export function translatePublishFailure(
   if (row === undefined || !Object.hasOwn(row, platform)) return ESCALATE;
   return row[platform] ?? ESCALATE;
 }
+
+export * from "./guards.js";

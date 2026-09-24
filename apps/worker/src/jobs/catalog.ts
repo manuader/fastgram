@@ -369,6 +369,47 @@ export const JOB_CATALOG = {
     concurrency: 1,
     idempotent: true,
   },
+  /**
+   * `PU-MEME-001`/`002`/`003` — no está en §9.5: sale del plan de uso personal
+   * (D-12). Idempotente: el `mediaId` viene en el payload, así que un
+   * reintento encuentra la fila ya creada y no duplica el clip.
+   */
+  mediaImport: {
+    name: JOB_QUEUES.mediaImport,
+    what: "Baja un video o audio por link con yt-dlp, lo sube al Media Bank, lo etiqueta y recorta su fondo.",
+    prd: "PLAN-USO-PERSONAL §6 D-12, PU-MEME-001 (fuera de §9.5)",
+    // Dos intentos: un sitio caído a veces vuelve, pero un link roto no, y
+    // cada intento puede pagar un recorte en fal.
+    maxAttempts: 2,
+    backoff: "exponential",
+    retryDelaySeconds: 30,
+    // Bajada con tope duro de 5 min (`MEDIA_IMPORT_TIMEOUT_MS`) + el recorte
+    // en fal, que encola del lado de ellos. 20 min es el techo de todo junto.
+    timeoutSeconds: 1_200,
+    // yt-dlp y FFmpeg son CPU y red; y el índice de metadata por marca se
+    // escribe desde acá: uno a la vez.
+    concurrency: 1,
+    idempotent: true,
+  },
+  /**
+   * `PU-PUB-008` / `P3-PUB-002` — no está en §9.5 como job propio: el PRD pone
+   * la reanudación de `AWAITING_RECONNECT` dentro del job de publicación
+   * (§9.5.8), y los slots planificados salen del plan de uso personal.
+   * Idempotente: reanudar un post que ya no está en `AWAITING_RECONNECT` o
+   * convertir un slot que ya no está `planned` no hace nada (los dos se
+   * deciden con la fila bloqueada o con un `UPDATE … WHERE status = …`).
+   */
+  publishingSweep: {
+    name: JOB_QUEUES.publishingSweep,
+    what: "Reanuda los posts en AWAITING_RECONNECT y convierte slots planificados en posts, por marca.",
+    prd: "FR-060 AWAITING_RECONNECT, NFR-015, PU-PUB-008 (fuera de §9.5)",
+    maxAttempts: 3,
+    backoff: "exponential",
+    retryDelaySeconds: 60,
+    timeoutSeconds: 300,
+    concurrency: 1,
+    idempotent: true,
+  },
 } as const satisfies Record<string, JobPolicy>;
 
 export type JobKey = keyof typeof JOB_CATALOG;

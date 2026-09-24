@@ -233,10 +233,9 @@ export function resolveDrop(params: {
 // ---------------------------------------------------------------------------
 
 /**
- * Color por red. Las cinco que ya tenían tono en `@fastgram/ui` usan su token
- * (`--fg-platform-*`); X, Threads y Facebook no lo tienen todavía y van con un
- * valor propio. X y Threads son negras en su marca: se usa el color de texto
- * para que se lean en claro y en oscuro.
+ * Color por red: el token `--fg-platform-*` de `@fastgram/ui`, que ya resuelve
+ * claro/oscuro (X y Threads negras en claro y blancas en oscuro, como TikTok;
+ * Facebook ajustado para AA, ver `tokens.css`).
  */
 export const NETWORK_CHIP_COLOR: Readonly<Record<CalendarNetwork, string>> = {
   instagram: "var(--fg-platform-instagram)",
@@ -244,9 +243,9 @@ export const NETWORK_CHIP_COLOR: Readonly<Record<CalendarNetwork, string>> = {
   youtube: "var(--fg-platform-youtube)",
   linkedin: "var(--fg-platform-linkedin)",
   reddit: "var(--fg-platform-reddit)",
-  x: "var(--fg-color-text)",
-  threads: "var(--fg-color-text-muted)",
-  facebook: "#1877F2",
+  x: "var(--fg-platform-x)",
+  threads: "var(--fg-platform-threads)",
+  facebook: "var(--fg-platform-facebook)",
 };
 
 export const NETWORK_LABEL: Readonly<Record<CalendarNetwork, string>> = {

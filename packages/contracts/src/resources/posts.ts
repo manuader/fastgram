@@ -33,6 +33,21 @@ export const INSTAGRAM_CAPTION_MAX = 2200;
 export const TIKTOK_TITLE_MAX = 90;
 /** F-153 (PRD:621) / INT-001 (PRD:2444) — TikTok `description` ≤ 4000. */
 export const TIKTOK_DESCRIPTION_MAX = 4000;
+/**
+ * X · 280 caracteres (`docs.x.com/fundamentals/counting-characters`, citado en
+ * `packages/adapters/src/publishers/x/x-publisher.ts`). Se cuenta **por code
+ * point**, igual que el pre-flight del adaptador (`assertPublishable`): X pondera
+ * (URL = 23, emoji = 2) y ese conteo no se replica acá, así que un texto con
+ * muchos emojis puede pasar y rebotar en X. Es el mismo hueco del adaptador.
+ */
+export const X_TEXT_MAX = 280;
+/** Threads · «Text posts are limited to 500 characters» (adaptador de Threads). */
+export const THREADS_TEXT_MAX = 500;
+/**
+ * Facebook Reels · `description`. La guía de Meta no publica un tope; el
+ * adaptador toma el de Instagram como techo conservador (**no verificado**).
+ */
+export const FACEBOOK_CAPTION_MAX = 2200;
 /** NFR-012 (PRD:2962) / F-162 (PRD:630) — máx. 100 ids por lote. */
 export const BATCH_POST_IDS_MAX = 100;
 /** FR-060 (PRD:1394) — "Warmed-account posts can only be scheduled up to 30 days ahead." */
@@ -250,11 +265,67 @@ export const redditScheduleTargetSchema = z
   .strict();
 export type RedditScheduleTarget = z.infer<typeof redditScheduleTargetSchema>;
 
+/**
+ * Largo por **code point** (`[...s].length`), no por unidad UTF-16 como
+ * `z.string().max()`: es lo que cuenta el pre-flight de los adaptadores
+ * (`packages/adapters/src/publishers/shared/base.ts`), y un emoji fuera del BMP
+ * son dos unidades UTF-16. Con `.max()` el contrato rechazaría textos que el
+ * publicador acepta. En OpenAPI no sale como `maxLength` (el conversor describe
+ * el lado de entrada de un `refine`); el número está en la descripción del `400`.
+ */
+const codePointText = (max: number) =>
+  z.string().refine((s) => [...s].length <= max, {
+    message: `must be ${String(max)} characters or fewer`,
+  });
+
+/**
+ * X, Threads y Facebook (`D-09`). Las tres publican **sólo por OAuth** (las
+ * cuentas warmed son de TikTok e Instagram, FR-130), así que, como Reddit, no
+ * llevan `warmedAccountId`. Tampoco `postingMode` ni `privacyLevel`, que son
+ * sólo TikTok. El único campo de copy es `caption`: el texto del post en X y
+ * Threads, la `description` del reel en Facebook.
+ *
+ * La Página de Facebook no se elige acá: es la conexión (`connectionId`), que
+ * se crea eligiendo una Página en `POST /connections/facebook/pages`.
+ */
+export const xScheduleTargetSchema = z
+  .object({
+    ...targetBase,
+    platform: z.literal("x"),
+    caption: codePointText(X_TEXT_MAX).optional(),
+  })
+  .omit({ warmedAccountId: true })
+  .strict();
+export type XScheduleTarget = z.infer<typeof xScheduleTargetSchema>;
+
+export const threadsScheduleTargetSchema = z
+  .object({
+    ...targetBase,
+    platform: z.literal("threads"),
+    caption: codePointText(THREADS_TEXT_MAX).optional(),
+  })
+  .omit({ warmedAccountId: true })
+  .strict();
+export type ThreadsScheduleTarget = z.infer<typeof threadsScheduleTargetSchema>;
+
+export const facebookScheduleTargetSchema = z
+  .object({
+    ...targetBase,
+    platform: z.literal("facebook"),
+    caption: codePointText(FACEBOOK_CAPTION_MAX).optional(),
+  })
+  .omit({ warmedAccountId: true })
+  .strict();
+export type FacebookScheduleTarget = z.infer<typeof facebookScheduleTargetSchema>;
+
 export const scheduleTargetSchema = z.union([
   tiktokScheduleTargetSchema,
   instagramScheduleTargetSchema,
   youtubeScheduleTargetSchema,
   redditScheduleTargetSchema,
+  xScheduleTargetSchema,
+  threadsScheduleTargetSchema,
+  facebookScheduleTargetSchema,
 ]);
 export type ScheduleTarget = z.infer<typeof scheduleTargetSchema>;
 
@@ -301,5 +372,26 @@ export const deletePostsRequestSchema = z
   .object({ postIds: batchPostIdsSchema })
   .strict();
 export type DeletePostsRequest = z.infer<typeof deletePostsRequestSchema>;
+
+// --- Marcar publicado a mano · PU-UI-002 ------------------------------------
+
+/**
+ * `POST /posts/{id}/mark-posted` — el borrador de TikTok que el usuario terminó
+ * en la app (FR-060: `IN_USER_INBOX` queda esperando una acción **suya**, y la
+ * API de TikTok no avisa cuando la hace). Sólo `IN_USER_INBOX` → `POSTED`, con
+ * `postedAt` = ahora; cualquier otro estado es `409`.
+ *
+ * No es del PRD: lo pide la pantalla "Today" de `docs/PLAN-USO-PERSONAL.md` §7.
+ *
+ * `brandId` es la marca del post, para marcar desde una vista de **todas** las
+ * marcas sin cambiar la activa: el proxy de la web sólo reenvía la marca de su
+ * cookie. Mismo criterio que `PATCH /calendar/items/{kind}/{id}`: sin él, la
+ * marca de la request (`X-Fastgram-Workspace` o la de la key); con uno de otro
+ * dueño, `404`.
+ */
+export const markPostedRequestSchema = z
+  .object({ brandId: z.string().uuid().optional() })
+  .strict();
+export type MarkPostedRequest = z.infer<typeof markPostedRequestSchema>;
 
 export { accountRef as postAccountRefSchema };

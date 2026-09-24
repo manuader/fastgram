@@ -39,6 +39,7 @@ export * from "./resources/brand.js";
 export * from "./resources/onboarding.js";
 export * from "./resources/workspaces.js";
 export * from "./resources/models.js";
+export * from "./resources/genai.js";
 export * from "./resources/strategy.js";
 
 // OpenAPI

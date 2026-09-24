@@ -230,6 +230,8 @@ export const en = {
   "settings.nav.brands": "Brands",
   "settings.nav.models": "Models",
   "settings.nav.strategy": "Strategy", // PU-BRAND-002
+  "settings.nav.integrations": "Integrations", // PU-PUB-002
+  "settings.nav.connections": "Connections", // PU-PUB-002
 
   /* ------------------------- Marcas (workspaces) · PU-BRAND-001, D-07 (nuevo) */
   "brands.switcherLabel": "Switch brand",
@@ -483,6 +485,138 @@ export const en = {
   "editor.audio.title": "Select Audio", // literal
   "editor.audio.empty": "The shared audio library is empty.",
   "editor.audio.error": "Couldn't load the audio library.",
+  /* ------------------------------- Today · PU-UI-002, PLAN-USO-PERSONAL §7 */
+  // Copy nuevo, ninguna clave es literal del PRD salvo el camino de TikTok
+  // (`Inbox → System notifications → Post`, FR-060 PRD:1410).
+  "nav.today": "Today",
+  "today.title": "Today",
+  "today.greeting.morning": "Good morning",
+  "today.greeting.afternoon": "Good afternoon",
+  "today.greeting.evening": "Good evening",
+  "today.subtitle.all": "{date} · all your brands",
+  "today.subtitle.one": "{date}",
+  "today.counter.posted": "Posted today",
+  "today.counter.scheduled": "Scheduled today",
+  "today.counter.approval": "Waiting for approval",
+  "today.counter.approvalIn": "in {brand}",
+  "today.counter.failed": "Failed · last 7 days",
+  "today.counter.unavailable": "Not available",
+  "today.timeline.title": "Today's timeline",
+  "today.timeline.empty": "Nothing is going out today.",
+  "today.timeline.itemLabel": "{brand}, {network}, {time}, {status}. Open the piece",
+  "today.status.planned": "Planned · no account yet",
+  "today.status.scheduled": "Scheduled",
+  "today.status.publishing": "Publishing…",
+  "today.status.posted": "Posted",
+  "today.status.failed": "Failed",
+  "today.status.draft": "TikTok draft · finish in the app",
+  "today.status.reconnect": "Needs reconnect",
+  "today.viewPost": "View post",
+  "today.failedFallback": "Open the piece to see what went wrong.",
+  "today.drafts.title": "Finish these in the TikTok app",
+  "today.drafts.body":
+    "TikTok saved them as drafts. They aren't live until you post them yourself.",
+  "today.drafts.step1": "Open the TikTok app on your phone.",
+  "today.drafts.step2": "Go to Inbox → System notifications.", // literal (camino, PRD:1410)
+  "today.drafts.step3": "Open the draft and tap Post.", // literal (`Post`, PRD:1410)
+  "today.drafts.since": "Waiting since {date}",
+  "today.drafts.markPosted": "Mark as posted",
+  "today.drafts.marking": "Marking…",
+  "today.drafts.marked": "Marked as posted.",
+  "today.drafts.markFailed": "Couldn't mark it as posted.",
+  "today.drafts.older":
+    "{count} older drafts aren't listed here. Find them in the Calendar.",
+  "today.approval.title": "Waiting for approval",
+  "today.approval.cardsOne": "1 card",
+  "today.approval.cardsMany": "{count} cards",
+  "today.approval.none": "Nothing waiting",
+  "today.approval.otherBrand": "Switch to see its queue",
+  "today.approval.review": "Review",
+  "today.approval.current": "Current brand",
+  "today.failed.title": "Failed recently",
+  "today.failed.empty": "Nothing failed in the last 7 days.",
+  "today.failed.open": "Open",
+  "today.empty.title": "A quiet day",
+  "today.empty.body":
+    "Nothing is scheduled for today. Approve a few ideas in Blitz or create one from a prompt.",
+  "today.empty.blitz": "Open Blitz",
+  "today.empty.prompt": "Create from prompt",
+  "today.error": "Couldn't load today's plan.",
+  "today.truncated":
+    "One of your brands has more items than the calendar returns at once, so this list may be incomplete.",
+
+  /* ------------- AI Studio · PU-LATER-005, PU-MODEL-003…005 (FR-090 adaptado) */
+  "aiStudio.title": "AI Studio",
+  "aiStudio.subtitle":
+    "Generate images and clips for this brand with your own Higgsfield or fal account. Every result lands in the Media Bank.",
+  "aiStudio.kind.label": "Type",
+  "aiStudio.kind.image": "Image",
+  "aiStudio.kind.video": "Video",
+  "aiStudio.prompt.label": "Prompt",
+  "aiStudio.prompt.placeholder":
+    "Describe the image or clip: subject, setting, light and style.",
+  "aiStudio.model.label": "Model",
+  "aiStudio.model.docs": "Model docs",
+  "aiStudio.aspect.label": "Aspect ratio",
+  "aiStudio.aspect.fromImage": "Follows the start image",
+  "aiStudio.count.label": "How many",
+  "aiStudio.duration.label": "Duration",
+  "aiStudio.duration.value": "{seconds}s",
+  "aiStudio.image.label": "Start image URL",
+  "aiStudio.image.hint":
+    "A public https:// link the provider can download. Media Bank links only work with the public media tunnel on.",
+  "aiStudio.estimate.label": "Estimated cost",
+  "aiStudio.estimate.loading": "Estimating…",
+  "aiStudio.estimate.idle": "Write a prompt to see the cost.",
+  "aiStudio.estimate.provider": "Quoted by {provider} for your account",
+  "aiStudio.estimate.priceList": "List price estimate · {basis}",
+  "aiStudio.estimate.error": "Couldn't estimate the cost.",
+  "aiStudio.estimate.overBudget": "Over this month's budget: {remaining} left.",
+  "aiStudio.budget.label": "AI budget this month",
+  "aiStudio.budget.value": "{spent} of {budget}",
+  "aiStudio.budget.reserved": "{reserved} in progress",
+  "aiStudio.budget.manage": "Manage budget",
+  "aiStudio.generate": "Generate",
+  "aiStudio.generating": "Starting…",
+  "aiStudio.generate.error": "Couldn't start the generation.",
+  "aiStudio.generate.budgetExceeded":
+    "That would go over this month's AI budget. Raise it in Settings → Models or wait for next month.",
+  "aiStudio.generate.started": "Generation started. It shows up below when it's ready.",
+  "aiStudio.setup.title": "Connect an image or video model",
+  "aiStudio.setup.body":
+    "AI Studio uses your own Higgsfield or fal account. Add a key in Settings → Models to start.",
+  "aiStudio.setup.action": "Open Settings → Models",
+  "aiStudio.setup.kindMissing": "No {kind} model is set up yet.",
+  "aiStudio.optionsError": "Couldn't load AI Studio.",
+  "aiStudio.gallery.title": "Generations",
+  "aiStudio.gallery.error": "Couldn't load your generations.",
+  "aiStudio.status.queued": "Queued",
+  "aiStudio.status.generating": "Generating",
+  "aiStudio.status.ready": "Ready",
+  "aiStudio.status.failed": "Failed",
+  "aiStudio.status.nsfw": "Blocked",
+  "aiStudio.status.canceled": "Canceled",
+  "aiStudio.card.inMediaBank": "In Media Bank",
+  "aiStudio.card.useInBlitz": "Use in Blitz",
+  "aiStudio.card.cost": "≈ {cost}",
+  "aiStudio.card.working": "The provider is working on it…",
+  "aiStudio.error.nsfw_rejected":
+    "The provider's content filter blocked the prompt or the result. You weren't charged.",
+  "aiStudio.error.generation_failed":
+    "The provider couldn't generate it. You weren't charged.",
+  "aiStudio.error.provider_unavailable": "The provider is unavailable right now.",
+  "aiStudio.error.quota_exceeded": "Your provider account is out of credits.",
+  "aiStudio.error.budget_exceeded": "Over this month's AI budget.",
+  "aiStudio.error.rate_limited": "The provider is busy. Try again in a moment.",
+  "aiStudio.error.unauthorized":
+    "The provider rejected the saved key. Check Settings → Models.",
+  "aiStudio.error.bad_request": "The provider rejected the request.",
+  "aiStudio.error.not_found": "The provider doesn't know that model or request.",
+  "aiStudio.error.timeout": "The provider didn't finish in time. It may still be billed.",
+  "aiStudio.error.provider_contract_violation":
+    "The provider answered something unexpected.",
+  "aiStudio.error.not_configured": "The model is no longer set up in Settings → Models.",
+  "aiStudio.error.download_failed": "The result couldn't be copied to your storage.",
 } as const;
 
 export type MessageKey = keyof typeof en;

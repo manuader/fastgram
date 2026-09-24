@@ -95,6 +95,9 @@ const BODIES: Readonly<Record<string, () => unknown>> = {
   "PATCH /calendar/items/{kind}/{id}": () => ({
     scheduledAtUtc: new Date("2026-10-01T15:00:00.000Z").getTime(),
   }),
+  // `PU-PUB-002`. `{platform}` también recibe el id: una plataforma basura es 404.
+  "PUT /integrations/{platform}": () => ({ clientId: "client-id" }),
+  "POST /connections/{platform}/callback": () => ({ state: "v1.x.y" }),
 };
 
 interface Operation {

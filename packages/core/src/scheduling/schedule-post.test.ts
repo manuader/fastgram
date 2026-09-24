@@ -371,6 +371,34 @@ describe("topes de caracteres — sólo los que el PRD confirma", () => {
     expect(PLATFORM_FIELD_LIMITS.youtube.caption).toBeNull();
     expect(PLATFORM_FIELD_LIMITS.linkedin.caption).toBeNull();
   });
+
+  it("X 280, Threads 500 y Facebook 2 200: los de sus adaptadores", () => {
+    expect(PLATFORM_FIELD_LIMITS.x.caption).toBe(280);
+    expect(PLATFORM_FIELD_LIMITS.threads.caption).toBe(500);
+    expect(PLATFORM_FIELD_LIMITS.facebook.caption).toBe(2200);
+    for (const [platform, max] of [
+      ["x", 280],
+      ["threads", 500],
+      ["facebook", 2200],
+    ] as const) {
+      expect(() =>
+        assertValidCopy(target({ platform, caption: "a".repeat(max) })),
+      ).not.toThrow();
+      expect(() =>
+        assertValidCopy(target({ platform, caption: "a".repeat(max + 1) })),
+      ).toThrow(DomainError);
+    }
+  });
+
+  it("cuenta por code point, como el pre-flight del publicador", () => {
+    // 280 emojis son 560 unidades UTF-16 y 280 code points.
+    expect(() =>
+      assertValidCopy(target({ platform: "x", caption: "😀".repeat(280) })),
+    ).not.toThrow();
+    expect(() =>
+      assertValidCopy(target({ platform: "x", caption: "😀".repeat(281) })),
+    ).toThrow(DomainError);
+  });
 });
 
 // ───────────────────────────────────────────────────────────────────────────

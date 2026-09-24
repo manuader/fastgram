@@ -153,4 +153,37 @@ describe("createHandlers", () => {
     });
     expect(REFILL_WITHOUT_LLM_WHY).toContain("LLM_MODEL");
   });
+
+  it("media-import sin yt-dlp: no se monta y el arranque dice por qué", () => {
+    const why = "no responden yt-dlp (yt-dlp; YTDLP_PATH)";
+    const { handlers, unmounted } = createHandlers({
+      ...deps(null),
+      mediaImport: { kind: "unmounted", why },
+    });
+    expect(handlers[JOB_QUEUES.mediaImport]).toBeUndefined();
+    expect(unmounted).toContainEqual({ queue: JOB_QUEUES.mediaImport, why });
+  });
+
+  it("media-import con herramientas y cola: se monta; sin cola, no", () => {
+    const never = () => Promise.reject(new Error("no se llama al construir"));
+    const mounted = {
+      kind: "mounted" as const,
+      ytDlpVersion: "2026.08.19",
+      deps: {
+        downloader: { download: never },
+        inspector: { probe: never, frames: never, borderSamples: never },
+        chroma: { id: "x", remove: never },
+        backgroundRemoval: () => Promise.resolve(null),
+        tagger: () => Promise.resolve(null),
+      },
+    };
+    const queue = { enqueue: never } as unknown as NonNullable<
+      WorkerHandlerDeps["queue"]
+    >;
+    const withQueue = createHandlers({ ...deps(null), queue, mediaImport: mounted });
+    expect(withQueue.handlers[JOB_QUEUES.mediaImport]).toBeDefined();
+    const noQueue = createHandlers({ ...deps(null), mediaImport: mounted });
+    expect(noQueue.handlers[JOB_QUEUES.mediaImport]).toBeUndefined();
+    expect(noQueue.unmounted.map((u) => u.queue)).toContain(JOB_QUEUES.mediaImport);
+  });
 });

@@ -69,7 +69,12 @@ import {
 import {
   FileModelRegistry,
   OpenAiModelCatalog,
+  createGenClient,
+  genCatalog,
+  isGenProvider,
   modelRegistryPath,
+  type GenClient,
+  type GenProviderId,
 } from "@fastgram/adapters";
 import {
   MODEL_TASKS,
@@ -102,6 +107,15 @@ export interface ModelRoutesDeps {
    * no se copia, así que es un objeto vivo como `process.env`.
    */
   readonly env: SecretEnv;
+  /**
+   * `PU-MODEL-003`/`004`: el cliente de Higgsfield o fal para «Test
+   * connection». Opcional para no romper a quien arma estas deps a mano.
+   */
+  readonly genClientFor?: (config: {
+    readonly provider: GenProviderId;
+    readonly baseUrl: string;
+    readonly apiKey: string;
+  }) => GenClient;
 }
 
 export function defaultModelRoutesDeps(env: SecretEnv = process.env): ModelRoutesDeps {
@@ -109,7 +123,20 @@ export function defaultModelRoutesDeps(env: SecretEnv = process.env): ModelRoute
     registry: new FileModelRegistry({ path: modelRegistryPath(env) }),
     catalog: new OpenAiModelCatalog({ timeoutMs: MODEL_PROBE_TIMEOUT_MS }),
     env,
+    genClientFor: (config) =>
+      createGenClient({ ...config, timeoutMs: MODEL_PROBE_TIMEOUT_MS }),
   };
+}
+
+/**
+ * El catálogo verificado de un proveedor de imagen/video, de la clase de la
+ * tarea (`image` → imágenes). Sin tarea, todos. No toca la red: Higgsfield no
+ * tiene endpoint de listado y el de fal no dice qué campos acepta cada modelo.
+ */
+function genModelsFor(provider: GenProviderId, task: ModelTask | undefined) {
+  return genCatalog(provider)
+    .filter((m) => task === undefined || task === m.kind)
+    .map((m) => ({ id: m.id, ownedBy: m.label }));
 }
 
 const taskParams = z.object({ task: z.string().min(1) });
@@ -215,6 +242,20 @@ export function registerModelRoutes(
         throw new ApiRejection(404, "not_found", "model task not found");
       }
       const body = request.body;
+      // Imagen/video: el id tiene que estar en el catálogo verificado del
+      // adaptador; si no, no hay cuerpo documentado que mandarle.
+      if (
+        isGenProvider(body.provider) &&
+        taskSpec(task).kind === "genai" &&
+        !genModelsFor(body.provider, task).some((m) => m.id === body.model.trim())
+      ) {
+        throw new ApiRejection(
+          400,
+          "bad_request",
+          "Pick a model from the provider's list.",
+          { field: "model" },
+        );
+      }
       const snapshot = await registry.read();
       const result = applyTaskUpdate(
         task,
@@ -261,6 +302,50 @@ export function registerModelRoutes(
       if (!base.ok) throw badBaseUrl(base.message);
 
       const { key, source } = await keyFor(body.apiKey, body.task, base.baseUrl);
+
+      // `PU-MODEL-003`/`004`: Higgsfield y fal no hablan OpenAI. La lista es
+      // el catálogo verificado; la prueba, una llamada autenticada que no
+      // genera (el estimador de Higgsfield, la API de precios de fal).
+      const genProvider = body.provider;
+      if (isGenProvider(genProvider)) {
+        const models: ModelListOutcome = {
+          ok: true,
+          models: genModelsFor(genProvider, body.task),
+        };
+        let completion: ModelCompletionOutcome | null = null;
+        if (body.model !== undefined) {
+          if (key === undefined) {
+            completion = {
+              ok: false,
+              error: { code: "unauthorized", message: "Paste the API key to test it." },
+            };
+          } else {
+            try {
+              const client = (deps.genClientFor ?? createGenClient)({
+                provider: genProvider,
+                baseUrl: base.baseUrl,
+                apiKey: key,
+              });
+              const done = await client.checkCredentials(body.model);
+              completion = { ok: true, model: body.model, latencyMs: done.latencyMs };
+            } catch (error) {
+              request.log.info(
+                { probe: "genai", code: probeError(error).code },
+                "generation provider test failed",
+              );
+              completion = { ok: false, error: probeError(error) };
+            }
+          }
+        }
+        const result: ModelConnectionTest = {
+          ok: completion === null || completion.ok,
+          keySource: source,
+          models,
+          completion,
+        };
+        return data(result);
+      }
+
       const models = await list(base.baseUrl, key);
 
       let completion: ModelCompletionOutcome | null = null;
@@ -313,7 +398,9 @@ export function registerModelRoutes(
         provider,
         baseUrl: base.baseUrl,
         keySource: source,
-        result: await list(base.baseUrl, key),
+        result: isGenProvider(provider)
+          ? { ok: true, models: genModelsFor(provider, query.task) }
+          : await list(base.baseUrl, key),
       };
       return data(result);
     },

@@ -9,11 +9,14 @@
  */
 import type { ZodApp } from "../../server/types.js";
 
+import { registerAiStudioRoutes } from "./ai-studio.js";
+import { defaultGenAiRouteDeps, registerGenAiRoutes } from "./genai.js";
 import { registerAngleRoutes } from "./angles.js";
 import { registerBlitzRoutes } from "./blitz.js";
 import { registerBrandRoutes } from "./brand.js";
 import { registerCalendarRoutes } from "./calendar.js";
 import { registerCatalogRoutes } from "./catalog.js";
+import { registerConnectionRoutes } from "./connections.js";
 import { registerContentRoutes } from "./content.js";
 import { registerInfluencerRoutes } from "./influencers.js";
 import { registerMediaRoutes } from "./media.js";
@@ -45,8 +48,14 @@ export async function registerV1Routes(app: ZodApp): Promise<void> {
   registerWorkspaceRoutes(app);
   // `PU-MODEL-001`/`002`: registro de modelos por tarea (D-14).
   registerModelRoutes(app);
+  // `PU-MODEL-005` / `PU-LATER-005`: tope mensual y AI Studio (Higgsfield, fal).
+  const genai = defaultGenAiRouteDeps();
+  registerGenAiRoutes(app, genai);
+  registerAiStudioRoutes(app, genai);
   // `PU-BRAND-002` / `PU-CAL-001` / `PU-CAL-002`: estrategia, auto-slot y calendario.
   registerStrategyRoutes(app);
   registerCalendarRoutes(app);
+  // `PU-PUB-001`/`002`, `P3-OAUTH-002`: OAuth por marca y credenciales de las apps.
+  registerConnectionRoutes(app);
   await Promise.resolve();
 }

@@ -20,6 +20,9 @@ export const badgeVariants = cva("fg-badge", {
       youtube: "fg-badge--youtube",
       linkedin: "fg-badge--linkedin",
       reddit: "fg-badge--reddit",
+      x: "fg-badge--x",
+      threads: "fg-badge--threads",
+      facebook: "fg-badge--facebook",
     },
     size: {
       sm: "fg-badge--sm",
@@ -38,6 +41,9 @@ export const PLATFORM_TONES = [
   "youtube",
   "linkedin",
   "reddit",
+  "x",
+  "threads",
+  "facebook",
 ] as const;
 
 export type PlatformTone = (typeof PLATFORM_TONES)[number];

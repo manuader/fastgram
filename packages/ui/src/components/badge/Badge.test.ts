@@ -13,6 +13,9 @@ describe("badgeVariants", () => {
       "youtube",
       "linkedin",
       "reddit",
+      "x",
+      "threads",
+      "facebook",
     ]);
     for (const tone of PLATFORM_TONES) {
       expect(badgeVariants({ tone })).toContain(`fg-badge--${tone}`);

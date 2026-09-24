@@ -106,6 +106,20 @@
       "when": 1790008494050,
       "tag": "0014_brand_strategy",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1790008494055,
+      "tag": "0015_social_platforms",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790008494060,
+      "tag": "0016_text_box_width_fraction",
+      "breakpoints": true
     }
   ]
 }

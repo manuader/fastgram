@@ -64,6 +64,16 @@ export interface MediaInfo {
   readonly isWideGamutSdr: boolean;
   /** Imagen fija: la pista de "video" es un solo frame. Ver `STILL_IMAGE_CODECS`. */
   readonly isStillImage: boolean;
+  /**
+   * El video trae canal alfa (`PU-MEME-002`): un recorte de fondo en webm VP9
+   * o ProRes 4444. Ver {@link alphaOf}.
+   */
+  readonly hasAlpha?: boolean;
+  /**
+   * Decoder que hay que forzar para **leer** el alfa, o `null` si el de por
+   * defecto ya lo entrega. Ver {@link alphaOf}.
+   */
+  readonly alphaDecoder?: string | null;
 }
 
 interface FfprobeStream {
@@ -75,6 +85,7 @@ interface FfprobeStream {
   color_transfer?: string;
   color_primaries?: string;
   duration?: string;
+  tags?: Record<string, string>;
 }
 
 interface FfprobeOutput {
@@ -90,6 +101,38 @@ function toNumber(value: string | undefined): number | null {
   if (value === undefined) return null;
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** Formatos de píxel con canal alfa (prefijos de `ffmpeg -pix_fmts`). */
+const ALPHA_PIX_FMT = /^(yuva|rgba|argb|bgra|abgr|gbrap|ya[0-9])/;
+
+/**
+ * ¿Trae alfa, y con qué decoder se lee? — `PU-MEME-002`.
+ *
+ * Hay una trampa, verificada con ffmpeg 9.0.1 de Homebrew el 2026-09-24: en un
+ * **webm VP9 con alfa**, ffprobe reporta `pix_fmt=yuv420p` —sin alfa— porque
+ * el decoder nativo `vp9` **ignora** el canal alfa, que Matroska guarda aparte
+ * (`BlockAdditional`). Lo único que lo delata es la tag de stream
+ * `alpha_mode=1`. Y para que el alfa llegue al filtergraph hay que forzar
+ * `-c:v libvpx-vp9` **antes** del `-i`; con el nativo, el overlay tapa el
+ * fondo con negro. ProRes 4444 no tiene la trampa: declara `yuva444p…`.
+ */
+export function alphaOf(stream: {
+  codec_name?: string;
+  pix_fmt?: string;
+  tags?: Record<string, string>;
+}): { hasAlpha: boolean; alphaDecoder: string | null } {
+  const tags = stream.tags ?? {};
+  const alphaMode = tags["alpha_mode"] ?? tags["ALPHA_MODE"];
+  if (alphaMode === "1") {
+    if (stream.codec_name === "vp9")
+      return { hasAlpha: true, alphaDecoder: "libvpx-vp9" };
+    if (stream.codec_name === "vp8") return { hasAlpha: true, alphaDecoder: "libvpx" };
+  }
+  if (stream.pix_fmt !== undefined && ALPHA_PIX_FMT.test(stream.pix_fmt)) {
+    return { hasAlpha: true, alphaDecoder: null };
+  }
+  return { hasAlpha: false, alphaDecoder: null };
 }
 
 export async function probeMedia(path: string): Promise<MediaInfo> {
@@ -120,6 +163,8 @@ export async function probeMedia(path: string): Promise<MediaInfo> {
   const transfer = video?.color_transfer ?? null;
   const primaries = video?.color_primaries ?? null;
   const codec = video?.codec_name ?? null;
+  const alpha =
+    video === undefined ? { hasAlpha: false, alphaDecoder: null } : alphaOf(video);
 
   return {
     path,
@@ -142,6 +187,8 @@ export async function probeMedia(path: string): Promise<MediaInfo> {
       (primaries === "bt2020" && (transfer === null || !HDR_TRANSFERS.has(transfer))),
     isStillImage:
       codec !== null && Object.prototype.hasOwnProperty.call(STILL_IMAGE_CODECS, codec),
+    hasAlpha: alpha.hasAlpha,
+    alphaDecoder: alpha.alphaDecoder,
   };
 }
 

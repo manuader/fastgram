@@ -22,6 +22,9 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
           { href: ROUTES.settingsModels, label: tw("settings.nav.models") },
           // `PU-BRAND-002`. Literal y no `ROUTES`: `lib/nav/routes.ts` es de otro agente.
           { href: "/settings/strategy", label: tw("settings.nav.strategy") },
+          // `PU-PUB-002`: credenciales de las apps (instalación) y cuentas de la marca.
+          { href: "/settings/connections", label: tw("settings.nav.connections") },
+          { href: "/settings/integrations", label: tw("settings.nav.integrations") },
         ]}
       />
       {children}

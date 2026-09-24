@@ -34,6 +34,10 @@ export { UNTRUSTED_PREAMBLE } from "./llm/untrusted.js";
 
 /** Registro de modelos por tarea (`PU-MODEL-001`): archivo local + catálogo del proveedor. */
 export * from "./model-registry/index.js";
+export * from "./crypto/index.js";
+export * from "./integrations/index.js";
+export * from "./oauth/index.js";
+export { createLocalOAuthKit, type LocalOAuthKit } from "./oauth/kit.js";
 
 export {
   createPgBossQueue,
@@ -152,3 +156,10 @@ export {
   type BlockReason,
   type UrlPolicy,
 } from "./social-reader/website-ssrf.js";
+
+/** `PU-MEME-001`/`002`/`003`: importar por link, recortar el fondo y etiquetar. */
+export * from "./media-import/index.js";
+export * from "./background-removal/index.js";
+
+/** `PU-MODEL-003`/`004`/`005`: imagen y video con Higgsfield y fal, gasto local. */
+export * from "./genai/index.js";

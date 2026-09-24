@@ -188,6 +188,29 @@ describe("flattenTarget", () => {
     });
   });
 
+  it.each(["x", "threads", "facebook"] as const)(
+    "%s (D-09): sólo OAuth, la copy va a `caption` y nada de TikTok",
+    (platform) => {
+      const flat = flattenTarget(
+        scheduleTargetSchema.parse({ platform, connectionId: UUID_A, caption: "Texto" }),
+      );
+      expect(flat).toEqual({
+        platform,
+        connectionId: UUID_A,
+        warmedAccountId: null,
+        caption: "Texto",
+        description: null,
+        discloseAsAds: null,
+        aiContentDisclaimer: null,
+        instagramSlideshowFormat: null,
+        postingMode: null,
+        privacyLevel: null,
+        tiktokSoundId: null,
+        tiktokSoundMode: null,
+      });
+    },
+  );
+
   it("todo lo que el target no trae queda en null, nunca en undefined", () => {
     // Las columnas nullable de `posts` se escriben con `null` explícito: con
     // `exactOptionalPropertyTypes`, "ausente" y "presente en undefined" no son lo mismo y

@@ -65,7 +65,8 @@ describe("exhaustividad", () => {
   it(`son ${PUBLISH_FAILURE_REASONS.length} × ${PUBLISH_PLATFORMS.length} celdas`, () => {
     // Si alguien vacía una de las listas, el `it.each` de arriba pasa con cero
     // casos. Esto no.
-    expect(CELDAS).toHaveLength(35);
+    // 7 motivos × 8 plataformas (las cinco de `D-02` más x/threads/facebook de `D-09`).
+    expect(CELDAS).toHaveLength(56);
   });
 });
 
@@ -163,7 +164,7 @@ describe("tabla primero, juicio sólo para lo que no matchea (DP-006)", () => {
     expect(motivoNuevo.kind).toBe("escalate");
 
     const plataformaNueva = translatePublishFailure({
-      platform: "threads" as (typeof PUBLISH_PLATFORMS)[number],
+      platform: "mastodon" as (typeof PUBLISH_PLATFORMS)[number],
       failure: { reason: "post_limit_exceeded", message: "x" },
     });
     expect(plataformaNueva.kind).toBe("escalate");

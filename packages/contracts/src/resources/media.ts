@@ -145,3 +145,100 @@ export const brandKitJobSchema = z
   })
   .strict();
 export type BrandKitJob = z.infer<typeof brandKitJobSchema>;
+
+/* ------------------------------------------------------------------------ *
+ * Importar por link — `PU-MEME-001`, `PU-MEME-002`, `PU-MEME-003` (D-12)
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Motivos estables de un import fallido. Viajan en `error` del estado, **no**
+ * como código HTTP: el import es asíncrono y el `POST` ya devolvió `202`. Son
+ * los de `MEDIA_IMPORT_FAILURE_CODES` de `@fastgram/ports`, escritos dos veces
+ * porque `contracts` no importa `ports`; el test de la ruta los ata.
+ */
+export const mediaImportFailureCodeSchema = z.enum([
+  "unsupported_url",
+  "too_long",
+  "too_large",
+  "download_failed",
+]);
+
+/**
+ * `POST /media/import`. `categories` sólo para video (las de F-129 de video):
+ * pedir `green-screen-video` es pedir el clip como foreground, y es lo que
+ * dispara el recorte de fondo si no es verde. Audio no lleva categorías.
+ */
+export const mediaImportRequestSchema = z
+  .object({
+    url: z.string().min(1).max(2048),
+    kind: z.enum(["video", "audio"]),
+    categories: z.array(videoMediaCategorySchema).max(10).optional(),
+  })
+  .strict();
+export type MediaImportRequest = z.infer<typeof mediaImportRequestSchema>;
+
+export const clipTagsSchema = z
+  .object({
+    emotion: z.string(),
+    situation: z.string(),
+    people: z.number().int().nonnegative(),
+    tags: z.array(z.string()),
+  })
+  .strict();
+export type ClipTagsView = z.infer<typeof clipTagsSchema>;
+
+export const mediaImportBackgroundSchema = z.enum([
+  "not_requested",
+  "pending",
+  "green_screen",
+  "removed",
+  "needs_background_removal",
+  "failed",
+]);
+
+/** `GET /media/import/:id` (y el `202` del `POST`). */
+export const mediaImportSchema = z
+  .object({
+    importId: z.string().uuid(),
+    kind: z.enum(["video", "audio"]),
+    state: z.enum(["queued", "downloading", "imported", "failed"]),
+    sourceUrl: z.string(),
+    error: mediaImportFailureCodeSchema.optional(),
+    mediaId: mediaIdSchema.optional(),
+    /** Estado de la fila en el Media Bank (`processing` mientras se normaliza). */
+    mediaStatus: mediaStatusSchema.optional(),
+    /** El clip con alfa derivado (`PU-MEME-002`). */
+    cutoutMediaId: mediaIdSchema.optional(),
+    background: mediaImportBackgroundSchema.optional(),
+    tagging: z.enum(["pending", "tagged", "skipped", "failed"]).optional(),
+    tags: clipTagsSchema.optional(),
+    /** Sólo audio: `DATA-010` no tiene tipo audio, así que no hay fila. */
+    audioUrl: z.string().url().optional(),
+    updatedAt: msEpochSchema,
+  })
+  .strict();
+export type MediaImport = z.infer<typeof mediaImportSchema>;
+
+/** `GET /media/meta?ids=…` — hasta 100 ids separados por coma. */
+export const mediaMetaQuerySchema = z
+  .object({
+    ids: z
+      .string()
+      .min(1)
+      .max(100 * 37),
+  })
+  .strict();
+
+export const mediaMetaSchema = z
+  .object({
+    mediaId: mediaIdSchema,
+    sourceUrl: z.string().optional(),
+    tags: clipTagsSchema.optional(),
+    background: mediaImportBackgroundSchema.optional(),
+    cutoutMediaId: mediaIdSchema.optional(),
+    cutoutOf: mediaIdSchema.optional(),
+  })
+  .strict();
+export type MediaMetaView = z.infer<typeof mediaMetaSchema>;
+
+export const mediaMetaListSchema = z.array(mediaMetaSchema);

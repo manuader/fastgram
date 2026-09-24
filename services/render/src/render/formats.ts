@@ -54,6 +54,13 @@ export interface FfmpegPlan {
 export interface SourceGeometry extends Size {
   readonly durationSeconds: number | null;
   readonly hasAudio: boolean;
+  /**
+   * `PU-MEME-002`: el foreground de un `green-screen` trae canal alfa (un
+   * recorte de fondo). Sólo lo usa `planGreenScreenBase`; ausente = sin alfa.
+   */
+  readonly hasAlpha?: boolean;
+  /** Decoder a forzar para leer el alfa (`libvpx-vp9` en webm). Ver `probe.ts`. */
+  readonly alphaDecoder?: string | null;
 }
 
 function targetRect(
@@ -229,22 +236,39 @@ export function planGreenScreenBase(
   caps: FfmpegCapabilities,
 ): FfmpegPlan {
   requireBaseFilters(caps);
-  const chroma = chromaFilterName(caps);
   const canvas = payload.canvas;
   const bgPlacement = placeMedia(canvas, payload.image, inputs.background);
   const fgPlacement = placeMedia(canvas, payload.video, inputs.video);
-  const key = payload.chromaKey;
-  // ffmpeg quiere `0xRRGGBB`, no `#RRGGBB`.
-  const keyColor = `0x${key.color.slice(1)}`;
+  const hasAlpha = inputs.video.hasAlpha === true;
+
+  // El foreground: con alfa (`PU-MEME-002`, un recorte de fondo en webm VP9 o
+  // ProRes 4444) va **directo** al overlay, que respeta el canal alfa; el croma
+  // sobre un clip ya recortado no tiene verde que sacar y sólo come bordes.
+  // `format=yuva420p` fija un formato con alfa antes de escalar (ProRes llega
+  // en `yuva444p12le`). Sin alfa, el croma de siempre: esta rama no cambió y
+  // los goldens la fijan.
+  let fgChain: string;
+  if (hasAlpha) {
+    fgChain = `[1:v]format=yuva420p,${placementFilter(fgPlacement)}[fg]`;
+  } else {
+    const chroma = chromaFilterName(caps);
+    const key = payload.chromaKey;
+    // ffmpeg quiere `0xRRGGBB`, no `#RRGGBB`.
+    const keyColor = `0x${key.color.slice(1)}`;
+    fgChain = `[1:v]${chroma}=${keyColor}:${key.similarity}:${key.blend},${placementFilter(fgPlacement)}[fg]`;
+  }
 
   const graph = [
     colorSource(canvas, "canvas"),
     `[0:v]${placementFilter(bgPlacement)}[bg]`,
     `[canvas][bg]overlay=${bgPlacement.draw.x}:${bgPlacement.draw.y}[base]`,
-    `[1:v]${chroma}=${keyColor}:${key.similarity}:${key.blend},${placementFilter(fgPlacement)}[fg]`,
+    fgChain,
     `[base][fg]overlay=${fgPlacement.draw.x}:${fgPlacement.draw.y}:shortest=1[v]`,
   ].join(";");
 
+  // El decoder va **antes** del `-i` al que se aplica: con el `vp9` nativo el
+  // alfa de un webm no llega al filtergraph (ver `alphaOf` en `probe.ts`).
+  const alphaDecoder = hasAlpha ? (inputs.video.alphaDecoder ?? null) : null;
   const args = [
     ...baseArgs(),
     "-loop",
@@ -253,6 +277,7 @@ export function planGreenScreenBase(
     String(OUTPUT_FPS),
     "-i",
     inputs.backgroundPath,
+    ...(alphaDecoder === null ? [] : ["-c:v", alphaDecoder]),
     "-i",
     inputs.videoPath,
     "-filter_complex",

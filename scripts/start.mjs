@@ -26,7 +26,13 @@
  * con `tsx watch` un proceso que se cae se queda esperando cambios en vez de
  * salir, y este script no se enteraría. Para desarrollar con recarga, `--watch`.
  *
- * Flags: `--no-web`, `--no-worker`, `--watch`.
+ * Flags: `--no-web`, `--no-worker`, `--watch`, `--tunnel`.
+ *
+ * `--tunnel` (o `FASTGRAM_TUNNEL=1`, `PU-RUN-005`): antes del render levanta
+ * el proceso de media pública y `cloudflared` (ver `lib/tunnel.mjs`), y exporta
+ * la URL del túnel como `FASTGRAM_PUBLIC_URL` a render, API, worker y web. Sin
+ * túnel, `FASTGRAM_PUBLIC_URL` se borra del entorno de los hijos: una URL de un
+ * túnel que no está corriendo firmaría links muertos.
  */
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -38,6 +44,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_DATABASE_URL, issueDevWorkspaceKey } from "./lib/dev-workspace.mjs";
 import { readEnvFile } from "./lib/env-file.mjs";
+import { DEFAULT_PUBLIC_MEDIA_PORT, startTunnel } from "./lib/tunnel.mjs";
 import {
   killAllNow,
   log,
@@ -50,19 +57,30 @@ import {
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 // ── Flags ────────────────────────────────────────────────────────────────
-const KNOWN_FLAGS = new Set(["--no-web", "--no-worker", "--watch", "--help", "-h"]);
+const KNOWN_FLAGS = new Set([
+  "--no-web",
+  "--no-worker",
+  "--watch",
+  "--tunnel",
+  "--help",
+  "-h",
+]);
 const flags = new Set(process.argv.slice(2));
 const unknown = [...flags].filter((f) => !KNOWN_FLAGS.has(f));
 for (const f of unknown) process.stderr.write(`flag desconocido: ${f}\n`);
 if (unknown.length > 0 || flags.has("--help") || flags.has("-h")) {
   process.stdout.write(
     [
-      "uso: node scripts/start.mjs [--no-web] [--no-worker] [--watch]",
+      "uso: node scripts/start.mjs [--no-web] [--no-worker] [--watch] [--tunnel]",
       "",
       "  --no-web     no levanta apps/web (ni emite su key)",
       "  --no-worker  no levanta apps/worker",
       "  --watch      render, API y worker con `tsx watch` (recarga al editar;",
       "               un proceso caído NO se detecta: tsx espera cambios)",
+      "  --tunnel     URL pública https para la media (Cloudflare Tunnel): la",
+      "               necesitan Instagram y TikTok para publicar. Igual que",
+      "               FASTGRAM_TUNNEL=1. Sin cuenta: quick tunnel trycloudflare;",
+      "               con TUNNEL_TOKEN + FASTGRAM_PUBLIC_URL: named tunnel",
       "",
     ].join("\n"),
   );
@@ -144,6 +162,17 @@ for (const [k, v] of Object.entries(PERSONAL_BRAND_DEFAULTS)) {
 /** Vacío cuenta como ausente: `.env.example` trae muchas `KEY=` sin valor. */
 /** @param {string} k */
 const envValue = (k) => (env[k] === undefined || env[k] === "" ? undefined : env[k]);
+
+/**
+ * Túnel (`PU-RUN-005`). El token de un named tunnel se saca del entorno
+ * compartido acá mismo: sólo lo ve el proceso de `cloudflared`.
+ */
+const WITH_TUNNEL = flags.has("--tunnel") || envValue("FASTGRAM_TUNNEL") === "1";
+const TUNNEL_TOKEN = envValue("TUNNEL_TOKEN");
+delete env.TUNNEL_TOKEN;
+const PUBLIC_MEDIA_PORT = Number(
+  envValue("PUBLIC_MEDIA_PORT") ?? DEFAULT_PUBLIC_MEDIA_PORT,
+);
 
 const RENDER_PORT = Number(envValue("RENDER_PORT") ?? 3002);
 const API_PORT = Number(envValue("API_PORT") ?? 3001);
@@ -338,6 +367,7 @@ async function main() {
     ["render", RENDER_PORT],
     ["api", API_PORT],
     ...(WITH_WEB ? [["web", WEB_PORT]] : []),
+    ...(WITH_TUNNEL ? [["public-media", PUBLIC_MEDIA_PORT]] : []),
   ];
   for (const [name, port] of /** @type {[string, number][]} */ (ports)) {
     if (await portTaken(port)) {
@@ -437,6 +467,33 @@ async function main() {
   const tsxArgs = WATCH
     ? ["exec", "tsx", "watch", "src/main.ts"]
     : ["exec", "tsx", "src/main.ts"];
+
+  // 6b. Túnel (opcional). Antes que todo lo demás: la URL va en el entorno
+  // de cada hijo, y un proceso no se entera de una variable que cambia después.
+  /** @type {string | null} */
+  let publicUrl = null;
+  if (WITH_TUNNEL) {
+    const tunnel = await startTunnel({
+      root: ROOT,
+      env,
+      port: PUBLIC_MEDIA_PORT,
+      tunnelToken: TUNNEL_TOKEN,
+      tsxArgs,
+      watchDeath,
+      waitForLine,
+      checkAbort,
+    });
+    publicUrl = tunnel.publicUrl;
+    env.FASTGRAM_PUBLIC_URL = publicUrl;
+  } else {
+    if (envValue("FASTGRAM_PUBLIC_URL")) {
+      log(
+        "start",
+        "FASTGRAM_PUBLIC_URL se ignora sin --tunnel: publicar por URL queda apagado en esta corrida",
+      );
+    }
+    delete env.FASTGRAM_PUBLIC_URL;
+  }
 
   // 7a. Render
   checkAbort();
@@ -548,6 +605,9 @@ async function main() {
   const line = "─".repeat(44);
   process.stdout.write(
     `\n${prefix("start")} ${line}\n${prefix("start")}   FastGram listo → ${url}\n` +
+      (publicUrl === null
+        ? ""
+        : `${prefix("start")}   media pública → ${publicUrl}/public-media/…\n`) +
       `${prefix("start")}   modo ${mode} · Ctrl+C para bajar todo\n${prefix("start")} ${line}\n\n`,
   );
 }

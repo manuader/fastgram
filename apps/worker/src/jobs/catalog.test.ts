@@ -9,8 +9,8 @@ import {
 const jobs = Object.values(JOB_CATALOG) as readonly JobPolicy[];
 
 describe("catálogo de jobs — PRD §9.5", () => {
-  it("están los 21 del PRD, más brand-backgrounds (PU-MEDIA-002)", () => {
-    expect(jobs).toHaveLength(22);
+  it("están los 21 del PRD, más brand-backgrounds (PU-MEDIA-002), media-import (PU-MEME-001) y publishing-sweep (PU-PUB-008)", () => {
+    expect(jobs).toHaveLength(24);
   });
 
   it("ningún nombre de cola repetido", () => {
@@ -21,8 +21,10 @@ describe("catálogo de jobs — PRD §9.5", () => {
   });
 
   it("cada job dice dónde lo especifica el PRD", () => {
-    // `brand-backgrounds` sale del plan de uso personal, no de §9.5.
-    for (const j of jobs) expect(j.prd, j.name).toMatch(/§9\.5|PU-MEDIA-002/);
+    // `brand-backgrounds`, `media-import` y `publishing-sweep` salen del plan de
+    // uso personal, no de §9.5.
+    for (const j of jobs)
+      expect(j.prd, j.name).toMatch(/§9\.5|PU-MEDIA-002|PU-MEME-001|PU-PUB-008/);
   });
 });
 

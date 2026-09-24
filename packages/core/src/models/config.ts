@@ -255,6 +255,13 @@ export function applyTaskUpdate(
         field: "apiKey",
         message: "That does not look like an API key.",
       };
+    } else if (update.provider === "higgsfield" && !/^[^:]+:[^:]+$/.test(key)) {
+      // docs.higgsfield.ai/docs/authentication: `Key {key_id}:{key_secret}`.
+      return {
+        ok: false,
+        field: "apiKey",
+        message: "Paste the Higgsfield credential as KEY_ID:KEY_SECRET.",
+      };
     } else {
       apiKey = key;
     }
@@ -567,5 +574,42 @@ export function toPublicTaskConfig(
     apiKeyEnv: null,
     missing: [],
     updatedAt: null,
+  };
+}
+
+/* ------------------------------------------------------------------------ *
+ * Imagen y video (`PU-MODEL-003`/`004`)
+ * ------------------------------------------------------------------------ */
+
+export interface ResolvedGenAiConfig {
+  readonly task: "image" | "video";
+  readonly provider: ModelProvider;
+  readonly baseUrl: string;
+  readonly model: string;
+  readonly apiKey: string;
+}
+
+/**
+ * Con qué proveedor generar imagen o video, o `null` si la tarea no está
+ * configurada **completa** con un proveedor que tenga adaptador. No hay
+ * fallback de entorno: estas tareas nacieron con el registro.
+ */
+export function resolveGenAiConfig(
+  task: "image" | "video",
+  snapshot: ModelRegistrySnapshot,
+  secrets: SecretEnv,
+): ResolvedGenAiConfig | null {
+  const config = snapshot.tasks[task];
+  if (config === undefined) return null;
+  if (!taskSpec(task).providers.includes(config.provider)) return null;
+  if (missingFields(task, config, secrets).length > 0) return null;
+  const key = resolveApiKey(config, secrets);
+  if (key === null) return null;
+  return {
+    task,
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    model: config.model,
+    apiKey: key.key,
   };
 }

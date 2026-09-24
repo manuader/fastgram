@@ -17,6 +17,8 @@ export interface MediaCardProps {
   readonly onEditCategories?: ((item: Media) => void) | undefined;
   /** Abre la confirmación de borrado. Sin él, no hay botón. */
   readonly onDelete?: ((item: Media) => void) | undefined;
+  /** Etiquetas del modelo de visión (`PU-MEME-003`), si el clip las tiene. */
+  readonly tags?: readonly string[] | undefined;
 }
 
 /**
@@ -38,7 +40,7 @@ export interface MediaCardProps {
  *    ninguna parte es peor que ninguno. Las dos acciones que sí hay —editar
  *    categorías y borrar (`PU-MEDIA-001`)— son botones propios en el pie.
  */
-export function MediaCard({ item, onEditCategories, onDelete }: MediaCardProps) {
+export function MediaCard({ item, onEditCategories, onDelete, tags }: MediaCardProps) {
   const isImage = item.mediaType === "image";
   const category = item.categories[0];
   const notReady = item.status !== "ready";
@@ -94,6 +96,18 @@ export function MediaCard({ item, onEditCategories, onDelete }: MediaCardProps) 
             date: formatUploadedAt(item.uploadedAt),
           })}
         </span>
+        {tags !== undefined && tags.length > 0 && (
+          <span
+            className="fgw-media-card__meta truncate"
+            title={tags.join(", ")}
+            aria-label={tw("media.card.tagsLabel", { tags: tags.join(", ") })}
+          >
+            {tags
+              .slice(0, 4)
+              .map((tag) => `#${tag}`)
+              .join(" ")}
+          </span>
+        )}
         {notReady && (
           <span className="fgw-media-card__status" data-status={item.status}>
             {tw(MEDIA_STATUS_COPY[item.status])}

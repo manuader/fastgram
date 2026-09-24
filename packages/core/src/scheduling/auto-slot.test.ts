@@ -409,12 +409,36 @@ describe("planSlotConversion", () => {
     ).toEqual({ kind: "wait", reason: "connection_ambiguous" });
   });
 
-  it("X, Threads y Facebook todavía no pueden ser un post", () => {
+  it("X, Threads y Facebook (D-09) convierten con una conexión activa única", () => {
     for (const network of ["x", "threads", "facebook"] as const) {
-      expect(planSlotConversion(network, [{ id: "k", platform: network }])).toEqual({
-        kind: "wait",
-        reason: "network_not_postable",
-      });
+      expect(
+        planSlotConversion(network, [
+          { id: `k-${network}`, platform: network },
+          { id: "k-ig", platform: "instagram" },
+        ]),
+      ).toEqual({ kind: "convert", platform: network, connectionId: `k-${network}` });
     }
+  });
+
+  it("X, Threads y Facebook sin conexión o con varias, esperan", () => {
+    for (const network of ["x", "threads", "facebook"] as const) {
+      expect(planSlotConversion(network, [])).toEqual({
+        kind: "wait",
+        reason: "no_connection",
+      });
+      expect(
+        planSlotConversion(network, [
+          { id: "a", platform: network },
+          { id: "b", platform: network },
+        ]),
+      ).toEqual({ kind: "wait", reason: "connection_ambiguous" });
+    }
+  });
+
+  it("LinkedIn sigue siendo sólo slot planificado", () => {
+    expect(planSlotConversion("linkedin", [{ id: "k", platform: "linkedin" }])).toEqual({
+      kind: "wait",
+      reason: "network_not_postable",
+    });
   });
 });

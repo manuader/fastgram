@@ -43,6 +43,7 @@ import {
   type CopywriterProvider,
 } from "./discovery/refill-handler.js";
 import { createHandlers, type BrandAnalysisMount } from "./handlers.js";
+import { createAiStudioMount } from "./genai/mount.js";
 import { createHealthServer, createWorkerHealth } from "./health/server.js";
 import {
   brandReaderFromEnv,
@@ -52,6 +53,8 @@ import {
 } from "./env.js";
 import { createLlmSource, createResolvingLlm } from "./llm/registry-llm.js";
 import { JOB_CATALOG, type JobPolicy } from "./jobs/catalog.js";
+import { mountMediaImport } from "./media-import/mount.js";
+import { mountPublishing } from "./publishing/mount.js";
 import {
   createRenderServiceRenderers,
   selectWorkerRenderers,
@@ -235,8 +238,24 @@ if (textLlmAtStart === null) {
   );
 }
 
+/**
+ * `media-import` (`PU-MEME-001`): `yt-dlp` y FFmpeg locales, y el registro de
+ * modelos para etiquetar (`vision`) y recortar (`background_removal`).
+ */
+const mediaImport = await mountMediaImport({
+  env: process.env,
+  registry: new FileModelRegistry({ path: registryPath }),
+  logger,
+});
+if (mediaImport.kind === "mounted") {
+  logger.info({ ytDlp: mediaImport.ytDlpVersion }, "media-import con yt-dlp");
+}
+
 const { handlers: HANDLERS, unmounted } = createHandlers({
   db: handle.db,
+  // AI-004: el modelo se relee en cada job, así cambiarlo en Settings → Models
+  // aplica sin reiniciar el worker.
+  copyLlm: async () => (await llmSource.current("text"))?.llm ?? null,
   renderer,
   normalizationRenderer,
   storage,
@@ -247,6 +266,23 @@ const { handlers: HANDLERS, unmounted } = createHandlers({
   copywriter,
   // `PU-MEDIA-002`: para que el refill encole el kit de fondos de una marca sin media.
   queue,
+  mediaImport,
+  // `PU-PUB-003…008`: publicadores reales, tokens, túnel y guardas.
+  publishing: mountPublishing({
+    db: handle.db,
+    appRole,
+    storage,
+    clock,
+    env: process.env,
+  }),
+  // `PU-LATER-005`: AI Studio (Higgsfield, fal), polling y copia a storage.
+  aiStudio: createAiStudioMount({
+    db: handle.db,
+    storage,
+    appRole,
+    logger,
+    env: process.env,
+  }).handler,
 });
 
 for (const [name, handler] of Object.entries(HANDLERS)) {

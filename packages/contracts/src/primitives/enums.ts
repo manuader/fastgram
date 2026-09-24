@@ -44,22 +44,40 @@ export type ContentStatus = z.infer<typeof contentStatusSchema>;
 
 // --- Plataformas -------------------------------------------------------------
 
-/** `Connection.platform` · DATA-016 (PRD:2111). */
+/**
+ * `Connection.platform` · DATA-016 (PRD:2111), más `x`, `threads` y `facebook`
+ * de `D-09` (migración `0015_social_platforms.sql`), en el orden del tipo.
+ */
 export const platformSchema = z.enum([
   "tiktok",
   "instagram",
   "youtube",
   "linkedin",
   "reddit",
+  "x",
+  "threads",
+  "facebook",
 ]);
 export type Platform = z.infer<typeof platformSchema>;
 
 /**
  * `Post.platform` · DATA-020 (PRD:2126): `tiktok | instagram | youtube | reddit`,
  * "+ `linkedin` en automations". Las automations son superficie **sólo MCP**
- * (AI-015, PRD:2706), no REST v1, así que el enum de posts v1 son estos cuatro.
+ * (AI-015, PRD:2706), no REST v1, así que `linkedin` no entra.
+ *
+ * `x`, `threads` y `facebook` son de `D-09` (migración `0015_social_platforms.sql`
+ * los sumó a `post_platform`; los publicadores están en
+ * `packages/adapters/src/publishers/{x,threads,facebook}`).
  */
-export const postPlatformSchema = z.enum(["tiktok", "instagram", "youtube", "reddit"]);
+export const postPlatformSchema = z.enum([
+  "tiktok",
+  "instagram",
+  "youtube",
+  "reddit",
+  "x",
+  "threads",
+  "facebook",
+]);
 export type PostPlatform = z.infer<typeof postPlatformSchema>;
 
 /** FR-130 (PRD:1705) — publicación warmed sólo en estas dos. */

@@ -259,6 +259,9 @@ export const PLATFORM_CHIP_TONE: Readonly<Record<PostPlatform, PlatformTone>> = 
   instagram: "instagram",
   youtube: "youtube",
   reddit: "reddit",
+  x: "x",
+  threads: "threads",
+  facebook: "facebook",
 };
 
 // ---------------------------------------------------------------------------

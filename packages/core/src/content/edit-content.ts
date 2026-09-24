@@ -397,3 +397,7 @@ export * from "./text-boxes-from-build-payload.js";
 // Los swaps de media del editor (`PU-EDIT-003`): los aplican el rebuild y
 // `GET /content/:id/editable`. Mismo motivo que la línea de arriba.
 export * from "./asset-swaps.js";
+
+// `Regenerate Text` (`AI-004`): el pedido al modelo y las cajas que resultan.
+// Lo usa `content-rebuild` en modo `regenerate`. Mismo motivo que arriba.
+export * from "./regenerate-copy.js";

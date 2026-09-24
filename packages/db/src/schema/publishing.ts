@@ -13,6 +13,7 @@ import {
   jsonb,
   pgTable,
   text,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -63,11 +64,38 @@ export const connections = pgTable(
     /** Ciphertext. NUNCA se devuelve por API. */
     refreshToken: text(),
     status: connectionStatusEnum().notNull().default("active"),
+    /**
+     * `0015` — lo que no es del PRD pero la pantalla de conexiones necesita y
+     * el refresco de tokens exige (`PU-PUB-002`):
+     *
+     * - `displayName` / `avatarUrl`: la identidad que devolvió la plataforma.
+     * - `refreshTokenExpiry`: TikTok da el vencimiento del refresh token.
+     * - `tokenIssuedAt`: Instagram y Threads no refrescan un token de menos de
+     *   24 h; sin esto habría que adivinarlo por `updatedAt`, que cambia por
+     *   cualquier cosa.
+     * - `statusReason`: por qué pasó a `expired`/`revoked` (código estable,
+     *   nunca el mensaje del proveedor).
+     */
+    displayName: text(),
+    avatarUrl: text(),
+    refreshTokenExpiry: tsColumn(),
+    tokenIssuedAt: tsColumn(),
+    statusReason: text(),
     ...timestamps(),
   },
   (t) => [
     index("connections_company_created_idx").on(t.companyId, t.createdAt),
     index("connections_company_platform_idx").on(t.companyId, t.platform, t.status),
+    /**
+     * `0015`: una fila por cuenta y marca. Reconectar la misma cuenta
+     * actualiza la fila (y sus posts siguen apuntando a ella) en vez de
+     * duplicarla y dejar `connection_ambiguous` para siempre.
+     */
+    uniqueIndex("connections_company_account_uq").on(
+      t.companyId,
+      t.platform,
+      t.platformUserId,
+    ),
   ],
 );
 

@@ -95,6 +95,31 @@ export const MODEL_PROVIDER_PRESETS: readonly ModelProviderPreset[] = [
     requiresKey: false,
     local: true,
   },
+  /*
+   * `PU-MODEL-003`/`004`: imagen y video. **No** hablan la API de OpenAI:
+   * cada uno tiene su adaptador (`packages/adapters/src/{higgsfield,fal}`).
+   * Las bases son las documentadas: `https://api.higgsfield.ai`
+   * (docs.higgsfield.ai/docs/authentication) y `https://queue.fal.run`
+   * (fal.ai/docs/documentation/model-apis/inference/queue).
+   */
+  {
+    id: "higgsfield",
+    label: "Higgsfield",
+    baseUrl: "https://api.higgsfield.ai",
+    requiresKey: true,
+    local: false,
+    // docs.higgsfield.ai/docs/authentication: «Each credential consists of a
+    // key ID and a secret», y viajan juntos en `Authorization: Key id:secret`.
+    note: "Paste the credential as KEY_ID:KEY_SECRET (both parts, from console.higgsfield.ai).",
+  },
+  {
+    id: "fal",
+    label: "fal",
+    baseUrl: "https://queue.fal.run",
+    requiresKey: true,
+    local: false,
+    note: "Prices shown for fal are list prices from each model's page — an estimate.",
+  },
   {
     id: "custom",
     label: "Custom",
@@ -117,14 +142,14 @@ export function providerPreset(id: ModelProvider): ModelProviderPreset {
  * Qué hace falta para usar cada tarea.
  *
  * - `llm`: habla la API de OpenAI (chat completions). `text` y `judgment`
- *   tienen adaptador hoy; `vision` se guarda y no lo consume nadie todavía.
- * - `reserved`: imagen, video y recorte de fondo. D-14 los quiere, pero sus
- *   puertos (`ImageGen`, `VideoGen`, `BackgroundRemoval`) no existen, y los
- *   proveedores del plan (Higgsfield, fal, ComfyUI) **no** son compatibles con
- *   OpenAI. Se guarda la configuración (`custom`: base URL, modelo, key) y nada
- *   más; ni se lista ni se prueba, porque no hay un protocolo que probar.
+ *   tienen adaptador hoy; `vision` la usa el etiquetado de clips (PU-MEME-003).
+ * - `genai`: imagen y video (`PU-MODEL-003`/`004`) con los puertos `ImageGen`
+ *   y `VideoGen`. Proveedores con adaptador propio (Higgsfield, fal); el
+ *   modelo sale del catálogo verificado de cada adaptador.
+ * - `reserved`: recorte de fondo. Se guarda la configuración (fal o `custom`:
+ *   base URL, modelo, key); ni se lista ni se prueba. La usa el import de memes.
  */
-export type ModelTaskKind = "llm" | "reserved";
+export type ModelTaskKind = "llm" | "genai" | "reserved";
 
 export interface ModelTaskSpec {
   readonly task: ModelTask;
@@ -134,20 +159,27 @@ export interface ModelTaskSpec {
   readonly providers: readonly ModelProvider[];
 }
 
-const LLM_PROVIDERS: readonly ModelProvider[] = MODEL_PROVIDER_PRESETS.map((p) => p.id);
+/** Los de imagen y video: no hablan OpenAI, no sirven para texto. */
+export const GENAI_PROVIDERS: readonly ModelProvider[] = ["higgsfield", "fal"];
+const LLM_PROVIDERS: readonly ModelProvider[] = MODEL_PROVIDER_PRESETS.map(
+  (p) => p.id,
+).filter((id) => !GENAI_PROVIDERS.includes(id));
 const RESERVED_PROVIDERS: readonly ModelProvider[] = ["custom"];
 
 export const MODEL_TASK_SPECS: readonly ModelTaskSpec[] = [
   { task: "text", kind: "llm", wired: true, providers: LLM_PROVIDERS },
   { task: "judgment", kind: "llm", wired: true, providers: LLM_PROVIDERS },
-  { task: "vision", kind: "llm", wired: false, providers: LLM_PROVIDERS },
-  { task: "image", kind: "reserved", wired: false, providers: RESERVED_PROVIDERS },
-  { task: "video", kind: "reserved", wired: false, providers: RESERVED_PROVIDERS },
+  { task: "vision", kind: "llm", wired: true, providers: LLM_PROVIDERS },
+  { task: "image", kind: "genai", wired: true, providers: GENAI_PROVIDERS },
+  { task: "video", kind: "genai", wired: true, providers: GENAI_PROVIDERS },
   {
     task: "background_removal",
     kind: "reserved",
-    wired: false,
-    providers: RESERVED_PROVIDERS,
+    // PU-MEME-002: el worker recorta con fal BiRefNet cuando esta tarea apunta a
+    // la cola de fal (`https://queue.fal.run`) con key; `custom` sigue sirviendo
+    // para cualquier endpoint compatible.
+    wired: true,
+    providers: ["fal", ...RESERVED_PROVIDERS],
   },
 ];
 

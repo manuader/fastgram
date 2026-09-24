@@ -14,8 +14,8 @@
  *  - una pieza con cajas de texto se renderiza **con las cajas aplicadas**
  *    sobre el `buildPayload` (`PU-EDIT-002`: centro + ancho en % → px); lo
  *    que no cabe en el payload (dos cajas en un formato de `text` singular,
- *    `regenerate` sin modelo) cierra con `edit_not_renderable` sin llamar al
- *    renderer, en vez de declararse aplicado;
+ *    `regenerate` sin modelo, que cierra con `llm_not_configured`) cierra sin
+ *    llamar al renderer, en vez de declararse aplicado;
  *  - un job de edición que quedó en la cola `content-build` se cierra igual;
  *  - y `createHandlers` lo monta con el renderer de `content-build`.
  *
@@ -283,7 +283,9 @@ describe("una edición de cajas de texto llega al render (PU-EDIT-002)", () => {
     });
   });
 
-  it("regenerate sigue sin renderizarse: no hay modelo de copy en el worker", async () => {
+  it("regenerate sin LLM configurado no renderiza el copy viejo: llm_not_configured", async () => {
+    // El camino con modelo está en `regenerate.int.test.ts`. Acá el motor se
+    // monta sin `copyLlm`, como un worker sin modelo para la tarea `text`.
     const contentId = await enRebuild({ cajas: true });
 
     await rebuild()(ctx(jobFor(contentId, 2, "regenerate")));
@@ -292,7 +294,7 @@ describe("una edición de cajas de texto llega al render (PU-EDIT-002)", () => {
     expect((await pieza(contentId)).last_edit).toMatchObject({
       outcome: "failed",
       kind: "regenerate",
-      failureReason: "edit_not_renderable",
+      failureReason: "llm_not_configured",
     });
   });
 

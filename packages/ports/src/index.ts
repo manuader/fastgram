@@ -16,6 +16,13 @@ export * from "./media-generation.js";
 export * from "./media-renderer.js";
 export * from "./brand-background.js";
 export * from "./model-registry.js";
+export * from "./oauth.js";
+export * from "./integrations.js";
+export * from "./public-media.js";
+export * from "./media-import.js";
+export * from "./background-removal.js";
+export * from "./image-gen.js";
+export * from "./video-gen.js";
 
 /**
  * Suites de contrato de puerto.

@@ -57,9 +57,32 @@
  *   fila del contenido. Su build es normalización + thumbnail (§9.5 #7), no un
  *   render. Se marcan `FAILED` con un motivo explícito en vez de dejarlas en
  *   `BUILDING`: no cobran save, así que no hay nada que devolver.
- * - **`prompt` / `mentionBusiness`** — `AI-004` los usa para regenerar copy con
- *   un modelo antes de construir. No hay puerto `Llm` cableado acá; el payload
- *   los trae y este handler los ignora, que es mejor que fingir que los aplica.
+ * - **`prompt` / `mentionBusiness` fuera de `regenerate`** — sólo `AI-004` los
+ *   usa. Un job de otro `reason` que los traiga los ignora.
+ *
+ * ## `regenerate` (`AI-004`): el copy se reescribe acá
+ *
+ * Un job con `reason: "regenerate"` pasa por el LLM **antes** de renderizar:
+ *
+ * ```
+ *   [tx 1]  bloquear, leer cajas (guardadas o derivadas) + perfil de marca
+ *           LLM (fuera de transacción, como el render)
+ *           render con las cajas nuevas + subida
+ *   [tx 2]  bloquear, comprobar revisión, guardar las cajas nuevas, CREATED
+ * ```
+ *
+ * Las cajas nuevas se escriben **en la transacción 2**, con los archivos, y no
+ * apenas contesta el modelo: si el render fallara después, la pieza volvería a
+ * `CREATED` con los archivos viejos y las cajas nuevas — el editor mostraría un
+ * texto que el video no tiene. Juntas, o las dos o ninguna. Y como el `PATCH`,
+ * se guardan **todas** las cajas (las derivadas también): son el estado
+ * completo del texto que después lee `GET /content/:id/editable`.
+ *
+ * Un fallo del modelo cierra como cualquier rebuild fallido (`CREATED`, los
+ * archivos de antes, sin reembolso) con un código propio: `llm_not_configured`
+ * sin modelo para la tarea `text`, `llm_failed` si el proveedor falló (se
+ * reintenta si el error es transitorio), `copy_rejected` si la respuesta no
+ * pasó la validación de `core`.
  *
  * ## El mismo motor sirve a `content-rebuild`
  *
@@ -83,12 +106,17 @@
  */
 
 import {
+  isBlitzContentType,
   parseContentBuildJob,
+  type BlitzContentType,
   type ContentBuildJob,
   type ContentTextBox,
+  type CopyBrandProfile,
   type SaveBucket,
 } from "@fastgram/core";
 import {
+  companyProfileRepository,
+  companyRepository,
   contentBuildStore,
   contentRepository,
   contentTextBoxRepository,
@@ -110,6 +138,11 @@ import { canonicalObjectUrl } from "@fastgram/adapters";
 import { mediaUrlsOf, workspaceMediaAuthorization } from "./media-authorization.js";
 
 import { refundContentSave } from "../support/quota.js";
+import {
+  regenerateTextBoxes,
+  regenerationBoxesOf,
+  type CopyLlmProvider,
+} from "./regenerate.js";
 import { toEditedRenderJob, toRenderJob } from "./render-job.js";
 
 /** Lo mínimo que el handler necesita loguear. `pino` lo cumple. */
@@ -133,6 +166,15 @@ export interface ContentBuildDeps {
   readonly logger: BuildLogger;
   /** Prefijo de las claves del bucket, sin barra final. */
   readonly objectPrefix?: string;
+  /**
+   * `AI-004`: el LLM de la tarea `text`, resuelto **en cada job**. Sin él (o si
+   * devuelve `null`) un `regenerate` cierra con `llm_not_configured` y la
+   * versión anterior: nunca se renderiza el copy viejo declarándolo regenerado
+   * (trampa 30).
+   */
+  readonly copyLlm?: CopyLlmProvider | undefined;
+  /** Sólo tests: la marca del contenedor de `containUntrusted`. */
+  readonly fence?: (() => string) | undefined;
 }
 
 /**
@@ -235,6 +277,17 @@ interface BuildSubject {
    * `buildPayload` original.
    */
   readonly studioState?: unknown;
+  /**
+   * Sólo en un `regenerate`: lo que el LLM necesita, leído con la fila
+   * bloqueada. `boxes` son las guardadas o, si no hay, las derivadas del
+   * payload — las mismas que el editor ve en `GET /content/:id/editable`.
+   */
+  readonly regenerate?: {
+    readonly contentType: BlitzContentType;
+    readonly boxes: readonly ContentTextBox[];
+    readonly businessName: string;
+    readonly profile: CopyBrandProfile;
+  };
 }
 
 type ReadOutcome =
@@ -376,19 +429,43 @@ export function createContentRenderHandler(
         const boxes = await listAllTextBoxes(tx, job.companyId, job.contentId);
 
         // `regenerate` (AI-004) reescribe el copy con un modelo **antes** de
-        // construir, y este worker no lo hace. Renderizar las cajas tal como
-        // están produciría la pieza de antes con `lastEdit.kind =
-        // "regenerate"` y `outcome = "applied"`: una regeneración que dice
-        // estar aplicada y no cambió una letra (trampa 30). Sigue cerrándose
-        // como rebuild fallido hasta que el copy se regenere acá.
-        if (boxes.length > 0 && job.reason === "regenerate")
+        // construir. Sea cual sea la pieza —con cajas guardadas o sin ellas—
+        // pasa por el LLM: renderizar lo que ya estaba produciría la pieza de
+        // antes con `lastEdit.kind = "regenerate"` y `outcome = "applied"`, una
+        // regeneración que dice estar aplicada y no cambió una letra (trampa 30).
+        if (job.reason === "regenerate") {
+          const current = regenerationBoxesOf(boxes, row.buildPayload);
+          if (current.length === 0 || !isBlitzContentType(row.type))
+            return {
+              kind: "fail",
+              failure: permanent(
+                "regenerate sobre una pieza sin texto que reescribir",
+                "edit_not_renderable",
+              ),
+            };
+          const scope = { companyId: job.companyId };
+          const company = await companyRepository.load(tx, scope);
+          // `company_profiles` tiene un único índice por `companyId`: la
+          // primera fila es la fila (mismo criterio que el refill de Blitz).
+          const profile = (await companyProfileRepository.list(tx, scope, { limit: 1 }))
+            .items[0];
           return {
-            kind: "fail",
-            failure: permanent(
-              "regenerate necesita reescribir el copy con un modelo y este worker no lo hace",
-              "edit_not_renderable",
-            ),
+            kind: "build",
+            subject: {
+              buildPayload: row.buildPayload,
+              contentType: row.type,
+              revision: row.revision,
+              textBoxes: current,
+              studioState: row.studioState,
+              regenerate: {
+                contentType: row.type,
+                boxes: current,
+                businessName: company?.name ?? "",
+                profile: profile ?? {},
+              },
+            },
           };
+        }
 
         return {
           kind: "build",
@@ -413,25 +490,64 @@ export function createContentRenderHandler(
     });
   }
 
-  /** Transacción 2, camino feliz. Devuelve `false` si el resultado quedó obsoleto. */
+  /**
+   * Transacción 2, camino feliz. Devuelve `false` si el resultado quedó obsoleto.
+   *
+   * Con `regenerated` (`AI-004`) guarda además las cajas nuevas, **en la misma
+   * transacción** que los archivos y con la misma comprobación de `revision`:
+   * como un `PATCH` del usuario, pero sólo si el render que las muestra llegó.
+   */
   async function commit(
     job: ContentBuildJob,
     files: readonly string[],
     thumbnailUrl: string | undefined,
+    regenerated: readonly ContentTextBox[] | null,
   ): Promise<boolean> {
     return inCompany(job.companyId, async (tx) => {
-      const row = await contentBuildStore.lockContent(
-        tx,
-        { companyId: job.companyId },
-        job.contentId,
-      );
+      const scope = { companyId: job.companyId };
+      const row = await contentBuildStore.lockContent(tx, scope, job.contentId);
       if (row === null || row.revision !== job.revision || row.status !== "BUILDING")
         return false;
 
-      await contentRepository.update(tx, { companyId: job.companyId }, job.contentId, {
+      if (regenerated !== null) {
+        for (const box of regenerated) {
+          // `upsert` y no `update`, por lo mismo que el `PATCH`: la PK es
+          // `(contentId, id)` y dos piezas del workspace pueden tener las dos
+          // una `slide-0-text-0`. Una pieza de Blitz no tiene filas todavía.
+          const written = await contentTextBoxRepository.upsert(tx, scope, {
+            id: box.id,
+            contentId: job.contentId,
+            ...(box.slideIndex === undefined ? {} : { slideIndex: box.slideIndex }),
+            text: box.text,
+            position: box.position,
+            widthPercent: box.widthPercent,
+            font: box.font,
+            color: box.color,
+            stroke: box.stroke,
+            background: box.background,
+          });
+          // `null` = la fila existe en otro workspace. La pieza ya se resolvió
+          // con scope, así que no debería pasar; si pasa, no se escribe nada.
+          if (written === null)
+            throw new Error("una caja regenerada choca con una fila de otro workspace");
+        }
+      }
+
+      await contentRepository.update(tx, scope, job.contentId, {
         status: "CREATED",
         files: [...files],
         ...(thumbnailUrl === undefined ? {} : { thumbnailUrl }),
+        // La API ya lo dejó `applied` al encolar; se reescribe con la hora del
+        // cierre para que diga cuándo llegó el copy nuevo.
+        ...(regenerated === null
+          ? {}
+          : {
+              lastEdit: {
+                at: deps.clock.nowMs(),
+                outcome: "applied",
+                kind: "regenerate",
+              },
+            }),
       });
       return true;
     });
@@ -607,9 +723,51 @@ export function createContentRenderHandler(
     const uploaded: StorageKey[] = [];
     const files: string[] = [];
     let thumbnailUrl: string | undefined;
+    let regenerated: readonly ContentTextBox[] | null = null;
 
-    if (outcome.kind === "build") {
-      const boxes = outcome.subject.textBoxes ?? [];
+    // `AI-004`: el copy nuevo, antes de mapear y renderizar. Fuera de toda
+    // transacción, como el render: un modelo tarda segundos.
+    const regen = outcome.kind === "build" ? outcome.subject.regenerate : undefined;
+    if (regen !== undefined) {
+      const llm = deps.copyLlm === undefined ? null : await deps.copyLlm();
+      if (llm === null) {
+        failure = permanent(
+          "no hay LLM configurado para la tarea `text` (Settings → Models)",
+          "llm_not_configured",
+        );
+      } else {
+        try {
+          const result = await regenerateTextBoxes(
+            llm,
+            {
+              contentType: regen.contentType,
+              boxes: regen.boxes,
+              businessName: regen.businessName,
+              profile: regen.profile,
+              mentionBusiness: job.mentionBusiness,
+              userPrompt: job.prompt,
+            },
+            deps.fence,
+          );
+          if (result.ok) {
+            regenerated = result.boxes;
+            deps.logger.info({ ...base, model: result.model }, "copy regenerado");
+          } else {
+            failure = permanent(
+              `el modelo ${result.model} devolvió un copy inválido: ${result.reason}`,
+              "copy_rejected",
+            );
+          }
+        } catch (error: unknown) {
+          // Transitorio o no lo decide `classify`; el código que sale por
+          // `lastEdit` es uno solo, sin texto del proveedor.
+          failure = { ...classify(error), code: "llm_failed" };
+        }
+      }
+    }
+
+    if (outcome.kind === "build" && failure === null) {
+      const boxes = regenerated ?? outcome.subject.textBoxes ?? [];
       const studioState = outcome.subject.studioState ?? null;
       // Un rebuild pasa por el camino editado si hay cajas **o** swaps de
       // media: una pieza sin cajas también puede haber cambiado de fondo.
@@ -707,7 +865,7 @@ export function createContentRenderHandler(
     }
 
     if (failure === null) {
-      const committed = await commit(job, files, thumbnailUrl);
+      const committed = await commit(job, files, thumbnailUrl, regenerated);
       if (committed) {
         deps.logger.info({ ...base, files: files.length }, "build completado");
         return;

@@ -12,6 +12,8 @@ import {
   itemsByDay,
   monthRange,
   movedInstant,
+  NETWORK_CHIP_COLOR,
+  NETWORK_LABEL,
   queryRange,
   resolveDrop,
   wallTimeToUtc,
@@ -107,5 +109,18 @@ describe("rangos y reparto", () => {
     const byDay = itemsByDay([late, early], BA);
     // 01:00Z del 24 es el 23 a las 22:00 en BA.
     expect(byDay.get("2026-09-23")?.map((i) => i.at)).toEqual([early.at, late.at]);
+  });
+});
+
+describe("redes: tono y etiqueta", () => {
+  it("cada red pinta con su token de @fastgram/ui, incluidas X, Threads y Facebook", () => {
+    for (const [network, color] of Object.entries(NETWORK_CHIP_COLOR)) {
+      expect(color).toBe(`var(--fg-platform-${network})`);
+    }
+    expect(NETWORK_LABEL).toMatchObject({
+      x: "X",
+      threads: "Threads",
+      facebook: "Facebook",
+    });
   });
 });

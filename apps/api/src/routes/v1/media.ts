@@ -85,6 +85,7 @@ import {
   type UploadRejection,
 } from "../../support/upload-reservations.js";
 import { toMedia } from "../../support/serializers.js";
+import { registerMediaImportRoutes } from "./media-import.js";
 import { crossTenant, data, idempotencyKeyOf, page, withIdempotency } from "./shared.js";
 import type { ZodApp } from "../../server/types.js";
 
@@ -158,6 +159,9 @@ type PatchOutcome =
 
 export function registerMediaRoutes(app: ZodApp): void {
   const { clock, idempotency, limiter, storage, queue } = app.deps;
+
+  // `PU-MEME-001`: importar por link (`POST /media/import`, estado y metadata).
+  registerMediaImportRoutes(app);
 
   // ── POST /media/upload-url ──
   app.post(

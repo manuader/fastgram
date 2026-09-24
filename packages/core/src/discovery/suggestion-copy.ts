@@ -75,7 +75,7 @@ export interface SuggestionCopyInput {
 export const SUGGESTION_COPY_SCHEMA_NAME = "blitz_suggestion_copy";
 
 /** Lo que el modelo tiene que hacer con cada formato. Guía de redacción, sin números del PRD. */
-const FORMAT_GUIDE: Readonly<Record<BlitzContentType, string>> = {
+export const FORMAT_GUIDE: Readonly<Record<BlitzContentType, string>> = {
   slideshow:
     "A TikTok/Instagram photo slideshow. Write one short text per slide; the first slide is the hook that makes people swipe.",
   "wall-of-text":

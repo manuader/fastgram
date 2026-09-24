@@ -146,12 +146,19 @@ export const influencerAssetKindEnum = pgEnum(
 
 // ───────────────────────── DATA-016 · Connection ─────────────────────────
 
+/**
+ * `x`, `threads` y `facebook` los suma `0015_social_platforms.sql` (`D-09`), al
+ * final: `ALTER TYPE … ADD VALUE` no reordena, y el orden de acá es el del tipo.
+ */
 export const SOCIAL_PLATFORM = [
   "tiktok",
   "instagram",
   "youtube",
   "linkedin",
   "reddit",
+  "x",
+  "threads",
+  "facebook",
 ] as const;
 export const socialPlatformEnum = pgEnum("social_platform", SOCIAL_PLATFORM);
 
@@ -194,6 +201,10 @@ export const POST_PLATFORM = [
   "youtube",
   "reddit",
   "linkedin",
+  // `0015_social_platforms.sql` (`D-09`).
+  "x",
+  "threads",
+  "facebook",
 ] as const;
 export const postPlatformEnum = pgEnum("post_platform", POST_PLATFORM);
 

@@ -19,12 +19,16 @@
  */
 import { DomainError } from "../errors.js";
 
+/** `D-02`, más `x`, `threads` y `facebook` de `D-09` (migración `0015`). */
 export const PLATFORMS = [
   "instagram",
   "tiktok",
   "youtube",
   "linkedin",
   "reddit",
+  "x",
+  "threads",
+  "facebook",
 ] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
@@ -63,6 +67,10 @@ export const SCHEDULING_ERROR_CODES = {
  * `null`, que significa "sin verificar", **no** "sin límite". Poner un número
  * a ojo produciría un rechazo de la plataforma que el pre-flight no vería
  * venir, que es justo lo que `EXT-007` existe para evitar.
+ *
+ * X (280), Threads (500) y Facebook (2 200) son los de sus adaptadores
+ * (`packages/adapters/src/publishers/*`, con la doc citada allí). El de
+ * Facebook es un techo conservador tomado de Instagram: Meta no publica uno.
  */
 export const PLATFORM_FIELD_LIMITS: Readonly<
   Record<Platform, { caption: number | null; description: number | null }>
@@ -72,6 +80,9 @@ export const PLATFORM_FIELD_LIMITS: Readonly<
   youtube: { caption: null, description: null },
   linkedin: { caption: null, description: null },
   reddit: { caption: null, description: null },
+  x: { caption: 280, description: null },
+  threads: { caption: 500, description: null },
+  facebook: { caption: 2_200, description: null },
 };
 
 /** `FR-060`: `Send to Inbox` / `Post Directly`. Sólo TikTok OAuth. */
@@ -354,35 +365,42 @@ function isBlank(value: string | undefined): boolean {
   return value === undefined || value.trim().length === 0;
 }
 
-/** Topes de caracteres, donde el PRD los da. Ver `PLATFORM_FIELD_LIMITS`. */
+/**
+ * Topes de caracteres, donde el PRD o el adaptador los dan. Ver
+ * `PLATFORM_FIELD_LIMITS`.
+ *
+ * Se cuenta **por code point**, como el pre-flight de los publicadores
+ * (`assertPublishable`): `string.length` cuenta unidades UTF-16 y un emoji
+ * fuera del BMP valdría dos, así que el dominio rechazaría lo que el
+ * publicador acepta.
+ */
 export function assertValidCopy(target: PlatformTarget): void {
   const limits = PLATFORM_FIELD_LIMITS[target.platform];
-  if (
-    limits.caption !== null &&
-    target.caption !== undefined &&
-    target.caption.length > limits.caption
-  ) {
+  const captionLength = target.caption === undefined ? 0 : codePoints(target.caption);
+  if (limits.caption !== null && captionLength > limits.caption) {
     throw new DomainError(
       "out_of_range",
       `The ${target.platform} caption must be ${limits.caption} characters or fewer.`,
-      { platform: target.platform, length: target.caption.length, max: limits.caption },
+      { platform: target.platform, length: captionLength, max: limits.caption },
     );
   }
-  if (
-    limits.description !== null &&
-    target.description !== undefined &&
-    target.description.length > limits.description
-  ) {
+  const descriptionLength =
+    target.description === undefined ? 0 : codePoints(target.description);
+  if (limits.description !== null && descriptionLength > limits.description) {
     throw new DomainError(
       "out_of_range",
       `The ${target.platform} description must be ${limits.description} characters or fewer.`,
       {
         platform: target.platform,
-        length: target.description.length,
+        length: descriptionLength,
         max: limits.description,
       },
     );
   }
+}
+
+function codePoints(value: string): number {
+  return [...value].length;
 }
 
 // ───────────────────────────────────────────────────────────────────────────

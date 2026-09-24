@@ -46,6 +46,8 @@
  * es de `core`, que sabe cuántas conexiones hay).
  */
 
+import { PortError } from "./errors.js";
+
 /*
  * Las listas de este archivo están en runtime —y los tipos derivados de ellas—
  * por la misma razón que `ACQUISITION_TIERS` en `social-reader.ts`: cada una
@@ -55,13 +57,20 @@
  * El orden es el del `CREATE TYPE` de la base.
  */
 
-/** `D-02` · enum `social_platform` (`DATA-016`). */
+/**
+ * `D-02` · enum `social_platform` (`DATA-016`), más las tres redes de `D-09`
+ * que suma la migración `0015` (`x`, `threads`, `facebook`, en ese orden: el
+ * `ALTER TYPE … ADD VALUE` las agrega al final).
+ */
 export const PUBLISH_PLATFORMS = [
   "tiktok",
   "instagram",
   "youtube",
   "linkedin",
   "reddit",
+  "x",
+  "threads",
+  "facebook",
 ] as const;
 export type PublishPlatform = (typeof PUBLISH_PLATFORMS)[number];
 
@@ -128,6 +137,27 @@ export interface SocialPublishCapabilities {
    * significa que la plataforma no distingue.
    */
   readonly requiredAccountKinds: readonly string[];
+  /**
+   * De dónde tiene que salir la media que se le pasa en {@link PublishMedia.urls}.
+   *
+   * - `public_url` (default): la plataforma **baja** la media ella misma
+   *   (Instagram: «We cURL media used in publishing attempts»; Threads; el
+   *   `file_url` de los Reels de Facebook; las fotos de TikTok por
+   *   `PULL_FROM_URL`). Tiene que ser una URL que alguien de afuera alcance:
+   *   el puerto `PublicMediaUrls`.
+   * - `private_url`: el adaptador baja los bytes y los sube él (X, video de
+   *   TikTok por `FILE_UPLOAD`). Alcanza con una URL firmada del propio
+   *   storage, y no hace falta túnel.
+   */
+  readonly mediaSource?: "public_url" | "private_url";
+  /**
+   * Excepciones por tipo de media a {@link mediaSource}. TikTok: el video se
+   * sube (`FILE_UPLOAD`, alcanza una URL privada) y las fotos se traen
+   * (`PULL_FROM_URL`, pública y de dominio verificado).
+   */
+  readonly mediaSourceByKind?: Readonly<
+    Partial<Record<PublishMediaKind, "public_url" | "private_url">>
+  >;
 }
 
 /**
@@ -154,6 +184,13 @@ export interface PublishAccountRef {
   readonly accountId: string;
   /** Credencial ya descifrada. Nunca se loguea ni se devuelve (`NFR-007`). */
   readonly accessToken?: string;
+  /**
+   * El id de la cuenta **en la plataforma** (`connections.platformUserId`): el
+   * IG user id, el Threads user id o el id de la Página de Facebook que va en
+   * la ruta de la API. Las plataformas que lo deducen del token (X, TikTok) lo
+   * ignoran.
+   */
+  readonly platformUserId?: string;
 }
 
 export interface PublishMedia {
@@ -309,3 +346,33 @@ export interface SocialPublisher {
    */
   fetchMetrics(refs: readonly PublishRef[]): Promise<readonly PostMetrics[]>;
 }
+
+/* ------------------------------------------------------------------------ *
+ * Entrega incierta
+ * ------------------------------------------------------------------------ */
+
+/**
+ * La llamada falló **en un punto donde la plataforma pudo haber publicado
+ * igual**: un timeout o un 5xx en el paso que publica (`media_publish`,
+ * `threads_publish`, `upload_phase=finish`, `POST /2/tweets`).
+ *
+ * Es la distinción que hace posible reintentar sin duplicar (`NFR-005`,
+ * `NFR-015`): un `PortError` común con `isRetryable` dice «no llegó nada, se
+ * puede volver a intentar»; éste dice «no se sabe», y **nunca** se reintenta
+ * solo aunque el código sea transitorio.
+ */
+export class PublishDeliveryUncertainError extends PortError {
+  readonly deliveryUncertain = true as const;
+
+  override get isRetryable(): boolean {
+    return false;
+  }
+}
+
+export function isPublishDeliveryUncertain(
+  e: unknown,
+): e is PublishDeliveryUncertainError {
+  return e instanceof PublishDeliveryUncertainError;
+}
+
+export * from "./connection-tokens.js";

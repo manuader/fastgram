@@ -23,7 +23,16 @@ import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const useColor = process.stdout.isTTY === true && process.env.NO_COLOR === undefined;
-const COLORS = { render: 35, api: 36, worker: 33, web: 32, start: 1, setup: 90 };
+const COLORS = {
+  render: 35,
+  api: 36,
+  worker: 33,
+  web: 32,
+  media: 34,
+  tunnel: 94,
+  start: 1,
+  setup: 90,
+};
 
 /** @param {string} name */
 export function prefix(name) {

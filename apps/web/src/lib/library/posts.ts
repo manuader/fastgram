@@ -86,6 +86,9 @@ export const POST_PLATFORM_COPY: Readonly<Record<PostPlatform, CopyKey>> = {
   instagram: "posts.platform.instagram",
   youtube: "posts.platform.youtube",
   reddit: "posts.platform.reddit",
+  x: "posts.platform.x",
+  threads: "posts.platform.threads",
+  facebook: "posts.platform.facebook",
 };
 
 /**

@@ -1033,10 +1033,12 @@ export function registerContentRoutes(app: ZodApp): void {
       // No hace falta adaptador de LLM acá, al revés que en
       // `POST /blitz/angles/generate`: AI-004 reescribe la copy y **rehace la
       // pieza**, y §9.5 #4 pone ese trabajo en la cola `content-rebuild`. La
-      // ruta sólo valida, sube la `revision` y encola. **Hoy el worker no tiene
-      // modelo de copy**: el rebuild cierra la regeneración como fallida
-      // (`lastEdit.outcome = "failed"`) y la pieza vuelve a `CREATED` con su
-      // versión anterior — ver `apps/worker/src/content/rebuild-handler.ts`.
+      // ruta sólo valida, sube la `revision` y encola. El worker reescribe el
+      // copy con el LLM de la tarea `text`, guarda las cajas nuevas junto con
+      // el render y cierra `CREATED`; si el modelo falta o falla, la pieza
+      // vuelve a su versión anterior con `lastEdit` fallido
+      // (`llm_not_configured`/`llm_failed`/`copy_rejected`) — ver
+      // `apps/worker/src/content/build-handler.ts`.
       if (queue === undefined) return queueUnavailable(reply);
 
       const { id } = request.params;

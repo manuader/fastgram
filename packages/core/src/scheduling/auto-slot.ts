@@ -327,16 +327,19 @@ export function planAutoSlots(params: PlanAutoSlotsParams): readonly AutoSlotOut
 // ───────────────────────────────────────────────────────────────────────────
 
 /**
- * Las redes que hoy pueden ser un `Post` por el flujo de `FR-060`
- * (`POST /content/:id/schedule` acepta `tiktok`, `instagram`, `youtube` y
- * `reddit`). X, Threads y Facebook no están en el enum `post_platform`: el
- * sprint 3 lo amplía junto con sus adaptadores. LinkedIn está en el enum pero
- * el contrato de programación no lo acepta (entra por automations). Hasta
- * entonces esas redes sólo existen como slot planificado.
+ * Las redes de la estrategia que hoy pueden ser un `Post` por el flujo de
+ * `FR-060` (`POST /content/:id/schedule`). X, Threads y Facebook entraron con
+ * sus adaptadores (`D-09`, migración `0015`). LinkedIn está en el enum
+ * `post_platform` pero el contrato de programación no lo acepta (entra por
+ * automations): sigue siendo sólo slot planificado. Reddit se puede programar
+ * pero no es una red de la estrategia.
  */
 export const POSTABLE_NETWORKS: readonly StrategyNetwork[] = [
   "instagram",
   "tiktok",
+  "x",
+  "threads",
+  "facebook",
   "youtube",
 ];
 

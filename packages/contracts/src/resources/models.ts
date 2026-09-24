@@ -49,6 +49,9 @@ export const modelProviderSchema = z.enum([
   "ollama",
   "lmstudio",
   "custom",
+  // Imagen y video (`PU-MODEL-003`/`004`): adaptador propio, no OpenAI.
+  "higgsfield",
+  "fal",
 ]);
 export type ModelProvider = z.infer<typeof modelProviderSchema>;
 
@@ -74,8 +77,11 @@ export type ModelKeyInfo = z.infer<typeof modelKeyInfoSchema>;
 
 export const modelTaskConfigSchema = z.object({
   task: modelTaskSchema,
-  /** `llm` = habla la API de OpenAI; `reserved` = se guarda, sin adaptador. */
-  kind: z.enum(["llm", "reserved"]),
+  /**
+   * `llm` = habla la API de OpenAI; `genai` = imagen/video con adaptador propio
+   * (Higgsfield, fal); `reserved` = se guarda, sin adaptador.
+   */
+  kind: z.enum(["llm", "genai", "reserved"]),
   /** Algo en el código la usa hoy. */
   wired: z.boolean(),
   status: z.enum(["ready", "incomplete", "unset"]),

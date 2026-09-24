@@ -28,6 +28,7 @@ import type { BrandSynthesizer } from "./brand/synthesizer.js";
 import { createSnapshotPurgeHandler } from "./brand/snapshot-purge-handler.js";
 import { createContentBuildHandler, type BuildLogger } from "./content/build-handler.js";
 import { createContentRebuildHandler } from "./content/rebuild-handler.js";
+import type { CopyLlmProvider } from "./content/regenerate.js";
 import type { SuggestionCopywriter } from "./discovery/copywriter.js";
 import {
   REFILL_WITHOUT_LLM_WHY,
@@ -48,9 +49,19 @@ import { createInfluencerPipelineHandler } from "./influencers/pipeline-handler.
 import { createQuotaResetHandler } from "./jobs/quota-reset-handler.js";
 import { createMediaNormalizationHandler } from "./media/normalization-handler.js";
 import { createPublishHandler } from "./publishing/publish-handler.js";
+import type { PublishingMount } from "./publishing/mount.js";
+import { createPublishingSweepHandler } from "./publishing/sweep-handler.js";
+import { createWatchHandler } from "./publishing/watch-handler.js";
+import { createMediaImportHandler } from "./media-import/handler.js";
+import type { MediaImportMount } from "./media-import/mount.js";
 
 export interface WorkerHandlerDeps {
   readonly db: Database;
+  /**
+   * El LLM de copy para `Regenerate Text` (AI-004), resuelto en cada job desde el
+   * registro de modelos. Sin él, un regenerate cierra con `llm_not_configured`.
+   */
+  readonly copyLlm?: CopyLlmProvider;
   /**
    * El de `content-build` **y** `content-rebuild`: `HttpMediaRenderer` contra
    * `services/render` si el entorno lo configura, `MemoryMediaRenderer` si no.
@@ -92,6 +103,23 @@ export interface WorkerHandlerDeps {
    * sin generador.
    */
   readonly brandBackgrounds?: BrandBackgroundGenerator | null;
+  /**
+   * `PU-PUB-003…008`. Publicadores reales, tokens, media pública y huellas
+   * (`publishing/mount.ts`). Ausente = el comportamiento de antes: mapa vacío,
+   * sin guardas, sin watcher ni barrido.
+   */
+  readonly publishing?: PublishingMount;
+  /**
+   * `PU-MEME-001`. `yt-dlp` + FFmpeg + proveedores, o por qué no se monta
+   * (`media-import/mount.ts`). Ausente = no se monta y no se reporta (tests
+   * que no lo miran). Necesita `queue` para encolar la normalización.
+   */
+  readonly mediaImport?: MediaImportMount;
+  /**
+   * `PU-LATER-005`. El handler de `ai-studio-generation` (`genai/mount.ts`).
+   * Ausente = no se monta (tests que no lo miran).
+   */
+  readonly aiStudio?: JobHandler<unknown>;
 }
 
 export type BrandAnalysisMount =
@@ -176,6 +204,7 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
       clock,
       appRole,
       logger,
+      ...(deps.copyLlm === undefined ? {} : { copyLlm: deps.copyLlm }),
     }),
     /**
      * **Con el MISMO `renderer` que `content-build`, no con el de
@@ -194,13 +223,22 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
       clock,
       appRole,
       logger,
+      ...(deps.copyLlm === undefined ? {} : { copyLlm: deps.copyLlm }),
     }),
     [JOB_QUEUES.publishing]: createPublishHandler({
       db,
-      publishers: PUBLISHERS,
+      publishers: deps.publishing?.publishers ?? PUBLISHERS,
       clock,
       appRole,
       logger,
+      ...(deps.publishing === undefined
+        ? {}
+        : {
+            queue: deps.queue,
+            tokens: deps.publishing.tokens ?? undefined,
+            media: deps.publishing.media ?? undefined,
+            fingerprinter: deps.publishing.fingerprinter,
+          }),
     }),
     /**
      * **Sin generador, y por eso mismo hay que montarlo.**
@@ -387,6 +425,62 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
       queue: JOB_QUEUES.brandSourceAnalysis,
       why: brandAnalysisUnmountedWhy(deps.brandAnalysis.missing),
     });
+  }
+
+  /*
+   * `media-import` (`PU-MEME-001`) — **sólo con `yt-dlp` y FFmpeg** y con la
+   * cola (encola `media-normalization` en la transacción de la fila). Sin
+   * ellos, el import queda `queued`, que es verdad: nadie lo bajó.
+   */
+  if (deps.mediaImport !== undefined) {
+    if (deps.mediaImport.kind === "mounted" && deps.queue !== undefined) {
+      handlers[JOB_QUEUES.mediaImport] = createMediaImportHandler({
+        db,
+        storage,
+        queue: deps.queue,
+        clock,
+        appRole,
+        logger,
+        ...deps.mediaImport.deps,
+      });
+    } else {
+      unmounted.push({
+        queue: JOB_QUEUES.mediaImport,
+        why:
+          deps.mediaImport.kind === "unmounted"
+            ? deps.mediaImport.why
+            : "sin cola para encolar la normalización del clip importado",
+      });
+    }
+  }
+
+  /*
+   * Watcher del carril lento / inbox y barrido de publicación (`PU-PUB-006`,
+   * `PU-PUB-008`): sólo con la publicación montada y con cola (los dos
+   * encolan su próxima vuelta).
+   */
+  if (deps.publishing !== undefined && deps.queue !== undefined) {
+    handlers[JOB_QUEUES.tiktokSlowLaneWatcher] = createWatchHandler({
+      db,
+      publishers: deps.publishing.publishers,
+      queue: deps.queue,
+      clock,
+      appRole,
+      logger,
+      tokens: deps.publishing.tokens ?? undefined,
+    });
+    handlers[JOB_QUEUES.publishingSweep] = createPublishingSweepHandler({
+      db,
+      queue: deps.queue,
+      clock,
+      appRole,
+      logger,
+    });
+  }
+
+  // `PU-LATER-005`: AI Studio. Resuelve proveedor y key del registro en cada job.
+  if (deps.aiStudio !== undefined) {
+    handlers[JOB_QUEUES.aiStudioGeneration] = deps.aiStudio;
   }
 
   return { handlers, unmounted };

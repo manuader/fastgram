@@ -153,6 +153,9 @@ async function geometryOf(localPath: string): Promise<SourceGeometry> {
     height: info.height,
     durationSeconds: info.durationSeconds,
     hasAudio: info.hasAudio,
+    ...(info.hasAlpha === true
+      ? { hasAlpha: true, alphaDecoder: info.alphaDecoder ?? null }
+      : {}),
   };
 }
 
@@ -329,9 +332,16 @@ async function prepareVideo(
   workDir: string,
   name: string,
   warnings: string[],
+  /**
+   * `PU-MEME-002`: si el video trae alfa, no se normaliza. La normalización
+   * produce H.264 `yuv420p` y el alfa —todo el punto de un recorte— se pierde.
+   * Sólo el foreground de `green-screen` lo pide.
+   */
+  preserveAlpha = false,
 ): Promise<string> {
   const localPath = await config.resolveMedia(url, "video");
   if (!config.normalizeInputs) return localPath;
+  if (preserveAlpha && (await probeMedia(localPath)).hasAlpha === true) return localPath;
   const normalizedPath = path.join(workDir, `${name}.normalized.mp4`);
   const result = await normalizeMedia(localPath, normalizedPath, caps, {
     allowUntonemappedHdr: config.allowUntonemappedHdr,
@@ -394,6 +404,7 @@ async function buildBase(
       workDir,
       "video",
       warnings,
+      true,
     );
     const backgroundInfo = await probeMedia(backgroundPath);
     if (backgroundInfo.width === null || backgroundInfo.height === null) {

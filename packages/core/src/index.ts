@@ -34,4 +34,8 @@ export * from "./discovery/suggestion-copy.js";
 export * from "./discovery/plan-blitz-suggestion.js";
 export * from "./scheduling/schedule-post.js";
 export * from "./models/index.js";
+export * from "./connections/index.js";
 export * from "./brand-kit/index.js";
+export * from "./media-import/index.js";
+// `PU-MODEL-003`/`004`/`005`, `PU-LATER-005`: AI Studio, generación y tope mensual.
+export * from "./genai/index.js";

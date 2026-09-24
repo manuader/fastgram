@@ -545,7 +545,15 @@ async function occupiedAcrossBrands(
   return out;
 }
 
-const SCHEDULABLE_PLATFORMS = ["tiktok", "instagram", "youtube", "reddit"] as const;
+const SCHEDULABLE_PLATFORMS = [
+  "tiktok",
+  "instagram",
+  "youtube",
+  "reddit",
+  "x",
+  "threads",
+  "facebook",
+] as const;
 type SchedulablePlatform = (typeof SCHEDULABLE_PLATFORMS)[number];
 
 function isSchedulable(platform: string): platform is SchedulablePlatform {

@@ -14,6 +14,7 @@ import {
 import { MediaGridSkeleton } from "./MediaGridSkeleton";
 import { UploadQueue } from "./UploadQueue";
 import { BrandKitButton } from "./BrandKitButton";
+import { ImportFromLinkButton } from "./ImportFromLinkButton";
 import { tw } from "@/lib/i18n/t";
 import {
   MEDIA_TYPES,
@@ -22,6 +23,7 @@ import {
   useMediaList,
 } from "@/lib/media/media";
 import { useMediaUploadQueue } from "@/lib/media/upload/queue";
+import { useMediaMeta } from "@/lib/media/import";
 import type { Media, MediaStatus, MediaType } from "@fastgram/contracts";
 
 /** `""` es "sin filtro": un `<select>` no puede tener valor `undefined`. */
@@ -78,6 +80,10 @@ export function MyMediaBankTab() {
 
   const items = flattenMediaPages(query.data);
   const filtered = type !== ANY;
+  // `PU-MEME-003`: etiquetas de los clips importados, para las tarjetas.
+  const meta = useMediaMeta(
+    items.filter((item) => item.mediaType === "video").map((item) => item.mediaId),
+  );
 
   const liveStatus = useMemo(
     () => new Map<string, MediaStatus>(items.map((item) => [item.mediaId, item.status])),
@@ -118,6 +124,7 @@ export function MyMediaBankTab() {
       </span>
       <span className="ml-auto flex items-start gap-2">
         <BrandKitButton />
+        <ImportFromLinkButton />
         <Button
           size="sm"
           leadingIcon={<UploadGlyph className="h-4 w-4" />}
@@ -196,6 +203,7 @@ export function MyMediaBankTab() {
                   {tw("mediaUpload.empty.action")}
                 </Button>
                 <BrandKitButton size="lg" />
+                <ImportFromLinkButton size="lg" />
               </span>
             )
           }
@@ -213,6 +221,7 @@ export function MyMediaBankTab() {
               item={item}
               onEditCategories={setEditing}
               onDelete={setDeleting}
+              tags={meta.get(item.mediaId)?.tags?.tags}
             />
           ))}
         </ul>

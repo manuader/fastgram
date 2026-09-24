@@ -70,22 +70,28 @@ describe("enums literales del PRD", () => {
     expect(contentStatusSchema.options).toEqual(["BUILDING", "CREATED", "FAILED"]);
   });
 
-  it("Connection.platform · DATA-016 · PRD:2111", () => {
+  it("Connection.platform · DATA-016 · PRD:2111 + D-09 (0015)", () => {
     expect(platformSchema.options).toEqual([
       "tiktok",
       "instagram",
       "youtube",
       "linkedin",
       "reddit",
+      "x",
+      "threads",
+      "facebook",
     ]);
   });
 
-  it("Post.platform · DATA-020 · PRD:2126 — sin linkedin (sólo en automations, que son MCP)", () => {
+  it("Post.platform · DATA-020 · PRD:2126 — sin linkedin (sólo en automations, que son MCP); x, threads y facebook de D-09", () => {
     expect(postPlatformSchema.options).toEqual([
       "tiktok",
       "instagram",
       "youtube",
       "reddit",
+      "x",
+      "threads",
+      "facebook",
     ]);
   });
 

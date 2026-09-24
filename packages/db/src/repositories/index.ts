@@ -14,6 +14,7 @@ export * from "./filters.js";
 export * from "./idempotency.js";
 export * from "./workspace-directory.js";
 export * from "./strategy.js";
+export * from "./connections.js";
 
 import {
   apiKeys,

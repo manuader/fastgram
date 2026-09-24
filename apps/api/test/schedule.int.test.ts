@@ -155,6 +155,51 @@ describe("aislamiento y validación", () => {
   });
 });
 
+describe("x, threads y facebook (D-09)", () => {
+  it.each(["x", "threads", "facebook"] as const)(
+    "%s: con una conexión activa única, programar crea el post de esa red",
+    async (platform) => {
+      const [conn] = await api.handle.sql<{ id: string }[]>`
+        insert into connections (company_id, platform, platform_user_id, platform_username, scopes, publishable)
+        values (${api.data.a.companyId}, ${platform}, ${`${platform}-sched`}, ${platform}, '{}', true)
+        returning id
+      `;
+      try {
+        const res = await programar(api.data.a.contentId, {
+          targets: [{ platform, caption: "hola" }],
+        });
+        expect(res.status).toBe(201);
+        const [post] = dataOf(res) as unknown as {
+          platform: string;
+          connectionId: string;
+          caption: string;
+          accountType: string;
+        }[];
+        expect(post).toMatchObject({
+          platform,
+          connectionId: conn?.id,
+          caption: "hola",
+          accountType: "oauth",
+        });
+        expect(api.queue.forQueue(JOB_QUEUES.publishing)).toHaveLength(1);
+      } finally {
+        // Revocada y no borrada: el post la referencia (`posts_account_exclusive`).
+        await api.handle.sql`
+          update connections set status = 'revoked' where id = ${conn?.id ?? ""}
+        `;
+      }
+    },
+  );
+
+  it("x con una caption de más de 280 → 400 y no crea nada", async () => {
+    const res = await programar(api.data.a.contentId, {
+      targets: [{ platform: "x", caption: "c".repeat(281) }],
+    });
+    expect(res.status).toBe(400);
+    expect(api.queue.forQueue(JOB_QUEUES.publishing)).toHaveLength(0);
+  });
+});
+
 describe("sin cola montada", () => {
   it("responde 503 y NO crea el post", async () => {
     // El mismo criterio que `POST /content`: un post creado sin job es un post

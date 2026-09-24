@@ -530,7 +530,95 @@ describe("convertPlannedSlot (sprint 3)", () => {
         }),
       { role: APP_ROLE },
     );
-    expect(result).toEqual({ kind: "wait", reason: "network_not_postable" });
+    expect(result).toEqual({ kind: "wait", reason: "no_connection" });
     expect(api.queue.enqueued).toHaveLength(0);
   });
+
+  it("linkedin sigue sin poder ser un post: espera aunque tenga conexión", async () => {
+    const contentId = await newContent(api.data.a.companyId);
+    const slotId = await insertSlot(contentId, "linkedin");
+    await api.handle.sql`
+      insert into connections (company_id, platform, platform_user_id, platform_username, scopes, publishable)
+      values (${api.data.a.companyId}, 'linkedin', 'li-slot', 'li', '{}', true)
+    `;
+    try {
+      expect(await convert(slotId)).toEqual({
+        kind: "wait",
+        reason: "network_not_postable",
+      });
+      expect(api.queue.enqueued).toHaveLength(0);
+    } finally {
+      await api.handle.sql`
+        update connections set status = 'revoked' where platform_user_id = 'li-slot'
+      `;
+    }
+  });
+
+  it.each(["x", "threads", "facebook"] as const)(
+    "%s (D-09) con una conexión activa única pasa a post de esa red",
+    async (network) => {
+      const contentId = await newContent(api.data.a.companyId);
+      const slotId = await insertSlot(contentId, network);
+      const [conn] = await api.handle.sql<{ id: string }[]>`
+        insert into connections (company_id, platform, platform_user_id, platform_username, scopes, publishable)
+        values (${api.data.a.companyId}, ${network}, ${`${network}-slot`}, ${network}, '{}', true)
+        returning id
+      `;
+      try {
+        const result = await convert(slotId);
+        expect(result.kind).toBe("converted");
+        const [post] = await api.handle.sql<
+          { platform: string; connection_id: string; status: string }[]
+        >`
+          select p.platform, p.connection_id, p.status
+          from posts p join planned_slots s on s.post_id = p.id
+          where s.id = ${slotId}
+        `;
+        expect(post).toEqual({
+          platform: network,
+          connection_id: conn?.id,
+          status: "SCHEDULED",
+        });
+        expect(api.queue.forQueue(JOB_QUEUES.publishing)).toHaveLength(1);
+      } finally {
+        // Revocada y no borrada: el post la referencia (`posts_account_exclusive`).
+        await api.handle.sql`
+          update connections set status = 'revoked' where id = ${conn?.id ?? ""}
+        `;
+      }
+    },
+  );
 });
+
+async function insertSlot(
+  contentId: string,
+  network: (typeof plannedSlots.$inferInsert)["network"],
+): Promise<string> {
+  return withoutCompany(api.handle.db, async (tx) => {
+    const [row] = await tx
+      .insert(plannedSlots)
+      .values({
+        companyId: api.data.a.companyId,
+        contentId,
+        network,
+        scheduledAtUtc: new Date("2026-09-30T13:00:00.000Z"),
+      })
+      .returning({ id: plannedSlots.id });
+    return row?.id ?? "";
+  });
+}
+
+function convert(slotId: string) {
+  return withCompany(
+    api.handle.db,
+    api.data.a.companyId,
+    (tx) =>
+      convertPlannedSlot(tx, {
+        companyId: api.data.a.companyId,
+        slotId,
+        nowMs: NOW,
+        queue: api.queue,
+      }),
+    { role: APP_ROLE },
+  );
+}

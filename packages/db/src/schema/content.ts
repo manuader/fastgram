@@ -6,6 +6,7 @@ import { sql } from "drizzle-orm";
 import {
   check,
   index,
+  doublePrecision,
   integer,
   jsonb,
   pgTable,
@@ -130,7 +131,8 @@ export const contentTextBoxes = pgTable(
     text: varchar({ length: CONTENT_TEXT_BOX.textMaxChars }).notNull(),
     /** `{x, y}` en 0–100. */
     position: jsonb().notNull(),
-    widthPercent: integer().notNull(),
+    /** Admite decimales (migración 0016): el editor deriva el ancho de px. */
+    widthPercent: doublePrecision().notNull(),
     /** `{family, weight, size}` — `size` en 8–72. */
     font: jsonb().notNull(),
     /** `#RRGGBB`. */

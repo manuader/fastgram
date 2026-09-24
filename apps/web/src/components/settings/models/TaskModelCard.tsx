@@ -160,6 +160,9 @@ export function TaskModelCard({ config, presets }: TaskModelCardProps) {
 
   const preset = presetOf(presets, draft.provider);
   const isLlm = config.kind === "llm";
+  // `PU-MODEL-003`/`004`: imagen y video también listan (catálogo verificado) y
+  // prueban (una llamada autenticada que no genera). Sólo las reservadas no.
+  const canProbe = config.kind !== "reserved";
   const errors = draftErrors(draft, config.kind);
   const serverField =
     save.error !== null && isApiRequestError(save.error)
@@ -404,7 +407,7 @@ export function TaskModelCard({ config, presets }: TaskModelCardProps) {
                 }}
               />
             )}
-            {isLlm && (
+            {canProbe && (
               <Button
                 variant="secondary"
                 size="sm"
@@ -487,7 +490,7 @@ export function TaskModelCard({ config, presets }: TaskModelCardProps) {
             {MODELS_COPY.reset}
           </Button>
         )}
-        {isLlm && (
+        {canProbe && (
           <Button
             variant="secondary"
             size="sm"

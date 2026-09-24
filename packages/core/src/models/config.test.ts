@@ -12,6 +12,7 @@ import {
   keyLast4,
   legacyLlmFromEnv,
   openAiEndpoint,
+  resolveGenAiConfig,
   resolveLlmConfig,
   storedKeyFor,
   toPublicTaskConfig,
@@ -159,16 +160,94 @@ describe("applyTaskUpdate", () => {
 
   it("las tareas reservadas sólo aceptan custom", () => {
     expect(
-      applyTaskUpdate("image", undefined, { provider: "groq", model: "m" }, NOW),
+      applyTaskUpdate(
+        "background_removal",
+        undefined,
+        { provider: "groq", model: "m" },
+        NOW,
+      ),
     ).toMatchObject({ ok: false, field: "provider" });
     expect(
       applyTaskUpdate(
-        "image",
+        "background_removal",
         undefined,
         { provider: "custom", baseUrl: "https://img.example", model: "m" },
         NOW,
       ).ok,
     ).toBe(true);
+  });
+
+  it("imagen y video (`PU-MODEL-003`/`004`): Higgsfield o fal, nunca un LLM ni custom", () => {
+    for (const task of ["image", "video"] as const) {
+      expect(
+        applyTaskUpdate(task, undefined, { provider: "groq", model: "m" }, NOW),
+      ).toMatchObject({ ok: false, field: "provider" });
+      expect(
+        applyTaskUpdate(
+          task,
+          undefined,
+          { provider: "custom", baseUrl: "https://x.test", model: "m" },
+          NOW,
+        ),
+      ).toMatchObject({ ok: false, field: "provider" });
+    }
+    const fal = applyTaskUpdate(
+      "image",
+      undefined,
+      { provider: "fal", model: "fal-ai/flux/schnell", apiKey: "fal-key-123456" },
+      NOW,
+    );
+    expect(fal.ok && fal.config.baseUrl).toBe("https://queue.fal.run");
+    // Y al revés: un LLM no acepta los de generación.
+    expect(
+      applyTaskUpdate("text", undefined, { provider: "fal", model: "m" }, NOW),
+    ).toMatchObject({ ok: false, field: "provider" });
+  });
+
+  it("Higgsfield exige la credencial como KEY_ID:KEY_SECRET", () => {
+    const save = (apiKey: string) =>
+      applyTaskUpdate(
+        "video",
+        undefined,
+        { provider: "higgsfield", model: "kling-video/v2.6/pro/text-to-video", apiKey },
+        NOW,
+      );
+    expect(save("only-the-id")).toMatchObject({ ok: false, field: "apiKey" });
+    expect(save("id:")).toMatchObject({ ok: false, field: "apiKey" });
+    const ok = save("key-id:key-secret");
+    expect(ok.ok && ok.config.baseUrl).toBe("https://api.higgsfield.ai");
+  });
+
+  it("resolveGenAiConfig: sólo una entrada completa de un proveedor con adaptador", () => {
+    const entry = {
+      provider: "fal" as const,
+      baseUrl: "https://queue.fal.run",
+      model: "fal-ai/flux/schnell",
+    };
+    expect(resolveGenAiConfig("image", { tasks: {} }, {})).toBeNull();
+    expect(resolveGenAiConfig("image", { tasks: { image: entry } }, {})).toBeNull();
+    expect(
+      resolveGenAiConfig(
+        "image",
+        { tasks: { image: { ...entry, apiKeyEnv: "FAL_KEY" } } },
+        {
+          FAL_KEY: "k",
+        },
+      ),
+    ).toEqual({
+      task: "image",
+      provider: "fal",
+      baseUrl: entry.baseUrl,
+      model: entry.model,
+      apiKey: "k",
+    });
+    expect(
+      resolveGenAiConfig(
+        "image",
+        { tasks: { image: { ...entry, provider: "custom", apiKey: "k" } } },
+        {},
+      ),
+    ).toBeNull();
   });
 
   it("rechaza una key con espacios y un nombre de variable inválido", () => {

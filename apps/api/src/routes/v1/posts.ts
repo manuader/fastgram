@@ -1,6 +1,7 @@
 /**
  * Posts — `GET /posts`, `GET /posts/:id`, `POST /content/:id/schedule`,
- * `POST /posts/cancel`, `POST /posts/delete`, `POST /analytics/posts`.
+ * `POST /posts/cancel`, `POST /posts/delete`, `POST /analytics/posts`,
+ * `POST /posts/:id/mark-posted` (`PU-UI-002`).
  *
  * Fuente: PRD §9.2, §9.3, §12, FR-060, NFR-011, NFR-012, ERR-F01, ERR-F02.
  *
@@ -58,6 +59,7 @@ import {
   cancelPostsRequestSchema,
   deletePostsRequestSchema,
   listPostsQuerySchema,
+  markPostedRequestSchema,
   postAnalyticsRequestSchema,
   scheduleContentRequestSchema,
   type BatchFailureReason,
@@ -67,15 +69,19 @@ import {
 import {
   connectionRepository,
   contentRepository,
+  lockPost,
   postCalendar,
   postRepository,
   warmedAccountRepository,
+  withoutCompany,
+  workspaceDirectory,
 } from "@fastgram/db";
 import type { JobSpec, Queue } from "@fastgram/ports";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-import { JOB_QUEUES } from "@fastgram/core";
+import { DomainError, JOB_QUEUES } from "@fastgram/core";
 
+import { ownerOrFail, runScoped } from "../../auth/scope.js";
 import { ApiRejection } from "../../http/errors.js";
 import { rateLimit } from "../../plugins/rate-limit.js";
 import { toPost } from "../../support/serializers.js";
@@ -260,7 +266,8 @@ export interface FlatTarget {
    * unión de esquemas envueltos en `refine` colapsa a `any`, y un `any` acá viajaría
    * hasta la columna `post_platform` sin que el compilador dijera nada.
    */
-  readonly platform: "tiktok" | "instagram" | "youtube" | "reddit";
+  readonly platform:
+    "tiktok" | "instagram" | "youtube" | "reddit" | "x" | "threads" | "facebook";
   readonly connectionId: string | null;
   readonly warmedAccountId: string | null;
   readonly caption: string | null;
@@ -330,6 +337,12 @@ export function flattenTarget(target: ScheduleTarget): FlatTarget {
         caption: target.caption ?? null,
         description: target.description ?? null,
       };
+    // X, Threads y Facebook (`D-09`): sólo OAuth, como Reddit, y un único campo
+    // de copy. En Facebook la `caption` es la `description` del reel.
+    case "x":
+    case "threads":
+    case "facebook":
+      return { ...shared, platform: target.platform, caption: target.caption ?? null };
     default:
       // Reddit. Es la rama por defecto y no un `case` porque su esquema es el único que
       // **no** tiene la clave `warmedAccountId` —el contrato se la quita: FR-060 (PRD:1374)
@@ -639,6 +652,84 @@ export function registerPostRoutes(app: ZodApp): void {
       );
     },
   );
+
+  // ── POST /posts/:id/mark-posted ── (`PU-UI-002`, ver `markPostedRequestSchema`)
+  //
+  // El borrador de TikTok que el usuario terminó en la app. FR-060 deja el post en
+  // `IN_USER_INBOX` y la API de TikTok no avisa cuándo se publica, así que la única
+  // fuente de "ya salió" es el usuario. Sólo desde `IN_USER_INBOX`: marcar `POSTED` un
+  // `SCHEDULED` diría que salió algo que el worker todavía va a publicar (y saldría
+  // igual, dos veces en la vista), y uno `FAILED` escondería un fallo real.
+  app.post(
+    "/posts/:id/mark-posted",
+    {
+      // El cuerpo es opcional (sin él Fastify lo entrega `null`, de ahí `nullish`): sin
+      // `brandId` no hay nada que mandar, y un `POST` pelado —curl, o el barrido de
+      // `malformed-ids`— tiene que llegar al handler.
+      schema: { params: idParams, body: markPostedRequestSchema.nullish() },
+      preHandler: rateLimit(limiter, "restPerWorkspace"),
+    },
+    async (request) => {
+      const { id } = request.params;
+      if (!isStorableId(id)) throw notFound("post");
+      const brandId = await markPostedBrandOf(app, request, request.body?.brandId);
+
+      const row = await runScoped(app.deps.db, brandId, app.deps.appRole, async (tx) => {
+        const scope = { companyId: brandId };
+        // `FOR UPDATE`: el mismo lock que toma el handler de publicación
+        // (`post-publish.ts`). Sin él, dos clicks —o este click y el worker— leen
+        // `IN_USER_INBOX` a la vez y el segundo pisa el `postedAt` del primero.
+        const post = await lockPost(tx, scope, id);
+        if (post === null) throw crossTenant("post", id, brandId);
+        if (post.status !== "IN_USER_INBOX") {
+          // `conflict` y no `invalid_state`: éste no está en `errorCodeSchema` y el
+          // cliente web no sabría leer el sobre (lo tomaría como `invalid_response`).
+          throw new DomainError(
+            "conflict",
+            "Only a TikTok draft waiting in your inbox can be marked as posted.",
+            { postId: id, status: post.status },
+          );
+        }
+        const next = await postRepository.update(tx, scope, id, {
+          status: "POSTED",
+          postedAt: new Date(clock.nowMs()),
+        });
+        if (next === null) {
+          throw new Error(`El post ${id} desapareció con el lock tomado.`);
+        }
+        return next;
+      });
+      return data(toPost(row));
+    },
+  );
+}
+
+/**
+ * La marca del post a marcar. Sin `brandId`, la de la request (la del header o la de
+ * la key). Con uno distinto, tiene que ser una marca viva **del mismo dueño**: el
+ * mismo criterio y el mismo `404` que `X-Fastgram-Workspace` en `auth/scope.ts` y que
+ * `resolveOwnedBrand` de `calendar.ts` (que no se importa porque no se exporta, y esa
+ * ruta no es de esta tajada). Fuera del modo personal no hay otras marcas: `404`.
+ */
+async function markPostedBrandOf(
+  app: ZodApp,
+  request: FastifyRequest,
+  brandId: string | undefined,
+): Promise<string> {
+  const companyId = request.auth.companyId;
+  if (brandId === undefined || brandId.toLowerCase() === companyId.toLowerCase()) {
+    return companyId;
+  }
+  if ((app.deps.mode ?? "standard") !== "personal") throw notFound("post");
+  const home = request.auth.homeCompanyId ?? companyId;
+  const found = await withoutCompany(app.deps.db, async (tx) => {
+    const owner = await ownerOrFail(tx, home);
+    return workspaceDirectory.find(tx, owner, brandId.toLowerCase());
+  });
+  // `post`, no `brand`: para quien llama, un post de una marca ajena y uno que no
+  // existe tienen que ser indistinguibles (§9.2).
+  if (found === null) throw notFound("post");
+  return found.id;
 }
 
 type PostRow = Awaited<ReturnType<typeof postRepository.create>>;

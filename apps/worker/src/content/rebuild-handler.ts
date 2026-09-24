@@ -34,11 +34,16 @@
  * FR-070). En éxito la pieza queda `CREATED` con los archivos nuevos y el
  * `lastEdit` aplicado que escribió la API.
  *
+ * ## `regenerate` (`AI-004`)
+ *
+ * Reescribe el copy con el LLM de la tarea `text` **antes** de renderizar
+ * (`regenerate.ts`, cabecera de `build-handler.ts`), y guarda las cajas nuevas
+ * junto con los archivos. Sin modelo cierra con `llm_not_configured`; con una
+ * respuesta inválida, `copy_rejected`; con el proveedor caído, `llm_failed`.
+ * Nunca renderiza el copy de antes declarándolo regenerado (trampa 30).
+ *
  * Lo que sigue cerrando con `edit_not_renderable`, sin llamar al renderer:
  *
- * - **`regenerate`**: necesita un modelo de copy que este worker no tiene;
- *   renderizar las cajas de antes declararía aplicada una regeneración que no
- *   cambió nada (trampa 30).
  * - **Cajas que no caben en el payload de `FR-070`**: más de una caja en un
  *   formato de `text` singular, o una caja de un slide que no existe. Ver la
  *   cabecera de `core/content/text-boxes-to-build-payload.ts`.

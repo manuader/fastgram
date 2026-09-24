@@ -62,7 +62,7 @@ export interface NavItem {
 
 /** El circuito de uso personal (PLAN §2): lo que se toca todos los días. */
 export const PRIMARY_NAV: readonly NavItem[] = [
-  { id: "home", labelKey: "nav.home", href: ROUTES.home, icon: HomeIcon },
+  { id: "home", labelKey: "nav.today", href: ROUTES.home, icon: HomeIcon },
   { id: "blitz", labelKey: "nav.blitz", href: ROUTES.blitz, icon: RocketIcon },
   {
     id: "calendar",

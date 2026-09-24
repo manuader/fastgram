@@ -215,6 +215,50 @@ export const webEn = {
   "brandKit.failed":
     "Couldn't start the background generator. Is the render service running?", // nuevo
   "library.detail.openFile": "Open file {index}", // nuevo
+  /* ------------------ Import from link · PU-MEME-001/002/003 (D-12) */
+  "mediaImport.open": "Import from link", // nuevo
+  "mediaImport.title": "Import from a link", // nuevo
+  "mediaImport.description":
+    "Paste a link to a clip (TikTok, YouTube, X…). It's downloaded into your Media Bank and labeled automatically.", // nuevo
+  "mediaImport.urlLabel": "Link", // nuevo
+  "mediaImport.kindLabel": "What to import", // nuevo
+  "mediaImport.kind.video": "Video", // nuevo
+  "mediaImport.kind.audio": "Audio", // nuevo
+  "mediaImport.categoriesLabel": "Use it as", // nuevo
+  "mediaImport.foregroundHint":
+    "Green screen video = a clip to overlay on your brand backgrounds. If it isn't green, its background is removed with fal (Settings → Models → Background removal).", // nuevo
+  "mediaImport.audioHint":
+    "Audio is saved to your brand's storage. It doesn't show up in the Media Bank yet.", // nuevo · DATA-010 no tiene tipo audio
+  "mediaImport.rights":
+    "You're responsible for having the rights to publish what you import.", // nuevo · D-12
+  "mediaImport.submit": "Import", // nuevo
+  "mediaImport.close": "Close", // nuevo
+  "mediaImport.another": "Import another", // nuevo
+  "mediaImport.state.queued": "Waiting for the worker…", // nuevo
+  "mediaImport.state.downloading": "Downloading…", // nuevo
+  "mediaImport.state.processing": "Imported. Preparing the video…", // nuevo
+  "mediaImport.state.done": "Imported to your Media Bank.", // nuevo
+  "mediaImport.state.audioDone": "Audio imported.", // nuevo
+  "mediaImport.background.pending": "Removing the background…", // nuevo
+  "mediaImport.background.greenScreen":
+    "Green screen detected: it's keyed out when the video is rendered.", // nuevo
+  "mediaImport.background.removed": "Background removed: a cutout copy was added.", // nuevo
+  "mediaImport.background.needs":
+    "Needs background removal: configure fal in Settings → Models.", // nuevo
+  "mediaImport.background.failed":
+    "Background removal failed. The original clip is still in your Media Bank.", // nuevo
+  "mediaImport.tagging.pending": "Labeling…", // nuevo
+  "mediaImport.tagging.skipped": "Not labeled: no vision model is configured.", // nuevo
+  "mediaImport.tagging.failed": "Labeling failed. The clip was imported anyway.", // nuevo
+  "mediaImport.tagsLine": "{emotion} · {tags}", // nuevo
+  "mediaImport.error.unsupportedUrl":
+    "That link can't be imported. Use a public http(s) link to a single clip.", // nuevo
+  "mediaImport.error.tooLong": "That clip is too long. The limit is 3 minutes.", // nuevo
+  "mediaImport.error.tooLarge": "That clip is too large. The limit is 50 MB.", // nuevo
+  "mediaImport.error.downloadFailed":
+    "The download failed. The site may be blocking it: try again later or use another link.", // nuevo
+  "mediaImport.statusCheckFailed": "Couldn't check the import. Retrying…", // nuevo
+  "media.card.tagsLabel": "Tags: {tags}", // nuevo · PU-MEME-003
 
   /* ------------------------------ Calendar · F-140..F-143, FR-110 (PRD:1653) */
   "calendar.title": "Calendar", // literal (label de la ruta, PRD:305)
@@ -322,6 +366,9 @@ export const webEn = {
   "posts.platform.instagram": "Instagram", // literal
   "posts.platform.youtube": "YouTube", // literal
   "posts.platform.reddit": "Reddit", // literal
+  "posts.platform.x": "X", // literal · D-09
+  "posts.platform.threads": "Threads", // literal · D-09
+  "posts.platform.facebook": "Facebook", // literal · D-09
 
   // Los diez estados de FR-060 (PRD:1387). El enum es normativo; el texto de
   // pantalla no está en el PRD, así que los diez son `nuevo`.

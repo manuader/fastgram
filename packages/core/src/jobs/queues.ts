@@ -69,6 +69,19 @@ export const JOB_QUEUES = {
    * es del plan de uso personal.
    */
   brandBackgrounds: "brand-backgrounds",
+  /**
+   * `PU-MEME-001` — importar un video o un audio por link con `yt-dlp`, más el
+   * recorte de fondo y el etiquetado (`PU-MEME-002`, `PU-MEME-003`). Del plan
+   * de uso personal (D-12), no de §9.5.
+   */
+  mediaImport: "media-import",
+  /**
+   * `PU-PUB-008` / `P3-PUB-002` — por marca: reanuda los posts en
+   * `AWAITING_RECONNECT` cuando la conexión vuelve y convierte los slots
+   * planificados en posts cuando la marca ya tiene la conexión. Del plan de
+   * uso personal, no de §9.5.
+   */
+  publishingSweep: "publishing-sweep",
 } as const;
 
 export type JobQueueKey = keyof typeof JOB_QUEUES;

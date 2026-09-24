@@ -25,11 +25,11 @@ export const TASK_COPY: Readonly<
   },
   image: {
     title: "Image",
-    description: "Backgrounds and slides. No adapter yet — config only.",
+    description: "Backgrounds and slides for AI Studio, with Higgsfield or fal.",
   },
   video: {
     title: "Video",
-    description: "Clips and reactions. No adapter yet — config only.",
+    description: "Background clips for AI Studio, with Higgsfield or fal.",
   },
   background_removal: {
     title: "Background removal",
@@ -122,3 +122,25 @@ export const PROBE_ERROR_COPY: Readonly<Record<ModelProbeError["code"], string>>
   provider_contract_violation: "That URL doesn't answer like an OpenAI-compatible API.",
   conflict: "The provider rejected the request.",
 };
+
+/** La tarjeta del tope mensual (`PU-MODEL-005`). */
+export const BUDGET_COPY = {
+  title: "Monthly AI budget",
+  description:
+    "Image and video generations stop once this month's spend would pass the budget. Counted in UTC months.",
+  label: "Budget (USD per month)",
+  hint: "Whole dollars and cents, e.g. 30 or 42.50.",
+  invalid: "Enter an amount between $0 and $100,000.",
+  save: "Save budget",
+  saving: "Saving…",
+  saved: "Saved",
+  reset: "Use default",
+  source: {
+    settings: "Set here.",
+    env: "From FASTGRAM_MONTHLY_BUDGET_USD.",
+    default: "Default ($30). Change it here.",
+  },
+  estimateNote:
+    "Higgsfield quotes each generation for your account; fal uses the list price from the model page, so it's an estimate.",
+  error: "Couldn't load the budget.",
+} as const;
