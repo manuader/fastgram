@@ -1,4 +1,4 @@
-# Paridad con Fastlane — estado al cierre del sprint 7
+# Paridad con Fastlane — estado al cierre del sprint 8
 
 > 2026-09-24. Cierra `P5-PARITY-001`: las filas de PRD §23 recorridas contra el código, en modo
 > personal (`D-06`…`D-17`). Cada fila queda **Anda**, **Adaptado** (cubierto de otra forma, con el
@@ -40,13 +40,13 @@
 |---|---|---|
 | 4 formatos base con Create New / Remix, preview, swap por slide, estilos | Anda | `/content/<formato>` |
 | Custom upload | Anda | Normaliza y cierra `CREATED` |
-| 17 formatos IA | Bloqueado 10/17 | 7 andan (texto sobre clip generado). Los 9 con persona que habla necesitan voz/lip-sync por API y `character-swap` video-a-video: ningún proveedor configurado lo documenta |
+| 17 formatos IA | Anda 15/17 | 7 de texto sobre clip generado + 8 con voz sobre fal (TTS + OmniHuman) + character swap (Wan Animate). `talking-objects` y `green-screen-mobile-app` fuera por decisión del dueño (sin modelo verificado). Sin probar contra fal real |
 | Influencers: wizard, base propia o por texto, entrenamiento, galería, templates, configuración, regenerar | Adaptado | Higgsfield Soul ID en vez de LoRA propio; sin créditos (`D-06`) |
 | Video del influencer | Adaptado | "Animate this image" (image-to-video). Sin probar contra Higgsfield real |
-| Talking Head UGC | Bloqueado | Higgsfield no expone voz ni lip-sync por API |
+| Talking Head UGC | Anda | Con un modelo de la biblioteca y su voz (fal). Sin probar contra fal real |
 | AI Studio con referencias y contador | Anda | Picker del Media Bank; necesita key de Higgsfield/fal o ComfyUI |
 | Filtros de contenido | Anda | `nsfw_rejected` con mensaje propio |
-| Librerías de 1 000 personajes / 2 000 UGC humanos | Bloqueado | `OQ-13` (derechos y curación): decisión del dueño |
+| Librerías de personajes y UGC | Adaptado | **Biblioteca de modelos propia** (`/models`): varios modelos importados, compartidos entre marcas, con UGC y talking head. Sin catálogo de terceros (`OQ-13`) |
 
 ## Library, Calendar, Scheduling, Analytics
 
@@ -79,7 +79,5 @@
 ## Lo que queda abierto de verdad
 
 1. **Credenciales del dueño** para la primera publicación real (ver `GUIA-DE-USO.md` §4).
-2. Los 10 formatos IA y el talking head: esperan un proveedor con voz/lip-sync por API.
-3. Fuente `snapchat`: no hay una libre (TikTok Sans sí, desde el sprint 7).
-4. HDR→SDR: falta un ffmpeg con `zscale` (el del VPS está sin probar).
-5. Librerías de personajes y UGC: `OQ-13`.
+2. Keys de Higgsfield y fal para probar modelos, voz y formatos IA contra el servicio real.
+3. `P2-JV-002/003`: dataset etiquetado a mano (sólo si la app se abre a terceros).

@@ -115,8 +115,10 @@ restore probado. Antes de desplegar falta una decisión tuya: la licencia del bu
 | Pantalla | Qué hace | Qué necesita |
 |---|---|---|
 | **Inspiration** | Tu tablero de referencias: pegás links de TikTok, Instagram, X o YouTube, se guardan con sus métricas públicas cuando el sitio las da, y **Remix this** genera piezas en Blitz inspiradas en esa referencia y adaptadas a la marca | Nada. YouTube trae vistas y likes sin login; Instagram sin login, poco o nada |
+| **Models** (sidebar) | **Tu biblioteca de modelos**, compartida entre marcas: importás un modelo (desde fotos, pegando un Soul ID que ya entrenaste en Higgsfield, o pasando a la biblioteca un influencer existente), le elegís una voz y lo asignás a una o más marcas sin reentrenar. Desde el modelo: **UGC** con el producto de una marca y **Talking head** (habla a cámara con su voz). Blitz elige el modelo que mejor encaja con cada marca | Key de **Higgsfield** para el modelo; key de **fal** para voz y talking head (Settings → Models → Speech / Avatar) |
 | **Influencers** | Personajes consistentes: subís 4–20 fotos, se crea el personaje (Higgsfield Soul ID) y después generás imágenes con él. Blitz lo usa según "influencer frequency" | Key de Higgsfield. Video con el personaje: todavía no (Higgsfield no lo documenta por API) |
 | **Engagement** | Leads de Reddit: el puntaje se calcula en código, la IA arma la respuesta, **vos la mandás**, y un medidor de riesgo de ban frena si te pasás de promoción | La API de Reddit exige aprobación previa: sin ella, pegás el link del post y usás "Copy & open thread" |
+| **Settings → Models → Speech / Avatar / Swap** | Voz (ElevenLabs v3 o MiniMax, ~US$0,10 cada 1.000 caracteres), persona hablando (OmniHuman, ~US$0,16 por segundo) y reemplazo de personaje (Wan Animate) en fal. Con costo estimado antes de generar y el tope mensual | La misma key de fal |
 | **Settings → Models → ComfyUI** | Imagen y video con modelos locales: pegás un workflow exportado en **formato API** | ComfyUI corriendo en tu Mac |
 | **Automations** | Campañas de 1 a varias semanas: elegís marca, redes, frecuencia, mix y temas → se generan todas las piezas → las revisás (editar, captions por red, regenerar una) → **Launch** las agenda en el calendario | Un modelo de texto. Las redes sin conexión quedan reservadas y se publican cuando las conectes |
 | **YouTube Shorts y LinkedIn** | Publicar como en las otras redes | Credenciales. **YouTube: pedí ya la auditoría del proyecto de Google**, sin ella los videos quedan privados |
@@ -130,9 +132,9 @@ marca y otro para Engagement. Sin override, usan el de **Judgment**.
 ## 9. Lo que no está
 
 - Métricas de TikTok (el modo borrador no las da) y de LinkedIn (permiso restringido).
-- De los 17 formatos IA, los 9 con una persona que habla (talking head, news anchor…) y
-  `character-swap`: ningún proveedor configurado ofrece voz/lip-sync o video-a-video por API.
-- La fuente `snapchat` del editor: no hay una libre (TikTok Sans sí, desde el sprint 7).
-- HDR → SDR en videos de iPhone: el ffmpeg de la Mac no lo trae; se conserva el original.
+- Dos formatos IA no se ofrecen: `talking-objects` y `green-screen-mobile-app` (no hay modelo
+  verificado). Los otros 15 andan; los 8 con voz usan fal (ElevenLabs/MiniMax + OmniHuman) y
+  `character-swap` sale sin sonido.
+- HDR → SDR: fuera por decisión tuya; un video HDR se usa como está.
 - Importar tus posts de TikTok (yt-dlp falla sin login) y de X (no soportado).
 - Todo lo que depende de credenciales tuyas (§4) nunca corrió contra la plataforma real.

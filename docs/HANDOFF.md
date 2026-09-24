@@ -78,6 +78,20 @@ El detalle está en `docs/IMPLEMENTATION-PLAN.md` §2. No lo repito acá para qu
 
 ## 4. Qué cambió, sesión por sesión
 
+### Sesión 2026-09-24 (4) — Sprint 8: biblioteca de modelos y formatos con voz
+
+Decisiones del dueño: FFmpeg sin distribución (`P0-REPO-004` cerrada), `snapchat` = Inter, HDR→SDR
+fuera, "no agregar formatos sin modelo". **Corrección**: el sprint 7 dijo que ningún proveedor
+ofrecía voz/lip-sync por API; era cierto para Higgsfield y **falso para fal** (ElevenLabs v3,
+MiniMax Speech, OmniHuman v1.5, Sync Lipsync, Wan 2.2 Animate Replace). Con eso: 8 formatos con voz,
+character swap y talking head. ManyChat **no** lee perfiles de Instagram (API de DMs): `P1-ONB-011`
+queda adaptada (bio pegada o capturas con OCR).
+
+Biblioteca de modelos a nivel dueño (`/models`, 0033): importar, voz, asignar a varias marcas sin
+reentrenar, UGC por marca, JV-6 por modelo. `tasks.md`: sólo quedan `P2-JV-002/003` (dataset a mano).
+Nada de Higgsfield/fal corrió contra el servicio real. `verify` 18/18; `test:int` worker 386,
+api 787, db 260.
+
 ### Sesión 2026-09-24 (3) — Sprint 7: paridad con Fastlane, backlog cerrado
 
 Detalle y porqué: [`SESSION-2026-09-24-sprint7-paridad.md`](SESSION-2026-09-24-sprint7-paridad.md).
@@ -1280,6 +1294,11 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 193
 
 71. **qwen 7B mezcla alfabetos** (un hashtag en chino en copy en inglés). Con idioma latino, otro
     alfabeto descarta la copy (`foreign_script`).
+
+72. **"Ningún proveedor lo ofrece" hay que verificarlo en cada proveedor configurado.** El sprint 7
+    bloqueó 10 formatos mirando sólo la doc de Higgsfield; fal tenía TTS, talking avatar, lip-sync y
+    character swap. Dos agentes de investigación además se colgaron dos horas recorriendo catálogos
+    enteros: pedir la página `/api` puntual de cada endpoint.
 
 ## 8. Qué falta
 
