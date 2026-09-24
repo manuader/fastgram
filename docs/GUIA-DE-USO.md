@@ -1,6 +1,6 @@
 # Guía de uso — FastGram en tu Mac
 
-> Para el dueño, 2026-09-24. Qué podés usar hoy, cómo, y qué necesita algo de tu lado.
+> Para el dueño, 2026-09-24 (actualizada con el sprint 7). Qué podés usar hoy, cómo, y qué necesita algo de tu lado.
 > El detalle técnico está en [`PLAN-USO-PERSONAL.md`](PLAN-USO-PERSONAL.md) y en `tasks.md` §PU.
 
 ## 1. Arrancar
@@ -38,9 +38,9 @@ Sin modelo, Blitz no genera nada.
 
 | Pantalla | Qué hace | Cómo probarlo |
 |---|---|---|
-| **Settings → Brands** | Una marca por cliente, influencer o idea. Crear, renombrar, borrar | **New brand** → nombre → **Switch and analyse** |
-| **Brand** | Pegás la web de la marca y la IA arma el perfil: identidad, oferta, tono y audiencia, con el origen y la confianza de cada campo | **+ Add source** → la web → **Analyse**. En 1–2 min aparece el perfil. Revisá lo marcado "Worth a quick check" |
-| **Library → Media Bank** | Tus imágenes y videos para el contenido | **Upload** (varios a la vez), **Generate brand backgrounds** (fondos con la paleta de la marca, gratis y locales) o **Import from link** (un clip de TikTok, YouTube o X; si es de pantalla verde, se recorta solo) |
+| **Settings → Brands** | Una marca por cliente, influencer o idea. Crear, renombrar, borrar (borrar cancela sus posts, su piloto y sus campañas) | **New brand** → nombre → **Switch and analyse** |
+| **Brand** | Pegás la web (o un perfil de X, YouTube o LinkedIn) y la IA arma el perfil, sigue los links de la bio y verifica cada campo contra su fuente (confianza real). Además: 6 preguntas de perfilado, **logo**, **ángulos de contenido** ("Suggest an angle"), y las propuestas de un re-análisis para aceptar o descartar | **+ Add source** → **Analyse**. Para Instagram sin login: "Paste your bio" o **subir capturas** (se leen con OCR) |
+| **Library → Media Bank** | Tus imágenes y videos para el contenido, con **búsqueda, filtros por categoría y etiquetas** (los clips importados se etiquetan solos si hay modelo de visión) y **sets** | **Upload**, **Generate brand backgrounds**, **Import from link** o **Import my posts** (tus posts de una cuenta conectada o de un perfil público de YouTube) |
 | **Blitz** | La IA propone piezas y vos decidís | → o arrastrar a la derecha: aceptar. ← o a la izquierda: descartar. **Edit**: abre el editor. **Schedule Post**: agenda en el próximo horario libre. Arriba, **Create from prompt**: "un meme sobre los lunes para mi cafetería" |
 | **Editor** | Texto, fuente, color, contorno, posición (arrastrando), fondo, video y audio. Lo que ves es lo que sale | Cambiá el texto → **Save changes** → en ~20 s el video nuevo. **Regenerate Text** con un prompt opcional reescribe el copy con la IA |
 | **Settings → Strategy** | Por marca: redes, piezas por día, horarios, zona horaria, idioma y **autonomía** (manual o piloto) | Ajustá los horarios: el auto-agendado los usa |
@@ -48,6 +48,11 @@ Sin modelo, Blitz no genera nada.
 | **Today** | Lo de hoy en todas las marcas: publicado, programado, borradores de TikTok para terminar en el celular, lo que espera aprobación y lo que falló | Es la pantalla de inicio |
 | **AI Studio** | Generar imágenes y videos con Higgsfield o fal, con costo estimado y tope mensual | Necesita una key (ver §4) |
 | **⌘K** | Ir a cualquier lado, cambiar de marca, "Create from prompt…" | ⌘K desde cualquier pantalla |
+| **Blitz → Create from prompt → Green Screen** | Escribís el tema ("cuando el cliente pide una revisión más") y arma un meme: elige el clip de tu Media Bank que mejor encaja con el tema y, **si no tenés ninguno, lo busca solo en YouTube**, lo baja y le recorta el verde. La tarjeta ya muestra el meme recortado sobre el fondo de la marca | El meme sale entero en la mitad de abajo, con el caption arriba. Un clip de menos de 5 s se repite (Instagram no acepta Reels de menos de 3 s) |
+| **Studio** (`/content`) | Armar una pieza a mano, paso a paso: elegís fondo, meme, imágenes o demo del Media Bank, escribís el texto o lo genera la IA, elegís estilo → Save abre el editor. También **Remix** desde Inspiration y **Custom** (tu propio video) | Los 17 "AI formats" necesitan un modelo de video (ver §4); hoy andan 7 |
+| **Library → Audio** | La música de la marca: subir MP3/M4A/WAV, importar por link (Import from link → Audio) y elegir cuáles usa Blitz solo. En el editor, **Swap** en Audio | En un meme, el sonido del clip queda al 100 % y la música debajo al 30 % |
+| **Programar a mano** | Desde Blitz ("Schedule…"), el detalle de una pieza, el editor o el calendario: redes, **caption por red** (con Improve/Regenerate por IA y contador), fecha y hora de la marca, **Post now**, Reel o carrusel en Instagram | Un post fallido se reintenta o reprograma desde Today o Library → My Posts (también selección masiva) |
+| **Campana 🔔** | Lo que pasó: publicado, fallido, borrador de TikTok listo, conexión vencida o por vencer, rechazos del piloto, campañas, resumen diario, cola trabada | **Settings → Notifications**: avisos al celular por **ntfy** (sin cuenta) o **Telegram** (tu bot) |
 
 ## 4. Lo que necesita algo de tu lado
 
@@ -116,7 +121,18 @@ restore probado. Antes de desplegar falta una decisión tuya: la licencia del bu
 | **Automations** | Campañas de 1 a varias semanas: elegís marca, redes, frecuencia, mix y temas → se generan todas las piezas → las revisás (editar, captions por red, regenerar una) → **Launch** las agenda en el calendario | Un modelo de texto. Las redes sin conexión quedan reservadas y se publican cuando las conectes |
 | **YouTube Shorts y LinkedIn** | Publicar como en las otras redes | Credenciales. **YouTube: pedí ya la auditoría del proyecto de Google**, sin ella los videos quedan privados |
 
+### Modelos de juicio por decisión
+
+**Settings → Models → Judgment by decision point**: podés usar un modelo más grande sólo para el
+pre-chequeo del piloto (el de 7B deja pasar menciones a otras marcas), otro para verificar el perfil de
+marca y otro para Engagement. Sin override, usan el de **Judgment**.
+
 ## 9. Lo que no está
 
 - Métricas de TikTok (el modo borrador no las da) y de LinkedIn (permiso restringido).
+- De los 17 formatos IA, los 9 con una persona que habla (talking head, news anchor…) y
+  `character-swap`: ningún proveedor configurado ofrece voz/lip-sync o video-a-video por API.
+- La fuente `snapchat` del editor: no hay una libre (TikTok Sans sí, desde el sprint 7).
+- HDR → SDR en videos de iPhone: el ffmpeg de la Mac no lo trae; se conserva el original.
+- Importar tus posts de TikTok (yt-dlp falla sin login) y de X (no soportado).
 - Todo lo que depende de credenciales tuyas (§4) nunca corrió contra la plataforma real.

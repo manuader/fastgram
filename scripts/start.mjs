@@ -166,6 +166,14 @@ for (const [k, v] of Object.entries(PERSONAL_BRAND_DEFAULTS)) {
  */
 if (env.X_EXTRACTOR_URL === undefined) env.X_EXTRACTOR_URL = "https://api.fxtwitter.com";
 
+/**
+ * YouTube (yt-dlp sin login) y LinkedIn (página pública) como fuentes de marca
+ * (sprint 7, P1-BRAND-010/011). En el worker son opt-in; para uso personal
+ * (D-13) se prenden acá. `YOUTUBE_READER=off` o `LINKEDIN_READER=off` los apaga.
+ */
+if (env.YOUTUBE_READER === undefined || env.YOUTUBE_READER === "") env.YOUTUBE_READER = "on";
+if (env.LINKEDIN_READER === undefined || env.LINKEDIN_READER === "") env.LINKEDIN_READER = "on";
+
 /** Vacío cuenta como ausente: `.env.example` trae muchas `KEY=` sin valor. */
 /** @param {string} k */
 const envValue = (k) => (env[k] === undefined || env[k] === "" ? undefined : env[k]);
