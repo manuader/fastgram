@@ -127,7 +127,9 @@ describe("GET /ai-studio/formats", () => {
     };
     expect(body.formats).toHaveLength(17);
     expect(body.formats.filter((f) => f.status === "available")).toHaveLength(7);
-    expect(body.formats.find((f) => f.id === "news-anchor")?.why).toMatch(/voice/);
+    // Sprint 8 (agente L): los de voz ya no están bloqueados (`speaking`).
+    expect(body.formats.find((f) => f.id === "news-anchor")?.status).toBe("speaking");
+    expect(body.formats.find((f) => f.id === "talking-objects")?.why).toMatch(/human/);
     expect(body.video.configured).toBe(true);
     expect(body.video.models.every((m) => m.imageInput !== "required")).toBe(true);
     expect(body.video.defaultModel).not.toContain("image-to-video");

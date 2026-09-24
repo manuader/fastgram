@@ -28,6 +28,8 @@ import { isApiRequestError } from "@/lib/api/errors";
 import { tw, type CopyKey } from "@/lib/i18n/t";
 import { formatUsd } from "@/lib/models/budget";
 import { ROUTES } from "@/lib/nav/routes";
+import { CharacterSwapStudio } from "./CharacterSwapStudio";
+import { SpeakingFormatStudio } from "./SpeakingFormatStudio";
 import {
   isRunInFlight,
   useFormatEstimate,
@@ -208,7 +210,9 @@ export interface GenerativeFormatStudioProps {
  * Escena y texto → costo estimado (antes de generar, con el tope del mes) →
  * Generate → el clip se genera con el modelo de video de Settings → Models,
  * se copia a nuestro storage y la pieza se arma con el texto encima → abre el
- * editor. Los formatos que necesitan voz quedan explicados, no escondidos.
+ * editor. Sprint 8: los formatos con voz y el character swap van a su propia
+ * pantalla (`SpeakingFormatStudio`, `CharacterSwapStudio`); los que ni fal ni
+ * el render pueden hacer quedan explicados, no escondidos.
  *
  * Lo monta la página `/content/[format]` (agente F).
  */
@@ -277,6 +281,14 @@ export function GenerativeFormatStudio({
       <p className="m-0 text-sm text-text-muted">{format.description}</p>
     </header>
   );
+
+  // Sprint 8 (agente L): con voz y character swap tienen su propia pantalla.
+  if (format.status === "speaking") {
+    return <SpeakingFormatStudio formatId={formatId} header={header} />;
+  }
+  if (format.status === "swap") {
+    return <CharacterSwapStudio header={header} />;
+  }
 
   if (format.status === "blocked") {
     return (

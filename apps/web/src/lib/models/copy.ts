@@ -51,6 +51,23 @@ export const TASK_COPY: Readonly<
     title: "Background removal",
     description: "Cutting memes out of their background. No adapter yet — config only.",
   },
+  // Sprint 8 (agente L): formatos con voz. Sólo fal; sin key propia usan la de
+  // otra tarea de fal.
+  speech: {
+    title: "Speech",
+    description:
+      "Text to speech for voice formats and talking heads (fal). Uses your fal key if you leave it empty.",
+  },
+  avatar: {
+    title: "Talking avatar",
+    description:
+      "Turns a portrait and a voice into a talking video (fal OmniHuman). Uses your fal key if you leave it empty.",
+  },
+  swap: {
+    title: "Character swap",
+    description:
+      "Replaces the person in one of your videos with a model's portrait (fal Wan Animate). Uses your fal key if you leave it empty.",
+  },
 };
 
 export const MODELS_COPY = {

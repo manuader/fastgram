@@ -23,6 +23,8 @@ export const ROUTES = {
   blitzSettings: "/blitz/settings",
   aiStudio: "/ai-studio",
   influencers: "/influencers",
+  /** Sprint 8 (K): biblioteca de modelos del dueño (owner-level). */
+  models: "/models",
   content: "/content",
   library: "/library",
   calendar: "/calendar",

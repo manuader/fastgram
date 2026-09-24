@@ -20,7 +20,7 @@
  */
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { CONTENT_FORMATS } from "@/lib/content/formats";
+import { CONTENT_FORMATS, EXCLUDED_FORMAT_IDS } from "@/lib/content/formats";
 import ContentHubPage from "./page";
 
 function renderHub(): HTMLElement {
@@ -33,13 +33,16 @@ function cards(container: HTMLElement): HTMLAnchorElement[] {
   return [...container.querySelectorAll<HTMLAnchorElement>("a.fgw-format-card")];
 }
 
-describe("el hub dibuja los 22 formatos · F-070", () => {
-  it("hay 22 tarjetas, ni una más", () => {
+describe("el hub dibuja los 20 formatos que se ofrecen · F-070", () => {
+  it("hay 20 tarjetas: los 22 del PRD menos los 2 que el dueño excluyó", () => {
     const container = renderHub();
-    // El número del PRD, escrito a mano. `CONTENT_FORMATS.length` acá sería el
-    // test comparándose consigo mismo: el catálogo se fija en `formats.test.ts`.
-    expect(cards(container)).toHaveLength(22);
-    expect(screen.getAllByRole("link")).toHaveLength(22);
+    // El número escrito a mano: 22 del PRD − `talking-objects` −
+    // `green-screen-mobile-app` (sin modelo verificado; decisión 2026-09-24).
+    expect(cards(container)).toHaveLength(20);
+    expect(screen.getAllByRole("link")).toHaveLength(20);
+    expect(cards(container).map((c) => c.getAttribute("href"))).not.toContain(
+      "/content/talking-objects",
+    );
   });
 
   it("cada tarjeta lleva su label y su description, dentro de ella", () => {
@@ -48,7 +51,7 @@ describe("el hub dibuja los 22 formatos · F-070", () => {
       cards(container).map((card) => [card.getAttribute("href"), card]),
     );
 
-    for (const format of CONTENT_FORMATS) {
+    for (const format of CONTENT_FORMATS.filter((f) => !EXCLUDED_FORMAT_IDS.has(f.id))) {
       const card = byHref.get(`/content/${format.id}`);
       expect(card, `falta la tarjeta de ${format.id}`).toBeDefined();
       // `within`, no `screen`: un `getByText` global pasaría aunque el label de
@@ -60,10 +63,10 @@ describe("el hub dibuja los 22 formatos · F-070", () => {
     }
   });
 
-  it("los 22 destinos son distintos", () => {
+  it("los 20 destinos son distintos", () => {
     const container = renderHub();
     const hrefs = cards(container).map((card) => card.getAttribute("href"));
-    expect(new Set(hrefs).size).toBe(22);
+    expect(new Set(hrefs).size).toBe(20);
   });
 
   it("tres tarjetas concretas, con el texto literal del PRD", () => {
@@ -127,12 +130,12 @@ describe("la tarjeta es navegable, y no promete media que no hay", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Content");
   });
 
-  it("dos grupos: los 5 base (Studio + Custom) y los 17 AI formats · sprint 7", () => {
+  it("dos grupos: los 5 base (Studio + Custom) y los 15 AI formats que se ofrecen · sprint 8", () => {
     renderHub();
     const base = screen.getByRole("region", { name: "Base formats" });
     const ai = screen.getByRole("region", { name: "AI formats" });
     expect(within(base).getAllByRole("link")).toHaveLength(5);
-    expect(within(ai).getAllByRole("link")).toHaveLength(17);
+    expect(within(ai).getAllByRole("link")).toHaveLength(15);
     expect(within(base).getByText("Green Screen Meme")).toBeInTheDocument();
     expect(within(ai).getByText("Lego")).toBeInTheDocument();
   });

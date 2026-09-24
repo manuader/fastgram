@@ -62,7 +62,10 @@ import {
   isModelTask,
   legacyLlmFromEnv,
   providerPreset,
+  isVoiceTask,
+  sameOrigin,
   storedKeyFor,
+  taskApiKey,
   taskSpec,
   toPublicTaskConfig,
   type SecretEnv,
@@ -71,6 +74,10 @@ import {
   FileModelRegistry,
   OpenAiModelCatalog,
   createGenClient,
+  FAL_AVATAR_MODELS,
+  FAL_SPEECH_MODELS,
+  FAL_SWAP_MODELS,
+  FalVoiceClient,
   genCatalog,
   isGenProvider,
   modelRegistryPath,
@@ -118,6 +125,18 @@ export interface ModelRoutesDeps {
     readonly baseUrl: string;
     readonly apiKey: string;
   }) => GenClient;
+  /** Sprint 8: el cliente de voz de fal para «Test connection» de speech/avatar/swap. */
+  readonly voiceClientFor?: (config: {
+    readonly baseUrl: string;
+    readonly apiKey: string;
+  }) => Pick<FalVoiceClient, "checkVoiceCredentials">;
+}
+
+function defaultVoiceClient(config: {
+  readonly baseUrl: string;
+  readonly apiKey: string;
+}) {
+  return new FalVoiceClient({ ...config, timeoutMs: MODEL_PROBE_TIMEOUT_MS });
 }
 
 export function defaultModelRoutesDeps(env: SecretEnv = process.env): ModelRoutesDeps {
@@ -136,6 +155,17 @@ export function defaultModelRoutesDeps(env: SecretEnv = process.env): ModelRoute
  * tiene endpoint de listado y el de fal no dice qué campos acepta cada modelo.
  */
 function genModelsFor(provider: GenProviderId, task: ModelTask | undefined) {
+  // Sprint 8 (agente L): voz, talking avatar y swap tienen su catálogo (sólo fal).
+  if (task !== undefined && isVoiceTask(task)) {
+    if (provider !== "fal") return [];
+    const list =
+      task === "speech"
+        ? FAL_SPEECH_MODELS
+        : task === "avatar"
+          ? FAL_AVATAR_MODELS
+          : FAL_SWAP_MODELS;
+    return list.map((m) => ({ id: m.spec.id, ownedBy: m.spec.label }));
+  }
   return genCatalog(provider)
     .filter((m) => task === undefined || task === m.kind)
     .map((m) => ({ id: m.id, ownedBy: m.label }));
@@ -199,6 +229,17 @@ export function registerModelRoutes(
       const snapshot = await registry.read();
       const stored = storedKeyFor(snapshot.tasks[task], baseUrl, env);
       if (stored !== null) return { key: stored, source: "stored" };
+      // Sprint 8: una tarea de voz prueba con la key de fal que va a usar
+      // (la de otra tarea del mismo origen), nunca hacia otro host.
+      const entry = snapshot.tasks[task];
+      if (
+        isVoiceTask(task) &&
+        entry !== undefined &&
+        sameOrigin(entry.baseUrl, baseUrl)
+      ) {
+        const shared = taskApiKey(task, entry, snapshot, env);
+        if (shared !== null) return { key: shared.key, source: "stored" };
+      }
     }
     return { key: undefined, source: "none" };
   }
@@ -347,13 +388,18 @@ export function registerModelRoutes(
             };
           } else {
             try {
-              const client = (deps.genClientFor ?? createGenClient)({
-                provider: genProvider,
-                baseUrl: base.baseUrl,
-                apiKey: key ?? "",
-              });
               const model = body.model ?? "ComfyUI";
-              const done = await client.checkCredentials(model);
+              const voice = body.task !== undefined && isVoiceTask(body.task);
+              const done = voice
+                ? await (deps.voiceClientFor ?? defaultVoiceClient)({
+                    baseUrl: base.baseUrl,
+                    apiKey: key ?? "",
+                  }).checkVoiceCredentials(model)
+                : await (deps.genClientFor ?? createGenClient)({
+                    provider: genProvider,
+                    baseUrl: base.baseUrl,
+                    apiKey: key ?? "",
+                  }).checkCredentials(model);
               completion = { ok: true, model, latencyMs: done.latencyMs };
             } catch (error) {
               request.log.info(

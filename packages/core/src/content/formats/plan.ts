@@ -91,8 +91,17 @@ export function planGenerativeFormat(
   if (format === undefined) {
     return { ok: false, field: "formatId", message: "That format doesn't exist." };
   }
-  if (format.status !== "available") {
+  if (format.status === "blocked") {
     return { ok: false, field: "formatId", message: format.why };
+  }
+  if (format.status !== "available") {
+    // Sprint 8: los formatos con voz y el character swap tienen su propio
+    // pedido (`speaking.ts`); no son «clip + texto».
+    return {
+      ok: false,
+      field: "formatId",
+      message: "This format is made with a voice or a source video, not from a scene.",
+    };
   }
   const overlayText = input.overlayText.trim();
   if (overlayText === "") {

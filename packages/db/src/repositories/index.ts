@@ -13,6 +13,8 @@ export * from "./quota-ledger.js";
 export * from "./filters.js";
 export * from "./idempotency.js";
 export * from "./workspace-directory.js";
+// Sprint 8 (K): biblioteca de modelos del dueño.
+export * from "./character-models.js";
 export * from "./strategy.js";
 export * from "./connections.js";
 

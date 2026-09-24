@@ -235,6 +235,9 @@ function isOwnerLevelRoute(url: string): boolean {
   return (
     path === `${API_V1_PREFIX}/mode` ||
     path === `${API_V1_PREFIX}/workspaces` ||
-    path.startsWith(`${API_V1_PREFIX}/workspaces/`)
+    path.startsWith(`${API_V1_PREFIX}/workspaces/`) ||
+    // Sprint 8 (K): la biblioteca de modelos es del dueño, no de la marca.
+    path === `${API_V1_PREFIX}/character-models` ||
+    path.startsWith(`${API_V1_PREFIX}/character-models/`)
   );
 }

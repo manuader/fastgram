@@ -496,6 +496,8 @@ export function createBlitzPromptHandler(deps: BlitzPromptDeps): JobHandler<unkn
         brandName: refill.businessName,
         profile: refill.profile,
         logger: deps.logger,
+        // Sprint 8 (P4-JV-004): el perfil de los modelos de la biblioteca.
+        influencerProfiles: refill.influencerProfiles,
       });
       const memeId = p.media.format === "green-screen" ? p.media.video.mediaId : null;
       if (autoMeme !== null && memeId === autoMeme.media.id) {

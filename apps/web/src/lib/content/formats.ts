@@ -134,6 +134,18 @@ const BY_ID = new Map<string, ContentFormat>(
 );
 
 /** `undefined` para cualquier segmento que no sea uno de los 22 → la página hace `notFound()`. */
+/**
+ * Formatos del PRD que **no se ofrecen** (decisión del dueño, 2026-09-24: "los
+ * modelos que no existen en Higgsfield o similares no los agregues"). No hay
+ * endpoint verificado que anime un objeto (OmniHuman es para figuras humanas)
+ * ni que reemplace la pantalla de un teléfono dentro de un video. Siguen en la
+ * lista de arriba porque son literales del PRD; el hub y las rutas los ocultan.
+ */
+export const EXCLUDED_FORMAT_IDS: ReadonlySet<string> = new Set([
+  "talking-objects",
+  "green-screen-mobile-app",
+]);
+
 export function findContentFormat(id: string): ContentFormat | undefined {
   return BY_ID.get(id);
 }

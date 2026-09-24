@@ -751,7 +751,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [x] **P4-INFL-008** Cap de 50 activos + idempotencia obligatoria · `FR-080`
 - [x] **P4-INFL-009** Galería de imágenes + barra de generación con templates · `FR-081` · **cerrada 2026-09-24:** galería + templates editables por marca (s7-G)
 - [x] **P4-INFL-010** Galería de videos + selección de modelo y duración · `FR-082` · **cerrada 2026-09-24:** adaptado: "Animate this image" con image-to-video de Higgsfield (s7-G); sin probar contra Higgsfield real
-- [~] **P4-INFL-011** Talking Head UGC con validación de longitud de script · `AI-010` · @s8-L 2026-09-24
+- [x] **P4-INFL-011** Talking Head UGC con validación de longitud de script · `AI-010` · **cerrada 2026-09-24:** "Talking head" en el detalle del modelo: guion con la validación de `AI-010`, voz del modelo, OmniHuman (s8-L). Sin probar contra fal real
 - [x] **P4-INFL-012** Tab Configuration: ángulos, cuentas, sets · `FR-083` · **cerrada 2026-09-24:** tab Configuration con auto-guardado (s7-G)
 - [x] **P4-INFL-013** Integración con Blitz: `influencerChance`, chips, fallback · `FR-055` · **cerrada 2026-09-24:** JV-6 elige entre varios influencers (s7-C)
 
@@ -765,7 +765,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 ## P4-FORMAT — Formatos IA adicionales
 
 - [x] **P4-FORMAT-001** Pipeline genérico de formato generativo · `F-084` · **cerrada 2026-09-24:** pipeline declarativo sobre `VideoGen` (s7-G)
-- [~] **P4-FORMAT-002** Los 17 formatos del catálogo · `F-070` tabla · dep: P4-FORMAT-001 · @s8-L 2026-09-24 · 7/17 hechos en el sprint 7; los 10 restantes sobre fal (TTS, OmniHuman, lip-sync, Wan Animate Replace): la nota anterior "ningún proveedor lo ofrece" era falsa para fal
+- [x] **P4-FORMAT-002** Los 17 formatos del catálogo · `F-070` tabla · dep: P4-FORMAT-001 · **cerrada 2026-09-24:** 15 de 17: los 7 del sprint 7 + 8 con voz sobre fal (TTS ElevenLabs/MiniMax, OmniHuman v1.5, Wan Animate Replace) (s8-L). `talking-objects` y `green-screen-mobile-app` **no se ofrecen** por decisión del dueño (no hay modelo verificado: OmniHuman es para figuras humanas; nadie reemplaza la pantalla de un teléfono). Sin probar contra fal real
 
 ## P4-ENGAGE — Engagement
 
@@ -787,7 +787,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [x] **P4-JV-001** **`JV-3`** pre-flight de publicación · `EXT-007`, `DP-007` · **cerrada 2026-09-24:** adaptado: corre en el piloto (PU-AUTO-002)
 - [x] **P4-JV-002** Pre-flight con **timeout duro: si no responde, se publica igual** · `JV-3` · ⚠️ no puede bloquear el producto · **cerrada 2026-09-24:** desvío deliberado: si no responde, **retiene** (nunca aprueba sin juzgar, PU-AUTO-002)
 - [x] **P4-JV-003** **`JV-6`** rerank marca↔candidato · `DP-005` · dep: P2-JV-001 · **cerrada 2026-09-24:** JV-6 para meme, fondo, influencer y referencia de remix (s7-C)
-- [~] **P4-JV-004** `JV-6` aplicado a personajes AI UGC y videos UGC humanos · PRD §25.3 · @s8-K 2026-09-24
+- [x] **P4-JV-004** `JV-6` aplicado a personajes AI UGC y videos UGC humanos · PRD §25.3 · **cerrada 2026-09-24:** JV-6 suma el perfil de cada modelo de la biblioteca al elegir entre varios, en el refill y en Create from prompt (s8-K + coordinador)
 
 ## P4-BILL — Billing
 
@@ -860,8 +860,8 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - ~~**P5-EVENT-002** Funnel de activación **segmentado por `source_type`** · PRD §18 · ⚠️ es la métrica que decide si `EXT-001` funcionó~~ · **fuera de alcance:** D-06 (un usuario)
 - [x] **P5-ERR-001** Auditoría: los ~90 estados de error y vacío de PRD §19 con su copy literal · **cerrada 2026-09-24:** estados de PRD §19 que aplican en modo personal: E06, E10, L01, L09 agregados; el resto ya estaba o es de SaaS (s7-J)
 - [x] **P5-I18N-001** Contenido multi-idioma del plan Pro · `OQ-12` · **cerrada 2026-09-24:** adaptado: `language` por marca en la estrategia (el copy lo respeta desde el sprint 7, @s7-C)
-- [~] **P5-LIBR-001** Estrategia de librería de personajes AI UGC · `OQ-13` · @s8-K 2026-09-24
-- [~] **P5-LIBR-002** Estrategia de librería de UGC humano · `OQ-13` · @s8-K 2026-09-24
+- [x] **P5-LIBR-001** Estrategia de librería de personajes AI UGC · `OQ-13` · **cerrada 2026-09-24:** adaptado a lo que pidió el dueño: **biblioteca de modelos propia** a nivel dueño (`/models`, 0033): importar desde fotos, pegando un Soul ID o promoviendo un influencer; varios modelos, cada uno asignable a una o más marcas sin reentrenar; UGC con el producto de cada marca (s8-K). Sin probar contra Higgsfield real
+- [x] **P5-LIBR-002** Estrategia de librería de UGC humano · `OQ-13` · **cerrada 2026-09-24:** cubierta por la biblioteca de modelos + talking head/formatos con voz (s8-K, s8-L); no hay catálogo de UGC humano de terceros (derechos, `OQ-13`)
 - ~~**P5-PERF-001** Pruebas de carga k6: rate limits, cuotas, fan-out de publicación~~ · **fuera de alcance:** D-06 (un usuario)
 - [x] **P5-PARITY-001** **Recorrer la Parity Matrix de PRD §23 y cerrar cada fila** · **cerrada 2026-09-24:** `docs/PARIDAD-FASTLANE.md`: cada fila Anda, Adaptado, Fuera o Bloqueado
 

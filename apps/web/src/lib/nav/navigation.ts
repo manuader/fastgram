@@ -99,6 +99,8 @@ export const TOOLS_NAV: readonly NavItem[] = [
     href: ROUTES.influencers,
     icon: UserIcon,
   },
+  // Sprint 8 (K): la biblioteca de modelos es del dueño; se ve igual en cualquier marca.
+  { id: "models", labelKey: "nav.models", href: ROUTES.models, icon: UsersRoundIcon },
   {
     id: "analytics",
     labelKey: "nav.analytics",

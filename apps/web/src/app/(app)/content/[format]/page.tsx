@@ -4,7 +4,11 @@ import { PageHeader } from "@/components/shell/PageHeader";
 import { CustomVideoUpload } from "@/components/studio/CustomVideoUpload";
 import { FormatStudio } from "@/components/studio/FormatStudio";
 import { GenerativeFormatStudio } from "@/components/studio/generative";
-import { CONTENT_FORMATS, findContentFormat } from "@/lib/content/formats";
+import {
+  CONTENT_FORMATS,
+  EXCLUDED_FORMAT_IDS,
+  findContentFormat,
+} from "@/lib/content/formats";
 import { CUSTOM_ROUTE_ID, studioFormatOf } from "@/lib/studio/studio-formats";
 
 interface PageProps {
@@ -40,7 +44,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function ContentFormatPage({ params }: PageProps) {
   const { format } = await params;
   const found = findContentFormat(format);
-  if (found === undefined) notFound();
+  if (found === undefined || EXCLUDED_FORMAT_IDS.has(found.id)) notFound();
 
   if (found.id === CUSTOM_ROUTE_ID) {
     return (

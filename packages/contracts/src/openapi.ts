@@ -48,6 +48,8 @@ import * as engagement from "./resources/engagement.js";
 import * as automations from "./resources/automations.js";
 import * as notifications from "./resources/notifications.js";
 import * as brandFlow from "./resources/brand-flow.js";
+import * as characterModels from "./resources/character-models.js";
+import * as speaking from "./resources/speaking.js";
 import {
   imageUploadReservationRequestSchema,
   mediaUploadReservationRequestSchema,
@@ -2336,6 +2338,236 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
         },
       },
       /**
+       * Sprint 8 (K): biblioteca de modelos del dueño. Ignoran la marca activa;
+       * las que actúan sobre una marca la reciben explícita. 404 fuera del modo
+       * personal. Ver `resources/character-models.ts`.
+       */
+      "/character-models": {
+        get: {
+          operationId: "listCharacterModels",
+          summary: "Los modelos del dueño con sus marcas asignadas (contrato K↔L)",
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(characterModels.characterModelListSchema)),
+            ),
+            "404": errorResponse("not_found — modo standard"),
+          },
+        },
+        post: {
+          operationId: "createCharacterModel",
+          summary: "Importa un modelo: fotos (entrena), Soul ID existente o influencer",
+          parameters: [idempotencyParam],
+          requestBody: {
+            required: true,
+            content: json(
+              toJsonSchema(characterModels.createCharacterModelRequestSchema),
+            ),
+          },
+          responses: {
+            "201": ok(
+              "Creado",
+              dataOf(toJsonSchema(characterModels.characterModelSchema)),
+            ),
+            "400": errorResponse("bad_request — con details.field"),
+            "402": errorResponse("payment_required — details.reason = budget_exceeded"),
+            "404": errorResponse("not_found — la marca o el influencer no son del dueño"),
+            "409": errorResponse("conflict — sin Higgsfield, o influencer no listo"),
+            "503": errorResponse("service_unavailable — sin cola o Higgsfield caído"),
+          },
+        },
+      },
+      "/character-models/setup": {
+        get: {
+          operationId: "getCharacterModelSetup",
+          summary: "Si hay Higgsfield y saldo para entrenar, y los límites de fotos",
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(characterModels.characterModelSetupSchema)),
+            ),
+          },
+        },
+      },
+      "/character-models/{id}": {
+        get: {
+          operationId: "getCharacterModel",
+          summary: "Un modelo del dueño",
+          parameters: [pathParam("id")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(characterModels.characterModelSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+        patch: {
+          operationId: "updateCharacterModel",
+          summary: "Nombre, notas y voz (fal TTS)",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(
+              toJsonSchema(characterModels.updateCharacterModelRequestSchema),
+            ),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(characterModels.characterModelSchema))),
+            "400": errorResponse("bad_request"),
+            "404": errorResponse("not_found"),
+          },
+        },
+        delete: {
+          operationId: "deleteCharacterModel",
+          summary: "Lo saca de la biblioteca y lo desactiva en sus marcas",
+          parameters: [pathParam("id")],
+          responses: {
+            "204": { description: "Borrado" },
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/character-models/{id}/brands": {
+        put: {
+          operationId: "setCharacterModelBrands",
+          summary:
+            "Asigna el modelo a estas marcas (crea o reactiva su influencer, sin entrenar) y lo desactiva en las demás",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(
+              toJsonSchema(characterModels.setCharacterModelBrandsRequestSchema),
+            ),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(characterModels.characterModelSchema))),
+            "402": errorResponse(
+              "payment_required — la marca tiene 50 influencers activos",
+            ),
+            "404": errorResponse("not_found — el modelo o una marca no son del dueño"),
+            "409": errorResponse("conflict — el modelo no está listo"),
+          },
+        },
+      },
+      "/character-models/brands/{brandId}/media": {
+        get: {
+          operationId: "listCharacterModelBrandMedia",
+          summary:
+            "Imágenes listas del Media Bank de una marca del dueño (productos, fotos)",
+          parameters: [pathParam("brandId"), ...queryParams(cursorQuerySchema)],
+          responses: {
+            "200": ok("OK", pageOf(mediaJs)),
+            "404": errorResponse("not_found — la marca no es del dueño"),
+          },
+        },
+      },
+      "/character-models/{id}/ugc": {
+        get: {
+          operationId: "listCharacterModelUgc",
+          summary: "Imágenes y videos del modelo en una marca, más nuevos primero",
+          parameters: [
+            pathParam("id"),
+            ...queryParams(characterModels.characterUgcListQuerySchema),
+          ],
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(influencers.influencerGenerationListSchema)),
+            ),
+            "404": errorResponse("not_found — el modelo no está asignado a esa marca"),
+          },
+        },
+        post: {
+          operationId: "createCharacterModelUgcImage",
+          summary: "Imagen del modelo (SOUL V2 con su Soul ID) para una marca (202)",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(characterModels.characterUgcImageRequestSchema)),
+          },
+          responses: {
+            "202": ok(
+              "Accepted",
+              dataOf(toJsonSchema(influencers.influencerGenerationSchema)),
+            ),
+            "402": errorResponse("payment_required — details.reason = budget_exceeded"),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — sin Higgsfield"),
+          },
+        },
+      },
+      "/character-models/{id}/ugc/estimate": {
+        post: {
+          operationId: "estimateCharacterModelUgcImage",
+          summary: "Costo estimado de la imagen del modelo",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(characterModels.characterUgcImageRequestSchema)),
+          },
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(influencers.influencerImageEstimateSchema)),
+            ),
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/character-models/{id}/ugc/animate": {
+        post: {
+          operationId: "createCharacterModelUgcVideo",
+          summary: "Anima una imagen de la marca con el modelo (image-to-video, 202)",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(characterModels.characterUgcAnimateRequestSchema)),
+          },
+          responses: {
+            "202": ok(
+              "Accepted",
+              dataOf(toJsonSchema(influencers.influencerGenerationSchema)),
+            ),
+            "400": errorResponse("bad_request — con details.field"),
+            "402": errorResponse("payment_required — details.reason = budget_exceeded"),
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/character-models/{id}/ugc/animate/estimate": {
+        post: {
+          operationId: "estimateCharacterModelUgcVideo",
+          summary: "Costo estimado de animar la imagen",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(characterModels.characterUgcAnimateRequestSchema)),
+          },
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(influencers.influencerImageEstimateSchema)),
+            ),
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/character-models/{id}/ugc/piece": {
+        post: {
+          operationId: "createCharacterModelUgcPiece",
+          summary:
+            "Pieza en la Library de la marca: slideshow modelo + productos, o wall of text sobre el video",
+          parameters: [pathParam("id"), idempotencyParam],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(characterModels.characterUgcPieceRequestSchema)),
+          },
+          responses: {
+            "201": ok("Creado (BUILDING)", dataOf(contentJs)),
+            "400": errorResponse("bad_request — details.mediaIds"),
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      /**
        * Registro de modelos por tarea — `PU-MODEL-001`/`002`, D-14. Fuera de la
        * §9.3 del PRD (uso personal). Ninguna respuesta lleva una API key.
        * Probar y listar responden 200 con `ok: false` cuando falla el
@@ -2568,6 +2800,123 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           parameters: [pathParam("id")],
           responses: {
             "200": ok("OK", dataOf(toJsonSchema(genai.formatRunSchema))),
+            "404": errorResponse("not_found — no existe o es de otra marca"),
+          },
+        },
+      },
+      // Sprint 8 (agente L): formatos con voz y character swap.
+      "/ai-studio/speaking/options": {
+        get: {
+          operationId: "getSpeakingOptions",
+          summary:
+            "Modelos de voz, avatar y swap, la biblioteca de modelos, duraciones y tope",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(speaking.speakingOptionsSchema))),
+          },
+        },
+      },
+      "/ai-studio/speaking/{format}/script": {
+        post: {
+          operationId: "writeSpeakingScript",
+          summary: "El modelo de texto escribe un guion del largo pedido (AI-010)",
+          parameters: [pathParam("format")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(speaking.speakingScriptRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(speaking.speakingScriptSchema))),
+            "404": errorResponse("not_found — no es un formato con voz"),
+            "409": errorResponse("conflict — sin modelo de texto o formato bloqueado"),
+            "503": errorResponse("service_unavailable — el modelo de texto falló"),
+          },
+        },
+      },
+      "/ai-studio/speaking/{format}/estimate": {
+        post: {
+          operationId: "estimateSpeakingRun",
+          summary: "Costo estimado de voz + video de un formato con voz",
+          parameters: [pathParam("format")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(speaking.speakingRunRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(speaking.voiceRunEstimateSchema))),
+            "400": errorResponse("bad_request — con details.field"),
+            "404": errorResponse("not_found — no es un formato con voz"),
+            "409": errorResponse("conflict — details.task = la tarea sin configurar"),
+          },
+        },
+      },
+      "/ai-studio/speaking/{format}/runs": {
+        post: {
+          operationId: "createSpeakingRun",
+          summary: "Reserva voz + video en el tope y encola la corrida (202)",
+          parameters: [pathParam("format")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(speaking.speakingRunRequestSchema)),
+          },
+          responses: {
+            "202": ok("Accepted", dataOf(toJsonSchema(speaking.speakingRunSchema))),
+            "400": errorResponse("bad_request — con details.field"),
+            "402": errorResponse("payment_required — details.reason = budget_exceeded"),
+            "404": errorResponse("not_found — no es un formato con voz"),
+            "409": errorResponse("conflict — details.task = la tarea sin configurar"),
+            "503": errorResponse("service_unavailable — sin cola"),
+          },
+        },
+      },
+      "/ai-studio/swap/estimate": {
+        post: {
+          operationId: "estimateSwapRun",
+          summary: "Costo estimado de un character swap",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(speaking.swapRunRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(speaking.voiceRunEstimateSchema))),
+            "400": errorResponse("bad_request — con details.field"),
+            "409": errorResponse("conflict — sin modelo de swap"),
+          },
+        },
+      },
+      "/ai-studio/swap/runs": {
+        post: {
+          operationId: "createSwapRun",
+          summary: "Reserva en el tope y encola un character swap (202)",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(speaking.swapRunRequestSchema)),
+          },
+          responses: {
+            "202": ok("Accepted", dataOf(toJsonSchema(speaking.speakingRunSchema))),
+            "400": errorResponse("bad_request — con details.field"),
+            "402": errorResponse("payment_required — details.reason = budget_exceeded"),
+            "409": errorResponse("conflict — sin modelo de swap"),
+            "503": errorResponse("service_unavailable — sin cola"),
+          },
+        },
+      },
+      "/ai-studio/speaking-runs": {
+        get: {
+          operationId: "listSpeakingRuns",
+          summary: "Corridas con voz y swaps de la marca, más nuevas primero",
+          parameters: [...queryParams(speaking.speakingRunListQuerySchema)],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(speaking.speakingRunListSchema))),
+          },
+        },
+      },
+      "/ai-studio/speaking-runs/{id}": {
+        get: {
+          operationId: "getSpeakingRun",
+          summary: "Una corrida con su etapa, la voz, el video y la pieza",
+          parameters: [pathParam("id")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(speaking.speakingRunSchema))),
             "404": errorResponse("not_found — no existe o es de otra marca"),
           },
         },

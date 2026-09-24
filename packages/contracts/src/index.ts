@@ -40,6 +40,8 @@ export * from "./resources/onboarding.js";
 export * from "./resources/workspaces.js";
 export * from "./resources/models.js";
 export * from "./resources/genai.js";
+// Sprint 8 (agente L): formatos con voz y character swap.
+export * from "./resources/speaking.js";
 export * from "./resources/strategy.js";
 export * from "./resources/autopilot.js";
 export * from "./resources/inspiration.js";
@@ -48,6 +50,8 @@ export * from "./resources/automations.js";
 export * from "./resources/notifications.js";
 // Sprint 7, segunda tanda (H): oferta post-análisis y audio extraído.
 export * from "./resources/brand-flow.js";
+// Sprint 8 (K): biblioteca de modelos del dueño.
+export * from "./resources/character-models.js";
 
 // OpenAPI
 export * from "./openapi.js";

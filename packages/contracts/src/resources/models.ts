@@ -42,6 +42,10 @@ export const modelTaskSchema = z.enum([
   "image",
   "video",
   "background_removal",
+  // Sprint 8 (agente L): formatos con voz (sólo fal).
+  "speech",
+  "avatar",
+  "swap",
 ]);
 export type ModelTask = z.infer<typeof modelTaskSchema>;
 

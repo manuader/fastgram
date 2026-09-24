@@ -237,6 +237,14 @@ export function InfluencerDetailScreen({
             >
               {tw(STATUS_COPY[inf.status])}
             </Badge>
+            {inf.modelId !== undefined && (
+              // Sprint 8 (K): viene de la biblioteca de modelos del dueño.
+              <Link href={`${ROUTES.models}/${inf.modelId}`} className="no-underline">
+                <Badge tone="accent" size="sm">
+                  {tw("charModels.fromLibrary")}
+                </Badge>
+              </Link>
+            )}
           </div>
           {traits !== "" && <span className="text-sm text-text-muted">{traits}</span>}
         </div>

@@ -181,6 +181,8 @@ const LLM_PROVIDERS: readonly ModelProvider[] = MODEL_PROVIDER_PRESETS.map(
   (p) => p.id,
 ).filter((id) => !GENAI_PROVIDERS.includes(id));
 const RESERVED_PROVIDERS: readonly ModelProvider[] = ["custom"];
+/** Voz, talking avatar y character swap: sólo fal tiene adaptador. */
+const VOICE_PROVIDERS: readonly ModelProvider[] = ["fal"];
 
 export const MODEL_TASK_SPECS: readonly ModelTaskSpec[] = [
   { task: "text", kind: "llm", wired: true, providers: LLM_PROVIDERS },
@@ -202,6 +204,12 @@ export const MODEL_TASK_SPECS: readonly ModelTaskSpec[] = [
     wired: true,
     providers: ["fal", ...RESERVED_PROVIDERS],
   },
+  // Sprint 8 (agente L): formatos con voz. Sólo fal (el catálogo verificado de
+  // `packages/adapters/src/genai/fal-voice-catalog.ts`). Sin key propia usan la
+  // de otra tarea de fal del mismo origen (`resolveGenAiConfig`).
+  { task: "speech", kind: "genai", wired: true, providers: VOICE_PROVIDERS },
+  { task: "avatar", kind: "genai", wired: true, providers: VOICE_PROVIDERS },
+  { task: "swap", kind: "genai", wired: true, providers: VOICE_PROVIDERS },
 ];
 
 export function taskSpec(task: ModelTask): ModelTaskSpec {

@@ -24,6 +24,10 @@ export * from "./media-import.js";
 export * from "./background-removal.js";
 export * from "./image-gen.js";
 export * from "./video-gen.js";
+// Sprint 8 (agente L): voz, talking avatar y character swap sobre fal.
+export * from "./speech.js";
+export * from "./talking-avatar.js";
+export * from "./character-swap.js";
 
 /**
  * Suites de contrato de puerto.

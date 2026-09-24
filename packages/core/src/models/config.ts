@@ -375,12 +375,18 @@ export function missingFields(
   task: ModelTask,
   config: ModelTaskConfig,
   secrets: SecretEnv,
+  /**
+   * Sprint 8: con el registro entero, una tarea de voz sin key propia no la
+   * «pierde» si otra tarea de fal del mismo origen la tiene ({@link taskApiKey}).
+   */
+  snapshot?: ModelRegistrySnapshot,
 ): MissingField[] {
   const missing: MissingField[] = [];
-  if (
-    providerPreset(config.provider).requiresKey &&
-    resolveApiKey(config, secrets) === null
-  ) {
+  const key =
+    snapshot === undefined
+      ? resolveApiKey(config, secrets)
+      : taskApiKey(task, config, snapshot, secrets);
+  if (providerPreset(config.provider).requiresKey && key === null) {
     missing.push("apiKey");
   }
   // `OpenAiCompatibleLlm` la exige; las reservadas no tienen adaptador que la use.
@@ -577,7 +583,7 @@ export function toPublicTaskConfig(
 
   if (found !== null) {
     const { config } = found;
-    const missing = missingFields(found.entry, config, secrets);
+    const missing = missingFields(found.entry, config, secrets, snapshot);
     const complete = missing.length === 0;
     // Una entrada propia incompleta con el entorno configurado: el worker usa
     // el entorno (ver `resolveLlmConfig`) y la pantalla tiene que decirlo.
@@ -591,7 +597,7 @@ export function toPublicTaskConfig(
       baseUrl: config.baseUrl,
       model: config.model,
       contextWindowTokens: config.contextWindowTokens ?? null,
-      apiKey: publicKey(resolveApiKey(config, secrets)),
+      apiKey: publicKey(taskApiKey(found.entry, config, snapshot, secrets)),
       apiKeyEnv: config.apiKeyEnv ?? null,
       missing,
       comfyWorkflow:
@@ -687,6 +693,82 @@ export function resolveGenAiConfig(
   return {
     task,
     provider: config.provider,
+    baseUrl: config.baseUrl,
+    model: config.model,
+    apiKey: key.key,
+  };
+}
+
+/* ------------------------------------------------------------------------ *
+ * Voz, talking avatar y character swap (sprint 8, agente L)
+ * ------------------------------------------------------------------------ */
+
+export const VOICE_TASKS = ["speech", "avatar", "swap"] as const;
+export type VoiceTask = (typeof VOICE_TASKS)[number];
+
+export function isVoiceTask(task: string): task is VoiceTask {
+  return (VOICE_TASKS as readonly string[]).includes(task);
+}
+
+/** Las tareas de las que una tarea de voz puede tomar prestada la key de fal. */
+const FAL_KEY_DONORS: readonly ModelTask[] = [
+  "speech",
+  "avatar",
+  "swap",
+  "video",
+  "image",
+  "background_removal",
+];
+
+/**
+ * La key con la que corre una tarea. Para las de voz, si la entrada no tiene
+ * una propia, la de **otra tarea de fal del mismo origen** (el brief: «la key
+ * de fal ya existe para imagen/video: reusala»). El mismo origen es la regla
+ * 2 de la cabecera: una key nunca viaja a un host distinto del que la pidió.
+ */
+export function taskApiKey(
+  task: ModelTask,
+  config: ModelTaskConfig,
+  snapshot: ModelRegistrySnapshot,
+  secrets: SecretEnv,
+): ResolvedKey | null {
+  const own = resolveApiKey(config, secrets);
+  if (own !== null || !isVoiceTask(task) || config.provider !== "fal") return own;
+  for (const donor of FAL_KEY_DONORS) {
+    if (donor === task) continue;
+    const entry = snapshot.tasks[donor];
+    if (entry === undefined || entry.provider !== "fal") continue;
+    if (!sameOrigin(entry.baseUrl, config.baseUrl)) continue;
+    const key = resolveApiKey(entry, secrets);
+    if (key !== null) return key;
+  }
+  return null;
+}
+
+export interface ResolvedVoiceConfig {
+  readonly task: VoiceTask;
+  readonly provider: "fal";
+  readonly baseUrl: string;
+  readonly model: string;
+  readonly apiKey: string;
+}
+
+/**
+ * Con qué generar voz, talking avatar o character swap, o `null` si la tarea
+ * no está configurada con fal y una key (propia o prestada).
+ */
+export function resolveVoiceConfig(
+  task: VoiceTask,
+  snapshot: ModelRegistrySnapshot,
+  secrets: SecretEnv,
+): ResolvedVoiceConfig | null {
+  const config = snapshot.tasks[task];
+  if (config === undefined || config.provider !== "fal") return null;
+  const key = taskApiKey(task, config, snapshot, secrets);
+  if (key === null) return null;
+  return {
+    task,
+    provider: "fal",
     baseUrl: config.baseUrl,
     model: config.model,
     apiKey: key.key,

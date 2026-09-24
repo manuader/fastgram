@@ -110,6 +110,11 @@ export const influencerSchema = z
       .optional(),
     /** Sprint 7 (`F-093`): de qué personaje salió éste al regenerar. */
     regeneratedFromId: z.string().uuid().optional(),
+    /**
+     * Sprint 8 (K): el modelo de la biblioteca del dueño que esta fila
+     * representa en la marca («From library»). Ausente = propio de la marca.
+     */
+    modelId: z.string().uuid().optional(),
     createdAt: msEpochSchema,
     updatedAt: msEpochSchema,
   })

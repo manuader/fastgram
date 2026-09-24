@@ -26,6 +26,7 @@ export const webEn = {
   "nav.blitz": "Blitz", // literal
   "nav.aiStudio": "AI Studio", // literal
   "nav.influencers": "Influencers", // literal
+  "nav.models": "Models", // nuevo (sprint 8, K): biblioteca de modelos del dueño
   "nav.content": "Content", // literal
   "nav.library": "Library", // literal
   "nav.calendar": "Calendar", // literal
@@ -1153,6 +1154,54 @@ export const webEn = {
     "Clips take a few minutes. You can leave this page: it keeps going in the background.", // nuevo
   "formats.run.openEditor": "Open in editor", // nuevo
   "formats.run.again": "Make another", // nuevo
+  /* ------ Sprint 8 (agente L): formatos con voz, character swap, talking head */
+  "speaking.setup.title": "Set up fal in Settings → Models", // nuevo
+  "speaking.setup.body":
+    "Voice formats need a fal voice model and a fal talking-avatar model (Speech and Avatar). The fal key you already use for images or video works.", // nuevo
+  "speaking.setup.swapBody":
+    "Character swap needs a fal character-swap model (Swap). The fal key you already use for images or video works.", // nuevo
+  "speaking.portrait.label": "Who speaks", // nuevo
+  "speaking.portrait.pick": "Use a portrait from the Media Bank", // nuevo
+  "speaking.portrait.pickTitle": "Pick a portrait", // nuevo
+  "speaking.portrait.noModels":
+    "No models in your library yet. Pick a clear, front-facing portrait from the Media Bank.", // nuevo
+  "speaking.portrait.libraryDown":
+    "Your model library didn't load. You can still use a portrait from the Media Bank.", // nuevo
+  "speaking.demo.label": "Your video", // nuevo
+  "speaking.video.pick": "Pick a video", // nuevo
+  "speaking.video.change": "Change video", // nuevo
+  "speaking.script.label": "Script", // literal F-098
+  "speaking.script.placeholder": "What the speaker says, word for word.", // nuevo
+  "speaking.script.onTarget": "{words} words · target {min}-{max}", // nuevo
+  "speaking.script.topic": "Topic for a generated script (optional)", // nuevo
+  "speaking.script.topicPlaceholder": "e.g. why invoices get paid late", // nuevo
+  "speaking.script.generate": "Generate script", // nuevo
+  "speaking.script.noWriter":
+    "Set up a text model in Settings → Models to generate scripts.", // nuevo
+  "speaking.script.failed": "Couldn't write a script. Try again or write your own.", // nuevo
+  "speaking.voice.label": "Voice", // nuevo
+  "speaking.voice.model": "The model's voice ({voice})", // nuevo
+  "speaking.voice.default": "Default voice ({voice})", // nuevo
+  "speaking.language.label": "Language", // literal F-098
+  "speaking.caption.label": "Caption overlay", // literal F-098
+  "speaking.estimate.idle": "Pick who speaks and write the script to see the cost.", // nuevo
+  "speaking.estimate.voice": "Voice {usd} · {basis}", // nuevo
+  "speaking.estimate.video": "Video {usd} · {basis}", // nuevo
+  "speaking.run.voice": "Recording the voice", // nuevo
+  "speaking.run.video": "Generating the video", // nuevo
+  "speaking.run.building": "Putting it together", // nuevo
+  "speaking.run.wait":
+    "Voice and video take a few minutes. You can leave this page: it keeps going in the background.", // nuevo
+  "speaking.swap.source": "Video to swap the character in", // nuevo
+  "speaking.swap.sourceHint":
+    "Up to {seconds} seconds, from your Media Bank. One clear person on screen works best.", // nuevo
+  "speaking.swap.noAudio":
+    "The finished piece has no sound: FastGram's renderer doesn't carry a video's own audio. Add music in the editor.", // nuevo
+  "speaking.talkingHead.history": "Talking head videos", // nuevo
+  "speaking.talkingHead.empty": "No talking head videos with this model yet.", // nuevo
+  "speaking.talkingHead.notReady": "This model isn't ready yet", // nuevo
+  "speaking.talkingHead.notReadyBody":
+    "Talking head videos use its main portrait once it's ready.", // nuevo
   "aiStudio.image.pick": "Pick from Media Bank", // nuevo
   "aiStudio.image.pickTitle": "Pick a start image", // nuevo
   "aiStudio.image.picked": "From your Media Bank", // nuevo
@@ -1160,8 +1209,7 @@ export const webEn = {
   "influencers.tabs.images": "Images", // literal FR-081
   "influencers.tabs.videos": "Videos", // literal FR-081
   "influencers.tabs.configuration": "Configuration", // literal FR-081
-  "influencers.images.animateHint":
-    "Animate any image from its tile. Talking Head isn't available: no provider offers lip-sync by API.", // nuevo
+  "influencers.images.animateHint": "Animate any image from its tile.", // nuevo · sprint 8: el talking head vive en el detalle del modelo
   "influencers.videos.empty": "No videos yet. Animate an image from the Images tab.", // nuevo
   "influencers.videos.pending": "Animating…", // nuevo
   "influencers.videos.hint":
@@ -1240,6 +1288,118 @@ export const webEn = {
   "prompt.gen.ready": "Your video is ready in your Library.", // nuevo
   "prompt.gen.statusFailed":
     "Lost track of that video. Check your Library in a few minutes.", // nuevo
+  /* ------ Sprint 8 (K): biblioteca de modelos del dueño. Todo `nuevo`. */
+  "charModels.title": "Models",
+  "charModels.subtitle":
+    "Your model library. Import a model once and use it consistently across any of your brands.",
+  "charModels.fromLibrary": "From library",
+  "charModels.back": "← All models",
+  "charModels.loading": "Loading…",
+  "charModels.cancel": "Cancel",
+  "charModels.save": "Save",
+  "charModels.saveFailed": "Couldn't save that. Try again.",
+  "charModels.training": "Training the model on Higgsfield… {progress}%",
+  "charModels.setup.title": "Set up Higgsfield first",
+  "charModels.setup.body":
+    "Models use Higgsfield Soul ID to stay consistent. Set Higgsfield as your image or video provider in Settings → Models.",
+  "charModels.setup.action": "Open Settings → Models",
+  "charModels.empty.title": "No models yet",
+  "charModels.empty.body":
+    "Import a model from photos, a Soul ID you already have, or one of your influencers.",
+  "charModels.brands.none": "Not assigned to any brand",
+  "charModels.brands.list": "In {brands}",
+  "charModels.brands.title": "Brands",
+  "charModels.brands.body":
+    "Assign the model to the brands that should use it. Each brand gets it as a ready influencer — no retraining.",
+  "charModels.brands.notReady": "You can assign the model once training is done.",
+  "charModels.brands.save": "Save brands",
+  "charModels.source.photos": "Trained from photos",
+  "charModels.source.soul": "Imported Soul ID",
+  "charModels.source.influencer": "Promoted from an influencer",
+  "charModels.import.open": "Import model",
+  "charModels.import.title": "Import a model",
+  "charModels.import.fromBrand":
+    "Photos come from the Media Bank of {brand}, your active brand.",
+  "charModels.import.name": "Name",
+  "charModels.import.nameOptional": "Name (optional)",
+  "charModels.import.tab.photos": "From photos",
+  "charModels.import.tab.soul": "Paste a Soul ID",
+  "charModels.import.tab.influencer": "From an influencer",
+  "charModels.import.photos.hint":
+    "Pick {min}–{max} clear photos of the same person. We copy them to your library and train a Soul ID on Higgsfield.",
+  "charModels.import.photos.label": "Reference photos",
+  "charModels.import.photos.budget":
+    "This month's AI budget is used up. Raise it in Settings → Models to train a model.",
+  "charModels.import.soul.label": "Soul ID",
+  "charModels.import.soul.hint":
+    "The id of a character you already trained in your Higgsfield account. We check it with Higgsfield before saving.",
+  "charModels.import.soul.portrait": "Portrait",
+  "charModels.import.influencer.label": "Influencer",
+  "charModels.import.influencer.placeholder": "Select…",
+  "charModels.import.influencer.empty":
+    "No ready influencers in this brand that aren't in the library yet.",
+  "charModels.import.influencer.hint":
+    "Reuses the influencer's Soul ID — no retraining. It stays assigned to this brand.",
+  "charModels.import.submit": "Import",
+  "charModels.import.submitTrain": "Import and train",
+  "charModels.import.failed": "Couldn't import the model. Try again.",
+  "charModels.picker.noBrand": "Pick a brand first.",
+  "charModels.picker.empty": "No ready images in this brand's Media Bank yet.",
+  "charModels.picker.upload": "Upload in Library",
+  "charModels.picker.count": "{count} of {max}",
+  "charModels.details.title": "Details",
+  "charModels.details.age": "Age",
+  "charModels.details.style": "Style",
+  "charModels.details.stylePlaceholder": "e.g. streetwear, clean girl, techy",
+  "charModels.details.notes": "Notes",
+  "charModels.details.notesPlaceholder": "Who they are, what they like, where they film",
+  "charModels.details.notesHint":
+    "Blitz reads these to pick the best model for each brand and angle.",
+  "charModels.voice.title": "Voice",
+  "charModels.voice.body":
+    "The voice used when this model speaks in videos (fal text-to-speech).",
+  "charModels.voice.model": "Voice model",
+  "charModels.voice.voice": "Voice",
+  "charModels.voice.hint":
+    "fal has no voice list endpoint: suggestions are the voices its docs show. Any voice name or id your fal account supports works.",
+  "charModels.voice.save": "Save voice",
+  "charModels.voice.remove": "Remove voice",
+  "charModels.voice.short": "Voice: {voice}",
+  "charModels.delete.open": "Delete model",
+  "charModels.delete.confirm": "Delete for good",
+  "charModels.delete.body":
+    "The model leaves your library and is deactivated in its brands. What it already generated stays in each brand's Media Bank.",
+  "charModels.ugc.title": "Generate UGC",
+  "charModels.ugc.titleFor": "Generate UGC for {brand}",
+  "charModels.ugc.assignFirst":
+    "Assign the model to a brand to generate content with it.",
+  "charModels.ugc.brand": "Brand",
+  "charModels.ugc.count": "Images",
+  "charModels.ugc.prompt": "Scene",
+  "charModels.ugc.promptPlaceholder":
+    "Casual selfie in a kitchen holding a matte black water bottle, natural light",
+  "charModels.ugc.productNote":
+    "Higgsfield can't place your product photo in the image: describe it here, then add the product photo as a slide when you create the piece.",
+  "charModels.ugc.generate": "Generate",
+  "charModels.ugc.cost": "About {cost}",
+  "charModels.ugc.estimateFailed": "Couldn't check the cost. Try again.",
+  "charModels.ugc.failedToStart": "Couldn't start that. Try again.",
+  "charModels.ugc.results": "Generated in this brand",
+  "charModels.ugc.empty": "Nothing generated with this model in this brand yet.",
+  "charModels.ugc.pending": "{count} in progress…",
+  "charModels.ugc.createPiece": "Create piece",
+  "charModels.ugc.animate": "Animate",
+  "charModels.ugc.pieceCreated": "The piece is building in {brand}'s Library.",
+  "charModels.ugc.openLibrary": "Open Library",
+  "charModels.piece.title": "Create a piece",
+  "charModels.piece.bodyImage":
+    "A slideshow: the model first, then up to 3 product photos from the brand's Media Bank. One text per slide.",
+  "charModels.piece.bodyVideo": "A wall of text over the video.",
+  "charModels.piece.products": "Product photos",
+  "charModels.piece.textModel": "Text on the model slide",
+  "charModels.piece.textProduct": "Text on product slide {n}",
+  "charModels.piece.create": "Create piece",
+  "charModels.piece.failed": "Couldn't create the piece. Try again.",
 } as const;
 
 export type WebMessageKey = keyof typeof webEn;

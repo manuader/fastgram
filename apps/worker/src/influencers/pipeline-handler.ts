@@ -76,6 +76,7 @@ import {
 import {
   influencerCreditsStore,
   influencerRepository,
+  parseCharacterModelTrainJob,
   mediaRepository,
   withCompany,
   type Database,
@@ -99,6 +100,7 @@ import {
   type InfluencerCharacterMount,
 } from "./image-handler.js";
 import { createInfluencerVideoHandler } from "./video-handler.js";
+import { createModelTrainer } from "./model-train.js";
 
 /**
  * Lo mínimo del puerto `MediaGeneration` que este handler usa.
@@ -212,6 +214,9 @@ export function createInfluencerPipelineHandler(
     chars?.video === undefined
       ? null
       : createInfluencerVideoHandler({ ...deps, mount: { ...chars, ...chars.video } });
+  // Sprint 8 (K): entrenar un modelo de la biblioteca del dueño.
+  const trainModel =
+    chars === undefined ? null : createModelTrainer({ ...deps, mount: chars });
   const sleep =
     chars?.sleep ??
     ((ms: number) =>
@@ -479,6 +484,30 @@ export function createInfluencerPipelineHandler(
   }
 
   return async function handle(ctx: JobContext<unknown>): Promise<void> {
+    // Sprint 8 (K): un job de la biblioteca de modelos se despacha por payload
+    // antes que nada (trampa 63): no es de una marca ni lleva `influencerId`.
+    const modelJob = parseCharacterModelTrainJob(ctx.payload);
+    if (modelJob !== null) {
+      if (trainModel === null) {
+        deps.logger.error(
+          { jobId: ctx.jobId, modelId: modelJob.modelId },
+          "influencer-pipeline: modelo sin montaje de Higgsfield",
+        );
+        return;
+      }
+      try {
+        await trainModel(ctx, modelJob);
+      } catch (error) {
+        if (error instanceof RetryLater) {
+          deps.logger.warn(
+            { jobId: ctx.jobId, modelId: modelJob.modelId, why: error.message },
+            "influencer-pipeline: el modelo se retoma después",
+          );
+        }
+        throw error;
+      }
+      return;
+    }
     if (chars === undefined || images === null) {
       await legacy(ctx);
       return;

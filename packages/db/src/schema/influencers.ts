@@ -17,6 +17,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { createdAtOnly, timestamps, tsColumn } from "./_shared.js";
+import { characterModels } from "./character-models.js";
 import { companyRef } from "./identity.js";
 import { influencerAssetKindEnum, influencerStatusEnum } from "./enums.js";
 import { INFLUENCER_LIMITS } from "../limits.js";
@@ -118,6 +119,13 @@ export const influencers = pgTable(
      * propia tabla acá obligaría a anotar el tipo de `influencers` a mano.
      */
     regeneratedFromId: uuid(),
+
+    /**
+     * Sprint 8 (agente K), migración `0033`: el modelo de la biblioteca del
+     * dueño que esta fila representa en la marca. `null` = un influencer
+     * propio de la marca. Único por marca (índice parcial en la migración).
+     */
+    modelId: uuid().references(() => characterModels.id, { onDelete: "set null" }),
 
     ...timestamps(),
   },

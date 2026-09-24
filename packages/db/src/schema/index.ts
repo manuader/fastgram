@@ -22,6 +22,8 @@ export * from "./autopilot.js";
 export * from "./metrics.js";
 export * from "./engagement.js";
 export * from "./notifications.js";
+// Sprint 8 (K): biblioteca de modelos del dueño (migración 0033).
+export * from "./character-models.js";
 
 export { tsColumn, timestamps, createdAtOnly, softDelete } from "./_shared.js";
 
@@ -133,5 +135,10 @@ export const NON_TENANT_TABLES: ReadonlyArray<{ table: string; reason: string }>
   {
     table: "onboarding_records",
     reason: "DATA-030: existe antes del workspace; scope por ownerUserId",
+  },
+  {
+    table: "character_models",
+    reason:
+      "Sprint 8 (0033): biblioteca de modelos del dueño, por encima de las marcas; scope por ownerUserId en el repositorio",
   },
 ];

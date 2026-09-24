@@ -27,6 +27,22 @@
  *
  * Las escenas son **nuestras** (FastGram), no copiadas de Fastlane: el PRD
  * sólo da el label y la descripción.
+ *
+ * ## Sprint 8 (agente L): «ningún proveedor ofrece voz» era falso para fal
+ *
+ * fal documenta texto a voz (ElevenLabs Eleven v3), un talking avatar que
+ * hace el lip-sync desde un retrato y un audio (OmniHuman v1.5) y el reemplazo
+ * de personaje en un video (Wan 2.2 Animate Replace); ver
+ * `packages/adapters/src/genai/fal-voice-catalog.ts`. Los formatos «una
+ * persona dice algo» pasan a `speaking` ({@link SpeakingGenerativeFormat}) y
+ * `character-swap` a `swap`. Quedan `blocked`, con el motivo exacto, los que
+ * necesitan algo que ni fal ni el render dan:
+ *
+ * - `green-screen-mobile-app`: poner **tu app en la pantalla del teléfono**
+ *   que sostiene el presentador es reemplazo de pantalla dentro del video;
+ *   ningún endpoint verificado lo hace y el render no sigue un teléfono.
+ * - `talking-objects`: OmniHuman está documentado para «an image of a human
+ *   figure»; un objeto que habla no es eso, y no hay otro endpoint verificado.
  */
 
 export const GENERATIVE_FORMAT_IDS = [
@@ -80,7 +96,52 @@ export type BlockedReason =
   /** Necesita a alguien diciendo un guion con voz y labios sincronizados. */
   | "needs_voice"
   /** Necesita editar un video existente (video a video). */
-  | "needs_video_to_video";
+  | "needs_video_to_video"
+  /** Sprint 8: reemplazar la pantalla de un teléfono dentro del video. */
+  | "needs_screen_replacement"
+  /** Sprint 8: un avatar que habla y no es una figura humana. */
+  | "needs_non_human_avatar";
+
+/**
+ * Cómo se arma la pieza de un formato con voz (sprint 8). El render ya sabe
+ * cada una; ninguna pide un tipo de contenido nuevo:
+ *
+ * - `full`: el avatar a lienzo completo con un caption encima (`wall-of-text`).
+ * - `hook-demo`: el avatar arriba diciendo el hook y un video tuyo abajo
+ *   (`video-hook`: «hook arriba, demo abajo»).
+ * - `corner-over-demo`: un video tuyo a lienzo completo y el avatar en una
+ *   esquina, **encima** (`video-hook` con los roles invertidos: el render
+ *   dibuja el segundo video sobre el primero).
+ *
+ * En los tres la voz entra como el bloque `audio` del payload: el render
+ * descarta el audio de los videos en `wall-of-text` y `video-hook`.
+ */
+export type SpeakingLayout = "full" | "hook-demo" | "corner-over-demo";
+
+export interface SpeakingGenerativeFormat {
+  readonly id: GenerativeFormatId;
+  readonly label: string;
+  readonly description: string;
+  readonly status: "speaking";
+  readonly layout: SpeakingLayout;
+  /** Guía al modelo de avatar (OmniHuman acepta un `prompt` opcional). En inglés. */
+  readonly avatarPrompt: string;
+  /** Cómo escribe el guion el modelo de texto. En inglés. */
+  readonly scriptStyle: string;
+  /** Qué retrato conviene, para la UI. En inglés. `null` = cualquiera. */
+  readonly portraitHint: string | null;
+  /** Qué video tuyo va con el avatar, para la UI. Sólo si el layout lo pide. */
+  readonly demoHint: string | null;
+  readonly preferredDurationSeconds: number;
+}
+
+/** `character-swap`: el retrato del modelo reemplaza a la persona de un video tuyo. */
+export interface SwapGenerativeFormat {
+  readonly id: GenerativeFormatId;
+  readonly label: string;
+  readonly description: string;
+  readonly status: "swap";
+}
 
 export interface BlockedGenerativeFormat {
   readonly id: GenerativeFormatId;
@@ -92,17 +153,18 @@ export interface BlockedGenerativeFormat {
   readonly why: string;
 }
 
-export type GenerativeFormat = AvailableGenerativeFormat | BlockedGenerativeFormat;
-
-const NEEDS_VOICE =
-  "Needs a person speaking a script with a synced voice. None of the video providers FastGram supports (Higgsfield, fal, ComfyUI) documents lip-sync or text-to-speech by API, so it can't be generated yet.";
+export type GenerativeFormat =
+  | AvailableGenerativeFormat
+  | BlockedGenerativeFormat
+  | SpeakingGenerativeFormat
+  | SwapGenerativeFormat;
 
 const blocked = (
   id: GenerativeFormatId,
   label: string,
   description: string,
-  reason: BlockedReason = "needs_voice",
-  why: string = NEEDS_VOICE,
+  reason: BlockedReason,
+  why: string,
 ): BlockedGenerativeFormat => ({
   id,
   label,
@@ -136,48 +198,148 @@ const clip = (
   narration: options.narration ?? false,
 });
 
+const speaking = (
+  id: GenerativeFormatId,
+  label: string,
+  description: string,
+  options: {
+    readonly layout: SpeakingLayout;
+    readonly avatarPrompt: string;
+    readonly scriptStyle: string;
+    readonly portraitHint?: string;
+    readonly demoHint?: string;
+    readonly preferredDurationSeconds: number;
+  },
+): SpeakingGenerativeFormat => ({
+  id,
+  label,
+  description,
+  status: "speaking",
+  layout: options.layout,
+  avatarPrompt: options.avatarPrompt,
+  scriptStyle: options.scriptStyle,
+  portraitHint: options.portraitHint ?? null,
+  demoHint: options.demoHint ?? null,
+  preferredDurationSeconds: options.preferredDurationSeconds,
+});
+
 /** En el orden de la tabla de `F-070`. */
 export const GENERATIVE_FORMATS: readonly GenerativeFormat[] = [
-  blocked(
+  speaking(
     "speaking-hook",
     "Speaking Hook & Demo",
     "Someone says the hook out loud, then your demo",
+    {
+      layout: "hook-demo",
+      avatarPrompt:
+        "A person looks straight into the phone camera and says an attention-grabbing line with energy, natural hand gestures",
+      scriptStyle:
+        "One punchy spoken hook that makes the viewer keep watching the product demo that follows. No greeting, no hashtags.",
+      demoHint:
+        "Pick a screen recording or demo of your product. It plays under the speaker.",
+      preferredDurationSeconds: 5,
+    },
   ),
-  blocked("talking-head-ugc", "Talking Head UGC", "AI avatar speaks a script to camera"),
-  blocked(
+  speaking(
+    "talking-head-ugc",
+    "Talking Head UGC",
+    "AI avatar speaks a script to camera",
+    {
+      layout: "full",
+      avatarPrompt:
+        "A person films a casual selfie-style UGC video, talking to the camera like a friend, natural expressions",
+      scriptStyle:
+        "A casual first-person UGC testimonial spoken to camera: hook, one concrete benefit, a soft call to action.",
+      preferredDurationSeconds: 15,
+    },
+  ),
+  speaking(
     "talking-head-green-screen",
     "Talking Head Green Screen",
     "AI avatar composited into the corner of a demo video",
+    {
+      layout: "corner-over-demo",
+      avatarPrompt:
+        "A presenter talks to the camera explaining something on screen, calm and clear",
+      scriptStyle:
+        "A presenter walks the viewer through what the demo on screen shows, in plain spoken language.",
+      demoHint:
+        "Pick the demo video to play full screen. The speaker sits in the bottom corner (as a box, not cut out).",
+      preferredDurationSeconds: 15,
+    },
   ),
-  blocked(
+  speaking(
     "notes-green-screen",
     "Notes Green Screen",
     "A presenter with a mic talks over an iOS Notes list",
+    {
+      layout: "corner-over-demo",
+      avatarPrompt:
+        "A presenter holding a handheld microphone talks to the camera, podcast style",
+      scriptStyle:
+        "A presenter with a mic reads out a short numbered list of tips, one line per item.",
+      portraitHint: "A portrait of someone holding a microphone works best.",
+      demoHint:
+        "Pick a screen recording of your iOS Notes list. It plays full screen behind the speaker.",
+      preferredDurationSeconds: 20,
+    },
   ),
   blocked(
     "green-screen-mobile-app",
     "Green Screen Mobile with App",
     "A presenter holding a phone with your app on screen",
+    "needs_screen_replacement",
+    "Needs your app shown on the screen of the phone the presenter holds. No verified fal endpoint replaces a phone screen inside a video, and FastGram's renderer can't track one.",
   ),
-  blocked(
+  speaking(
     "product-spokesperson",
     "Product Spokesperson",
     "A character holds your product and talks about it",
+    {
+      layout: "full",
+      avatarPrompt:
+        "A spokesperson holds the product up to the camera and talks about it enthusiastically",
+      scriptStyle:
+        "A spokesperson presents the product they are holding: what it is, why it matters, a clear call to action.",
+      portraitHint:
+        "Use a photo where the character is holding your product: the video animates that photo.",
+      preferredDurationSeconds: 15,
+    },
   ),
-  blocked(
+  speaking(
     "street-interview",
     "Street Interview",
     "Impromptu street vox-pop that looks like unedited iPhone footage",
+    {
+      layout: "full",
+      avatarPrompt:
+        "Handheld unedited iPhone street interview footage, a passer-by answers a question on a busy sidewalk, natural daylight",
+      scriptStyle:
+        "An unscripted-sounding answer from a passer-by in a street interview, first person, conversational, with small hesitations.",
+      portraitHint: "A photo taken outdoors on a street makes it look like real vox-pop.",
+      preferredDurationSeconds: 10,
+    },
   ),
-  blocked(
+  speaking(
     "news-anchor",
     "AI News Anchor",
     "A news anchor breaks your customer's problem as tonight's top story",
+    {
+      layout: "full",
+      avatarPrompt:
+        "A TV news anchor at a studio desk delivers breaking news seriously, looking into the camera",
+      scriptStyle:
+        "A TV news anchor breaks the customer's problem as tonight's top story, then reveals the product as the solution.",
+      portraitHint: "A portrait in a newsroom or at a desk sells the anchor look.",
+      preferredDurationSeconds: 15,
+    },
   ),
   blocked(
     "talking-objects",
     "Talking Objects",
     "A niche object talks straight at the viewer to drive the point home",
+    "needs_non_human_avatar",
+    "Needs an object that talks. fal's talking-avatar model (OmniHuman v1.5) is documented for images of a human figure, and no verified endpoint animates an object's face.",
   ),
   clip(
     "on-a-walk",
@@ -232,13 +394,12 @@ export const GENERATIVE_FORMATS: readonly GenerativeFormat[] = [
     "the skeleton points at {subject}",
     { subject: "brand" },
   ),
-  blocked(
-    "character-swap",
-    "Character Swap",
-    "Swap the character in a video using AI",
-    "needs_video_to_video",
-    "Needs video-to-video character replacement. Higgsfield lists motion-control workflows, but FastGram has no verified adapter for them yet, so it can't be generated.",
-  ),
+  {
+    id: "character-swap",
+    label: "Character Swap",
+    description: "Swap the character in a video using AI",
+    status: "swap",
+  },
 ];
 
 const BY_ID = new Map<string, GenerativeFormat>(GENERATIVE_FORMATS.map((f) => [f.id, f]));
@@ -270,4 +431,16 @@ export function matchGenerativeFormat(text: string): AvailableGenerativeFormat |
     if (needles.some((n) => haystack.includes(` ${n} `))) return f;
   }
   return null;
+}
+
+/** Sprint 8: los formatos con voz. */
+export function speakingGenerativeFormats(): readonly SpeakingGenerativeFormat[] {
+  return GENERATIVE_FORMATS.filter(
+    (f): f is SpeakingGenerativeFormat => f.status === "speaking",
+  );
+}
+
+export function findSpeakingFormat(id: string): SpeakingGenerativeFormat | undefined {
+  const f = BY_ID.get(id);
+  return f?.status === "speaking" ? f : undefined;
 }

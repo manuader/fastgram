@@ -55,16 +55,32 @@ describe("catálogo (F-070/F-084)", () => {
     });
   });
 
-  it("los que piden voz quedan bloqueados con el motivo", () => {
-    for (const id of ["talking-head-ugc", "news-anchor", "street-interview"]) {
-      expect(findGenerativeFormat(id)).toMatchObject({
-        status: "blocked",
-        reason: "needs_voice",
-      });
+  it("sprint 8: los que piden voz se hacen con voz; dos quedan bloqueados con motivo", () => {
+    for (const id of [
+      "speaking-hook",
+      "talking-head-ugc",
+      "talking-head-green-screen",
+      "notes-green-screen",
+      "product-spokesperson",
+      "street-interview",
+      "news-anchor",
+    ]) {
+      expect(findGenerativeFormat(id)).toMatchObject({ status: "speaking" });
     }
-    expect(findGenerativeFormat("character-swap")).toMatchObject({
-      reason: "needs_video_to_video",
+    expect(findGenerativeFormat("green-screen-mobile-app")).toMatchObject({
+      status: "blocked",
+      reason: "needs_screen_replacement",
     });
+    expect(findGenerativeFormat("talking-objects")).toMatchObject({
+      status: "blocked",
+      reason: "needs_non_human_avatar",
+    });
+    expect(findGenerativeFormat("character-swap")).toMatchObject({ status: "swap" });
+  });
+
+  it("un formato con voz no se planifica como clip + texto", () => {
+    const r = planGenerativeFormat({ formatId: "news-anchor", overlayText: "x" });
+    expect(r.ok).toBe(false);
   });
 
   it("siete se pueden hacer como clip + texto", () => {

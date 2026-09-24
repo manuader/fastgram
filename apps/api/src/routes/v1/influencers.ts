@@ -333,6 +333,8 @@ export function influencerView(row: InfluencerRow): InfluencerResource {
   }
   out["referenceMediaIds"] = [...row.referenceMediaIds];
   if (row.regeneratedFromId !== null) out["regeneratedFromId"] = row.regeneratedFromId;
+  // Sprint 8 (K): «From library» — la fila representa un modelo del dueño.
+  if (row.modelId !== null) out["modelId"] = row.modelId;
   if (row.status === "failed" && row.failureCode !== null) {
     out["failure"] = {
       code: row.failureCode,

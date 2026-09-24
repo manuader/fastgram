@@ -154,6 +154,45 @@ export async function judgeBest(
 }
 
 /**
+ * Cómo se describe un personaje candidato en la pregunta de `JV-6`.
+ *
+ * Sprint 8 (K, `P4-JV-004`): si el influencer representa un **modelo de la
+ * biblioteca** del dueño, su perfil (edad, estilo, notas) va en la
+ * descripción. Con varios modelos asignados a una marca, eso es lo que deja
+ * al juicio elegir el que mejor encaja con la marca y el ángulo (el tema de
+ * la pregunta es el título del ángulo). Sin perfil, lo de antes: nombre y
+ * género.
+ */
+export function describeInfluencerCandidate(
+  name: string,
+  gender: string | null | undefined,
+  profile: string | undefined,
+): string {
+  const parts = [`name: ${name}`];
+  if (gender !== undefined && gender !== null) parts.push(`gender: ${gender}`);
+  if (profile !== undefined && profile.trim() !== "") parts.push(profile.trim());
+  return parts.join("; ");
+}
+
+/**
+ * El perfil de un modelo de la biblioteca para {@link describeInfluencerCandidate}.
+ * Recortado: la pregunta tiene que seguir siendo acotada (`DP-005`).
+ */
+export function libraryModelProfile(model: {
+  readonly age: number | null;
+  readonly style: string | null;
+  readonly notes: string | null;
+}): string {
+  const parts: string[] = [];
+  if (model.age !== null) parts.push(`age: ${String(model.age)}`);
+  if (model.style !== null && model.style.trim() !== "")
+    parts.push(`style: ${model.style.trim().slice(0, 120)}`);
+  if (model.notes !== null && model.notes.trim() !== "")
+    parts.push(`notes: ${model.notes.trim().replace(/\s+/g, " ").slice(0, 200)}`);
+  return parts.join("; ");
+}
+
+/**
  * Aplica `JV-6` a una sugerencia planificada: el influencer entre varios con
  * media, y en green-screen el meme y el fondo entre los que matchean el tema.
  * Devuelve el plan tal cual si no hay nada que elegir o el juicio no decide.
@@ -167,6 +206,11 @@ export async function applyJv6(
     readonly brandName: string;
     readonly profile: CopyBrandProfile;
     readonly logger: BuildLogger;
+    /**
+     * Sprint 8 (K): influencer → perfil de su modelo de la biblioteca
+     * (`libraryModelProfile`). Ausente = sólo nombre y género.
+     */
+    readonly influencerProfiles?: ReadonlyMap<string, string> | undefined;
   },
 ): Promise<PlannedBlitzSuggestion> {
   if (args.judgment === null) return planned;
@@ -183,10 +227,11 @@ export async function applyJv6(
       const name = args.context.influencerNames.get(id) ?? "Unnamed character";
       return {
         id,
-        description:
-          person?.gender === undefined || person.gender === null
-            ? `name: ${name}`
-            : `name: ${name}; gender: ${person.gender}`,
+        description: describeInfluencerCandidate(
+          name,
+          person?.gender,
+          args.influencerProfiles?.get(id),
+        ),
       };
     });
     const chosen = await judgeBest(

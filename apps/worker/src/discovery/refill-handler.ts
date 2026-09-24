@@ -119,6 +119,7 @@ import {
 import {
   blitzPreferencesRepository,
   brandStrategyRepository,
+  characterModelDirectory,
   brandAudioRepository,
   companyProfileRepository,
   companyRepository,
@@ -143,7 +144,12 @@ import {
 
 import type { BuildLogger } from "../content/build-handler.js";
 import type { SuggestionCopywriter } from "./copywriter.js";
-import { applyJv6, judgeBest, type Jv6JudgmentProvider } from "./jv6.js";
+import {
+  applyJv6,
+  judgeBest,
+  libraryModelProfile,
+  type Jv6JudgmentProvider,
+} from "./jv6.js";
 import { describePlanningMedia } from "./media-descriptors.js";
 import {
   readInfluencerAngles,
@@ -253,6 +259,12 @@ export interface RefillSubject {
    * restricción, igual que un influencer sin ángulos asociados.
    */
   readonly influencerAngles?: InfluencerAngles;
+  /**
+   * Sprint 8 (K, `P4-JV-004`): influencer → perfil de su modelo de la
+   * biblioteca del dueño (edad, estilo, notas), para que `JV-6` elija el
+   * modelo que mejor encaja. Sólo los influencers que vienen de un modelo.
+   */
+  readonly influencerProfiles?: ReadonlyMap<string, string>;
 }
 
 /** Cuántas referencias se leen para elegir qué remixar. */
@@ -420,6 +432,7 @@ export function createDiscoveryRefillHandler(
         brandName: subject.businessName,
         profile: subject.profile,
         logger: deps.logger,
+        influencerProfiles: subject.influencerProfiles,
       });
       const judged =
         judged0.influencerId === bound.influencerId ? judged0 : restrict(judged0);
@@ -576,7 +589,34 @@ export async function readRefillSubject(
       companyId,
       rows.map((row) => row.id),
     ),
+    influencerProfiles: await readLibraryProfiles(tx, company?.ownerUserId, rows),
   };
+}
+
+/**
+ * Sprint 8 (K, `P4-JV-004`): el perfil del modelo de la biblioteca de cada
+ * influencer que viene de uno. Scope por dueño (el de la marca): un
+ * `model_id` que no es del dueño no devuelve nada.
+ */
+async function readLibraryProfiles(
+  tx: Transaction,
+  ownerUserId: string | undefined,
+  rows: readonly { readonly id: string; readonly modelId: string | null }[],
+): Promise<ReadonlyMap<string, string>> {
+  const linked = rows.filter(
+    (r): r is { id: string; modelId: string } => r.modelId !== null,
+  );
+  if (ownerUserId === undefined || linked.length === 0) return new Map();
+  const models = await characterModelDirectory.findMany(tx, { ownerUserId }, [
+    ...new Set(linked.map((r) => r.modelId)),
+  ]);
+  const byModel = new Map(models.map((m) => [m.id, libraryModelProfile(m)]));
+  const out = new Map<string, string>();
+  for (const r of linked) {
+    const profile = byModel.get(r.modelId);
+    if (profile !== undefined && profile !== "") out.set(r.id, profile);
+  }
+  return out;
 }
 
 /**

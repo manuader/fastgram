@@ -68,6 +68,14 @@ export function InfluencerCard({ influencer }: { readonly influencer: Influencer
               ` · ${tw("influencers.progress", { progress: influencer.progress })}`}
           </Badge>
         </div>
+        {influencer.modelId !== undefined && (
+          // Sprint 8 (K): la fila representa un modelo de la biblioteca del dueño.
+          <span className="self-start">
+            <Badge tone="accent" size="sm">
+              {tw("charModels.fromLibrary")}
+            </Badge>
+          </span>
+        )}
         {traits !== "" && <span className="text-xs text-text-muted">{traits}</span>}
         {influencer.failure !== undefined && (
           <span className={cn("text-xs text-danger")}>

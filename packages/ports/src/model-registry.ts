@@ -44,6 +44,11 @@ export const MODEL_TASKS = [
   "image",
   "video",
   "background_removal",
+  // Sprint 8 (agente L): formatos con voz. Sólo fal; si la tarea no tiene key
+  // propia usa la de otra tarea de fal del mismo origen (`resolveGenAiConfig`).
+  "speech",
+  "avatar",
+  "swap",
 ] as const;
 
 export type ModelTask = (typeof MODEL_TASKS)[number];

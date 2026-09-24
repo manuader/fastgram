@@ -216,9 +216,20 @@ export const generativeFormatSchema = z.object({
   id: z.string(),
   label: z.string(),
   description: z.string(),
-  status: z.enum(["available", "blocked"]),
+  /**
+   * Sprint 8 (agente L): `speaking` = se hace con voz (`/ai-studio/speaking`),
+   * `swap` = character swap (`/ai-studio/swap`).
+   */
+  status: z.enum(["available", "blocked", "speaking", "swap"]),
   /** Sólo `blocked`. */
-  reason: z.enum(["needs_voice", "needs_video_to_video"]).nullable(),
+  reason: z
+    .enum([
+      "needs_voice",
+      "needs_video_to_video",
+      "needs_screen_replacement",
+      "needs_non_human_avatar",
+    ])
+    .nullable(),
   /** Sólo `blocked`: por qué, en inglés. */
   why: z.string().nullable(),
   /** El PRD lo describe con narración y acá sale sin (no hay voz). */

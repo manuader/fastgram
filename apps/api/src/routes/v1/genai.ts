@@ -17,6 +17,7 @@
 import {
   FORMAT_RUNS_DIR_NAME,
   INFLUENCER_TEMPLATES_DIR_NAME,
+  SPEAKING_RUNS_DIR_NAME,
   budgetSummary,
   monthKey,
   parseSpendLedger,
@@ -24,12 +25,14 @@ import {
   setBudget,
   type BudgetSummary as CoreBudgetSummary,
   type ResolvedGenAiConfig,
+  type ResolvedVoiceConfig,
   type SecretEnv,
   type SpendLedger,
 } from "@fastgram/core";
 import { join } from "node:path";
 
 import {
+  FalVoiceClient,
   FileModelRegistry,
   HiggsfieldClient,
   JsonFileCollection,
@@ -43,7 +46,11 @@ import {
   type DocumentUpdate,
   type GenClient,
 } from "@fastgram/adapters";
-import { updateBudgetRequestSchema, type BudgetSummary } from "@fastgram/contracts";
+import {
+  updateBudgetRequestSchema,
+  type BudgetSummary,
+  type SpeakingCharacter,
+} from "@fastgram/contracts";
 import {
   PortError,
   isPortError,
@@ -52,6 +59,7 @@ import {
 } from "@fastgram/ports";
 
 import { ApiRejection } from "../../http/errors.js";
+import { registryCaptionLlmSource, type CaptionLlmSource } from "./posts-caption.js";
 import { data } from "./shared.js";
 import type { ZodApp } from "../../server/types.js";
 
@@ -97,7 +105,34 @@ export interface GenAiRouteDeps {
     config: ResolvedGenAiConfig,
     image: { readonly body: Uint8Array; readonly contentType: string },
   ) => Promise<string>;
+  /**
+   * Sprint 8 (agente L), formatos con voz. Opcionales por lo mismo que los de
+   * arriba; `defaultGenAiRouteDeps` los pone siempre.
+   *
+   * - `speakingRuns`: `~/.fastgram/speaking-runs/`.
+   * - `voiceClientFor`: el cliente de fal de voz/avatar/swap (estimar).
+   * - `scriptLlm`: el modelo de texto que escribe el guion.
+   * - `characters`: la biblioteca de modelos (contrato `GET /character-models`
+   *   del agente K). Sin él, la ruta la pide por `inject` a la propia API.
+   */
+  readonly speakingRuns?: GenerationFiles;
+  readonly voiceClientFor?: (config: ResolvedVoiceConfig) => VoiceEstimator;
+  readonly scriptLlm?: CaptionLlmSource;
+  readonly characters?: (
+    headers: Readonly<Record<string, string>>,
+  ) => Promise<readonly SpeakingCharacter[] | null>;
 }
+
+/** Lo que la API necesita del cliente de voz: catálogos y estimadores. */
+export type VoiceEstimator = Pick<
+  FalVoiceClient,
+  | "speechModels"
+  | "avatarModels"
+  | "swapModels"
+  | "estimateSpeech"
+  | "estimateAvatar"
+  | "estimateSwap"
+>;
 
 /**
  * Presupuesto por llamada al proveedor desde la API: por debajo de los 10 s
@@ -130,6 +165,19 @@ export function defaultGenAiRouteDeps(env: SecretEnv = process.env): GenAiRouteD
         timeoutMs: GENAI_API_TIMEOUT_MS,
       }).uploadImage(image);
     },
+    speakingRuns: new JsonFileCollection(
+      join(resolveFastgramHome(env), SPEAKING_RUNS_DIR_NAME),
+    ),
+    voiceClientFor: (config) =>
+      new FalVoiceClient({
+        baseUrl: config.baseUrl,
+        apiKey: config.apiKey,
+        timeoutMs: GENAI_API_TIMEOUT_MS,
+      }),
+    scriptLlm: registryCaptionLlmSource(
+      new FileModelRegistry({ path: modelRegistryPath(env) }),
+      env,
+    ),
     env,
     clientFor: (config) => {
       if (!isGenProvider(config.provider)) {

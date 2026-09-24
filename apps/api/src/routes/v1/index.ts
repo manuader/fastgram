@@ -25,6 +25,7 @@ import { registerConnectionRoutes } from "./connections.js";
 import { registerContentRoutes } from "./content.js";
 import { registerContentStudioRoutes } from "./content-studio.js";
 import { registerInfluencerRoutes } from "./influencers.js";
+import { registerCharacterModelRoutes } from "./character-models.js";
 import { registerInspirationRoutes } from "./inspiration.js";
 import { registerMediaRoutes } from "./media.js";
 import { registerNotificationRoutes } from "./notifications.js";
@@ -81,5 +82,7 @@ export async function registerV1Routes(app: ZodApp): Promise<void> {
   registerAudioLibraryRoutes(app);
   // Sprint 7 (`P5-NOTIF-001…004`): campana, banner de conexiones, preferencias y push.
   registerNotificationRoutes(app);
+  // Sprint 8 (K): biblioteca de modelos del dueño (owner-level, `server/app.ts`).
+  registerCharacterModelRoutes(app);
   await Promise.resolve();
 }

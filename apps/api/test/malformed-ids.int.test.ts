@@ -123,6 +123,16 @@ const BODIES: Readonly<Record<string, () => unknown>> = {
   // Sprint 7 (agente G): formatos generativos e influencers.
   "POST /ai-studio/formats/{format}/estimate": () => ({ overlayText: "texto" }),
   "POST /ai-studio/formats/{format}/runs": () => ({ overlayText: "texto" }),
+  // Sprint 8 (agente L): formatos con voz.
+  "POST /ai-studio/speaking/{format}/script": () => ({ durationSeconds: 5 }),
+  "POST /ai-studio/speaking/{format}/estimate": () => ({
+    script: "texto",
+    durationSeconds: 5,
+  }),
+  "POST /ai-studio/speaking/{format}/runs": () => ({
+    script: "texto",
+    durationSeconds: 5,
+  }),
   "PUT /influencers/{id}/config": () => ({ angleIds: [] }),
   "POST /influencers/{id}/videos/estimate": () => ({
     sourceMediaId: randomUUID(),
@@ -140,6 +150,32 @@ const BODIES: Readonly<Record<string, () => unknown>> = {
     scheduledAt: new Date("2026-10-01T15:00:00.000Z").getTime(),
   }),
   "POST /automations/{automationId}/slots/{slotId}/reroll": () => ({}),
+  // Sprint 8 (K): biblioteca de modelos del dueño.
+  "PATCH /character-models/{id}": () => ({ name: "Otro nombre" }),
+  "PUT /character-models/{id}/brands": () => ({ brandIds: [] }),
+  "POST /character-models/{id}/ugc": () => ({ brandId: randomUUID(), prompt: "selfie" }),
+  "POST /character-models/{id}/ugc/estimate": () => ({
+    brandId: randomUUID(),
+    prompt: "selfie",
+  }),
+  "POST /character-models/{id}/ugc/animate": () => ({
+    brandId: randomUUID(),
+    sourceMediaId: randomUUID(),
+    model: "kling-video/v2.6/pro/image-to-video",
+    durationSeconds: 5,
+  }),
+  "POST /character-models/{id}/ugc/animate/estimate": () => ({
+    brandId: randomUUID(),
+    sourceMediaId: randomUUID(),
+    model: "kling-video/v2.6/pro/image-to-video",
+    durationSeconds: 5,
+  }),
+  "POST /character-models/{id}/ugc/piece": () => ({
+    brandId: randomUUID(),
+    kind: "image",
+    sourceMediaId: randomUUID(),
+    texts: ["hola"],
+  }),
 };
 
 interface Operation {

@@ -10,7 +10,15 @@
  * Variables (todas opcionales):
  *  - `FASTGRAM_HOME`: dónde viven `models.json`, `spend.json` y `ai-studio/`.
  *  - `FASTGRAM_GENAI_CONCURRENCY`: pedidos a la vez **por proveedor** (default 2).
+ *  - `FFPROBE_PATH`: para medir la voz de los formatos con voz (sin ffprobe se
+ *    usa la duración que informe el proveedor, si la informa).
+ *
+ * Sprint 8 (agente L): la misma cola lleva las corridas de los formatos con
+ * voz (`{companyId, speakingRunId}`). Se despachan por payload (trampa 63) y
+ * comparten el semáforo por proveedor: fal es uno solo.
  */
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
@@ -20,16 +28,24 @@ import {
   JsonFileDocument,
   aiStudioDir,
   createGenClient,
+  FalVoiceClient,
+  FfmpegClipInspector,
   isGenProvider,
   modelRegistryPath,
   spendLedgerPath,
 } from "@fastgram/adapters";
-import { FORMAT_RUNS_DIR_NAME, type SecretEnv } from "@fastgram/core";
+import {
+  FORMAT_RUNS_DIR_NAME,
+  SPEAKING_RUNS_DIR_NAME,
+  isSpeakingRunJob,
+  type SecretEnv,
+} from "@fastgram/core";
 import type { Database } from "@fastgram/db";
 import { PortError, type JobHandler, type Queue, type Storage } from "@fastgram/ports";
 
 import type { BuildLogger } from "../content/build-handler.js";
 import { createFormatRunFinisher } from "../formats/finish.js";
+import { createSpeakingRunHandler } from "../formats/speaking.js";
 import { createAiStudioGenerationHandler, httpDownloader } from "./handler.js";
 import { Semaphore, genAiConcurrencyFromEnv } from "./semaphore.js";
 
@@ -60,6 +76,14 @@ export function createAiStudioMount(deps: AiStudioMountDeps): {
 } {
   const concurrency = genAiConcurrencyFromEnv(deps.env);
   const semaphores = new Map<string, Semaphore>();
+  const semaphoreFor = (provider: string): Semaphore => {
+    let s = semaphores.get(provider);
+    if (s === undefined) {
+      s = new Semaphore(concurrency);
+      semaphores.set(provider, s);
+    }
+    return s;
+  };
   const httpsOnly = httpDownloader({
     timeoutMs: DOWNLOAD_TIMEOUT_MS,
     maxBytes: DOWNLOAD_MAX_BYTES,
@@ -105,14 +129,7 @@ export function createAiStudioMount(deps: AiStudioMountDeps): {
           : { comfyWorkflow: config.comfyWorkflow }),
       });
     },
-    semaphoreFor: (provider) => {
-      let s = semaphores.get(provider);
-      if (s === undefined) {
-        s = new Semaphore(concurrency);
-        semaphores.set(provider, s);
-      }
-      return s;
-    },
+    semaphoreFor,
     download: (url, config) =>
       (config.provider === "comfyui"
         ? // `GET /view` del ComfyUI local, por `http://` y sólo desde su base.
@@ -123,5 +140,60 @@ export function createAiStudioMount(deps: AiStudioMountDeps): {
           })
         : httpsOnly)(url),
   });
-  return { handler, concurrency };
+  if (deps.queue === undefined) return { handler, concurrency };
+
+  const speaking = createSpeakingRunHandler({
+    db: deps.db,
+    storage: deps.storage,
+    appRole: deps.appRole,
+    logger: deps.logger,
+    queue: deps.queue,
+    registry: new FileModelRegistry({ path: modelRegistryPath(deps.env) }),
+    secrets: deps.env,
+    runs: new JsonFileCollection(
+      join(resolveFastgramHome(deps.env), SPEAKING_RUNS_DIR_NAME),
+    ),
+    ledger: new JsonFileDocument(spendLedgerPath(deps.env)),
+    clientFor: (config) =>
+      new FalVoiceClient({
+        baseUrl: config.baseUrl,
+        apiKey: config.apiKey,
+        timeoutMs: PROVIDER_TIMEOUT_MS,
+      }),
+    semaphoreFor,
+    download: httpsOnly,
+    probeSeconds: ffprobeSeconds(deps.env),
+  });
+  return {
+    handler: (ctx) =>
+      isSpeakingRunJob(ctx.payload) ? speaking(ctx, ctx.payload) : handler(ctx),
+    concurrency,
+  };
+}
+
+/**
+ * La duración de un audio con ffprobe (`FFPROBE_PATH`), vía un archivo
+ * temporal. `null` si ffprobe no está o no la sabe: el handler cae a lo que
+ * informe el proveedor.
+ */
+function ffprobeSeconds(
+  env: SecretEnv,
+): (body: Uint8Array, ext: string) => Promise<number | null> {
+  const inspector = new FfmpegClipInspector({
+    ffprobe: env["FFPROBE_PATH"]?.trim() || "ffprobe",
+    ffmpeg: env["FFMPEG_PATH"]?.trim() || "ffmpeg",
+  });
+  return async (body, ext) => {
+    const dir = await mkdtemp(join(tmpdir(), "fastgram-voice-"));
+    try {
+      const path = join(dir, `voice.${ext}`);
+      await writeFile(path, body);
+      const probe = await inspector.probe(path);
+      return probe.durationSeconds;
+    } catch {
+      return null;
+    } finally {
+      await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  };
 }

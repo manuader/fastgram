@@ -3,7 +3,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { ChevronRightIcon } from "@/icons";
-import { CONTENT_FORMATS, type ContentFormat } from "@/lib/content/formats";
+import {
+  CONTENT_FORMATS,
+  EXCLUDED_FORMAT_IDS,
+  type ContentFormat,
+} from "@/lib/content/formats";
 import { tw } from "@/lib/i18n/t";
 import { ROUTES } from "@/lib/nav/routes";
 import { CUSTOM_ROUTE_ID, STUDIO_ROUTE_IDS } from "@/lib/studio/studio-formats";
@@ -27,7 +31,9 @@ const BASE_IDS: readonly string[] = [...STUDIO_ROUTE_IDS, CUSTOM_ROUTE_ID];
  */
 export default function ContentHubPage() {
   const base = CONTENT_FORMATS.filter((f) => BASE_IDS.includes(f.id));
-  const generative = CONTENT_FORMATS.filter((f) => !BASE_IDS.includes(f.id));
+  const generative = CONTENT_FORMATS.filter(
+    (f) => !BASE_IDS.includes(f.id) && !EXCLUDED_FORMAT_IDS.has(f.id),
+  );
   return (
     <div className="fgw-page">
       <PageHeader title={tw("nav.content")} description={tw("studio.hub.description")} />

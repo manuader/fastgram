@@ -104,6 +104,7 @@ import type { GenClient } from "@fastgram/adapters";
 
 import { ApiRejection } from "../../http/errors.js";
 import { data, notFound } from "./shared.js";
+import { registerSpeakingRoutes } from "./ai-studio-speaking.js";
 import type { ZodApp } from "../../server/types.js";
 import {
   defaultGenAiRouteDeps,
@@ -587,6 +588,11 @@ export function registerAiStudioRoutes(
   if (formatRuns !== undefined) {
     registerFormatRoutes(app, deps, formatRuns, { taskOptions, providerRejection });
   }
+  // Sprint 8 (agente L): formatos con voz y character swap. Mismo criterio:
+  // sin su colección, no se registran.
+  if (deps.speakingRuns !== undefined) {
+    registerSpeakingRoutes(app, deps);
+  }
 }
 
 /* ------------------------------------------------------------------------ *
@@ -649,7 +655,7 @@ function registerFormatRoutes(
 ): void {
   const now = (): Date => app.deps.clock.now();
 
-  /** El formato pedido: 404 si no existe, 409 si está bloqueado. */
+  /** El formato pedido: 404 si no existe, 409 si está bloqueado o no es clip + texto. */
   function formatOrFail(id: string): void {
     const format = findGenerativeFormat(id);
     if (format === undefined) throw notFound("format");
@@ -658,6 +664,15 @@ function registerFormatRoutes(
         reason: "format_unavailable",
         blockedBy: format.reason,
       });
+    }
+    // Sprint 8: los formatos con voz y el swap tienen sus rutas (`ai-studio-speaking.ts`).
+    if (format.status !== "available") {
+      throw new ApiRejection(
+        409,
+        "conflict",
+        "This format is made with a voice or a source video: use its own form.",
+        { reason: "format_unavailable", blockedBy: format.status },
+      );
     }
   }
 
@@ -825,16 +840,29 @@ function registerFormatRoutes(
               narrationMissing: /narration/i.test(f.description) && !f.narration,
               preferredDurationSeconds: f.preferredDurationSeconds,
             }
-          : {
-              id: f.id,
-              label: f.label,
-              description: f.description,
-              status: "blocked" as const,
-              reason: f.reason,
-              why: f.why,
-              narrationMissing: false,
-              preferredDurationSeconds: null,
-            },
+          : f.status === "blocked"
+            ? {
+                id: f.id,
+                label: f.label,
+                description: f.description,
+                status: "blocked" as const,
+                reason: f.reason,
+                why: f.why,
+                narrationMissing: false,
+                preferredDurationSeconds: null,
+              }
+            : {
+                // Sprint 8: con voz o swap. El detalle, en `/ai-studio/speaking/options`.
+                id: f.id,
+                label: f.label,
+                description: f.description,
+                status: f.status,
+                reason: null,
+                why: null,
+                narrationMissing: false,
+                preferredDurationSeconds:
+                  f.status === "speaking" ? f.preferredDurationSeconds : null,
+              },
       ),
       video: {
         ...video,
