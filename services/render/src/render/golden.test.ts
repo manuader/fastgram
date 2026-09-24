@@ -327,7 +327,7 @@ describe("golden de frame — mismo payload ⇒ mismo frame", () => {
     const second = await renderTextOverlay([TEXT], CANVAS, FONT_OPTIONS);
     expect(sha256(first.png)).toBe(sha256(second.png));
     expect(first.png.byteLength).toBeGreaterThan(0);
-  });
+  }, 30_000); // renderiza dos veces con Pango: bajo `turbo` en paralelo pasa los 5 s por defecto
 
   it("un cambio de tipografía cambia el frame", async () => {
     const base = await renderTextOverlay([TEXT], CANVAS, FONT_OPTIONS);

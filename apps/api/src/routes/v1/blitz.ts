@@ -1,5 +1,6 @@
 /**
- * Blitz — `POST /blitz`, `GET|PATCH /blitz/preferences`.
+ * Blitz — `POST /blitz`, `GET /blitz/queue`, `POST /blitz/queue/:id/discard`,
+ * `GET|PATCH /blitz/preferences`.
  *
  * Fuente: PRD §9.3, FR-050, FR-055, DATA-006.
  *
@@ -85,15 +86,37 @@
  * key no es idempotente —reintentar a ciegas cobra dos veces—; con key sí. Se usa
  * el `withIdempotency` de las demás rutas, no la reserva interna del caso de uso:
  * dos mecanismos de idempotencia sobre la misma petición serían dos verdades.
+ *
+ * ## La cola, vista y decidida por tarjeta (`PU-BLITZ-002`)
+ *
+ * El deck de `apps/web` necesita **ver** la cola y decidir sobre **una** tarjeta,
+ * no sobre "la de turno". Tres piezas que salen juntas:
+ *
+ *  - `GET /blitz/queue` lista las `queued` en el orden en que se consumen (el
+ *    mismo `ORDER BY` que `claimNextQueuedSuggestion`, compartido en `db`). No
+ *    cobra. Si hay menos de {@link DISCOVERY_QUEUE_TARGET_ITEMS}, pide relleno
+ *    con el mismo `pedirRelleno` que el 404 de cola vacía (clave por minuto:
+ *    el deck pregunta cada 15 s con la cola corta y eso no crea un job por GET).
+ *  - `POST /blitz` con `suggestionId` acepta **esa**. Sin él, igual que antes.
+ *  - `POST /blitz/queue/:id/discard` la pasa a `discarded`. No cobra.
+ *
+ * Aceptar por id y descartar toman la fila con `lockSuggestionById` —`FOR
+ * UPDATE` **sin** `SKIP LOCKED`—: si llegan a la vez sobre el mismo id, la
+ * segunda espera a la primera, ve la fila ya cambiada y responde `409 conflict`.
+ * "Ajena o inexistente" es `404`, sin distinguir (§9.2).
  */
 import { randomUUID } from "node:crypto";
 
+import { z } from "zod";
+
 import {
+  DISCOVERY_QUEUE_TARGET_ITEMS,
   contentBuildPayloadSchema,
   optionalIdempotencyHeaderSchema,
   runBlitzRequestSchema,
   updateBlitzPreferencesRequestSchema,
   type BlitzQuotaExceededDetails,
+  type BlitzSuggestion,
   type ContentQuotaExceededDetails,
 } from "@fastgram/contracts";
 import {
@@ -124,12 +147,16 @@ import {
   claimNextQueuedSuggestion,
   companyProfileRepository,
   discardQueuedSuggestion,
+  findLiveMedia,
+  listQueuedSuggestions,
   lockLiveMedia,
+  lockSuggestionById,
   contentAngleRepository,
   contentRepository,
   markSuggestionPopped,
   quotaLedgerStore,
   type ContentRow,
+  type QueuedSuggestionView,
   type SuggestionRow,
   type Transaction,
   type contentAngles,
@@ -137,10 +164,11 @@ import {
 import type { Clock, Queue } from "@fastgram/ports";
 
 import { ApiRejection } from "../../http/errors.js";
+import { isUuid } from "../../http/route-ids.js";
 import { rateLimit } from "../../plugins/rate-limit.js";
-import { lockLedger } from "../../support/quota.js";
+import { lockLedger, quotaPolicyFor, type QuotaPolicy } from "../../support/quota.js";
 import { toBlitzPreferences, toContent } from "../../support/serializers.js";
-import { data, idempotencyKeyOf, withIdempotency } from "./shared.js";
+import { data, idempotencyKeyOf, notFound, withIdempotency } from "./shared.js";
 import type { ZodApp } from "../../server/types.js";
 
 export type AngleRow = (typeof contentAngles)["$inferSelect"];
@@ -401,6 +429,8 @@ interface AcceptanceContext {
   readonly tx: Transaction;
   readonly companyId: string;
   readonly clock: Clock;
+  /** `PU-RUN-002`: en `unlimited` (modo personal) los gates de saves no cortan. */
+  readonly policy: QuotaPolicy;
   /** La sugerencia ya tomada con `FOR UPDATE SKIP LOCKED` en esta transacción. */
   readonly claimed: SuggestionRow;
   /** Ya validado contra `contentBuildPayloadSchema`. Ver `prepareBuildPayload`. */
@@ -445,7 +475,7 @@ function acceptanceRepository(ctx: AcceptanceContext): {
 
     async loadQuota(companyId, transaction): Promise<BlitzQuotaSnapshot> {
       sameTx(transaction);
-      const locked = await lockLedger(ctx.tx, { companyId }, ctx.clock);
+      const locked = await lockLedger(ctx.tx, { companyId }, ctx.clock, ctx.policy);
 
       // Ver la cabecera: para Free el cupo es el trial allowance, y su tope no está
       // en el PRD. Se corta **antes** de decidir nada; la transacción vuelve atrás
@@ -639,6 +669,174 @@ async function prepareBuildPayload(
 }
 
 /**
+ * Toma **esa** sugerencia con lock, o rechaza: `404` si no existe en este
+ * workspace (un id que no es uuid tampoco existe: viaja en el body, así que el
+ * hook de `route-ids.ts` no lo neutraliza), `409 conflict` si ya no está
+ * `queued`. Ver `lockSuggestionById` para por qué el lock espera en vez de saltar.
+ */
+async function lockQueuedSuggestion(
+  tx: Transaction,
+  companyId: string,
+  suggestionId: string,
+): Promise<SuggestionRow> {
+  if (!isUuid(suggestionId)) throw notFound("suggestion");
+  const row = await lockSuggestionById(tx, { companyId }, suggestionId);
+  if (row === null) throw notFound("suggestion");
+  if (row.status !== "queued") {
+    throw new DomainError("conflict", "This suggestion is no longer in the queue.", {
+      suggestionId,
+      status: row.status,
+    });
+  }
+  return row;
+}
+
+/**
+ * `POST /blitz` con `suggestionId`. Si además vino `contentType` y no coincide,
+ * es `409 conflict`: el cliente pidió dos cosas que no pueden ser ciertas a la
+ * vez, y aceptar cualquiera de las dos sería elegir por él.
+ */
+async function claimSuggestionById(
+  tx: Transaction,
+  companyId: string,
+  suggestionId: string,
+  contentType: SuggestionRow["contentType"] | undefined,
+): Promise<SuggestionRow> {
+  const row = await lockQueuedSuggestion(tx, companyId, suggestionId);
+  if (contentType !== undefined && row.contentType !== contentType) {
+    throw new DomainError(
+      "conflict",
+      "The suggestion's content type doesn't match the requested contentType.",
+      { suggestionId, contentType: row.contentType, requested: contentType },
+    );
+  }
+  return row;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// GET /blitz/queue — la tarjeta del deck (`PU-BLITZ-002`)
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Tope de filas del listado. La cola apunta a 5 y el PRD admite que refills
+ * concurrentes la excedan un poco; 50 es "toda la cola" con margen y a la vez
+ * un tope a lo que puede costar un GET que el deck repite.
+ */
+const QUEUE_LIST_LIMIT = 50;
+
+const discardParams = z.object({ id: z.string().min(1) });
+
+/** El schema del contrato exige URLs absolutas: lo que no parsea, no viaja. */
+function absoluteUrl(value: string | null | undefined): string | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  try {
+    new URL(value);
+    return value;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Un campo opcional presente sólo si tiene valor (`exactOptionalPropertyTypes`). */
+const opt = <K extends string, V>(key: K, value: V | undefined): { [P in K]?: V } =>
+  value === undefined ? {} : ({ [key]: value } as { [P in K]: V });
+
+/**
+ * La preview desde el `build_plan`, con la URL **de hoy** de cada asset (la
+ * `r2Url` que devuelve `GET /media`; es la misma que el build va a usar, ver
+ * `rebindMediaUrls`). Un asset que ya no está vivo no aparece: la tarjeta se
+ * dibuja con el texto, y aceptarla dará el 422 `media_unavailable` de siempre.
+ * Sin `build_plan` legible, no hay preview.
+ */
+function previewOf(
+  row: SuggestionRow,
+  live: ReadonlyMap<string, string>,
+): BlitzSuggestion["preview"] {
+  const parsed = parseSuggestionBuildPlan(row.buildPlan, row.contentType);
+  if (!parsed.ok) return undefined;
+  const { media, texts } = parsed.plan;
+  const url = (ref: { readonly mediaId: string }): string | undefined =>
+    absoluteUrl(live.get(ref.mediaId));
+
+  switch (media.format) {
+    case "slideshow":
+      return {
+        slides: media.slides.map((ref, i) => ({
+          ...opt("imageUrl", url(ref)),
+          ...opt("text", texts[i]),
+        })),
+      };
+    case "wall-of-text":
+      return { ...opt("backgroundUrl", url(media.video)) };
+    case "green-screen":
+      // `image` es el fondo (`green-screen-background`); el video es el
+      // foreground superponible (`blitz-media.ts`).
+      return { ...opt("backgroundUrl", url(media.image)) };
+    case "video-hook":
+      // Lo primero que se ve es el hook.
+      return { ...opt("backgroundUrl", url(media.hookVideo)) };
+  }
+}
+
+/** Los ids de media que la preview necesita, sin lock. */
+function previewMediaIds(row: SuggestionRow): readonly string[] {
+  const parsed = parseSuggestionBuildPlan(row.buildPlan, row.contentType);
+  return parsed.ok ? selectionMediaIds(parsed.plan.media) : [];
+}
+
+/**
+ * Una fila de la cola → `BlitzSuggestion` del contrato. `remixSource` sólo si
+ * hay una URL de origen: la de la sugerencia o, si falta, el permalink del item
+ * de tendencia; los números sólo salen del item de tendencia.
+ */
+export function toBlitzSuggestion(
+  view: QueuedSuggestionView,
+  live: ReadonlyMap<string, string>,
+): BlitzSuggestion {
+  const row = view.suggestion;
+  const remixUrl =
+    absoluteUrl(row.remixSourceUrl) ?? absoluteUrl(view.trending?.permalink);
+  const built = previewOf(row, live);
+  // Una preview sin nada adentro (toda su media se borró) no es una preview.
+  const preview =
+    built === undefined || Object.keys(built).length === 0 ? undefined : built;
+  const generatedText = row.generatedText ?? undefined;
+  const aiExplanation = row.aiExplanation ?? undefined;
+  return {
+    id: row.id,
+    contentType: row.contentType,
+    ...opt("generatedText", generatedText === "" ? undefined : generatedText),
+    ...opt("aiExplanation", aiExplanation === "" ? undefined : aiExplanation),
+    ...opt(
+      "influencer",
+      view.influencer !== null && view.influencer.name !== ""
+        ? view.influencer
+        : undefined,
+    ),
+    ...opt(
+      "angle",
+      view.angle !== null && view.angle.title !== "" ? view.angle : undefined,
+    ),
+    ...opt(
+      "remixSource",
+      remixUrl === undefined
+        ? undefined
+        : {
+            url: remixUrl,
+            ...(view.trending === null
+              ? {}
+              : {
+                  ...opt("thumbnailUrl", absoluteUrl(view.trending.thumbnailUrl)),
+                  likes: view.trending.likes,
+                  views: view.trending.views,
+                }),
+          },
+    ),
+    ...opt("preview", preview),
+  };
+}
+
+/**
  * Una aceptación entera, dentro de `tx`. Lanza `ApiRejection` para los rechazos
  * de la ruta (perfil, cola vacía, trial) y deja pasar los del dominio.
  */
@@ -648,11 +846,14 @@ async function acceptNextSuggestion(
     readonly companyId: string;
     readonly actorId: string;
     readonly contentType: SuggestionRow["contentType"] | undefined;
+    /** `PU-BLITZ-002`: aceptar **esta** y no la de turno. */
+    readonly suggestionId: string | undefined;
     readonly aspectRatio: Parameters<
       typeof acceptBlitzSuggestionUseCase
     >[1]["aspectRatio"];
     readonly queue: Queue;
     readonly clock: Clock;
+    readonly policy: QuotaPolicy;
   },
 ): Promise<ContentRow> {
   const { companyId } = args;
@@ -674,11 +875,14 @@ async function acceptNextSuggestion(
     );
   }
 
-  const claimed = await claimNextQueuedSuggestion(
-    tx,
-    { companyId },
-    { contentType: args.contentType },
-  );
+  const claimed =
+    args.suggestionId === undefined
+      ? await claimNextQueuedSuggestion(
+          tx,
+          { companyId },
+          { contentType: args.contentType },
+        )
+      : await claimSuggestionById(tx, companyId, args.suggestionId, args.contentType);
   if (claimed === null) throw new EmptyQueueRejection();
 
   const buildPayload = await prepareBuildPayload(
@@ -692,6 +896,7 @@ async function acceptNextSuggestion(
     tx,
     companyId,
     clock: args.clock,
+    policy: args.policy,
     claimed,
     buildPayload,
   });
@@ -903,6 +1108,55 @@ export function registerBlitzRoutes(app: ZodApp): void {
     },
   );
 
+  // ── GET /blitz/queue ── (`PU-BLITZ-002`, ver la cabecera)
+  app.get("/blitz/queue", async (request) => {
+    const companyId = request.auth.companyId;
+    const { views, live } = await request.tx(async (tx) => {
+      const views = await listQueuedSuggestions(
+        tx,
+        { companyId },
+        { limit: QUEUE_LIST_LIMIT },
+      );
+      const ids = [...new Set(views.flatMap((v) => previewMediaIds(v.suggestion)))];
+      const live = new Map(
+        (await findLiveMedia(tx, { companyId }, ids)).map((m) => [m.mediaId, m.url]),
+      );
+      return { views, live };
+    });
+
+    // FR-055: la cola apunta a 5. Leer no escribe nada del workspace, pero sí
+    // puede pedir que se rellene: es lo que hace que el deck no se quede en
+    // "esperando" con la cola corta. Fuera de la transacción, que ya confirmó.
+    if (views.length < DISCOVERY_QUEUE_TARGET_ITEMS) {
+      await pedirRelleno(request, companyId);
+    }
+    return data(views.map((v) => toBlitzSuggestion(v, live)));
+  });
+
+  // ── POST /blitz/queue/:id/discard ── (`PU-BLITZ-002`)
+  //
+  // FR-050: rechazar no consume cuota. No toca el ledger ni encola un build.
+  app.post(
+    "/blitz/queue/:id/discard",
+    { schema: { params: discardParams } },
+    async (request, reply) => {
+      const companyId = request.auth.companyId;
+      const { id } = request.params;
+      await request.tx(async (tx) => {
+        await lockQueuedSuggestion(tx, companyId, id);
+        const discarded = await discardQueuedSuggestion(tx, { companyId }, id);
+        if (!discarded) {
+          throw new Error(
+            `La sugerencia ${id} no pasó a \`discarded\` con el lock tomado y \`queued\`.`,
+          );
+        }
+      });
+      // La cola acaba de perder una.
+      await pedirRelleno(request, companyId);
+      return reply.status(204).send();
+    },
+  );
+
   // ── POST /blitz ──
   app.post(
     "/blitz",
@@ -947,9 +1201,11 @@ export function registerBlitzRoutes(app: ZodApp): void {
               companyId,
               actorId: request.auth.userId ?? request.auth.apiKeyId ?? "unknown",
               contentType: body.contentType,
+              suggestionId: body.suggestionId,
               aspectRatio: body.aspectRatio,
               queue,
               clock,
+              policy: quotaPolicyFor(app.deps.mode),
             }),
           ),
         );

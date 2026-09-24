@@ -150,7 +150,19 @@ const workerEnvObject = baseEnvSchema
      * da ninguno de estos números, y ADR-009 prohíbe fijar el modelo.
      */
 
-    /** ADR-009. Las cuatro juntas o ninguna. */
+    /**
+     * Directorio de FastGram (`PU-MODEL-001`): ahí vive `models.json`, el
+     * registro de modelos que escribe la pantalla Settings → Models. Default
+     * `~/.fastgram`. Tiene que ser el mismo que el de la API, o el worker lee
+     * un registro que nadie escribe.
+     */
+    FASTGRAM_HOME: z.preprocess(unsetIfEmpty, z.string().min(1).optional()),
+
+    /**
+     * ADR-009. Las cuatro juntas o ninguna. Desde `PU-MODEL-001` son el
+     * **fallback**: si el registro de modelos tiene la tarea completa, gana el
+     * registro (ver `llm/registry-llm.ts`).
+     */
     LLM_BASE_URL: z.preprocess(
       unsetIfEmpty,
       z
@@ -374,25 +386,21 @@ export interface WebsiteReaderSettings {
   readonly blockedHosts: readonly string[];
 }
 
-export type BrandAnalysisConfig =
+/**
+ * Lo de `brand-source-analysis` **que no es el LLM**: extractor y retención.
+ * Desde `PU-MODEL-001` el LLM puede venir del registro de modelos y aparecer
+ * con el worker ya arriba, así que `main.ts` los mira por separado.
+ */
+export type BrandReaderConfig =
   | {
       readonly kind: "configured";
-      readonly llm: LlmConfig;
       readonly website: WebsiteReaderSettings;
       readonly rawRetentionDays: number;
     }
   | { readonly kind: "missing"; readonly missing: readonly string[] };
 
-/**
- * Los tres grupos que el handler necesita, o **cuáles faltan**, para que el
- * arranque lo diga con nombres de variable. El «todas o ninguna» de cada grupo
- * ya lo cortó el esquema.
- */
-export function brandAnalysisFromEnv(env: WorkerEnv): BrandAnalysisConfig {
+export function brandReaderFromEnv(env: WorkerEnv): BrandReaderConfig {
   const missing: string[] = [];
-  const llm = llmFromEnv(env);
-  if (llm === null) missing.push(LLM_VARS.join(" + "));
-
   const website =
     env.BRAND_WEBSITE_TIMEOUT_MS !== undefined &&
     env.BRAND_WEBSITE_MAX_BODY_BYTES !== undefined &&
@@ -417,8 +425,37 @@ export function brandAnalysisFromEnv(env: WorkerEnv): BrandAnalysisConfig {
   const rawRetentionDays = env.BRAND_SNAPSHOT_RAW_RETENTION_DAYS;
   if (rawRetentionDays === undefined) missing.push("BRAND_SNAPSHOT_RAW_RETENTION_DAYS");
 
-  if (llm === null || website === null || rawRetentionDays === undefined) {
+  if (website === null || rawRetentionDays === undefined) {
     return { kind: "missing", missing };
   }
-  return { kind: "configured", llm, website, rawRetentionDays };
+  return { kind: "configured", website, rawRetentionDays };
+}
+
+export type BrandAnalysisConfig =
+  | {
+      readonly kind: "configured";
+      readonly llm: LlmConfig;
+      readonly website: WebsiteReaderSettings;
+      readonly rawRetentionDays: number;
+    }
+  | { readonly kind: "missing"; readonly missing: readonly string[] };
+
+/**
+ * Los tres grupos que el handler necesita, o **cuáles faltan**, para que el
+ * arranque lo diga con nombres de variable. El «todas o ninguna» de cada grupo
+ * ya lo cortó el esquema.
+ */
+export function brandAnalysisFromEnv(env: WorkerEnv): BrandAnalysisConfig {
+  const missing: string[] = [];
+  const llm = llmFromEnv(env);
+  if (llm === null) missing.push(LLM_VARS.join(" + "));
+  const reader = brandReaderFromEnv(env);
+  if (reader.kind === "missing") missing.push(...reader.missing);
+  if (llm === null || reader.kind === "missing") return { kind: "missing", missing };
+  return {
+    kind: "configured",
+    llm,
+    website: reader.website,
+    rawRetentionDays: reader.rawRetentionDays,
+  };
 }

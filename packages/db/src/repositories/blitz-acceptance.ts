@@ -41,11 +41,27 @@
 import { and, desc, eq, sql, type SQL } from "drizzle-orm";
 
 import type { Executor } from "../client.js";
-import { suggestions } from "../schema/index.js";
+import {
+  contentAngles,
+  influencers,
+  suggestions,
+  trendingItems,
+} from "../schema/index.js";
 import type { TenantScope } from "./base.js";
 
 export type SuggestionRow = typeof suggestions.$inferSelect;
 export type SuggestionContentType = SuggestionRow["contentType"];
+
+/**
+ * **El** orden de la cola: más nueva primero y, a igual `createdAt`, por id.
+ *
+ * Es uno solo y lo comparten {@link claimNextQueuedSuggestion} (que consume) y
+ * {@link listQueuedSuggestions} (que muestra): el deck promete que la tarjeta
+ * de arriba es la que saldría, y dos `ORDER BY` escritos por separado son dos
+ * órdenes el día que alguien toque uno. El desempate por id importa: un refill
+ * inserta varias filas en una sentencia y comparten el `now()` de la transacción.
+ */
+const QUEUE_ORDER = [desc(suggestions.createdAt), desc(suggestions.id)] as const;
 
 /**
  * La próxima sugerencia `queued` del workspace, **bloqueada** hasta el fin de la
@@ -72,11 +88,126 @@ export async function claimNextQueuedSuggestion(
     .select()
     .from(suggestions)
     .where(and(...conditions))
-    .orderBy(desc(suggestions.createdAt), desc(suggestions.id))
+    .orderBy(...QUEUE_ORDER)
     .for("update", { skipLocked: true })
     .limit(1);
 
   return filas[0] ?? null;
+}
+
+/**
+ * Una sugerencia **por id**, bloqueada hasta el fin de la transacción, en el
+ * estado que tenga. `null` si no existe en este workspace.
+ *
+ * Es el lock de las dos decisiones sobre una tarjeta concreta —aceptarla por id
+ * (`POST /blitz` con `suggestionId`) y descartarla (`POST /blitz/queue/:id/discard`)—
+ * y a propósito **sin** `SKIP LOCKED`: si las dos llegan a la vez, la segunda
+ * espera a que la primera confirme, Postgres le devuelve la fila **ya cambiada**
+ * (READ COMMITTED revalida la fila bloqueada) y quien llama ve que no está
+ * `queued` → `409`. Con `SKIP LOCKED` la segunda vería "no existe" y respondería
+ * un `404` que es mentira.
+ *
+ * No filtra por `status`: el llamador tiene que distinguir "no existe" (404) de
+ * "ya no está en cola" (409).
+ */
+export async function lockSuggestionById(
+  exec: Executor,
+  scope: TenantScope,
+  suggestionId: string,
+): Promise<SuggestionRow | null> {
+  const filas = await exec
+    .select()
+    .from(suggestions)
+    .where(
+      and(eq(suggestions.companyId, scope.companyId), eq(suggestions.id, suggestionId)),
+    )
+    .for("update")
+    .limit(1);
+  return filas[0] ?? null;
+}
+
+/** Una sugerencia `queued` con lo que la tarjeta del deck muestra de sus relaciones. */
+export interface QueuedSuggestionView {
+  readonly suggestion: SuggestionRow;
+  readonly influencer: { readonly id: string; readonly name: string } | null;
+  readonly angle: { readonly id: string; readonly title: string } | null;
+  /** El item de tendencia de origen, si el remix salió de uno. */
+  readonly trending: {
+    readonly permalink: string;
+    readonly thumbnailUrl: string | null;
+    readonly likes: number;
+    readonly views: number;
+  } | null;
+}
+
+/**
+ * Las sugerencias `queued` del workspace, **en el orden en que se consumen**
+ * (ver {@link QUEUE_ORDER}). Sin lock: es una lectura para mostrar.
+ *
+ * Las relaciones van con `LEFT JOIN` y con el `companyId` en la condición del
+ * join del influencer y del ángulo: la FK no impide que apunten a otro
+ * workspace, y un nombre ajeno en una tarjeta sería una fuga. `trending_items`
+ * es global (DATA-023), no tiene tenant.
+ */
+export async function listQueuedSuggestions(
+  exec: Executor,
+  scope: TenantScope,
+  opts: { readonly limit: number },
+): Promise<readonly QueuedSuggestionView[]> {
+  const filas = await exec
+    .select({
+      suggestion: suggestions,
+      influencerId: influencers.id,
+      influencerName: influencers.name,
+      angleId: contentAngles.id,
+      angleTitle: contentAngles.title,
+      trendingPermalink: trendingItems.permalink,
+      trendingThumbnailUrl: trendingItems.thumbnailUrl,
+      trendingLikes: trendingItems.likes,
+      trendingViews: trendingItems.views,
+    })
+    .from(suggestions)
+    .leftJoin(
+      influencers,
+      and(
+        eq(influencers.id, suggestions.influencerId),
+        eq(influencers.companyId, suggestions.companyId),
+      ),
+    )
+    .leftJoin(
+      contentAngles,
+      and(
+        eq(contentAngles.id, suggestions.angleId),
+        eq(contentAngles.companyId, suggestions.companyId),
+      ),
+    )
+    .leftJoin(trendingItems, eq(trendingItems.id, suggestions.sourceTrendingItemId))
+    .where(
+      and(eq(suggestions.companyId, scope.companyId), eq(suggestions.status, "queued")),
+    )
+    .orderBy(...QUEUE_ORDER)
+    .limit(opts.limit);
+
+  return filas.map((f) => ({
+    suggestion: f.suggestion,
+    influencer:
+      f.influencerId === null || f.influencerName === null
+        ? null
+        : { id: f.influencerId, name: f.influencerName },
+    angle:
+      f.angleId === null || f.angleTitle === null
+        ? null
+        : { id: f.angleId, title: f.angleTitle },
+    trending:
+      f.trendingPermalink === null
+        ? null
+        : {
+            permalink: f.trendingPermalink,
+            thumbnailUrl: f.trendingThumbnailUrl,
+            likes: f.trendingLikes ?? 0,
+            views: f.trendingViews ?? 0,
+          },
+  }));
 }
 
 /**
@@ -178,10 +309,38 @@ export async function lockLiveMedia(
   return filas.map((f) => ({ mediaId: f.media_id, url: f.url, mediaType: f.media_type }));
 }
 
+/**
+ * Como {@link lockLiveMedia} pero **sin lock**: para mostrar (la preview de
+ * `GET /blitz/queue`), no para construir. Un `FOR SHARE` en una lectura que el
+ * deck repite cada 15 s haría esperar a los borrados de media sin motivo.
+ */
+export async function findLiveMedia(
+  exec: Executor,
+  scope: TenantScope,
+  mediaIds: readonly string[],
+): Promise<readonly LiveMediaRow[]> {
+  if (mediaIds.length === 0) return [];
+  const filas = (await exec.execute(sql`
+    select media_id::text as media_id, r2_url as url, media_type::text as media_type
+      from media
+     where company_id = ${scope.companyId}::uuid
+       and media_id::text in (${sql.join(
+         mediaIds.map((id) => sql`${id}`),
+         sql`, `,
+       )})
+       and deleted_at is null
+       and status = 'ready'
+  `)) as unknown as { media_id: string; url: string; media_type: "image" | "video" }[];
+  return filas.map((f) => ({ mediaId: f.media_id, url: f.url, mediaType: f.media_type }));
+}
+
 export const blitzAcceptanceStore = {
   table: suggestions,
   claimNextQueuedSuggestion,
+  lockSuggestionById,
+  listQueuedSuggestions,
   markSuggestionPopped,
   discardQueuedSuggestion,
   lockLiveMedia,
+  findLiveMedia,
 };

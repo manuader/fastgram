@@ -38,6 +38,8 @@ import * as audio from "./resources/audio.js";
 import * as sounds from "./resources/tiktok-sounds.js";
 import * as brand from "./resources/brand.js";
 import * as onboarding from "./resources/onboarding.js";
+import * as models from "./resources/models.js";
+import * as workspaces from "./resources/workspaces.js";
 import {
   imageUploadReservationRequestSchema,
   mediaUploadReservationRequestSchema,
@@ -219,7 +221,7 @@ export type OpenApiDocument = {
   servers: { url: string }[];
   paths: Record<
     string,
-    Partial<Record<"get" | "post" | "patch" | "delete", OperationObject>>
+    Partial<Record<"get" | "post" | "put" | "patch" | "delete", OperationObject>>
   >;
   components: {
     securitySchemes: Record<string, unknown>;
@@ -362,7 +364,7 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
         post: {
           operationId: "runBlitz",
           summary:
-            "Saca una sugerencia lista de la discovery queue y lanza su build. No idempotente.",
+            "Saca una sugerencia lista de la discovery queue (o la de `suggestionId`) y lanza su build. No idempotente.",
           requestBody: {
             required: false,
             content: json(toJsonSchema(blitz.runBlitzRequestSchema)),
@@ -370,11 +372,40 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           responses: {
             "202": ok("Build encolado", dataOf(contentJs)),
             "400": errorResponse("bad_request — contentType o aspectRatio no reconocido"),
-            "404": errorResponse("not_found — la discovery queue está vacía"),
-            "409": errorResponse("company_profile_not_ready"),
+            "404": errorResponse(
+              "not_found — la discovery queue está vacía, o `suggestionId` no existe en este workspace",
+            ),
+            "409": errorResponse(
+              "company_profile_not_ready / conflict — `suggestionId` ya no está en cola",
+            ),
+            "422": errorResponse(
+              "content_unavailable_for_type — la sugerencia no se puede construir; se descartó sin cobrar",
+            ),
             "429": errorResponse(
               "blitz_quota_exceeded / content_quota_exceeded / rate_limited",
             ),
+          },
+        },
+      },
+      "/blitz/queue": {
+        get: {
+          operationId: "listBlitzQueue",
+          summary:
+            "Sugerencias en cola, en el orden en que POST /blitz las consume. Pide relleno si hay menos de 5. No cobra.",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(blitz.blitzQueueSchema))),
+          },
+        },
+      },
+      "/blitz/queue/{id}/discard": {
+        post: {
+          operationId: "discardBlitzSuggestion",
+          summary: "Descarta una sugerencia en cola sin cobrar y pide relleno.",
+          parameters: [pathParam("id")],
+          responses: {
+            "204": { description: "Descartada" },
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — la sugerencia ya no está en cola"),
           },
         },
       },
@@ -1109,6 +1140,133 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
             "503": errorResponse(
               "service_unavailable — sin cola no se puede arrancar el relleno",
             ),
+          },
+        },
+      },
+      "/mode": {
+        get: {
+          operationId: "getMode",
+          summary: "Modo de la instancia: personal | standard (PU-RUN-002, D-06)",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(workspaces.modeSchema))),
+          },
+        },
+      },
+      "/workspaces": {
+        get: {
+          operationId: "listWorkspaces",
+          summary:
+            "Marcas vivas del dueño de la key, por created_at asc (PU-BRAND-001). 404 fuera del modo personal",
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf({ type: "array", items: toJsonSchema(workspaces.workspaceSchema) }),
+            ),
+            "404": errorResponse("not_found — modo standard"),
+          },
+        },
+        post: {
+          operationId: "createWorkspace",
+          summary: "Crea una marca: plan pro, perfil pending (PU-BRAND-001)",
+          parameters: [idempotencyParam],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(workspaces.createWorkspaceRequestSchema)),
+          },
+          responses: {
+            "201": ok("Creada", dataOf(toJsonSchema(workspaces.workspaceSchema))),
+            "400": errorResponse("bad_request"),
+            "404": errorResponse("not_found — modo standard"),
+            "409": errorResponse("conflict — la key se reusó con otro cuerpo"),
+          },
+        },
+      },
+      "/workspaces/{id}": {
+        patch: {
+          operationId: "renameWorkspace",
+          summary: "Renombra una marca del dueño",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(workspaces.updateWorkspaceRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(workspaces.workspaceSchema))),
+            "400": errorResponse("bad_request"),
+            "404": errorResponse("not_found"),
+          },
+        },
+        delete: {
+          operationId: "deleteWorkspace",
+          summary: "Soft delete. La última marca, o la de la key en uso → 409",
+          parameters: [pathParam("id")],
+          responses: {
+            "204": { description: "Borrada" },
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — última marca o marca de la key"),
+          },
+        },
+      },
+      /**
+       * Registro de modelos por tarea — `PU-MODEL-001`/`002`, D-14. Fuera de la
+       * §9.3 del PRD (uso personal). Ninguna respuesta lleva una API key.
+       * Probar y listar responden 200 con `ok: false` cuando falla el
+       * proveedor: ver la cabecera de `resources/models.ts`.
+       */
+      "/models": {
+        get: {
+          operationId: "getModels",
+          summary: "Configuración de modelos por tarea y presets de proveedores",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(models.modelsOverviewSchema))),
+          },
+        },
+      },
+      "/models/{task}": {
+        put: {
+          operationId: "updateModelTask",
+          summary:
+            "Guarda el proveedor, la base URL, el modelo y (opcional) la key de una tarea",
+          parameters: [pathParam("task")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(models.updateModelTaskRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(models.modelTaskConfigSchema))),
+            "400": errorResponse("bad_request — con details.field"),
+            "404": errorResponse("not_found — la tarea no existe"),
+            "503": errorResponse("service_unavailable — no se pudo escribir el registro"),
+          },
+        },
+      },
+      "/models/test": {
+        post: {
+          operationId: "testModelConnection",
+          summary:
+            "Lista los modelos del proveedor y, con `model`, hace una llamada mínima",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(models.testModelConnectionRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(models.modelConnectionTestSchema))),
+            "400": errorResponse("bad_request — base URL inválida"),
+          },
+        },
+      },
+      "/models/providers/{provider}/models": {
+        get: {
+          operationId: "listProviderModels",
+          summary: "GET {baseUrl}/models del proveedor, con la key guardada de `task`",
+          parameters: [
+            pathParam("provider"),
+            ...queryParams(models.providerModelsQuerySchema),
+          ],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(models.providerModelsSchema))),
+            "400": errorResponse("bad_request — base URL inválida o faltante"),
+            "404": errorResponse("not_found — el proveedor no existe"),
           },
         },
       },

@@ -142,8 +142,13 @@ export interface DiscoveryRefillDeps {
   /**
    * La copy de `AI-002` (`OpenAiCompatibleLlm` detrás), o `null` si el entorno
    * no configura el LLM. Con `null` no se encola nada: ver la cabecera.
+   *
+   * También puede ser una **función que la resuelve en cada job**
+   * (`PU-MODEL-001`): así un modelo configurado desde la pantalla de Modelos
+   * llega al próximo relleno sin reiniciar el worker, y uno que se borra deja
+   * de usarse. `null` desde la función es lo mismo que `null` fijo.
    */
-  readonly copywriter: SuggestionCopywriter | null;
+  readonly copywriter: SuggestionCopywriter | null | CopywriterProvider;
   /**
    * Rol para el `SET LOCAL ROLE` de cada transacción. Sin él, un proceso
    * conectado como superusuario **saltea RLS por completo** y el aislamiento
@@ -162,11 +167,18 @@ export interface DiscoveryRefillDeps {
   readonly targetQueuedItems?: number;
 }
 
-/** Por qué no se encola sin LLM. Va al log una vez por proceso. */
+/** La copy resuelta en el momento del job. Ver {@link DiscoveryRefillDeps.copywriter}. */
+export type CopywriterProvider = () => Promise<SuggestionCopywriter | null>;
+
+/**
+ * Por qué no se encola sin LLM. Va al log una vez por proceso — o, con un
+ * {@link CopywriterProvider}, una vez cada vez que el LLM **deja** de estar.
+ */
 export const REFILL_WITHOUT_LLM_WHY =
-  "LLM_BASE_URL + LLM_API_KEY + LLM_MODEL + LLM_CONTEXT_WINDOW_TOKENS no están " +
-  "configuradas: una sugerencia sin copy (AI-002) no se puede construir, así que " +
-  "discovery-refill no encola nada y Blitz responde «cola vacía»";
+  "no hay LLM para la tarea `text` (ni en Settings → Models ni en LLM_BASE_URL + " +
+  "LLM_API_KEY + LLM_MODEL + LLM_CONTEXT_WINDOW_TOKENS): una sugerencia sin copy " +
+  "(AI-002) no se puede construir, así que discovery-refill no encola nada y " +
+  "Blitz responde «cola vacía»";
 
 /** Lo que la transacción 1 trae, ya listo para planificar. */
 interface RefillSubject {
@@ -305,7 +317,8 @@ export function createDiscoveryRefillHandler(
     const job = parsed.payload;
     const base = { jobId: ctx.jobId, companyId: job.companyId };
 
-    const copywriter = deps.copywriter;
+    const copywriter =
+      typeof deps.copywriter === "function" ? await deps.copywriter() : deps.copywriter;
     if (copywriter === null) {
       if (!avisadoSinLlm) {
         avisadoSinLlm = true;
@@ -313,6 +326,8 @@ export function createDiscoveryRefillHandler(
       }
       return;
     }
+    // Volvió a haber LLM: si se va otra vez, se vuelve a avisar.
+    avisadoSinLlm = false;
 
     let subject: RefillSubject;
     try {

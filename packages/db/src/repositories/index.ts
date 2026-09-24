@@ -12,6 +12,7 @@ export * from "./company.js";
 export * from "./quota-ledger.js";
 export * from "./filters.js";
 export * from "./idempotency.js";
+export * from "./workspace-directory.js";
 
 import {
   apiKeys,
@@ -323,9 +324,13 @@ export {
   blitzAcceptanceStore,
   claimNextQueuedSuggestion,
   discardQueuedSuggestion,
+  findLiveMedia,
+  listQueuedSuggestions,
   lockLiveMedia,
+  lockSuggestionById,
   markSuggestionPopped,
   type LiveMediaRow,
+  type QueuedSuggestionView,
   type SuggestionContentType,
   type SuggestionRow,
 } from "./blitz-acceptance.js";

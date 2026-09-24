@@ -172,7 +172,7 @@ export interface ApiHarness {
 }
 
 export interface RequestOptions {
-  readonly method: "GET" | "POST" | "PATCH" | "DELETE";
+  readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   readonly path: string;
   /** Default: la key del workspace `a`. `null` para no mandar credencial. */
   readonly token?: string | null;
@@ -257,6 +257,11 @@ export interface StartApiOptions {
    * lo pasa explícitamente para ejercitar el nivel que consulta la base.
    */
   readonly queueSchema?: string;
+  /**
+   * `FASTGRAM_MODE`. Default: **sin modo** (= `standard`), que es lo que corre
+   * `main.ts` sin la variable. `workspaces.int.test.ts` pasa `personal`.
+   */
+  readonly mode?: "personal" | "standard";
 }
 
 /**
@@ -304,6 +309,7 @@ export async function startApi(options: StartApiOptions = {}): Promise<ApiHarnes
       appRole: APP_ROLE,
       ...((options.withQueue ?? true) ? { queue } : {}),
       ...(options.queueSchema === undefined ? {} : { queueSchema: options.queueSchema }),
+      ...(options.mode === undefined ? {} : { mode: options.mode }),
     },
     logLevel: "silent",
     enableAccessLog: false,

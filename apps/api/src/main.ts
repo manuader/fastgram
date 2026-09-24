@@ -21,7 +21,7 @@ import {
 import { ALL_JOB_QUEUES } from "@fastgram/core";
 import { createDb, grantQueueSchemaAccess } from "@fastgram/db";
 
-import { loadApiEnv, parseCorsOrigins } from "./env.js";
+import { loadApiEnv, parseCorsOrigins, resolveListenHost } from "./env.js";
 import { buildServer } from "./server/app.js";
 import { IdempotencyGuard } from "./http/idempotency.js";
 import { TokenBucketLimiter } from "./http/rate-limit.js";
@@ -132,6 +132,8 @@ const app = await buildServer({
     // `grantQueueSchemaAccess` de más arriba y que hasta ahora no se notaba
     // hasta la primera petición que encolaba.
     queueSchema: env.QUEUE_SCHEMA,
+    // `PU-RUN-002`: apaga cuotas y rate limit, y prende las marcas por header.
+    mode: env.FASTGRAM_MODE,
   },
   corsOrigins: parseCorsOrigins(env.API_CORS_ORIGINS),
   logLevel: env.LOG_LEVEL,
@@ -168,7 +170,15 @@ if (urlCheck.kind === "diverged") {
 }
 
 try {
-  await app.listen({ port: env.API_PORT, host: env.API_HOST });
+  await app.listen({ port: env.API_PORT, host: resolveListenHost(env) });
+  if (env.FASTGRAM_MODE === "personal") {
+    // Que se vea en el primer renglón del log: en este modo no hay cuotas ni
+    // rate limit, y alguien que lo prendió sin querer tiene que poder notarlo.
+    app.log.warn(
+      { mode: env.FASTGRAM_MODE, host: resolveListenHost(env) },
+      "modo personal: sin cuotas ni rate limiting; multimarca por X-Fastgram-Workspace",
+    );
+  }
 } catch (err: unknown) {
   app.log.error(err, "no se pudo abrir el puerto");
   await queue.stop();

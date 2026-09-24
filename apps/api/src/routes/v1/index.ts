@@ -16,8 +16,10 @@ import { registerCatalogRoutes } from "./catalog.js";
 import { registerContentRoutes } from "./content.js";
 import { registerInfluencerRoutes } from "./influencers.js";
 import { registerMediaRoutes } from "./media.js";
+import { registerModelRoutes } from "./models.js";
 import { registerOnboardingRoutes } from "./onboarding.js";
 import { registerPostRoutes } from "./posts.js";
+import { registerWorkspaceRoutes } from "./workspaces.js";
 
 export async function registerV1Routes(app: ZodApp): Promise<void> {
   registerBlitzRoutes(app);
@@ -37,5 +39,9 @@ export async function registerV1Routes(app: ZodApp): Promise<void> {
   // hay que arrancar el relleno de la discovery queue, y ése era el disparador
   // que faltaba.
   registerOnboardingRoutes(app);
+  // `PU-BRAND-001` / `PU-RUN-002`: marcas del dueño y `GET /mode`.
+  registerWorkspaceRoutes(app);
+  // `PU-MODEL-001`/`002`: registro de modelos por tarea (D-14).
+  registerModelRoutes(app);
   await Promise.resolve();
 }

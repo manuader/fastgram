@@ -25,28 +25,32 @@
 import {
   createPgBossQueue,
   drizzleTransactionToExecutor,
-  OpenAiCompatibleLlm,
+  FileModelRegistry,
+  modelRegistryPath,
   S3Storage,
   systemClock,
   WebsiteReader,
 } from "@fastgram/adapters";
-import { ALL_JOB_QUEUES } from "@fastgram/core";
+import { ALL_JOB_QUEUES, JOB_QUEUES } from "@fastgram/core";
 import { createDb } from "@fastgram/db";
 import pino from "pino";
 
+import { createBrandSourceAnalysisHandler } from "./brand/analysis-handler.js";
 import { createLlmBrandSynthesizer } from "./brand/synthesizer.js";
+import { createLlmCopywriter } from "./discovery/copywriter.js";
 import {
-  createLlmCopywriter,
-  type SuggestionCopywriter,
-} from "./discovery/copywriter.js";
+  REFILL_WITHOUT_LLM_WHY,
+  type CopywriterProvider,
+} from "./discovery/refill-handler.js";
 import { createHandlers, type BrandAnalysisMount } from "./handlers.js";
 import { createHealthServer, createWorkerHealth } from "./health/server.js";
 import {
-  brandAnalysisFromEnv,
+  brandReaderFromEnv,
   llmFromEnv,
   loadWorkerEnv,
   renderServiceFromEnv,
 } from "./env.js";
+import { createLlmSource, createResolvingLlm } from "./llm/registry-llm.js";
 import { JOB_CATALOG, type JobPolicy } from "./jobs/catalog.js";
 import {
   createRenderServiceRenderers,
@@ -147,48 +151,88 @@ async function renderersFromEnv() {
 const { renderer, normalizationRenderer } = await renderersFromEnv();
 
 /**
+ * El LLM — `PU-MODEL-001`. Ya no se arma una vez al arrancar: se resuelve en
+ * cada job contra el registro de modelos (`models.json`, lo escribe Settings →
+ * Models), con las cuatro `LLM_*` como fallback. Ver `llm/registry-llm.ts`.
+ * Construirlo no toca disco ni red.
+ */
+const registryPath = modelRegistryPath(
+  env.FASTGRAM_HOME === undefined ? {} : { FASTGRAM_HOME: env.FASTGRAM_HOME },
+);
+const llmSource = createLlmSource({
+  registry: new FileModelRegistry({ path: registryPath }),
+  legacy: llmFromEnv(env),
+  // Para los `apiKeyEnv` del registro: la key de un proveedor puede vivir en
+  // una variable que este esquema no conoce.
+  secrets: process.env,
+  logger,
+});
+logger.info({ path: registryPath }, "registro de modelos");
+
+/** Cada cuánto se vuelve a mirar si apareció un LLM, para montar el análisis. */
+const BRAND_ANALYSIS_LLM_POLL_MS = 30_000;
+
+/**
  * `brand-source-analysis`: extractor de web (una instancia por `website` y
  * otra por `other_url`, `FR-011.1`), LLM y retención — o qué falta.
  *
- * Construir los adaptadores no toca red: `WebsiteReader` y
- * `OpenAiCompatibleLlm` sólo validan su configuración, y **lanzan** si es
- * inválida, así que un número imposible tira el arranque acá en vez del
- * primer job. Sólo `website` y `other_url` tienen extractor: las cinco
- * plataformas sociales terminan en `unsupported_platform` (ver el handler).
+ * Construir los adaptadores no toca red: `WebsiteReader` sólo valida su
+ * configuración y **lanza** si es inválida, así que un número imposible tira
+ * el arranque acá en vez del primer job. Sólo `website` y `other_url` tienen
+ * extractor: las cinco plataformas sociales terminan en `unsupported_platform`
+ * (ver el handler).
+ *
+ * El sintetizador recibe un `Llm` que **resuelve en cada llamada**: un modelo
+ * nuevo en la pantalla llega al próximo análisis. Si al arrancar no hay LLM,
+ * la cola no se monta —igual que antes— pero se vuelve a mirar cada
+ * {@link BRAND_ANALYSIS_LLM_POLL_MS} y se monta en cuanto aparece (ver abajo,
+ * después de `queue.start()`). Si el LLM se borra con la cola ya montada, cada
+ * análisis falla con `llm_provider_unavailable`, que es reintentable.
  */
-function brandAnalysisMountFromEnv(): BrandAnalysisMount {
-  const config = brandAnalysisFromEnv(env);
-  if (config.kind === "missing") return { kind: "unmounted", missing: config.missing };
+const brandReader = brandReaderFromEnv(env);
+const textLlmAtStart = await llmSource.current("text");
+
+function brandAnalysisHandlerDeps() {
+  if (brandReader.kind === "missing") return null;
   const reader = (source: "website" | "other_url"): WebsiteReader =>
-    new WebsiteReader({ source, ...config.website });
-  const llm = new OpenAiCompatibleLlm(config.llm);
-  // Nunca la API key: sólo a dónde se habla y con qué modelo.
-  logger.info(
-    { baseUrl: config.llm.baseUrl, model: config.llm.model },
-    "LLM para brand-source-analysis",
-  );
+    new WebsiteReader({ source, ...brandReader.website });
   return {
-    kind: "mounted",
     readers: { website: reader("website"), other_url: reader("other_url") },
-    synthesizer: createLlmBrandSynthesizer({ llm }),
-    rawRetentionDays: config.rawRetentionDays,
+    synthesizer: createLlmBrandSynthesizer({
+      llm: createResolvingLlm(llmSource, "text"),
+    }),
+    rawRetentionDays: brandReader.rawRetentionDays,
   };
 }
 
+const NO_TEXT_LLM =
+  "un LLM para la tarea `text` (Settings → Models, o LLM_BASE_URL + LLM_API_KEY + " +
+  "LLM_MODEL + LLM_CONTEXT_WINDOW_TOKENS)";
+
+function brandAnalysisMount(): BrandAnalysisMount {
+  const missing = [
+    ...(textLlmAtStart === null ? [NO_TEXT_LLM] : []),
+    ...(brandReader.kind === "missing" ? brandReader.missing : []),
+  ];
+  const deps = brandAnalysisHandlerDeps();
+  if (missing.length > 0 || deps === null) return { kind: "unmounted", missing };
+  return { kind: "mounted", ...deps };
+}
+
 /**
- * La copy de `AI-002` para `discovery-refill` — sólo con las cuatro `LLM_*`.
- * Es otra instancia del adaptador que la de `brand-source-analysis`: no
- * comparten estado, y así una cola se monta sin depender de que la otra tenga
- * extractor y retención configurados.
+ * La copy de `AI-002` para `discovery-refill`, resuelta **en cada job**: sin
+ * LLM el handler no encola nada (como antes), y en cuanto se configura uno en
+ * la pantalla, el próximo relleno lo usa.
  */
-function copywriterFromEnv(): SuggestionCopywriter | null {
-  const config = llmFromEnv(env);
-  if (config === null) return null;
-  logger.info(
-    { baseUrl: config.baseUrl, model: config.model },
-    "LLM para discovery-refill (copy de AI-002)",
+const copywriter: CopywriterProvider = async () => {
+  const found = await llmSource.current("text");
+  return found === null ? null : createLlmCopywriter({ llm: found.llm });
+};
+if (textLlmAtStart === null) {
+  logger.warn(
+    { cola: JOB_QUEUES.discoveryRefill },
+    `${REFILL_WITHOUT_LLM_WHY} — se vuelve a mirar el registro en cada job`,
   );
-  return createLlmCopywriter({ llm: new OpenAiCompatibleLlm(config) });
 }
 
 const { handlers: HANDLERS, unmounted } = createHandlers({
@@ -199,8 +243,8 @@ const { handlers: HANDLERS, unmounted } = createHandlers({
   clock,
   appRole,
   logger,
-  brandAnalysis: brandAnalysisMountFromEnv(),
-  copywriter: copywriterFromEnv(),
+  brandAnalysis: brandAnalysisMount(),
+  copywriter,
 });
 
 for (const [name, handler] of Object.entries(HANDLERS)) {
@@ -213,6 +257,53 @@ const sinHandler = Object.values(JOB_CATALOG)
   .filter((name) => !(name in HANDLERS));
 
 await queue.start();
+
+/**
+ * `brand-source-analysis` montado **tarde** — `PU-MODEL-001`. Si al arrancar
+ * había extractor y retención pero no LLM, se mira el registro cada
+ * {@link BRAND_ANALYSIS_LLM_POLL_MS} y, cuando aparece uno para `text`, se
+ * registra el consumidor. Es seguro después de `start()`: el adaptador de
+ * pg-boss registra al toque si ya arrancó. Los jobs que se encolaron mientras
+ * tanto esperaban en la cola, así que se procesan en ese momento.
+ */
+let brandAnalysisPoll: ReturnType<typeof setInterval> | null = null;
+if (!(JOB_QUEUES.brandSourceAnalysis in HANDLERS) && brandReader.kind === "configured") {
+  let mounting = false;
+  brandAnalysisPoll = setInterval(() => {
+    if (mounting) return;
+    mounting = true;
+    void (async () => {
+      try {
+        if ((await llmSource.current("text")) === null) return;
+        const deps = brandAnalysisHandlerDeps();
+        if (deps === null) return;
+        await queue.work(
+          JOB_QUEUES.brandSourceAnalysis,
+          createBrandSourceAnalysisHandler({
+            db: handle.db,
+            clock,
+            appRole,
+            logger,
+            ...deps,
+          }),
+          { concurrency: env.WORKER_CONCURRENCY },
+        );
+        if (brandAnalysisPoll !== null) clearInterval(brandAnalysisPoll);
+        brandAnalysisPoll = null;
+        logger.info(
+          { cola: JOB_QUEUES.brandSourceAnalysis },
+          "apareció un LLM en el registro de modelos: brand-source-analysis montado",
+        );
+      } catch (error: unknown) {
+        logger.error({ error }, "no se pudo montar brand-source-analysis");
+      } finally {
+        mounting = false;
+      }
+    })();
+  }, BRAND_ANALYSIS_LLM_POLL_MS);
+  // No mantiene vivo el proceso: el apagado no tiene que esperarlo.
+  brandAnalysisPoll.unref();
+}
 
 /**
  * Los trabajos programados de §9.5.
@@ -331,6 +422,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
         // Antes de nada: el worker deja de estar listo **en cuanto** empieza a
         // apagarse, no cuando termina.
         queueRunning = false;
+        if (brandAnalysisPoll !== null) clearInterval(brandAnalysisPoll);
         healthServer?.close();
         await queue.stop();
         await handle.close();

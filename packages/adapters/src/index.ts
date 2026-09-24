@@ -32,6 +32,9 @@ export {
 } from "./llm/openai-compatible.js";
 export { UNTRUSTED_PREAMBLE } from "./llm/untrusted.js";
 
+/** Registro de modelos por tarea (`PU-MODEL-001`): archivo local + catálogo del proveedor. */
+export * from "./model-registry/index.js";
+
 export {
   createPgBossQueue,
   drizzleTransactionToExecutor,

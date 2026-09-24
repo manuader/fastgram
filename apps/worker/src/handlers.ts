@@ -30,6 +30,7 @@ import type { SuggestionCopywriter } from "./discovery/copywriter.js";
 import {
   REFILL_WITHOUT_LLM_WHY,
   createDiscoveryRefillHandler,
+  type CopywriterProvider,
 } from "./discovery/refill-handler.js";
 import { createInfluencerPipelineHandler } from "./influencers/pipeline-handler.js";
 import { createQuotaResetHandler } from "./jobs/quota-reset-handler.js";
@@ -66,7 +67,7 @@ export interface WorkerHandlerDeps {
    * cabecera): no registrarlo dejaría los jobs acumulándose, uno por minuto
    * mientras el deck está abierto.
    */
-  readonly copywriter: SuggestionCopywriter | null;
+  readonly copywriter: SuggestionCopywriter | null | CopywriterProvider;
 }
 
 export type BrandAnalysisMount =
@@ -265,6 +266,9 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
    * consumidor. Por eso va en `unmounted` y el arranque lo dice.
    */
   const unmounted: UnmountedQueue[] = [];
+  // Con un `CopywriterProvider` (el registro de modelos, `PU-MODEL-001`) no se
+  // sabe acá si hay LLM: se resuelve en cada job, y el arranque lo dice aparte
+  // (`main.ts`). Sólo el `null` fijo es «montado e inerte para siempre».
   if (deps.copywriter === null) {
     // Montado, pero inerte: va en la lista para que el arranque lo diga con
     // las variables que faltan.

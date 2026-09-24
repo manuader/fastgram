@@ -73,7 +73,7 @@ import { ApiRejection } from "../../http/errors.js";
 import { JOB_QUEUES } from "@fastgram/core";
 
 import { rateLimit } from "../../plugins/rate-limit.js";
-import { consumeAiStudioCredits } from "../../support/quota.js";
+import { consumeAiStudioCredits, quotaPolicyFor } from "../../support/quota.js";
 import { toInfluencer, type InfluencerResource } from "../../support/serializers.js";
 import {
   canonicalObjectUrl,
@@ -322,6 +322,7 @@ export function registerInfluencerRoutes(app: ZodApp): void {
             const charge = await consumeAiStudioCredits(tx, scope, clock, {
               operation: "influencer",
               inFlightCount,
+              policy: quotaPolicyFor(app.deps.mode),
             });
 
             const chargeRef: AiStudioChargeRef = {

@@ -14,6 +14,7 @@ import type { FastifyBaseLogger, FastifyInstance, RawServerDefault } from "fasti
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import type { Clock, Queue, Storage } from "@fastgram/ports";
 import type { Database, Transaction } from "@fastgram/db";
+import type { FastgramMode } from "@fastgram/contracts";
 
 /**
  * La instancia con el type provider de Zod puesto.
@@ -82,6 +83,16 @@ export interface ApiDeps {
    * `packages/db/src/queue-grants.ts`. Ver `server/health.ts`.
    */
   readonly queueSchema?: string;
+  /**
+   * `PU-RUN-002` · `D-06`. Default `standard` (ausente = `standard`).
+   *
+   * En `personal`: el rate limiting no cobra (`plugins/rate-limit.ts`), las cuotas
+   * y los gates de plan no cortan (`support/quota.ts`), el header
+   * `X-Fastgram-Workspace` cambia el scope de la request (`auth/scope.ts`) y
+   * existen las rutas de `/workspaces`. Se lee de `deps` y no del entorno porque
+   * `main.ts` es el único archivo que lee el entorno.
+   */
+  readonly mode?: FastgramMode;
 }
 
 declare module "fastify" {

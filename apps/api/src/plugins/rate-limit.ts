@@ -28,6 +28,18 @@ import {
   type TokenBucketLimiter,
 } from "../http/rate-limit.js";
 
+/**
+ * Modo personal (`PU-RUN-002`, `D-06`): un solo usuario, nadie a quien racionar.
+ *
+ * Se decide **acá**, en la aplicación, y no en `TokenBucketLimiter`: el algoritmo
+ * y sus números (§9.6) siguen intactos y testeados para `standard`, y lo único
+ * que cambia es que en `personal` no se consulta. Se lee de `request.server.deps`
+ * para no tener que tocar la firma de las ~25 rutas que registran un límite.
+ */
+function limitsDisabled(request: FastifyRequest): boolean {
+  return request.server.deps.mode === "personal";
+}
+
 function applyDecisionHeaders(
   reply: FastifyReply,
   headers: Record<string, string>,
@@ -47,6 +59,7 @@ export function rateLimit(
   name: RateLimitName,
 ): preHandlerHookHandler {
   return async (request: FastifyRequest, reply: FastifyReply) => {
+    if (limitsDisabled(request)) return;
     const companyId = request.auth?.companyId;
     if (companyId === undefined) return;
 
@@ -90,6 +103,7 @@ export async function consumeOnSuccess(
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<FastifyReply | null> {
+  if (limitsDisabled(request)) return null;
   const companyId = request.auth.companyId;
   const decision = await limiter.consume(name, companyId);
 

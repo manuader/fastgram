@@ -53,7 +53,23 @@ export const apiEnvSchema = baseEnvSchema
   .merge(storageEnvSchema)
   .extend({
     API_PORT: z.coerce.number().int().positive().default(3001),
-    API_HOST: z.string().min(1).default("0.0.0.0"),
+
+    /**
+     * Dirección donde escucha. **Sin default en el schema a propósito**: el default
+     * depende del modo y lo resuelve {@link resolveListenHost}. `0.0.0.0` en
+     * `standard` (un contenedor detrás de un balanceador) y `127.0.0.1` en
+     * `personal`, donde la API no tiene cuotas ni rate limit y escucharla desde la
+     * red del café es regalarle la cuenta a cualquiera con la key.
+     */
+    API_HOST: z.string().min(1).optional(),
+
+    /**
+     * `PU-RUN-002` · `D-06`. `personal` = un solo usuario: sin rate limiting, sin
+     * cuotas ni gates de plan, bind a loopback por defecto y multimarca por el
+     * header `X-Fastgram-Workspace`. Default `standard` para que nada de lo que
+     * ya existe —tests incluidos— cambie de comportamiento sin pedirlo.
+     */
+    FASTGRAM_MODE: z.enum(["personal", "standard"]).default("standard"),
 
     /**
      * Orígenes permitidos por CORS, separados por coma.
@@ -129,6 +145,17 @@ export function loadApiEnv(
   source: Record<string, string | undefined> = process.env,
 ): ApiEnv {
   return defineEnv("@fastgram/api", apiEnvSchema, source);
+}
+
+/**
+ * El host de `listen`. Uno explícito gana siempre; si no hay, depende del modo.
+ * Ver `API_HOST`.
+ */
+export function resolveListenHost(
+  env: Pick<ApiEnv, "API_HOST" | "FASTGRAM_MODE">,
+): string {
+  if (env.API_HOST !== undefined) return env.API_HOST;
+  return env.FASTGRAM_MODE === "personal" ? "127.0.0.1" : "0.0.0.0";
 }
 
 /** `API_CORS_ORIGINS` como lista. Cadena vacía ⇒ lista vacía, no `[""]`. */

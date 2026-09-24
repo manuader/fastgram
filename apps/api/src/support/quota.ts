@@ -84,6 +84,27 @@ import type { Clock } from "@fastgram/ports";
 
 import { ApiRejection } from "../http/errors.js";
 
+/**
+ * Qué hace el cobro cuando no alcanza — `PU-RUN-002`, `D-06`.
+ *
+ * - `enforced`: lo del PRD. Es el default de todas las funciones de acá.
+ * - `unlimited`: modo personal. **Se sigue contando** —el ledger, el bucket y el
+ *   período se escriben igual, así que el reembolso del worker y cualquier
+ *   métrica de uso siguen cuadrando— pero **nada corta**: ni el 429 de saves, ni
+ *   el 402 de créditos, ni el 503 del trial allowance de Free.
+ *
+ * Se resuelve en la API y no en `packages/core` a propósito: el motor de cuotas
+ * de `core` es la regla de facturación y sus tests la fijan; el modo personal no
+ * cambia la regla, cambia **qué plan se le presenta**. En `unlimited` el ledger
+ * se evalúa como `pro` (saves ilimitados, sin trial) y con saldo de créditos
+ * infinito. El cap de concurrencia de AI Studio (10 en vuelo, `HARD_CAPS`) **sí**
+ * se mantiene: no es de plan, es técnico.
+ */
+export type QuotaPolicy = "enforced" | "unlimited";
+
+/** El plan con el que se evalúa el ledger en `unlimited`: el único sin tope de saves. */
+const UNLIMITED_PLAN: PlanId = "pro";
+
 export interface ConsumedSave {
   readonly bucket: SaveBucket;
   /** La clave del ledger que se tocó. Hay que guardarla para reembolsar. */
@@ -114,6 +135,7 @@ export async function lockLedger(
   tx: Transaction,
   scope: TenantScope,
   clock: Clock,
+  policy: QuotaPolicy = "enforced",
 ): Promise<LockedLedger> {
   const company = await companyRepository.billing(tx, scope);
   if (company === null) {
@@ -126,7 +148,9 @@ export async function lockLedger(
     );
   }
 
-  const plan = parsePlanId(company.planId);
+  // En `unlimited` ni siquiera se parsea el plan guardado: un `planId` raro no
+  // tiene por qué tirar abajo la API de un usuario que no paga ningún plan.
+  const plan = policy === "unlimited" ? UNLIMITED_PLAN : parsePlanId(company.planId);
   const now = new Date(clock.nowMs());
   const period = billingPeriodKey(now, company.billingAnchorDay);
 
@@ -154,8 +178,15 @@ export async function consumeContentSave(
   tx: Transaction,
   scope: TenantScope,
   clock: Clock,
+  policy: QuotaPolicy = "enforced",
 ): Promise<ConsumedSave> {
-  const { company, plan, now, period, row: fila } = await lockLedger(tx, scope, clock);
+  const {
+    company,
+    plan,
+    now,
+    period,
+    row: fila,
+  } = await lockLedger(tx, scope, clock, policy);
 
   const ledger: SavesLedger = {
     plan,
@@ -204,6 +235,8 @@ export interface ConsumeCreditsRequest {
    * no pasar cero.
    */
   readonly inFlightCount: number;
+  /** Default `enforced`. Ver {@link QuotaPolicy}. */
+  readonly policy?: QuotaPolicy | undefined;
 }
 
 export interface ConsumedAiCredits {
@@ -233,13 +266,20 @@ export async function consumeAiStudioCredits(
   clock: Clock,
   request: ConsumeCreditsRequest,
 ): Promise<ConsumedAiCredits> {
-  const { company, plan, now, period, row } = await lockLedger(tx, scope, clock);
+  const policy = request.policy ?? "enforced";
+  const { company, plan, now, period, row } = await lockLedger(tx, scope, clock, policy);
 
   // Saldo = cupo del plan − consumidos. Se acota en 0 porque una bajada de plan
   // deja consumidos > cupo (gastó 400 en Growth y pasó a Starter, que trae 250)
   // y un saldo negativo haría que el mensaje del 402 hablara de un número
   // imposible.
-  const balanceBefore = Math.max(0, PLANS[plan].aiStudioCredits - row.aiCredits);
+  //
+  // En `unlimited` el saldo es infinito a efectos del gate; el cargo igual se
+  // suma al contador de consumidos para que el reembolso del pipeline cuadre.
+  const balanceBefore =
+    policy === "unlimited"
+      ? Number.MAX_SAFE_INTEGER
+      : Math.max(0, PLANS[plan].aiStudioCredits - row.aiCredits);
 
   const credits: CreditsLedger = {
     remaining: balanceBefore,
@@ -337,4 +377,9 @@ function asApiRejection(
   }
 
   return e;
+}
+
+/** El modo de la API (`deps.mode`) → la política de cobro. Ausente = `standard`. */
+export function quotaPolicyFor(mode: "personal" | "standard" | undefined): QuotaPolicy {
+  return mode === "personal" ? "unlimited" : "enforced";
 }

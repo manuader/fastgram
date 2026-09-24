@@ -163,9 +163,20 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
             db: deps.db,
             clock: deps.clock,
             ...(deps.sessions === undefined ? {} : { sessions: deps.sessions }),
+            ...(deps.mode === undefined ? {} : { mode: deps.mode }),
           },
           request.headers,
         );
+
+        // `PU-BRAND-001`: credencial válida, marca del header que no es del dueño.
+        // 404 y no 401: no hay que reautenticar nada, y §9.2 no distingue ajeno de
+        // inexistente.
+        if (!resolution.ok && resolution.reason === "workspace_not_found") {
+          request.log.info({ reason: resolution.reason }, "workspace header rejected");
+          return reply.status(404).send({
+            error: { code: "not_found", message: "Workspace not found" },
+          });
+        }
 
         if (!resolution.ok) {
           request.log.info(

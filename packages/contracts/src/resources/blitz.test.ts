@@ -5,6 +5,8 @@ import {
   INFLUENCER_CHANCE_DEFAULT,
   SMART_TEXT_POSITIONING_DEFAULT,
   angleWeightsSchema,
+  blitzQueueSchema,
+  blitzSuggestionSchema,
   contentMixWeightsSchema,
   runBlitzRequestSchema,
   settingsApplicationSchema,
@@ -34,6 +36,60 @@ describe("POST /blitz · FR-050 Validation · PRD:1129", () => {
   it("un valor no reconocido se rechaza → 400 bad_request", () => {
     expect(() => runBlitzRequestSchema.parse({ contentType: "reel" })).toThrow();
     expect(() => runBlitzRequestSchema.parse({ aspectRatio: "16:9" })).toThrow();
+  });
+});
+
+describe("POST /blitz con suggestionId · PU-BLITZ-002", () => {
+  it("suggestionId es opcional y convive con los otros campos", () => {
+    expect(runBlitzRequestSchema.parse({ suggestionId: "abc" })).toEqual({
+      suggestionId: "abc",
+    });
+    expect(() => runBlitzRequestSchema.parse({ suggestionId: "" })).toThrow();
+  });
+
+  it("sigue siendo estricto: una clave desconocida → 400", () => {
+    expect(() => runBlitzRequestSchema.parse({ suggestion: "abc" })).toThrow();
+  });
+});
+
+describe("GET /blitz/queue · la forma del deck, estricta", () => {
+  const completa = {
+    id: "0f7c1c1e-0000-4000-8000-000000000001",
+    contentType: "slideshow",
+    generatedText: "uno\n\ndos",
+    aiExplanation: "- porque sí",
+    influencer: { id: "i1", name: "Ana" },
+    angle: { id: "a1", title: "Ahorro" },
+    remixSource: {
+      url: "https://www.tiktok.com/@x/video/1",
+      thumbnailUrl: "https://cdn.test/t.jpg",
+      likes: 10,
+      views: 100,
+    },
+    preview: {
+      slides: [{ imageUrl: "https://bucket.test/a.png", text: "uno" }, { text: "dos" }],
+    },
+  };
+
+  it("acepta la sugerencia completa y la mínima", () => {
+    expect(blitzSuggestionSchema.parse(completa)).toEqual(completa);
+    expect(
+      blitzQueueSchema.parse([{ id: "x", contentType: "wall-of-text" }]),
+    ).toHaveLength(1);
+  });
+
+  it("el servidor omite, no manda null", () => {
+    expect(() =>
+      blitzSuggestionSchema.parse({ ...completa, generatedText: null }),
+    ).toThrow();
+    expect(() => blitzSuggestionSchema.parse({ ...completa, preview: null })).toThrow();
+  });
+
+  it("no manda claves que el deck no conoce", () => {
+    expect(() => blitzSuggestionSchema.parse({ ...completa, buildPlan: {} })).toThrow();
+    expect(() =>
+      blitzSuggestionSchema.parse({ ...completa, preview: { backgroundUrl: "no-url" } }),
+    ).toThrow();
   });
 });
 

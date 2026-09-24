@@ -46,10 +46,12 @@
  * producción, todo verde en local— no se deduce leyendo este archivo.
  */
 import type { Clock } from "@fastgram/ports";
+import { WORKSPACE_HEADER, type FastgramMode } from "@fastgram/contracts";
 import {
   resolveApiKeyByHash,
   withCompany,
   withoutCompany,
+  workspaceDirectory,
   type Database,
   type Transaction,
 } from "@fastgram/db";
@@ -65,11 +67,27 @@ export interface AuthContext {
   readonly apiKeyKind?: "workspace" | "partner";
   /** Sólo con sesión de usuario. */
   readonly userId?: string;
+  /**
+   * La company de la credencial, **antes** del header de marca.
+   *
+   * Es igual a `companyId` salvo en modo personal con `X-Fastgram-Workspace`, donde
+   * `companyId` pasa a ser la marca elegida. Hace falta para lo único que no se
+   * puede hacer sobre la marca elegida: borrar la marca a la que pertenece la key
+   * (ver `routes/v1/workspaces.ts`).
+   */
+  readonly homeCompanyId?: string;
 }
 
 export type ScopeResolution =
   | { readonly ok: true; readonly auth: AuthContext }
-  | { readonly ok: false; readonly reason: ApiKeyRejection };
+  | { readonly ok: false; readonly reason: ApiKeyRejection }
+  /**
+   * La credencial es válida pero el `X-Fastgram-Workspace` no es una marca viva del
+   * mismo dueño (no existe, es de otro, está borrada o no es un uuid). **404, no
+   * 401 ni 403**: la credencial sirve, lo que no está es el recurso, y §9.2 manda
+   * no distinguir "ajeno" de "inexistente".
+   */
+  | { readonly ok: false; readonly reason: "workspace_not_found" };
 
 /**
  * Sesiones de usuario (`apps/web`).
@@ -93,6 +111,28 @@ export interface ScopeResolverOptions {
   readonly db: Database;
   readonly clock: Clock;
   readonly sessions?: SessionResolver;
+  /**
+   * `PU-BRAND-001`. Sólo en `personal` se lee `X-Fastgram-Workspace`; en
+   * `standard` (y ausente) el header se ignora por completo, ni siquiera se valida.
+   */
+  readonly mode?: FastgramMode;
+}
+
+/**
+ * Traduce credenciales → `AuthContext`, y después aplica la marca elegida.
+ *
+ * El header de marca se aplica **acá** y no en cada ruta a propósito: todo lo que
+ * scopea por `companyId` —las ~30 rutas, `request.tx`, el rate limit, el log—
+ * toma el valor de `request.auth.companyId`, así que cambiarlo en este único punto
+ * vuelve multimarca a la API entera sin tocar una ruta.
+ */
+export async function resolveScope(
+  options: ScopeResolverOptions,
+  headers: Record<string, string | string[] | undefined>,
+): Promise<ScopeResolution> {
+  const base = await resolveCredential(options, headers);
+  if (!base.ok || options.mode !== "personal") return base;
+  return applyWorkspaceHeader(options.db, base.auth, headers);
 }
 
 /**
@@ -102,7 +142,7 @@ export interface ScopeResolverOptions {
  * `Authorization` presente pero inválido **no** cae a la sesión: sería una forma
  * silenciosa de que una key revocada siga funcionando desde un browser con cookie.
  */
-export async function resolveScope(
+async function resolveCredential(
   options: ScopeResolverOptions,
   headers: Record<string, string | string[] | undefined>,
 ): Promise<ScopeResolution> {
@@ -162,6 +202,66 @@ async function resolveApiKey(
       apiKeyKind: key.kind,
     },
   };
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * `X-Fastgram-Workspace` — la marca sobre la que opera la request (modo personal).
+ *
+ * - Ausente o vacío → la company de la credencial, como siempre.
+ * - Igual a la de la credencial → nada que consultar.
+ * - No-uuid → `404` sin tocar la base (un no-uuid haría fallar el cast de
+ *   `app.current_company()` más abajo con un 500).
+ * - Un uuid que no es una marca viva del **mismo dueño** → `404`.
+ *
+ * La consulta cruza companies, así que corre sin scope de tenant y con el rol de
+ * la conexión: ver la cabecera de `workspace-directory.ts` en `@fastgram/db`.
+ */
+async function applyWorkspaceHeader(
+  db: Database,
+  auth: AuthContext,
+  headers: Record<string, string | string[] | undefined>,
+): Promise<ScopeResolution> {
+  const raw = headers[WORKSPACE_HEADER];
+  const value = (Array.isArray(raw) ? raw[0] : raw)?.trim() ?? "";
+  const home = { ...auth, homeCompanyId: auth.companyId };
+
+  if (value === "" || value.toLowerCase() === auth.companyId.toLowerCase()) {
+    return { ok: true, auth: home };
+  }
+  if (!UUID_RE.test(value)) return { ok: false, reason: "workspace_not_found" };
+
+  const target = await withoutCompany(db, async (tx) => {
+    const owner = await ownerOrFail(tx, auth.companyId);
+    return workspaceDirectory.find(tx, owner, value);
+  });
+  if (target === null) return { ok: false, reason: "workspace_not_found" };
+
+  return { ok: true, auth: { ...home, companyId: target.id } };
+}
+
+/**
+ * El dueño de la company de la credencial, o un error **ruidoso**.
+ *
+ * Esa company acaba de autenticar, así que existe: si no se ve es que la conexión
+ * no puede saltear RLS (`fastgram_app`), y devolver `null` convertiría cada
+ * marca en un 404 sin ninguna pista. Ver `workspace-directory.ts`.
+ */
+export async function ownerOrFail(
+  tx: Transaction,
+  companyId: string,
+): Promise<{ ownerUserId: string; timezone: string; billingAnchorDay: number }> {
+  const owner = await workspaceDirectory.ownerOf(tx, companyId);
+  if (owner === null) {
+    throw new Error(
+      "No se pudo leer la company de la credencial para resolver sus marcas. Casi " +
+        "siempre es que la conexión a Postgres no saltea RLS (rol `fastgram_app`): " +
+        "el modo personal necesita la conexión de desarrollo. Ver " +
+        "packages/db/src/repositories/workspace-directory.ts.",
+    );
+  }
+  return owner;
 }
 
 /**

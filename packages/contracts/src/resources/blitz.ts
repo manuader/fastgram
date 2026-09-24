@@ -1,6 +1,9 @@
 /**
  * Blitz · `POST /blitz` y `GET|PATCH /blitz/preferences` (PRD:2264, 2265).
  *
+ * `GET /blitz/queue` la muestra y `POST /blitz/queue/:id/discard` descarta sin
+ * cobrar (PU-BLITZ-002).
+ *
  * `POST /blitz` saca una sugerencia lista de la discovery queue, descuenta
  * 1 swipe + 1 content save y lanza el build (FR-050, PRD:1108). Devuelve `202`
  * inmediatamente (NFR-001, PRD:2951) y **no es idempotente** (FR-050 PRD:1112,
@@ -15,17 +18,92 @@ import {
 } from "../primitives/enums.js";
 
 /**
- * Body de `POST /blitz`. Ambos campos son opcionales: sin `contentType` la cola
+ * Body de `POST /blitz`. Todos los campos son opcionales: sin `contentType` la cola
  * decide según los pesos; con él se fuerza un tipo (AI-002, PRD:2584).
  * `aspectRatio` sólo aplica a slideshow (FR-050 Validation, PRD:1129).
+ *
+ * `suggestionId` (`PU-BLITZ-002`): acepta **esa** sugerencia de `GET /blitz/queue`
+ * y no "la de turno". Sin él, aceptar es sacar la más nueva de la cola, y un
+ * refill que entre entre el render del deck y el swipe cambiaría cuál es. Una
+ * sugerencia que ya no está `queued` → `409 conflict`; ajena o inexistente → `404`.
  */
 export const runBlitzRequestSchema = z
   .object({
     contentType: blitzContentTypeSchema.optional(),
     aspectRatio: aspectRatioSchema.optional(),
+    suggestionId: z.string().min(1).optional(),
   })
   .strict();
 export type RunBlitzRequest = z.infer<typeof runBlitzRequestSchema>;
+
+// --- La cola, vista · `GET /blitz/queue` (PU-BLITZ-002) ----------------------
+//
+// La forma la fijó el consumidor antes que el servidor: `deckSuggestionSchema` en
+// `apps/web/src/lib/blitz/deck/suggestion.ts`, que es **tolerante** (nullable,
+// sin `.strict()`). Acá es la misma forma **estricta**: el servidor omite lo que
+// no tiene en vez de mandar `null`, y no manda claves que el deck no conozca. Lo
+// que el servidor emite siempre valida contra el schema del cliente.
+
+/** De dónde sale un remix. Sólo viaja si la sugerencia tiene URL de origen. */
+export const blitzSuggestionRemixSourceSchema = z
+  .object({
+    url: z.string().url(),
+    thumbnailUrl: z.string().url().optional(),
+    likes: z.number().int().nonnegative().optional(),
+    views: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+export const blitzSuggestionSlideSchema = z
+  .object({
+    imageUrl: z.string().url().optional(),
+    text: z.string().optional(),
+  })
+  .strict();
+
+/**
+ * La preview de la tarjeta, armada con la media que eligió el refill
+ * (`build_plan`) y la URL **de hoy** de cada asset (la misma `r2Url` que devuelve
+ * `GET /media`). Un asset borrado después de planificar simplemente no aparece.
+ */
+export const blitzSuggestionPreviewSchema = z
+  .object({
+    /** Slideshow: una por slide, con su texto. */
+    slides: z.array(blitzSuggestionSlideSchema).optional(),
+    /** Fondo de los tipos de video: el video (o la imagen de fondo del green screen). */
+    backgroundUrl: z.string().url().optional(),
+    audioUrl: z.string().url().optional(),
+    aspectRatio: aspectRatioSchema.optional(),
+  })
+  .strict();
+
+export const blitzSuggestionSchema = z
+  .object({
+    id: z.string().min(1),
+    contentType: blitzContentTypeSchema,
+    generatedText: z.string().optional(),
+    /** FR-050 criterio 3: el racional **almacenado**, nunca uno generado al vuelo. */
+    aiExplanation: z.string().optional(),
+    influencer: z
+      .object({ id: z.string(), name: z.string().min(1) })
+      .strict()
+      .optional(),
+    angle: z
+      .object({ id: z.string(), title: z.string().min(1) })
+      .strict()
+      .optional(),
+    remixSource: blitzSuggestionRemixSourceSchema.optional(),
+    preview: blitzSuggestionPreviewSchema.optional(),
+  })
+  .strict();
+export type BlitzSuggestion = z.infer<typeof blitzSuggestionSchema>;
+
+/**
+ * `GET /blitz/queue` → `200 { data: BlitzSuggestion[] }`, en el **mismo orden en
+ * que `POST /blitz` sin `suggestionId` las consume** (la primera es la que saldría).
+ */
+export const blitzQueueSchema = z.array(blitzSuggestionSchema);
+export type BlitzQueue = z.infer<typeof blitzQueueSchema>;
 
 // --- Preferences · FR-055 (PRD:1285-1300) ------------------------------------
 

@@ -56,7 +56,7 @@ const MALFORMED = [
   "1' or '1'='1",
 ] as const;
 
-type Method = "GET" | "POST" | "PATCH" | "DELETE";
+type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 /**
  * Un cuerpo que **pasa** el schema de cada operación con cuerpo. No tiene que
@@ -87,6 +87,9 @@ const BODIES: Readonly<Record<string, () => unknown>> = {
     targets: [{ platform: "tiktok", connectionId: api.data.a.connectionId, title: "t" }],
   }),
   "PATCH /brand/sources/{id}": () => ({ isPrimary: true }),
+  "PATCH /workspaces/{id}": () => ({ name: "Otra marca" }),
+  // `:task` no es un uuid, pero una tarea inexistente tiene que dar el mismo 404.
+  "PUT /models/{task}": () => ({ provider: "ollama", model: "cualquiera" }),
 };
 
 interface Operation {

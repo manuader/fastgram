@@ -14,6 +14,7 @@ export * from "./payments.js";
 export * from "./identity.js";
 export * from "./media-generation.js";
 export * from "./media-renderer.js";
+export * from "./model-registry.js";
 
 /**
  * Suites de contrato de puerto.
