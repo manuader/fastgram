@@ -135,15 +135,26 @@ Sin verificar con un túnel real (ver §8).
 
 ---
 
-## 5. Actualizar
+## 5. Actualizar y volver atrás (`P1-INFRA-005`)
 
 ```bash
 git pull
-docker compose -f deploy/compose.vps.yml up -d --build --wait
+sudo deploy/update.sh
 ```
 
-`init` vuelve a correr (migraciones hacia adelante, idempotente) y reusa secretos y key. Hacé un
-backup antes (§6). `yt-dlp` se instala en su última versión **al construir**: si los imports por
+`update.sh` hace un backup (§6), anota la versión que corre en `deploy/.releases`, construye con
+`FASTGRAM_IMAGE_TAG` = el commit nuevo y levanta con `--wait`. `init` vuelve a correr (migraciones
+hacia adelante, idempotente) y reusa secretos y key. Las imágenes viejas quedan en el host con su
+tag, así que volver no recompila:
+
+```bash
+sudo deploy/rollback.sh             # imagen anterior, misma base
+sudo deploy/rollback.sh --restore   # además restaura la base del backup previo a la actualización
+```
+
+Las migraciones son sólo hacia adelante: si la versión vieja no anda contra la base migrada, usá
+`--restore` (perdés lo escrito desde ese backup). **No probado contra un VPS real** (sintaxis y
+lógica sí). `yt-dlp` se instala en su última versión **al construir**: si los imports por
 link empiezan a fallar, `up -d --build worker` lo actualiza (o fijá `YTDLP_VERSION` como build arg).
 
 ---

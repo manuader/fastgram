@@ -178,7 +178,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - ~~**P1-INFRA-002** Entornos `dev` / `staging` / `prod` con IaC~~ · **fuera de alcance:** D-16 (Mac → VPS con Compose, sin IaC multi-entorno)
 - [x] **P1-INFRA-003** Postgres gestionado + backups verificados (**probar un restore, no sólo configurarlo**) · **cerrada 2026-09-24:** self-hosted (D-16): backup + restore probado, `deploy/backup/` (PU-RUN-006)
 - ~~**P1-INFRA-004** Bucket R2 + CDN + política de ciclo de vida · `ADR-006`~~ · **fuera de alcance:** D-16/D-17 (MinIO + Cloudflare Tunnel)
-- [~] **P1-INFRA-005** Pipeline de deploy con rollback · @coordinador 2026-09-24 (procedimiento de rollback para el Compose del VPS)
+- [x] **P1-INFRA-005** Pipeline de deploy con rollback · **cerrada 2026-09-24:** `deploy/update.sh` (backup → tag por commit → `--wait`) y `deploy/rollback.sh [--restore]`; sin probar contra un VPS real
 - [x] **P1-INFRA-006** Gestión de secretos (no en el repo) · **cerrada 2026-09-24:** `~/.fastgram` 0600, `<VAR>_FILE`, `.env.local` ignorado (PU-RUN-001/004)
 
 ## P1-DATA — Modelo de datos

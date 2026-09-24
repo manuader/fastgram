@@ -33,3 +33,4 @@ scratch/
 # y el valor ya está extraído. Si hacen falta, están en docs/features/demo/ local.
 docs/features/demo/
 !deploy/.env.vps.example
+deploy/.releases
