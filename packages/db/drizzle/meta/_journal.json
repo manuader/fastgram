@@ -232,6 +232,20 @@
       "when": 1790008503123,
       "tag": "0032_content_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790008504123,
+      "tag": "0033_character_models",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1790008505123,
+      "tag": "0034_speaking_formats",
+      "breakpoints": true
     }
   ]
 }
