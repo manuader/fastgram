@@ -93,6 +93,7 @@ import {
   JOB_QUEUES,
   applyAssetSwaps,
   assetsOf,
+  deriveTextBoxesFromBuildPayload,
   readAssetSwaps,
   resolveAssetPatch,
   withAssetSwaps,
@@ -234,6 +235,33 @@ function toContentTextBox(row: typeof contentTextBoxes.$inferSelect): ContentTex
     stroke: row.stroke,
     background: row.background ?? null,
   });
+}
+
+/**
+ * Las cajas que describen el texto del `buildPayload` de una pieza que **nació
+ * sin cajas** — Blitz (`POST /blitz`) y `POST /content` crean `contents` con
+ * `content_text_boxes` vacío. Sin esto el editor abría *"This piece has no
+ * editable text boxes"* y el `PATCH` respondía `422 content_not_editable`.
+ *
+ * Es la inversa exacta del mapeo del rebuild (`deriveTextBoxesFromBuildPayload`
+ * en `core`, con su test de ida y vuelta): guardar estas cajas sin tocarlas y
+ * reconstruir renderiza lo mismo. **No se escriben acá**: `GET` no muta; las
+ * persiste la primera edición (ver el `PATCH`).
+ *
+ * Se revalidan con el contrato: `core` acota a los rangos de `FR-051`, pero el
+ * contrato es quien manda en lo que sale por la API. Una caja que no pasara
+ * sería un bug del mapeo, y se trata como payload no editable (`[]`) en vez de
+ * responder un 500.
+ *
+ * `[]` también cuando el payload falta o no parsea (ERR-F04, pieza legacy).
+ */
+function derivedTextBoxes(buildPayload: unknown): ContentTextBox[] {
+  const parsed = contentBuildPayloadSchema.safeParse(buildPayload);
+  if (!parsed.success) return [];
+  const boxes = z
+    .array(contentTextBoxSchema)
+    .safeParse(deriveTextBoxesFromBuildPayload(parsed.data));
+  return boxes.success ? boxes.data : [];
 }
 
 /** El tope del repositorio (`PAGINATION.limitMax`). Pedir más lo recorta igual. */
@@ -527,12 +555,11 @@ async function assertEditable(
   }
 
   // ERR-P05 (422). El PRD: *"Contenido creado vía POST /content (payload
-  // explícito) no es editable en el Studio"*. `contents` no tiene columna
-  // `editable`, así que la condición se lee de lo que sí está: una pieza sin
-  // cajas de texto no tiene nada que este endpoint sepa editar, y `POST /content`
-  // crea exactamente eso — su payload trae geometría de canvas en píxeles
-  // (`x`, `y`, `fontSize`), no cajas en unidades de editor (0–100, 25–100), y
-  // convertir entre las dos sería inventar un mapeo que el PRD no da.
+  // explícito) no es editable en el Studio"*. Desde 2026-09-24 el mapeo caja ↔
+  // payload existe y es decisión del dueño (FR-051, `text-boxes-to-build-payload`
+  // en `core`), y las piezas de Blitz —que nacen sin cajas— tienen que poder
+  // editarse: `boxCount` cuenta las guardadas **o**, si no hay, las derivadas
+  // del payload. Queda en 422 sólo la pieza sin payload legible o sin texto.
   if (boxCount === 0) {
     throw new ContentRejection(
       422,
@@ -823,9 +850,15 @@ export function registerContentRoutes(app: ZodApp): void {
       }
 
       const assets = assetsFor(found.row.buildPayload, found.row.studioState);
+      // Sin cajas guardadas, las del payload (Blitz y `POST /content` nacen
+      // así). Con alguna guardada, sólo las guardadas: son el estado completo.
+      const textBoxes =
+        found.boxes.length > 0
+          ? found.boxes.map(toContentTextBox)
+          : derivedTextBoxes(found.row.buildPayload);
       const editable: EditableContent = {
         canvas,
-        textBoxes: found.boxes.map(toContentTextBox),
+        textBoxes,
         ...(assets === null ? {} : { assets }),
       };
       return reply.send(data(editable));
@@ -876,14 +909,29 @@ export function registerContentRoutes(app: ZodApp): void {
               }
 
               const existing = await listAllTextBoxes(tx, companyId, row.id);
+              // Pieza sin cajas guardadas (Blitz, `POST /content`): las
+              // conocidas son las que `GET /editable` le mostró al editor,
+              // derivadas del payload. Ver {@link derivedTextBoxes}.
+              const derived =
+                existing.length === 0 ? derivedTextBoxes(row.buildPayload) : [];
 
-              await assertEditable(tx, companyId, row, existing.length, body.revision);
+              await assertEditable(
+                tx,
+                companyId,
+                row,
+                existing.length + derived.length,
+                body.revision,
+              );
 
               // FR-051: *"Se rechazan … IDs inexistentes … **sin aplicar ningún
               // cambio**"*. Por eso la validación es una pasada completa antes de
               // la primera escritura. Los ids duplicados y el array vacío los
               // rechaza `updateContentRequestSchema` antes de llegar acá.
-              const known = new Set(existing.map((b) => b.id));
+              const known = new Set(
+                existing.length > 0
+                  ? existing.map((b) => b.id)
+                  : derived.map((b) => b.id),
+              );
               const unknown = body.textBoxes
                 .map((b) => b.id)
                 .filter((boxId) => !known.has(boxId));
@@ -896,7 +944,18 @@ export function registerContentRoutes(app: ZodApp): void {
                 );
               }
 
-              for (const box of body.textBoxes) {
+              // Primera edición de una pieza sin cajas: se guardan **todas** las
+              // derivadas, con las que mandó el cliente encima. Guardar sólo las
+              // mandadas haría que un `PATCH` parcial borrara texto: el rebuild
+              // reemplaza los textos de un slide por sus cajas guardadas, y un
+              // slide con dos textos y una caja guardada perdería el otro.
+              const sent = new Map(body.textBoxes.map((b) => [b.id as string, b]));
+              const toWrite =
+                existing.length > 0
+                  ? body.textBoxes
+                  : derived.map((b) => sent.get(b.id) ?? b);
+
+              for (const box of toWrite) {
                 // `upsert` y no `update`: la PK de `content_text_boxes` es
                 // `(contentId, id)` y `update` filtra sólo por `id`. Dos piezas
                 // del MISMO workspace pueden tener las dos una caja
@@ -1006,11 +1065,14 @@ export function registerContentRoutes(app: ZodApp): void {
                 throw new ContentRejection(404, "not_found", "content not found");
               }
 
-              const boxes = await contentTextBoxRepository.count(
+              const saved = await contentTextBoxRepository.count(
                 tx,
                 { companyId },
                 { filter: { contentId: { eq: row.id } } },
               );
+              // Igual que el `PATCH`: una pieza sin cajas guardadas es editable
+              // si su payload tiene texto que derivar.
+              const boxes = saved > 0 ? saved : derivedTextBoxes(row.buildPayload).length;
 
               // Sin `revision` en el contrato no hay concurrencia optimista acá.
               // Ver la nota de `assertEditable`.
