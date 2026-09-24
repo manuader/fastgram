@@ -1,5 +1,6 @@
 "use client";
 
+import { useReducedMotion } from "motion/react";
 import { useEffect, useRef } from "react";
 
 /**
@@ -22,6 +23,9 @@ const MAX_SIDE = 360;
 const GREEN_SCREEN_CLIP_TOP = 0.35;
 
 export function ChromaKeyVideo({ url }: { url: string }) {
+  // WCAG 2.2.2: con «reducir movimiento» el meme queda quieto en su primer
+  // frame (se sigue viendo recortado sobre el fondo).
+  const still = useReducedMotion() ?? false;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -80,7 +84,8 @@ export function ChromaKeyVideo({ url }: { url: string }) {
         ref={videoRef}
         src={url}
         crossOrigin="anonymous"
-        autoPlay
+        autoPlay={!still}
+        preload="auto"
         muted
         loop
         playsInline

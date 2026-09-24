@@ -288,13 +288,15 @@ export function InfluencerDetailScreen({
         <p className="mb-6 text-sm text-danger" role="alert">
           {inf.failure === undefined
             ? tw("influencers.failure.training_failed")
-            : `${tw(FAILURE_COPY[inf.failure.code])} ${inf.failure.message}`}
+            : // Sólo el copy del código estable: `failure.message` puede traer
+              // el texto del proveedor, que nunca sale crudo (sprint 7, J).
+              tw(FAILURE_COPY[inf.failure.code])}
         </p>
       )}
 
       {inf.status === "ready" && (
         <Tabs defaultValue="images">
-          <TabsList>
+          <TabsList aria-label={inf.name}>
             <TabsTrigger value="images">{tw("influencers.tabs.images")}</TabsTrigger>
             <TabsTrigger value="videos">{tw("influencers.tabs.videos")}</TabsTrigger>
             <TabsTrigger value="configuration">

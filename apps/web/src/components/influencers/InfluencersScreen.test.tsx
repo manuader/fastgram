@@ -239,9 +239,10 @@ describe("InfluencerDetailScreen", () => {
       }),
     });
     render(<InfluencerDetailScreen influencerId={ID} />, { wrapper });
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Higgsfield couldn't train this character. No face detected",
-    );
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Higgsfield couldn't train this character.");
+    // El texto del proveedor no sale crudo (sprint 7).
+    expect(alert).not.toHaveTextContent("No face detected");
   });
 
   it("activo: el costo se ve antes de generar y el pedido sale con el prompt", async () => {

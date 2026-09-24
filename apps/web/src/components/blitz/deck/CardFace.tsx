@@ -1,5 +1,6 @@
 "use client";
 
+import { useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { fileKind } from "@/lib/library/content";
 import { td } from "@/lib/blitz/deck/copy";
@@ -139,12 +140,15 @@ function SlideBackground({
   url: string;
   contentType: BlitzContentType;
 }) {
+  const still = useReducedMotion() ?? false;
   if (fileKind(url, contentType) === "video") {
     return (
       <video
         className="absolute inset-0 h-full w-full object-cover"
         src={url}
-        autoPlay
+        // WCAG 2.2.2: con «reducir movimiento», primer frame quieto.
+        autoPlay={!still}
+        preload={still ? "metadata" : "auto"}
         muted
         loop
         playsInline
