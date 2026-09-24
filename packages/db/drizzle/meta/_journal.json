@@ -218,6 +218,20 @@
       "when": 1790008501123,
       "tag": "0030_influencers_formats",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790008502123,
+      "tag": "0031_brand_flow",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1790008503123,
+      "tag": "0032_content_guards",
+      "breakpoints": true
     }
   ]
 }
