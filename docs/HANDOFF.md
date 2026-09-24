@@ -1207,6 +1207,21 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 193
 58. **`*/` dentro de un comentario de bloque lo cierra.** Un `*/TOTAL` en una
     cabecera rompió el parseo de un archivo entero (`pnpm lint` → Parsing error).
 
+59. **La API de Reddit exige aprobación previa para cualquier app nueva**
+    (Responsible Builder Policy, 2026). El módulo de Engagement funciona sin la
+    API: agregar un post por link, generar la respuesta, copiarla y marcar
+    "I posted it" (así el ban meter la cuenta). OAuth, descubrimiento y "Send"
+    sólo sirven con una app aprobada.
+
+60. **`yt-dlp --dump-single-json` no escribe la miniatura** salvo con
+    `--no-simulate --skip-download`, y su salida trae cookies con GeoIP:
+    limpialas antes de guardar un fixture.
+
+61. **Dos migraciones escritas en paralelo pueden quedar con `when` entre
+    medio.** La 0021 terminó con un `when` menor que la 0022 porque la 0022 ya
+    existía: una base que ya aplicó la 0022 se saltearía la 0021 (trampa 52).
+    Con agentes en paralelo, recrear las bases de test al integrar.
+
 ## 8. Qué falta
 
 El backlog real es `tasks.md`. El estado de hoy está en §6.

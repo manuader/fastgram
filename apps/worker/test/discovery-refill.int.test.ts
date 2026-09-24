@@ -735,18 +735,17 @@ describe("la fila guardada", () => {
     expect(cola[0]?.ai_explanation).toContain("Vera has no media in their sets");
   });
 
-  it("con varios candidatos no se elige con un dado: queda null y se explica", async () => {
-    // `DP-005`/`JV-6` (PRD §25) ordena candidatos por encaje con la marca, y no
-    // hay adaptador de `Judgment` para ese punto de decisión. Resolverlo con
-    // `rng` sería sustituir un juicio semántico por azar — lo que `EXT-008`
-    // existe para evitar, y lo que `plan-suggestion.ts` prohíbe por escrito.
+  it("con varios candidatos sin media en sus sets: regular, y se explica", async () => {
+    // `PU-LATER-004`: antes esto quedaba null «hasta que exista `JV-6`». Ahora
+    // el planificador filtra por media y elige al azar entre los que tienen
+    // (ver `plan-blitz-suggestion.ts`); sin media, sigue cayendo a regular.
     const companyId = await workspaceConMedia();
     await seedInfluencerRow(companyId, "Vera");
     await seedInfluencerRow(companyId, "Nara");
     await seedPreferences(companyId, {
       influencerChance: 100,
-      slideshowWeight: 50,
-      wallOfTextWeight: 50,
+      slideshowWeight: 100,
+      wallOfTextWeight: 0,
       greenScreenWeight: 0,
       videoHookWeight: 0,
     });
@@ -755,7 +754,59 @@ describe("la fila guardada", () => {
 
     const cola = await readQueue(companyId);
     expect(cola.every((s) => s.influencer_id === null)).toBe(true);
-    expect(cola[0]?.ai_explanation).toContain("not available yet");
+    expect(cola[0]?.ai_explanation).toContain("none of your 2 matching characters");
+  });
+
+  it("con varios candidatos con media: cada pieza usa uno de ellos, con su media", async () => {
+    // `PU-LATER-004`: al azar entre los que tienen media para el formato, hasta
+    // que `DP-005`/`JV-6` exista. Dos personajes entrenados ya no apagan
+    // `influencerChance`.
+    const companyId = await workspaceConMedia();
+    const vera = await seedInfluencerRow(companyId, "Vera");
+    const nara = await seedInfluencerRow(companyId, "Nara");
+    const deVera = await seedMedia(companyId, { type: "image", categories: [] });
+    const deNara = await seedMedia(companyId, { type: "image", categories: [] });
+    await withoutCompany(handle.db, async (tx) => {
+      await tx.insert(mediaSets).values([
+        {
+          companyId,
+          name: "Vera",
+          kind: "SLIDESHOW",
+          influencerId: vera,
+          mediaIds: [deVera],
+        },
+        {
+          companyId,
+          name: "Nara",
+          kind: "SLIDESHOW",
+          influencerId: nara,
+          mediaIds: [deNara],
+        },
+      ]);
+    });
+    await seedPreferences(companyId, {
+      influencerChance: 100,
+      slideshowWeight: 100,
+      wallOfTextWeight: 0,
+      greenScreenWeight: 0,
+      videoHookWeight: 0,
+    });
+
+    await handler()(ctx({ companyId }));
+
+    const cola = await readQueue(companyId);
+    expect(cola).toHaveLength(5);
+    for (const fila of cola) {
+      expect([vera, nara]).toContain(fila.influencer_id);
+      expect(fila.ai_explanation).toContain("picked at random among 2 characters");
+      const plan = parseSuggestionBuildPlan(fila.build_plan, "slideshow");
+      if (!plan.ok) throw new Error(plan.reason);
+      const ids =
+        plan.plan.media.format === "slideshow"
+          ? plan.plan.media.slides.map((m) => m.mediaId)
+          : [];
+      expect(ids).toEqual([fila.influencer_id === vera ? deVera : deNara]);
+    }
   });
 
   it("un personaje sin entrenar no es candidato", async () => {

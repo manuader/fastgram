@@ -103,6 +103,7 @@ import {
   type BlitzPreferences,
   type CopyAngle,
   type CopyBrandProfile,
+  type CopyRemixReference,
   type DiscoveryRefillJob,
   type EligibleInfluencer,
   type PlannedBlitzSuggestion,
@@ -458,6 +459,8 @@ export async function withCopy(
   p: PlannedBlitzSuggestion,
   /** `PU-BLITZ-003`: el tema del usuario, directiva principal de la copy. */
   topic?: string,
+  /** Inspiration «Remix this»: la referencia, como dato (`suggestion-copy.ts`). */
+  remix?: CopyRemixReference,
 ): Promise<
   | { readonly ok: true; readonly draft: QueuedSuggestionDraft }
   | { readonly ok: false; readonly reason: string }
@@ -471,6 +474,7 @@ export async function withCopy(
     angle: p.plan.angleId === null ? null : (subject.angles.get(p.plan.angleId) ?? null),
     maxTexts,
     ...(topic === undefined ? {} : { topic }),
+    ...(remix === undefined ? {} : { remix }),
   });
   if (!outcome.ok) return { ok: false, reason: outcome.reason };
 

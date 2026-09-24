@@ -154,6 +154,19 @@ export function CommandPalette({
               <ZapIcon size={16} />
               <span>{tw("command.createFromPrompt")}</span>
             </Command.Item>
+            <Command.Item
+              value="create:inspiration"
+              keywords={["inspiration", "save", "link", "reference", "remix", "trend"]}
+              onSelect={() => {
+                run(() => {
+                  // `InspirationBoard` abre el diálogo con este ancla.
+                  router.push(`${ROUTES.inspiration}#save`);
+                });
+              }}
+            >
+              <PlusIcon size={16} />
+              <span>{tw("command.saveInspiration")}</span>
+            </Command.Item>
           </Command.Group>
 
           <Command.Group heading={tw("command.group.navigation")}>

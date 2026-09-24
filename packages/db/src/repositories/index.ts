@@ -31,6 +31,7 @@ import {
   contents,
   influencerAssets,
   influencerConfigs,
+  influencerGenerations,
   influencers,
   judgmentRecords,
   leads,
@@ -160,6 +161,14 @@ export const influencerConfigRepository = createCompanyScopedRepository({
   // 1:1 con el influencer. Igual que en las cajas de texto, `companyId` no está en el
   // target y el aislamiento lo sostiene el `setWhere`.
   upsertTarget: [influencerConfigs.influencerId],
+});
+
+/** `PU-LATER-004`, `FR-081`: pedidos de imágenes del personaje (`0020`). */
+export const influencerGenerationRepository = createCompanyScopedRepository({
+  table: influencerGenerations,
+  id: influencerGenerations.id,
+  companyId: influencerGenerations.companyId,
+  createdAt: influencerGenerations.createdAt,
 });
 
 export const connectionRepository = createCompanyScopedRepository({
@@ -387,3 +396,20 @@ export {
   type PostMetricColumn,
   type PostMetricsWrite,
 } from "./metrics.js";
+// `0022`: Inspiration como tablero de referencias propio (FR-040 adaptado, OQ-13).
+export {
+  applyOwnerReferenceIngest,
+  createOwnerReference,
+  deleteOwnerReference,
+  escapeLike,
+  findOwnerReference,
+  listOwnerReferenceTags,
+  listOwnerReferences,
+  setOwnerReferenceTags,
+  type NewOwnerReference,
+  type OwnerReferenceIngestPatch,
+  type OwnerReferenceQuery,
+  type TrendingItemRow,
+} from "./inspiration.js";
+// `0021`: Engagement de Reddit (leads JV-2, respuestas JV-5, ban meter DP-003).
+export * from "./engagement.js";

@@ -9,11 +9,19 @@
  *     tirada (b). `FR-050`: *"tipo válido pero no producible ahora"*. Los que
  *     quedaron afuera con peso > 0 van a la explicación.
  *  2. **Influencer**: la tirada independiente y el fallback a regular son de
- *     `planSuggestion`. Acá se agrega un fallback más: con un único candidato,
- *     si sus sets (`FR-083`) no tienen media para el formato, la pieza es
+ *     `planSuggestion`. Acá se agrega un fallback más: si ningún candidato
+ *     tiene media en sus sets (`FR-083`) para el formato, la pieza es
  *     regular. Una pieza «con influencer» sin el influencer en la media sería
- *     un chip que miente. Con varios candidatos sigue sin elegirse: es
- *     `DP-005`/`JV-6` (ver `plan-suggestion.ts`).
+ *     un chip que miente.
+ *
+ *     **Varios candidatos con media** (`PU-LATER-004`): se elige uno **al
+ *     azar**, con el `Rng` y la explicación lo dice. El PRD pone esa elección
+ *     en `DP-005`/`JV-6` (ordenar por encaje con la marca) y hasta ahora la
+ *     pieza salía sin personaje «hasta que exista». Ese juicio no está
+ *     construido, y sin elegir, dos personajes entrenados apagaban
+ *     `influencerChance` del todo. Cuando `JV-6` exista, reemplaza a esta
+ *     tirada. Con un solo candidato no se tira nada: los seeds de antes
+ *     siguen dando lo mismo.
  *  3. **La media** (`selectMedia`), con el `Rng` **después** de las seis
  *     tiradas: agregarla no cambia ninguna de las anteriores para un seed.
  */
@@ -89,15 +97,24 @@ export function planBlitzSuggestion(
 
   let influencerId: string | null = null;
   let influencerWithoutMedia: string | undefined;
-  const single =
-    plan.influencer.decision === "use" && plan.influencer.candidates.length === 1
-      ? (plan.influencer.candidates[0] as string)
-      : null;
-  if (single !== null) {
-    if (influencerCoversFormat(context.bank, single, plan.contentType)) {
-      influencerId = single;
+  let pickedAmong = 0;
+  let candidatesWithoutMedia = 0;
+  if (plan.influencer.decision === "use") {
+    const candidates = plan.influencer.candidates;
+    const withMedia = candidates.filter((id) =>
+      influencerCoversFormat(context.bank, id, plan.contentType),
+    );
+    if (withMedia.length === 1) {
+      influencerId = withMedia[0] as string;
+    } else if (withMedia.length > 1) {
+      // Ver la cabecera (2): al azar hasta que exista `JV-6`.
+      influencerId = withMedia[rng.nextInt(0, withMedia.length)] as string;
+      pickedAmong = withMedia.length;
+    } else if (candidates.length === 1) {
+      const only = candidates[0] as string;
+      influencerWithoutMedia = context.influencerNames.get(only) ?? "Your influencer";
     } else {
-      influencerWithoutMedia = context.influencerNames.get(single) ?? "Your influencer";
+      candidatesWithoutMedia = candidates.length;
     }
   }
 
@@ -108,11 +125,6 @@ export function planBlitzSuggestion(
     throw new Error(`selectMedia no encontró media para ${plan.contentType}`);
   }
 
-  const undecided =
-    plan.influencer.decision === "use" && single === null
-      ? plan.influencer.candidates.length
-      : 0;
-
   return {
     plan,
     influencerId,
@@ -122,8 +134,9 @@ export function planBlitzSuggestion(
         plan.angleId === null ? undefined : context.angleTitles.get(plan.angleId),
       influencerName:
         influencerId === null ? undefined : context.influencerNames.get(influencerId),
-      undecidedCandidates: undecided,
+      candidatesWithoutMedia,
       influencerWithoutMedia,
+      pickedAmong,
       skippedFormats,
       prompt,
     }),
@@ -231,3 +244,6 @@ export function planPromptSuggestion(
     throw error;
   }
 }
+
+// `PU-LATER-004`: el módulo de influencers sale del paquete por acá hasta que
+// `src/index.ts` (que no es de este cambio) lo exporte con su propia línea.

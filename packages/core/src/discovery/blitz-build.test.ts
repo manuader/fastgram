@@ -246,6 +246,63 @@ describe("planBlitzSuggestion — AI-002 más la media", () => {
     });
   });
 
+  // `PU-LATER-004`: antes, dos personajes entrenados apagaban el influencer.
+  const conDos = (sets: Parameters<typeof buildMediaBank>[1]) =>
+    ctx(FULL, {
+      influencers: [
+        { id: "inf", isActive: true, isTrained: true, gender: "female" },
+        { id: "otro", isActive: true, isTrained: true, gender: "male" },
+      ],
+      bank: buildMediaBank(FULL, sets),
+      influencerNames: new Map([
+        ["inf", "Vera"],
+        ["otro", "Tom"],
+      ]),
+    });
+
+  it("dos candidatos y sólo uno con media → se usa ése, sin tirar", () => {
+    const p = planBlitzSuggestion(
+      seeded(3),
+      siempreSlideshow,
+      conDos([{ influencerId: "otro", kind: "SLIDESHOW", mediaIds: ["s1"] }]),
+    );
+    expect(p.influencerId).toBe("otro");
+    expect(p.derivedExplanation).toContain("Tom — the only eligible character");
+  });
+
+  it("dos candidatos con media → uno al azar (reproducible) y la explicación lo dice", () => {
+    const sets = [
+      { influencerId: "inf", kind: "SLIDESHOW" as const, mediaIds: ["s1"] },
+      { influencerId: "otro", kind: "SLIDESHOW" as const, mediaIds: ["s2"] },
+    ];
+    const elegidos = new Set<string | null>();
+    for (let seed = 1; seed < 40; seed += 1) {
+      const a = planBlitzSuggestion(seeded(seed), siempreSlideshow, conDos(sets));
+      const b = planBlitzSuggestion(seeded(seed), siempreSlideshow, conDos(sets));
+      expect(a).toEqual(b);
+      elegidos.add(a.influencerId);
+      expect(a.derivedExplanation).toContain("picked at random among 2 characters");
+    }
+    expect(elegidos).toEqual(new Set(["inf", "otro"]));
+  });
+
+  it("dos candidatos sin media → regular, y se explica", () => {
+    const p = planBlitzSuggestion(seeded(3), siempreSlideshow, conDos([]));
+    expect(p.influencerId).toBeNull();
+    expect(p.derivedExplanation).toContain("none of your 2 matching characters");
+  });
+
+  it("influencerChance 0 nunca usa influencer, aunque tenga media", () => {
+    for (let seed = 1; seed < 30; seed += 1) {
+      const p = planBlitzSuggestion(
+        seeded(seed),
+        { ...siempreSlideshow, influencerChance: 0 },
+        conInfluencer([{ influencerId: "inf", kind: "SLIDESHOW", mediaIds: ["s2"] }]),
+      );
+      expect(p.influencerId).toBeNull();
+    }
+  });
+
   it("green-screen nunca lleva influencer, aunque la chance sea 100", () => {
     const p = planBlitzSuggestion(
       seeded(3),

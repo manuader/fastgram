@@ -20,6 +20,7 @@ export * from "./judgment.js";
 export * from "./strategy.js";
 export * from "./autopilot.js";
 export * from "./metrics.js";
+export * from "./engagement.js";
 
 export { tsColumn, timestamps, createdAtOnly, softDelete } from "./_shared.js";
 
@@ -34,11 +35,17 @@ import { automationSlots, automations } from "./automations.js";
 import { contentTextBoxes, contents } from "./content.js";
 import { banRiskAssessments, leads } from "./discovery.js";
 import { companies, workspaceMemberships } from "./identity.js";
-import { influencerAssets, influencerConfigs, influencers } from "./influencers.js";
+import {
+  influencerAssets,
+  influencerConfigs,
+  influencerGenerations,
+  influencers,
+} from "./influencers.js";
 import { judgmentRecords } from "./judgment.js";
 import { brandStrategies, plannedSlots } from "./strategy.js";
 import { autopilotDecisions, autopilotRuns } from "./autopilot.js";
 import { contentMixAutotune, formatMixAdjustments } from "./metrics.js";
+import { engagementReplies, engagementSettings, redditAccounts } from "./engagement.js";
 import { media, mediaSets } from "./media.js";
 import {
   apiKeys,
@@ -77,6 +84,7 @@ export const COMPANY_SCOPED_TABLES = [
   influencers,
   influencerAssets,
   influencerConfigs,
+  influencerGenerations,
   connections,
   warmedAccounts,
   warmedSlotBalances,
@@ -97,6 +105,9 @@ export const COMPANY_SCOPED_TABLES = [
   autopilotRuns,
   contentMixAutotune,
   formatMixAdjustments,
+  engagementSettings,
+  redditAccounts,
+  engagementReplies,
 ] as const;
 
 /** La raíz de la tenencia. Su política compara `id`, no `company_id`. */
@@ -109,7 +120,11 @@ export const TENANT_ROOT_TABLE = companies;
 export const NON_TENANT_TABLES: ReadonlyArray<{ table: string; reason: string }> = [
   { table: "users", reason: "DATA-001: identidad global, N workspaces por usuario" },
   { table: "audio_tracks", reason: "DATA-012: *Global, no por workspace* (literal)" },
-  { table: "trending_items", reason: "DATA-023: global en el diagrama de relaciones" },
+  {
+    table: "trending_items",
+    reason:
+      "DATA-023: catálogo global; las referencias del dueño (0022) llevan company_id y política propia",
+  },
   {
     table: "onboarding_records",
     reason: "DATA-030: existe antes del workspace; scope por ownerUserId",

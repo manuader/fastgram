@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
-import { RoutePlaceholder } from "@/components/placeholder/RoutePlaceholder";
+import { InfluencersScreen } from "@/components/influencers/InfluencersScreen";
 
 export const metadata: Metadata = { title: "Influencers · FastGram" };
 
+/**
+ * `/influencers` · FR-080 adaptado (`PU-LATER-004`). Server component fino:
+ * todo lo que habla con la API vive en `InfluencersScreen`, que es cliente.
+ */
 export default function Page() {
-  return (
-    <RoutePlaceholder screen="Influencers" spec="PRD §3.1 · FR-080" task="P4-INFL-001" />
-  );
+  return <InfluencersScreen />;
 }

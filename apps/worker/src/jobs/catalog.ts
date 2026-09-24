@@ -1,5 +1,6 @@
 import {
   AUTOPILOT_SWEEP_CRON,
+  ENGAGEMENT_CRONS,
   JOB_QUEUES,
   METRICS_SYNC_CRON,
   type JobQueueName,
@@ -273,9 +274,19 @@ export const JOB_CATALOG = {
     // El PRD pide backoff explícito ante rate limit: Reddit corta seguido.
     backoff: "exponential",
     retryDelaySeconds: 60,
-    timeoutSeconds: 300,
+    // 600 s: una corrida son ≤ 25 llamadas a Reddit con 1 s entre cada una y
+    // hasta 15 juicios de un LLM local. También lleva la generación del
+    // borrador (`kind: "reply"`, ver `core/engagement/jobs.ts`).
+    timeoutSeconds: 600,
     concurrency: null,
     idempotent: true,
+    scheduled: {
+      cron: ENGAGEMENT_CRONS.discovery,
+      why:
+        "F-191: descubrimiento periódico. Cada hora: con ≤ 10 subreddits son ≤ 25 " +
+        "llamadas por marca, lejos del límite documentado (60/min). El barrido sólo " +
+        "encola una corrida por marca con cuenta de Reddit activa, con clave por hora.",
+    },
   },
   redditThreadMonitoring: {
     name: JOB_QUEUES.redditThreadMonitoring,
@@ -287,6 +298,12 @@ export const JOB_CATALOG = {
     timeoutSeconds: 120,
     concurrency: null,
     idempotent: true,
+    scheduled: {
+      cron: ENGAGEMENT_CRONS.threadMonitoring,
+      why:
+        "F-198: seguir los hilos respondidos en los últimos 7 días (hasta 20 por " +
+        "marca). Cada 2 h alcanza para ver respuestas y comentarios filtrados.",
+    },
   },
   banRiskComputation: {
     name: JOB_QUEUES.banRiskComputation,
@@ -295,9 +312,16 @@ export const JOB_CATALOG = {
     maxAttempts: 2,
     backoff: "fixed",
     retryDelaySeconds: 120,
-    timeoutSeconds: 60,
+    // 300 s y no 60: etiquetar hasta 20 respuestas con un LLM local (JV-5).
+    timeoutSeconds: 300,
     concurrency: null,
     idempotent: true,
+    scheduled: {
+      cron: ENGAGEMENT_CRONS.banRisk,
+      why:
+        "DP-003: la ventana de 30 días se mueve aunque nadie envíe nada. Una vez " +
+        "por día recalcula el nivel (en código) y etiqueta lo que quedó sin tono.",
+    },
   },
   warmedAccountProvisioning: {
     name: JOB_QUEUES.warmedAccountProvisioning,

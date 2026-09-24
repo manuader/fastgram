@@ -857,8 +857,9 @@ export function toBlitzSuggestion(
               ? {}
               : {
                   ...opt("thumbnailUrl", absoluteUrl(view.trending.thumbnailUrl)),
-                  likes: view.trending.likes,
-                  views: view.trending.views,
+                  // \`null\` = el sitio no lo dio (referencias del dueño, \`0022\`).
+                  ...opt("likes", view.trending.likes ?? undefined),
+                  ...opt("views", view.trending.views ?? undefined),
                 }),
           },
     ),

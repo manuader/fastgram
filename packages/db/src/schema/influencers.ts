@@ -7,6 +7,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -31,10 +32,13 @@ export const influencers = pgTable(
      * El PRD no enumera los valores de `gender` en DATA-013 (la UI lo muestra como un
      * `select` con placeholder `Select…` pero no lista las opciones). Texto libre, no un
      * enum inventado. PENDIENTE: fijar la taxonomía cuando el PRD la dé.
+     *
+     * Nullable desde `0020` (y también `age` y `ethnicity`): con fotos de
+     * referencia los rasgos son opcionales (`PU-LATER-004`).
      */
-    gender: text().notNull(),
-    age: integer().notNull(),
-    ethnicity: text().notNull(),
+    gender: text(),
+    age: integer(),
+    ethnicity: text(),
     baseImageUrl: text(),
     status: influencerStatusEnum().notNull().default("generating_variations"),
     progress: integer().notNull().default(0),
@@ -90,6 +94,22 @@ export const influencers = pgTable(
      * llamador se acuerde de comprobarla.
      */
     creditsRefundedAt: tsColumn(),
+
+    // ── El personaje del proveedor — `PU-LATER-004`, migración `0020` ──
+    /**
+     * Las fotos del Media Bank con las que se crea el personaje (4–20). El
+     * pipeline las relee de acá: una reentrega usa las mismas.
+     */
+    referenceMediaIds: uuid()
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    /** Con qué proveedor se creó (`higgsfield`). El id va en `soulId`. */
+    provider: text(),
+    /** Código estable de por qué quedó `failed` (`INFLUENCER_FAILURE_CODES`). */
+    failureCode: text(),
+    /** Una línea apta para la UI. Nunca el cuerpo crudo del proveedor. */
+    failureMessage: text(),
 
     ...timestamps(),
   },
@@ -192,4 +212,62 @@ export const influencerConfigs = pgTable(
     ...timestamps(),
   },
   (t) => [index("influencer_configs_company_created_idx").on(t.companyId, t.createdAt)],
+);
+
+/**
+ * Un pedido de imágenes del personaje — `FR-081`, migración `0020`.
+ *
+ * NO ESTÁ EN EL PRD como tabla: `DATA-014` guarda los resultados
+ * (`influencer_assets`), no los pedidos en curso. Hace falta porque Higgsfield
+ * no acepta clave de idempotencia: el `request_id` y la URL de estado se
+ * guardan **antes** del polling, y una reentrega del job retoma en vez de
+ * reenviar (y cobrar dos veces).
+ */
+export const influencerGenerations = pgTable(
+  "influencer_generations",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    companyId: companyRef(),
+    influencerId: uuid()
+      .notNull()
+      .references(() => influencers.id, { onDelete: "cascade" }),
+    /** `queued | generating | ready | failed | nsfw` (CHECK en la migración). */
+    status: text().notNull().default("queued"),
+    provider: text().notNull(),
+    model: text().notNull(),
+    prompt: text().notNull(),
+    aspectRatio: text().notNull(),
+    count: integer().notNull(),
+    /** Lo reservado en el tope mensual (`~/.fastgram/spend.json`). */
+    estimateUsd: doublePrecision().notNull(),
+    estimateBasis: text().notNull(),
+    /** `YYYY-MM` UTC de la reserva: a qué mes se cobra o se libera. */
+    spendMonth: text().notNull(),
+    providerRequestId: text(),
+    providerStatusUrl: text(),
+    mediaIds: uuid()
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    errorCode: text(),
+    errorMessage: text(),
+    ...timestamps(),
+  },
+  (t) => [
+    index("influencer_generations_company_created_idx").on(t.companyId, t.createdAt),
+    index("influencer_generations_influencer_created_idx").on(
+      t.influencerId,
+      t.createdAt,
+    ),
+    check(
+      "influencer_generations_status_check",
+      sql`${t.status} in ('queued', 'generating', 'ready', 'failed', 'nsfw')`,
+    ),
+    check("influencer_generations_count_check", sql`${t.count} between 1 and 4`),
+    check("influencer_generations_estimate_check", sql`${t.estimateUsd} >= 0`),
+    check(
+      "influencer_generations_request_pair_check",
+      sql`(${t.providerRequestId} is null) = (${t.providerStatusUrl} is null)`,
+    ),
+  ],
 );

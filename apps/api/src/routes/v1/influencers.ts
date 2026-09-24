@@ -58,7 +58,28 @@
  * un conteo parcial y hay que decirlo: un workspace con 9 pipelines y 40 imágenes en
  * vuelo pasa. La alternativa era pasar `0`, y un `0` silencioso convierte el cap en
  * decoración. Queda en el reporte con lo que hace falta para cerrarlo.
+ *
+ * ## Personajes de Higgsfield — `PU-LATER-004`
+ *
+ *   GET  /influencers/setup                  ¿se puede crear? (Higgsfield + saldo)
+ *   POST /influencers  {referenceMediaIds}   4–20 fotos del Media Bank → Soul ID
+ *   POST /influencers/:id/images/estimate    estimador de SOUL V2 con el personaje
+ *   POST /influencers/:id/images             estimar → reservar → encolar (202)
+ *   GET  /influencers/:id/generations        los pedidos y su media
+ *
+ * - **Higgsfield tiene que estar en Settings → Models** (tarea de imagen o de
+ *   video): es el único proveedor que documenta personajes por API. Sin él,
+ *   `409 conflict` con `details.reason = "not_configured"`, antes de tocar nada.
+ * - **El tope mensual**: las imágenes reservan su estimado en el mismo libro que
+ *   AI Studio (`~/.fastgram/spend.json`) → `402` con `budget_exceeded`. Crear el
+ *   personaje no tiene precio publicado ni estimador; se permite sólo si el mes
+ *   tiene saldo (`canStartCharacter`) y la UI dice que el costo no se conoce.
+ * - Los errores del proveedor salen como `503`/`400` con `details.reason`, nunca
+ *   como un `401` (que la web leería como sesión vencida). Mismo criterio que
+ *   `ai-studio.ts`.
  */
+import { randomUUID } from "node:crypto";
+
 import { z } from "zod";
 import {
   MAX_ACTIVE_INFLUENCERS_PER_WORKSPACE,
@@ -66,11 +87,48 @@ import {
   cursorQuerySchema,
   idempotencyHeaderSchema,
   imageUploadReservationRequestSchema,
+  influencerImageRequestSchema,
+  type CostEstimate,
+  type InfluencerGeneration,
+  type InfluencerImageEstimate,
+  type InfluencerSetup,
 } from "@fastgram/contracts";
-import { influencerRepository, uploadReservationRepository } from "@fastgram/db";
+import {
+  influencerGenerationRepository,
+  influencerRepository,
+  mediaRepository,
+  uploadReservationRepository,
+  type Transaction,
+} from "@fastgram/db";
+import { HiggsfieldClient } from "@fastgram/adapters";
+import { isPortError, type GenCostEstimate } from "@fastgram/ports";
 
 import { ApiRejection } from "../../http/errors.js";
-import { JOB_QUEUES } from "@fastgram/core";
+import {
+  INFLUENCER_CHARACTER_PROVIDER,
+  INFLUENCER_IMAGE_MODEL,
+  INFLUENCER_REFERENCE_LIMITS,
+  JOB_QUEUES,
+  budgetSummary,
+  canStartCharacter,
+  fitsBudget,
+  generationErrorFromPort,
+  influencerImageSingletonKey,
+  monthKey,
+  releaseSpend,
+  reserveSpend,
+  resolveGenAiConfig,
+  type CharacterGen,
+  type ReserveResult,
+  type ResolvedGenAiConfig,
+} from "@fastgram/core";
+import {
+  GENAI_API_TIMEOUT_MS,
+  defaultGenAiRouteDeps,
+  ledgerOrFail,
+  toBudgetView,
+  type GenAiRouteDeps,
+} from "./genai.js";
 
 import { rateLimit } from "../../plugins/rate-limit.js";
 import { consumeAiStudioCredits, quotaPolicyFor } from "../../support/quota.js";
@@ -159,7 +217,223 @@ interface AiStudioChargeRef {
   readonly refundedAtMs: number | null;
 }
 
-export function registerInfluencerRoutes(app: ZodApp): void {
+/** pg-boss cuenta reintentos: 1 = dos intentos, la política de la cola. */
+const IMAGE_RETRY_LIMIT = 1;
+/** Por encima de los 25 min de polling del worker, igual que AI Studio. */
+const IMAGE_EXPIRE_SECONDS = 30 * 60;
+const GENERATIONS_LIST_LIMIT = 50;
+
+/** Lo que las rutas de personaje necesitan, inyectable en los tests. */
+export interface InfluencerRouteDeps {
+  readonly genai: GenAiRouteDeps;
+  /** Un cliente de personajes para la configuración de Higgsfield resuelta. */
+  readonly characterClientFor: (config: ResolvedGenAiConfig) => CharacterGen;
+}
+
+export function defaultInfluencerRouteDeps(
+  genai: GenAiRouteDeps = defaultGenAiRouteDeps(),
+): InfluencerRouteDeps {
+  return {
+    genai,
+    characterClientFor: (config) =>
+      new HiggsfieldClient({
+        baseUrl: config.baseUrl,
+        apiKey: config.apiKey,
+        timeoutMs: GENAI_API_TIMEOUT_MS,
+      }),
+  };
+}
+
+/**
+ * La configuración de Higgsfield, venga de la tarea de imagen o de la de video.
+ * `null` si ninguna de las dos está completa con Higgsfield.
+ */
+export async function higgsfieldConfigFor(
+  genai: GenAiRouteDeps,
+): Promise<ResolvedGenAiConfig | null> {
+  const snapshot = await genai.registry.read();
+  for (const task of ["image", "video"] as const) {
+    const config = resolveGenAiConfig(task, snapshot, genai.env);
+    if (config?.provider === INFLUENCER_CHARACTER_PROVIDER) return config;
+  }
+  return null;
+}
+
+function notConfigured(): ApiRejection {
+  return new ApiRejection(
+    409,
+    "conflict",
+    "Influencers need Higgsfield: set it as the image or video provider in Settings → Models.",
+    { reason: "not_configured" },
+  );
+}
+
+/** Un error del proveedor → una respuesta que no se confunde con la sesión. */
+function providerRejection(error: unknown): ApiRejection {
+  if (isPortError(error)) {
+    const reason = generationErrorFromPort(error.code);
+    return reason === "bad_request"
+      ? new ApiRejection(400, "bad_request", error.message, { reason })
+      : new ApiRejection(503, "service_unavailable", error.message, { reason });
+  }
+  return new ApiRejection(503, "service_unavailable", "Higgsfield failed.", {
+    reason: "provider_unavailable",
+  });
+}
+
+function estimateView(e: GenCostEstimate): CostEstimate {
+  return { usd: e.usd, source: e.source, basis: e.basis, sourceUrl: e.sourceUrl ?? null };
+}
+
+type InfluencerRow = NonNullable<
+  Awaited<ReturnType<typeof influencerRepository.findById>>
+>;
+
+/**
+ * La fila → el recurso. Los campos internos (`soulId`, `internalRefs`, el cargo
+ * de créditos) no salen. Los rasgos opcionales se omiten cuando no hay.
+ */
+export function influencerView(row: InfluencerRow): InfluencerResource {
+  const base = toInfluencer(row) as InfluencerResource & Record<string, unknown>;
+  const out: Record<string, unknown> = { ...base };
+  for (const k of ["gender", "age", "ethnicity"] as const) {
+    if (row[k] === null) delete out[k];
+  }
+  out["referenceMediaIds"] = [...row.referenceMediaIds];
+  if (row.status === "failed" && row.failureCode !== null) {
+    out["failure"] = {
+      code: row.failureCode,
+      message: row.failureMessage ?? "The character could not be created.",
+    };
+  }
+  return out as InfluencerResource;
+}
+
+type GenerationRow = NonNullable<
+  Awaited<ReturnType<typeof influencerGenerationRepository.findById>>
+>;
+
+async function generationViews(
+  tx: Transaction,
+  companyId: string,
+  rows: readonly GenerationRow[],
+): Promise<InfluencerGeneration[]> {
+  const ids = [...new Set(rows.flatMap((r) => r.mediaIds))];
+  const byId = new Map<string, string>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    const found = await mediaRepository.list(
+      tx,
+      { companyId },
+      { limit: chunk.length, filter: { mediaId: { in: chunk } } },
+    );
+    for (const m of found.items) byId.set(m.mediaId, m.r2Url);
+  }
+  return rows.map((r) => ({
+    id: r.id,
+    influencerId: r.influencerId,
+    status: r.status as InfluencerGeneration["status"],
+    model: r.model,
+    prompt: r.prompt,
+    aspectRatio: r.aspectRatio,
+    count: r.count,
+    estimate: {
+      usd: r.estimateUsd,
+      source: "provider",
+      basis: r.estimateBasis,
+      sourceUrl: "https://docs.higgsfield.ai/docs/concepts/billing-and-retention",
+    },
+    // Una imagen borrada del Media Bank deja de mostrarse acá.
+    media: r.mediaIds.flatMap((mediaId) => {
+      const url = byId.get(mediaId);
+      return url === undefined ? [] : [{ mediaId, mediaType: "image" as const, url }];
+    }),
+    error:
+      r.errorCode === null
+        ? null
+        : {
+            code: r.errorCode as NonNullable<InfluencerGeneration["error"]>["code"],
+            message: r.errorMessage ?? "The generation failed.",
+          },
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+  }));
+}
+
+export function registerInfluencerRoutes(
+  app: ZodApp,
+  deps: InfluencerRouteDeps = defaultInfluencerRouteDeps(),
+): void {
+  const { genai } = deps;
+  const now = (): Date => app.deps.clock.now();
+
+  /** El personaje listo para generar, o el rechazo que corresponde. */
+  async function readyCharacter(
+    tx: Transaction,
+    companyId: string,
+    id: string,
+  ): Promise<{ readonly row: InfluencerRow; readonly soulId: string }> {
+    const row = await influencerRepository.findById(tx, { companyId }, id);
+    if (row === null) throw crossTenant("influencer", id, companyId);
+    if (
+      row.status !== "ready" ||
+      row.soulId === null ||
+      row.provider !== INFLUENCER_CHARACTER_PROVIDER
+    ) {
+      throw new ApiRejection(
+        409,
+        "conflict",
+        "This influencer is not ready to generate images yet.",
+        { reason: "not_ready", status: row.status },
+      );
+    }
+    return { row, soulId: row.soulId };
+  }
+
+  async function estimateFor(
+    soulId: string,
+    body: z.infer<typeof influencerImageRequestSchema>,
+  ): Promise<{ config: ResolvedGenAiConfig; cost: GenCostEstimate }> {
+    const config = await higgsfieldConfigFor(genai);
+    if (config === null) throw notConfigured();
+    let client: CharacterGen;
+    try {
+      client = deps.characterClientFor(config);
+    } catch (error) {
+      throw providerRejection(error);
+    }
+    try {
+      const cost = await client.estimateCharacterImage({
+        characterId: soulId,
+        prompt: body.prompt,
+        aspectRatio: body.aspectRatio,
+        n: body.count,
+      });
+      return { config, cost };
+    } catch (error) {
+      throw providerRejection(error);
+    }
+  }
+
+  // ── GET /influencers/setup ──
+  app.get("/influencers/setup", async () => {
+    const config = await higgsfieldConfigFor(genai);
+    const ledger = ledgerOrFail(await genai.ledger.read());
+    const summary = budgetSummary(ledger, monthKey(now()), genai.env);
+    const view: InfluencerSetup = {
+      configured: config !== null,
+      provider: config === null ? null : "higgsfield",
+      references: {
+        min: INFLUENCER_REFERENCE_LIMITS.min,
+        max: INFLUENCER_REFERENCE_LIMITS.max,
+      },
+      trainingCost: null,
+      canCreate: config !== null && canStartCharacter(summary),
+      budget: toBudgetView(summary),
+    };
+    return data(view);
+  });
+
   const { clock, idempotency, limiter, storage } = app.deps;
 
   // ── GET /influencers ──
@@ -175,7 +449,7 @@ export function registerInfluencerRoutes(app: ZodApp): void {
           { limit: q.limit, ...(q.cursor === undefined ? {} : { cursor: q.cursor }) },
         ),
       );
-      return page(result, toInfluencer);
+      return page(result, influencerView);
     },
   );
 
@@ -254,8 +528,30 @@ export function registerInfluencerRoutes(app: ZodApp): void {
         request,
         reply,
         { key, route: CREATE_ROUTE, body, successStatus: 201 },
-        () =>
-          request.tx(async (tx): Promise<InfluencerResource> => {
+        async () => {
+          // `PU-LATER-004`: con fotos de referencia el personaje lo crea
+          // Higgsfield. Se chequea **antes** de la transacción (lee archivos
+          // locales) y dentro de `withIdempotency`: un replay no vuelve a
+          // preguntar, devuelve lo de la primera vez.
+          const references = body.referenceMediaIds;
+          if (references !== undefined) {
+            if ((await higgsfieldConfigFor(genai)) === null) throw notConfigured();
+            const ledger = ledgerOrFail(await genai.ledger.read());
+            const summary = budgetSummary(ledger, monthKey(now()), genai.env);
+            if (!canStartCharacter(summary)) {
+              throw new ApiRejection(
+                402,
+                "payment_required",
+                "This month's AI budget is used up. Raise it in Settings → Models to create a character.",
+                {
+                  reason: "budget_exceeded",
+                  remainingUsd: summary.remainingUsd,
+                  budgetUsd: summary.budgetUsd,
+                },
+              );
+            }
+          }
+          return request.tx(async (tx): Promise<InfluencerResource> => {
             const scope = { companyId };
 
             // El cap es sobre **activos** (FR-080, `HARD_CAPS.activeInfluencers`) y
@@ -280,7 +576,31 @@ export function registerInfluencerRoutes(app: ZodApp): void {
             // subió su imagen y hay que confirmar que el objeto llegó; sin él, la
             // genera el pipeline (4 créditos) y `baseImageUrl` nace nulo.
             let baseImageUrl: string | null = null;
-            if (body.baseImageUploadId !== undefined) {
+            if (references !== undefined) {
+              // Las fotos tienen que ser imágenes vivas y listas de **esta**
+              // marca: una de otra marca no existe acá (mismo 400 que una
+              // borrada: el id no dice nada).
+              const found = await mediaRepository.list(tx, scope, {
+                limit: references.length,
+                filter: { mediaId: { in: references } },
+              });
+              const usable = new Map(
+                found.items
+                  .filter((m) => m.mediaType === "image" && m.status === "ready")
+                  .map((m) => [m.mediaId, m.r2Url]),
+              );
+              const missing = references.filter((id) => !usable.has(id));
+              if (missing.length > 0) {
+                throw new ApiRejection(
+                  400,
+                  "bad_request",
+                  "Some reference photos are not ready images in this brand's Media Bank.",
+                  { field: "referenceMediaIds", missing },
+                );
+              }
+              // La portada: la primera foto elegida, de **nuestro** storage.
+              baseImageUrl = usable.get(references[0] as string) ?? null;
+            } else if (body.baseImageUploadId !== undefined) {
               const claim = await claimReservation({
                 tx,
                 storage,
@@ -335,10 +655,16 @@ export function registerInfluencerRoutes(app: ZodApp): void {
 
             const created = await influencerRepository.create(tx, scope, {
               name: body.name,
-              gender: body.gender,
-              age: body.age,
-              ethnicity: body.ethnicity,
+              gender: body.gender ?? null,
+              age: body.age ?? null,
+              ethnicity: body.ethnicity ?? null,
               ...(baseImageUrl === null ? {} : { baseImageUrl }),
+              ...(references === undefined
+                ? {}
+                : {
+                    referenceMediaIds: [...references],
+                    provider: INFLUENCER_CHARACTER_PROVIDER,
+                  }),
               // Ver `CREDITS_REF_KEY`: sin esto el cargo de 250 créditos no tiene
               // quien lo devuelva cuando el pipeline falle.
               internalRefs: { [CREDITS_REF_KEY]: chargeRef },
@@ -360,9 +686,9 @@ export function registerInfluencerRoutes(app: ZodApp): void {
                 influencerId: created.id,
                 companyId,
                 name: created.name,
-                gender: created.gender,
-                age: created.age,
-                ethnicity: created.ethnicity,
+                ...(created.gender === null ? {} : { gender: created.gender }),
+                ...(created.age === null ? {} : { age: created.age }),
+                ...(created.ethnicity === null ? {} : { ethnicity: created.ethnicity }),
                 ...(body.additionalDetails === undefined
                   ? {}
                   : { additionalDetails: body.additionalDetails }),
@@ -384,8 +710,9 @@ export function registerInfluencerRoutes(app: ZodApp): void {
               },
             });
 
-            return toInfluencer(created);
-          }),
+            return influencerView(created);
+          });
+        },
       );
     },
   );
@@ -403,7 +730,159 @@ export function registerInfluencerRoutes(app: ZodApp): void {
       if (row === null) throw crossTenant("influencer", id, companyId);
       // `soulId`, `baseCharacterCmlId` e `internalRefs` no salen: DATA-013 los marca
       // "nunca expuestos" y `toInfluencer` simplemente no los mapea.
-      return data(toInfluencer(row));
+      return data(influencerView(row));
+    },
+  );
+  // ── POST /influencers/:id/images/estimate ──
+  app.post(
+    "/influencers/:id/images/estimate",
+    { schema: { params: influencerParams, body: influencerImageRequestSchema } },
+    async (request) => {
+      const companyId = request.auth.companyId;
+      const { soulId } = await request.tx((tx) =>
+        readyCharacter(tx, companyId, request.params.id),
+      );
+      const { cost } = await estimateFor(soulId, request.body);
+      const ledger = ledgerOrFail(await genai.ledger.read());
+      const summary = budgetSummary(ledger, monthKey(now()), genai.env);
+      const view: InfluencerImageEstimate = {
+        model: INFLUENCER_IMAGE_MODEL,
+        estimate: estimateView(cost),
+        budget: toBudgetView(summary),
+        fits: fitsBudget(summary, cost.usd),
+      };
+      return data(view);
+    },
+  );
+
+  // ── POST /influencers/:id/images ──
+  app.post(
+    "/influencers/:id/images",
+    { schema: { params: influencerParams, body: influencerImageRequestSchema } },
+    async (request, reply) => {
+      const queue = app.deps.queue;
+      if (queue === undefined) {
+        return reply.status(503).send({
+          error: {
+            code: "service_unavailable",
+            message: "Influencer images are temporarily unavailable.",
+          },
+        });
+      }
+      const companyId = request.auth.companyId;
+      const influencerId = request.params.id;
+      const body = request.body;
+      const { soulId } = await request.tx((tx) =>
+        readyCharacter(tx, companyId, influencerId),
+      );
+      const { config, cost } = await estimateFor(soulId, body);
+
+      const at = now();
+      const month = monthKey(at);
+      const id = randomUUID();
+      const reserved = await genai.ledger.update<ReserveResult>((raw) => {
+        const r = reserveSpend(
+          ledgerOrFail(raw),
+          {
+            month,
+            generationId: id,
+            usd: cost.usd,
+            provider: config.provider,
+            model: INFLUENCER_IMAGE_MODEL,
+            kind: "image",
+            companyId,
+            at: at.toISOString(),
+          },
+          genai.env,
+        );
+        return r.ok ? { next: r.next, result: r } : { result: r };
+      });
+      if (!reserved.ok) {
+        throw new ApiRejection(
+          402,
+          "payment_required",
+          "This generation would go over this month's AI budget.",
+          {
+            reason: "budget_exceeded",
+            estimateUsd: cost.usd,
+            remainingUsd: reserved.summary.remainingUsd,
+            budgetUsd: reserved.summary.budgetUsd,
+          },
+        );
+      }
+
+      let row: GenerationRow;
+      try {
+        // ADR-005: la fila y el job en la misma transacción. Si encolar falla,
+        // no queda una fila `queued` que nadie va a procesar.
+        row = await request.tx(async (tx) => {
+          const created = await influencerGenerationRepository.create(
+            tx,
+            { companyId },
+            {
+              id,
+              influencerId,
+              status: "queued",
+              provider: config.provider,
+              model: INFLUENCER_IMAGE_MODEL,
+              prompt: body.prompt,
+              aspectRatio: body.aspectRatio,
+              count: body.count,
+              estimateUsd: cost.usd,
+              estimateBasis: cost.basis,
+              spendMonth: month,
+            },
+          );
+          await queue.enqueue({
+            queue: JOB_QUEUES.influencerPipeline,
+            payload: { op: "image", companyId, influencerId, generationId: id },
+            options: {
+              transaction: tx,
+              singletonKey: influencerImageSingletonKey(id),
+              retryLimit: IMAGE_RETRY_LIMIT,
+              retryBackoff: true,
+              expireInSeconds: IMAGE_EXPIRE_SECONDS,
+            },
+          });
+          return created;
+        });
+      } catch (error) {
+        await genai.ledger
+          .update((raw) => {
+            const next = releaseSpend(ledgerOrFail(raw), month, id);
+            return next === null ? { result: null } : { next, result: null };
+          })
+          .catch(() => undefined);
+        throw error;
+      }
+
+      request.log.info(
+        { generationId: id, influencerId, estimateUsd: cost.usd },
+        "influencer images queued",
+      );
+      const [view] = await request.tx((tx) => generationViews(tx, companyId, [row]));
+      return reply.status(202).send(data(view));
+    },
+  );
+
+  // ── GET /influencers/:id/generations ──
+  app.get(
+    "/influencers/:id/generations",
+    { schema: { params: influencerParams } },
+    async (request) => {
+      const companyId = request.auth.companyId;
+      const { id } = request.params;
+      const views = await request.tx(async (tx) => {
+        const row = await influencerRepository.findById(tx, { companyId }, id);
+        if (row === null) throw crossTenant("influencer", id, companyId);
+        const rows = await influencerGenerationRepository.list(
+          tx,
+          { companyId },
+          { limit: GENERATIONS_LIST_LIMIT, filter: { influencerId: { eq: id } } },
+        );
+        return generationViews(tx, companyId, rows.items);
+      });
+      return data(views);
     },
   );
 }

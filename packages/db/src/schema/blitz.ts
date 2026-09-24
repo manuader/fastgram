@@ -134,6 +134,14 @@ export const blitzPromptRequests = pgTable(
     count: integer().notNull(),
     status: text({ enum: BLITZ_PROMPT_STATUS }).notNull().default("queued"),
     failureReason: text(),
+    /**
+     * `0022`: la referencia de un «Remix this» (Inspiration). Al cerrar el
+     * pedido, sus sugerencias heredan `sourceTrendingItemId` y
+     * `remixSourceUrl` (F-056).
+     */
+    sourceTrendingItemId: uuid().references(() => trendingItems.id, {
+      onDelete: "set null",
+    }),
     ...timestamps(),
   },
   (t) => [

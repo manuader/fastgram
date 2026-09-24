@@ -44,3 +44,8 @@ export * from "./autopilot/index.js";
 // `PU-AUTO-004`, `P3-ANALYT-001/002`: métricas de vuelta, auto-tune del mix y resumen de analytics.
 export * from "./metrics/index.js";
 export * from "./analytics/index.js";
+// `FR-140`, `P4-ENGAGE-001…012`: Engagement de Reddit (scoring JV-2, ban meter JV-5/DP-003).
+export * from "./engagement/index.js";
+// Inspiration de uso personal: tablero de referencias propio y «Remix this» (FR-040 adaptado, OQ-13).
+export * from "./inspiration/index.js";
+export * from "./influencers/index.js";

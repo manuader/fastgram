@@ -44,8 +44,11 @@ export interface EligibleInfluencer {
   readonly id: string;
   readonly isActive: boolean;
   readonly isTrained: boolean;
-  /** Vocabulario de `Influencer.gender`: `male` / `female` / otro. */
-  readonly gender?: string | undefined;
+  /**
+   * Vocabulario de `Influencer.gender`: `male` / `female` / otro. `null` desde
+   * `0020`: con fotos de referencia los rasgos son opcionales.
+   */
+  readonly gender?: string | null | undefined;
 }
 
 export type InfluencerSkipReason =

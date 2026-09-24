@@ -29,6 +29,7 @@ import {
   MapIcon,
   MessageSquareIcon,
   RocketIcon,
+  SearchIcon,
   SettingsIcon,
   ShieldIcon,
   UserIcon,
@@ -83,6 +84,13 @@ export const PRIMARY_NAV: readonly NavItem[] = [
 
 /** Crear y medir: se usa, pero no cada día. */
 export const TOOLS_NAV: readonly NavItem[] = [
+  // Tablero propio de referencias → "Remix this" en Blitz (FR-040 adaptado).
+  {
+    id: "inspiration",
+    labelKey: "nav.inspiration",
+    href: ROUTES.inspiration,
+    icon: SearchIcon,
+  },
   { id: "ai-studio", labelKey: "nav.aiStudio", href: ROUTES.aiStudio, icon: WandIcon },
   {
     id: "influencers",

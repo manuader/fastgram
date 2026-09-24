@@ -65,6 +65,9 @@ type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
  */
 const BODIES: Readonly<Record<string, () => unknown>> = {
   "PATCH /blitz/angles/{id}": () => ({ title: "nuevo título" }),
+  // `PU-LATER-004`: imágenes del personaje.
+  "POST /influencers/{id}/images/estimate": () => ({ prompt: "at the gym" }),
+  "POST /influencers/{id}/images": () => ({ prompt: "at the gym" }),
   "PATCH /media/{id}": () => ({ categories: ["slideshow-image"] }),
   "PATCH /content/{id}": () => ({
     revision: 1,
@@ -99,6 +102,13 @@ const BODIES: Readonly<Record<string, () => unknown>> = {
   // `PU-PUB-002`. `{platform}` también recibe el id: una plataforma basura es 404.
   "PUT /integrations/{platform}": () => ({ clientId: "client-id" }),
   "POST /connections/{platform}/callback": () => ({ state: "v1.x.y" }),
+  // Inspiration (FR-040 adaptado): etiquetas de una referencia.
+  "PATCH /inspiration/{itemId}": () => ({ tags: ["hooks"] }),
+  // `FR-140`, `P4-ENGAGE-006…012`: Engagement (Reddit).
+  "POST /engagement/leads/{leadId}/reply/generate": () => ({ regenerate: false }),
+  "PUT /engagement/leads/{leadId}/reply": () => ({ text: "borrador" }),
+  "POST /engagement/leads/{leadId}/send": () => ({ text: "respuesta", confirm: true }),
+  "POST /engagement/leads/{leadId}/mark-sent": () => ({ text: "respuesta" }),
 };
 
 interface Operation {

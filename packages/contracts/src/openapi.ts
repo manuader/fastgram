@@ -43,6 +43,8 @@ import * as genai from "./resources/genai.js";
 import * as workspaces from "./resources/workspaces.js";
 import * as strategy from "./resources/strategy.js";
 import * as autopilot from "./resources/autopilot.js";
+import * as inspiration from "./resources/inspiration.js";
+import * as engagement from "./resources/engagement.js";
 import {
   imageUploadReservationRequestSchema,
   mediaUploadReservationRequestSchema,
@@ -457,6 +459,108 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           },
         },
       },
+      // Inspiration de uso personal (FR-040 adaptado, OQ-13): tablero de referencias propio.
+      "/inspiration": {
+        post: {
+          operationId: "createInspiration",
+          summary:
+            "Guarda una referencia por link (TikTok/IG/X/YouTube, o cualquier sitio que lea yt-dlp) o un clip subido (mediaId). La metadata sin login se lee en el worker. Idempotency-Key opcional.",
+          parameters: [{ ...idempotencyParam, required: false }],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(inspiration.createInspirationRequestSchema)),
+          },
+          responses: {
+            "201": ok(
+              "Referencia guardada (ingestState pending si hay link)",
+              dataOf(toJsonSchema(inspiration.inspirationItemSchema)),
+            ),
+            "400": errorResponse(
+              "bad_request — url o mediaId (uno solo); details.reason = unsupported_url",
+            ),
+            "404": errorResponse("not_found — el mediaId no es de este workspace"),
+            "409": errorResponse("conflict — misma Idempotency-Key con otro body"),
+            "503": errorResponse("service_unavailable — la API no tiene cola"),
+          },
+        },
+        get: {
+          operationId: "listInspiration",
+          summary:
+            "El tablero de la marca: búsqueda, filtro por formato y etiqueta, paginado",
+          parameters: queryParams(inspiration.listInspirationQuerySchema),
+          responses: {
+            "200": ok(
+              "OK",
+              numberedPageOf(toJsonSchema(inspiration.inspirationItemSchema)),
+            ),
+          },
+        },
+      },
+      "/inspiration/tags": {
+        get: {
+          operationId: "listInspirationTags",
+          summary: "Las etiquetas en uso en el tablero de la marca",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(inspiration.inspirationTagsSchema))),
+          },
+        },
+      },
+      "/inspiration/{itemId}": {
+        get: {
+          operationId: "getInspiration",
+          summary: "Una referencia",
+          parameters: [pathParam("itemId")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(inspiration.inspirationItemSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+        patch: {
+          operationId: "updateInspiration",
+          summary: "Reemplaza las etiquetas de la referencia",
+          parameters: [pathParam("itemId")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(inspiration.updateInspirationRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(inspiration.inspirationItemSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+        delete: {
+          operationId: "deleteInspiration",
+          summary:
+            "Borra la referencia (las piezas remixadas conservan su link de origen)",
+          parameters: [pathParam("itemId")],
+          responses: {
+            "204": { description: "Borrada" },
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/inspiration/{itemId}/remix": {
+        post: {
+          operationId: "remixInspiration",
+          summary:
+            "Remix this: genera sugerencias de Blitz inspiradas en la referencia, adaptadas a la marca activa. Mismo pipeline y respuesta que POST /blitz/generate; el estado se consulta en /blitz/generate/{requestId}. Idempotency-Key opcional.",
+          parameters: [pathParam("itemId"), { ...idempotencyParam, required: false }],
+          requestBody: {
+            required: false,
+            content: json(toJsonSchema(inspiration.remixInspirationRequestSchema)),
+          },
+          responses: {
+            "202": ok(
+              "Pedido encolado",
+              dataOf(toJsonSchema(blitz.generateBlitzAcceptedSchema)),
+            ),
+            "400": errorResponse("bad_request"),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — misma Idempotency-Key con otro body"),
+            "503": errorResponse("service_unavailable — no hay cola montada"),
+          },
+        },
+      },
       "/blitz/preferences": {
         get: {
           operationId: "getBlitzPreferences",
@@ -573,7 +677,7 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
         post: {
           operationId: "createInfluencer",
           summary:
-            "Crea y entrena un influencer (250 créditos). Requiere Idempotency-Key.",
+            "Crea el personaje (con fotos de referencia: Soul ID de Higgsfield). Requiere Idempotency-Key.",
           parameters: [idempotencyParam],
           requestBody: {
             required: true,
@@ -581,9 +685,11 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           },
           responses: {
             "202": ok("Pipeline encolado", dataOf(influencerJs)),
-            "402": errorResponse("payment_required — cap de 50, créditos o storage"),
+            "402": errorResponse(
+              "payment_required — cap de 50, créditos, storage o tope mensual agotado",
+            ),
             "409": errorResponse(
-              "conflict — upload no alcanzable o idempotency key en uso",
+              "conflict — upload no alcanzable, idempotency key en uso o sin Higgsfield",
             ),
           },
         },
@@ -595,6 +701,75 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           parameters: [pathParam("id")],
           responses: {
             "200": ok("OK", dataOf(influencerJs)),
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/influencers/setup": {
+        get: {
+          operationId: "getInfluencerSetup",
+          summary:
+            "PU-LATER-004: si se puede crear un personaje (Higgsfield configurado, saldo del mes)",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(influencers.influencerSetupSchema))),
+          },
+        },
+      },
+      "/influencers/{id}/images/estimate": {
+        post: {
+          operationId: "estimateInfluencerImages",
+          summary: "Costo estimado de imágenes del personaje (estimador de Higgsfield)",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(influencers.influencerImageRequestSchema)),
+          },
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(influencers.influencerImageEstimateSchema)),
+            ),
+            "404": errorResponse("not_found"),
+            "409": errorResponse(
+              "conflict — el personaje no está listo o sin Higgsfield",
+            ),
+          },
+        },
+      },
+      "/influencers/{id}/images": {
+        post: {
+          operationId: "generateInfluencerImages",
+          summary:
+            "Estima, reserva en el tope mensual y encola imágenes del personaje (202)",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(influencers.influencerImageRequestSchema)),
+          },
+          responses: {
+            "202": ok(
+              "Accepted",
+              dataOf(toJsonSchema(influencers.influencerGenerationSchema)),
+            ),
+            "402": errorResponse("payment_required — details.reason = budget_exceeded"),
+            "404": errorResponse("not_found"),
+            "409": errorResponse(
+              "conflict — el personaje no está listo o sin Higgsfield",
+            ),
+            "503": errorResponse("service_unavailable — sin cola o proveedor caído"),
+          },
+        },
+      },
+      "/influencers/{id}/generations": {
+        get: {
+          operationId: "listInfluencerGenerations",
+          summary: "Pedidos de imágenes del personaje, más nuevos primero",
+          parameters: [pathParam("id")],
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(influencers.influencerGenerationListSchema)),
+            ),
             "404": errorResponse("not_found"),
           },
         },
@@ -1857,6 +2032,257 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
             "Cómo decide el piloto: horizonte, objetivo de la cola, cupo por corrida y umbrales del pre-chequeo",
           responses: {
             "200": ok("OK", dataOf(toJsonSchema(autopilot.autopilotPolicySchema))),
+          },
+        },
+      },
+      /**
+       * Engagement (Reddit) — `FR-140`, `P4-ENGAGE-001…012`. Ver la cabecera
+       * de `resources/engagement.ts`.
+       */
+      "/engagement/overview": {
+        get: {
+          operationId: "getEngagementOverview",
+          summary:
+            "Configuración, app y cuenta de Reddit, estado del descubrimiento y ban meter (calculado en código)",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(engagement.engagementOverviewSchema))),
+          },
+        },
+      },
+      "/engagement/settings": {
+        put: {
+          operationId: "updateEngagementSettings",
+          summary: "Subreddits, palabras clave, tono y reglas propias de respuesta",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(engagement.updateEngagementSettingsRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(engagement.engagementSettingsSchema))),
+            "400": errorResponse("invalid_subreddits / invalid_keywords"),
+          },
+        },
+      },
+      "/engagement/reddit-app": {
+        put: {
+          operationId: "updateRedditApp",
+          summary: "Credenciales de la app de Reddit (el secret nunca vuelve)",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(engagement.updateRedditAppRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(engagement.redditAppSchema))),
+            "400": errorResponse("bad_request"),
+          },
+        },
+        delete: {
+          operationId: "deleteRedditApp",
+          summary: "Borra las credenciales de la app de Reddit",
+          responses: { "204": { description: "Borradas" } },
+        },
+      },
+      "/engagement/reddit/authorize": {
+        get: {
+          operationId: "authorizeReddit",
+          summary:
+            "URL de autorización de Reddit con state firmado (scopes identity read submit)",
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(engagement.redditAuthorizeResponseSchema)),
+            ),
+            "409": errorResponse("reddit_app_not_configured"),
+          },
+        },
+      },
+      "/engagement/reddit/callback": {
+        post: {
+          operationId: "redditCallback",
+          summary: "Cambia el code por tokens (cifrados) y conecta la cuenta a la marca",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(engagement.redditCallbackRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(engagement.redditCallbackResultSchema))),
+            "400": errorResponse(
+              "oauth_state_invalid / oauth_state_wrong_brand / oauth_denied",
+            ),
+            "502": errorResponse("reddit_rejected / reddit_unavailable"),
+          },
+        },
+      },
+      "/engagement/reddit/account": {
+        delete: {
+          operationId: "disconnectReddit",
+          summary: "Desconecta la cuenta de Reddit de la marca (tokens borrados)",
+          responses: { "204": { description: "Desconectada" } },
+        },
+      },
+      "/engagement/discover": {
+        post: {
+          operationId: "discoverLeads",
+          summary: "Encola una corrida de descubrimiento para la marca",
+          responses: {
+            "202": ok(
+              "Encolado",
+              dataOf(toJsonSchema(engagement.engagementQueuedSchema)),
+            ),
+            "409": errorResponse("reddit_not_connected"),
+            "503": errorResponse("service_unavailable — sin cola"),
+          },
+        },
+      },
+      "/engagement/leads": {
+        get: {
+          operationId: "listLeads",
+          summary: "Leads visibles (JV-2): vistas all / top / engaged, unseen y búsqueda",
+          parameters: queryParams(engagement.leadListQuerySchema),
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(engagement.leadListSchema))),
+          },
+        },
+        post: {
+          operationId: "createManualLead",
+          summary: "Agrega un post de Reddit a mano (funciona sin la API de Reddit)",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(engagement.createManualLeadRequestSchema)),
+          },
+          responses: {
+            "201": ok("Creado", dataOf(toJsonSchema(engagement.leadSchema))),
+            "400": errorResponse("invalid_reddit_url"),
+          },
+        },
+      },
+      "/engagement/leads/{leadId}": {
+        get: {
+          operationId: "getLead",
+          summary: "Detalle del lead, respuestas enviadas y revisión del borrador",
+          parameters: [pathParam("leadId")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(engagement.leadDetailSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+        delete: {
+          operationId: "deleteLead",
+          summary: "Descarta el lead (no vuelve a aparecer)",
+          parameters: [pathParam("leadId")],
+          responses: {
+            "204": { description: "Descartado" },
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/engagement/leads/{leadId}/seen": {
+        post: {
+          operationId: "markLeadSeen",
+          summary: "Marca el lead como visto (y apaga «New activity»)",
+          parameters: [pathParam("leadId")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(engagement.leadSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/engagement/leads/{leadId}/reply/generate": {
+        post: {
+          operationId: "generateLeadReply",
+          summary: "Genera o regenera el borrador de respuesta (LLM en el worker)",
+          parameters: [pathParam("leadId")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(engagement.generateReplyRequestSchema)),
+          },
+          responses: {
+            "202": ok("Encolado", dataOf(toJsonSchema(engagement.leadSchema))),
+            "404": errorResponse("not_found"),
+            "503": errorResponse("service_unavailable — sin cola"),
+          },
+        },
+      },
+      "/engagement/leads/{leadId}/reply": {
+        put: {
+          operationId: "saveLeadReplyDraft",
+          summary: "Guarda el borrador editado",
+          parameters: [pathParam("leadId")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(engagement.saveReplyDraftRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(engagement.leadDetailSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/engagement/leads/{leadId}/send": {
+        post: {
+          operationId: "sendLeadReply",
+          summary:
+            "Publica la respuesta en Reddit. Exige confirm: true e Idempotency-Key; bloqueado con el ban meter en danger",
+          parameters: [pathParam("leadId"), idempotencyParam],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(engagement.sendReplyRequestSchema)),
+          },
+          responses: {
+            "201": ok(
+              "Publicada",
+              dataOf(toJsonSchema(engagement.sendReplyResultSchema)),
+            ),
+            "404": errorResponse("not_found"),
+            "409": errorResponse(
+              "ban_meter_danger / reply_blocked / reddit_not_connected / reddit_reconnect_required / lead_locked",
+            ),
+            "429": errorResponse("reddit_rate_limited"),
+            "502": errorResponse("reddit_rejected / reddit_unavailable"),
+          },
+        },
+      },
+      "/engagement/leads/{leadId}/mark-sent": {
+        post: {
+          operationId: "markLeadReplySent",
+          summary:
+            "Registra una respuesta publicada a mano (Copy & open thread) para el ban meter",
+          parameters: [pathParam("leadId"), { ...idempotencyParam, required: false }],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(engagement.markSentRequestSchema)),
+          },
+          responses: {
+            "201": ok(
+              "Registrada",
+              dataOf(toJsonSchema(engagement.sendReplyResultSchema)),
+            ),
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/engagement/leads/{leadId}/sync": {
+        post: {
+          operationId: "syncLeadThread",
+          summary: "Sync with Reddit: relee el hilo y actualiza su estado (encola)",
+          parameters: [pathParam("leadId")],
+          responses: {
+            "202": ok(
+              "Encolado",
+              dataOf(toJsonSchema(engagement.engagementQueuedSchema)),
+            ),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("reddit_not_connected"),
+          },
+        },
+      },
+      "/engagement/ban-meter/refresh": {
+        post: {
+          operationId: "refreshBanMeter",
+          summary:
+            "Refresh ban meter: recalcula el nivel en código sobre las etiquetas guardadas y encola las que faltan",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(engagement.banMeterSchema))),
           },
         },
       },

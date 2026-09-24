@@ -18,9 +18,11 @@ import { registerBlitzRoutes } from "./blitz.js";
 import { registerBrandRoutes } from "./brand.js";
 import { registerCalendarRoutes } from "./calendar.js";
 import { registerCatalogRoutes } from "./catalog.js";
+import { registerEngagementRoutes } from "./engagement.js";
 import { registerConnectionRoutes } from "./connections.js";
 import { registerContentRoutes } from "./content.js";
 import { registerInfluencerRoutes } from "./influencers.js";
+import { registerInspirationRoutes } from "./inspiration.js";
 import { registerMediaRoutes } from "./media.js";
 import { registerModelRoutes } from "./models.js";
 import { registerOnboardingRoutes } from "./onboarding.js";
@@ -63,5 +65,9 @@ export async function registerV1Routes(app: ZodApp): Promise<void> {
   registerAnalyticsRoutes(app);
   // `PU-AUTO-002`/`003`: resumen diario y política del piloto automático.
   registerAutopilotRoutes(app);
+  // Inspiration de uso personal: tablero de referencias propio y «Remix this» (OQ-13).
+  registerInspirationRoutes(app);
+  // `FR-140`, `P4-ENGAGE-001…012`: Engagement de Reddit (leads, respuestas, ban meter).
+  registerEngagementRoutes(app);
   await Promise.resolve();
 }

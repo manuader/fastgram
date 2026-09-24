@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createInfluencerRequestSchema,
+  influencerImageRequestSchema,
   influencerSchema,
   INFLUENCER_AGE_DEFAULT,
   INFLUENCER_AGE_MAX,
@@ -33,8 +34,8 @@ describe("rango de edad · FR-080 · PRD:1496", () => {
     expect(() => createInfluencerRequestSchema.parse({ ...valid, age: 61 })).toThrow();
   });
 
-  it("sin age aplica el default 25", () => {
-    expect(createInfluencerRequestSchema.parse(valid).age).toBe(25);
+  it("sin age queda sin edad (PU-LATER-004: el 25 es el valor inicial del slider)", () => {
+    expect(createInfluencerRequestSchema.parse(valid).age).toBeUndefined();
   });
 });
 
@@ -86,5 +87,52 @@ describe("creación", () => {
       createInfluencerRequestSchema.parse({ ...valid, baseImageUploadId: "up_1" })
         .baseImageUploadId,
     ).toBe("up_1");
+  });
+});
+
+describe("PU-LATER-004 — personaje con fotos de referencia", () => {
+  const ids = (n: number) =>
+    Array.from(
+      { length: n },
+      (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    );
+
+  it("4–20 fotos únicas; los rasgos son opcionales", () => {
+    const ok = createInfluencerRequestSchema.parse({
+      name: "Emily",
+      referenceMediaIds: ids(4),
+    });
+    expect(ok.gender).toBeUndefined();
+    expect(() =>
+      createInfluencerRequestSchema.parse({ name: "E", referenceMediaIds: ids(3) }),
+    ).toThrow();
+    expect(() =>
+      createInfluencerRequestSchema.parse({ name: "E", referenceMediaIds: ids(21) }),
+    ).toThrow();
+    const dup = [...ids(3), ids(1)[0]];
+    expect(() =>
+      createInfluencerRequestSchema.parse({ name: "E", referenceMediaIds: dup }),
+    ).toThrow();
+  });
+
+  it("fotos de referencia y base image son excluyentes", () => {
+    expect(() =>
+      createInfluencerRequestSchema.parse({
+        name: "E",
+        referenceMediaIds: ids(4),
+        baseImageUploadId: "up_1",
+      }),
+    ).toThrow();
+  });
+
+  it("pedido de imágenes: 9:16 y 1 por default, count 1 o 4, sin 4:5", () => {
+    const r = influencerImageRequestSchema.parse({ prompt: "at the gym" });
+    expect(r).toEqual({ prompt: "at the gym", aspectRatio: "9:16", count: 1 });
+    expect(influencerImageRequestSchema.parse({ prompt: "x", count: 4 }).count).toBe(4);
+    expect(() => influencerImageRequestSchema.parse({ prompt: "x", count: 2 })).toThrow();
+    expect(() =>
+      influencerImageRequestSchema.parse({ prompt: "x", aspectRatio: "4:5" }),
+    ).toThrow();
+    expect(() => influencerImageRequestSchema.parse({ prompt: "  " })).toThrow();
   });
 });

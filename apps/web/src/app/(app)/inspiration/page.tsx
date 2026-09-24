@@ -1,10 +1,26 @@
 import type { Metadata } from "next";
-import { RoutePlaceholder } from "@/components/placeholder/RoutePlaceholder";
+import { InspirationBoard } from "@/components/inspiration/InspirationBoard";
+import { PageHeader } from "@/components/shell/PageHeader";
+import { tw } from "@/lib/i18n/t";
 
 export const metadata: Metadata = { title: "Inspiration · FastGram" };
 
-export default function Page() {
+/**
+ * `/inspiration` · FR-040 adaptado a uso personal (OQ-13, D-12).
+ *
+ * No es el catálogo de trending de Fastlane (datos licenciados de terceros,
+ * que el clon no replica): es el tablero de referencias que el dueño guarda
+ * por link, con búsqueda, filtros y «Remix this» hacia Blitz. Server component
+ * fino; lo que habla con la API vive en `InspirationBoard`, que es cliente.
+ */
+export default function InspirationPage() {
   return (
-    <RoutePlaceholder screen="Inspiration" spec="PRD §3.1 · FR-040" task="P2-TREND-001" />
+    <div className="fgw-page">
+      <PageHeader
+        title={tw("inspiration.title")}
+        description={tw("inspiration.subtitle")}
+      />
+      <InspirationBoard />
+    </div>
   );
 }

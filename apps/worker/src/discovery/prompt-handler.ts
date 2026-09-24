@@ -47,7 +47,9 @@ import {
   isBlitzPromptPayload,
   parseBlitzPromptJob,
   planPromptSuggestion,
+  toCopyRemixReference,
   type BlitzContentType,
+  type CopyRemixReference,
   type BlitzPromptJob,
   type PlannedBlitzSuggestion,
   type PromptFailureReason,
@@ -55,6 +57,7 @@ import {
 import {
   completePromptRequest,
   failPromptRequest,
+  findOwnerReference,
   isOpenPromptRequest,
   lockPromptRequest,
   markPromptRequestRunning,
@@ -165,10 +168,22 @@ export function createBlitzPromptHandler(deps: BlitzPromptDeps): JobHandler<unkn
 
     let refill: RefillSubject;
     let planned: PlannedBlitzSuggestion[];
+    // Inspiration «Remix this»: la referencia viaja a la copy como dato
+    // (`CopyRemixReference`, bloque `untrusted`). Borrada → prompt común.
+    let remix: CopyRemixReference | undefined;
     try {
-      refill = await inCompany(job.companyId, (tx) =>
-        readRefillSubject(tx, job.companyId),
-      );
+      refill = await inCompany(job.companyId, async (tx) => {
+        const sourceId = request.sourceTrendingItemId;
+        if (sourceId !== null) {
+          const source = await findOwnerReference(
+            tx,
+            { companyId: job.companyId },
+            sourceId,
+          );
+          if (source !== null) remix = toCopyRemixReference(source);
+        }
+        return readRefillSubject(tx, job.companyId);
+      });
       planned = Array.from({ length: subject.count }, () =>
         planPromptSuggestion(deps.rng, refill.preferences, refill.planning, {
           topic: subject.prompt,
@@ -195,7 +210,7 @@ export function createBlitzPromptHandler(deps: BlitzPromptDeps): JobHandler<unkn
     let rejected = 0;
     for (const p of planned) {
       try {
-        const draft = await withCopy(copywriter, refill, p, subject.prompt);
+        const draft = await withCopy(copywriter, refill, p, subject.prompt, remix);
         if (draft.ok) {
           drafts.push(draft.draft);
         } else {

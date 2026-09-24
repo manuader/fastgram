@@ -45,6 +45,11 @@ export interface NewPromptRequest {
   readonly contentType:
     "slideshow" | "wall-of-text" | "green-screen" | "video-hook" | null;
   readonly count: number;
+  /**
+   * `0022`: la referencia de un «Remix this» (Inspiration). Quien llama ya
+   * comprobó que es de este workspace.
+   */
+  readonly sourceTrendingItemId?: string | null;
 }
 
 /** Crea el pedido en `queued`. El job lo encola quien llama, en la misma transacción. */
@@ -61,6 +66,7 @@ export async function createPromptRequest(
       contentType: input.contentType,
       count: input.count,
       status: "queued",
+      sourceTrendingItemId: input.sourceTrendingItemId ?? null,
     })
     .returning();
   if (row === undefined) throw new Error("El INSERT del pedido no devolvió fila.");
@@ -204,11 +210,22 @@ export async function completePromptRequest(
           as d(ord int, content_type text, ai_explanation text,
                angle_id uuid, influencer_id uuid, text_style_preset_id text,
                generated_text text, build_plan jsonb)
+    ),
+    -- \`0022\`: la referencia de un «Remix this». Con el \`company_id\` en el
+    -- join: la FK no impide apuntar a una referencia de otra marca.
+    src as (
+      select t.id, t.permalink
+        from blitz_prompt_requests r
+        join trending_items t
+          on t.id = r.source_trending_item_id
+         and (t.company_id is null or t.company_id = r.company_id)
+       where r.id = ${requestId}::uuid
+         and r.company_id = ${scope.companyId}::uuid
     )
     insert into suggestions
       (company_id, content_type, ai_explanation, angle_id, influencer_id,
        text_style_preset_id, generated_text, build_plan, status,
-       prompt_request_id, created_at)
+       prompt_request_id, remix_source_url, source_trending_item_id, created_at)
     select ${scope.companyId}::uuid,
            drafts.content_type::suggestion_content_type,
            drafts.ai_explanation,
@@ -219,6 +236,8 @@ export async function completePromptRequest(
            drafts.build_plan,
            'queued'::suggestion_status,
            ${requestId}::uuid,
+           (select permalink from src),
+           (select id from src),
            now() - make_interval(secs => drafts.ord / 1000000.0)
       from drafts
   `);

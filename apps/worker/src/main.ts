@@ -59,7 +59,9 @@ import {
 import { createLlmSource, createResolvingLlm } from "./llm/registry-llm.js";
 import { JOB_CATALOG, type JobPolicy } from "./jobs/catalog.js";
 import { mountMediaImport } from "./media-import/mount.js";
+import { mountInspiration } from "./inspiration/mount.js";
 import { mountPublishing } from "./publishing/mount.js";
+import { mountEngagement } from "./engagement/mount.js";
 import { socialReadersFromEnv } from "./brand/social-readers.js";
 import {
   createRenderServiceRenderers,
@@ -286,6 +288,16 @@ const { handlers: HANDLERS, unmounted } = createHandlers({
   // `PU-MEDIA-002`: para que el refill encole el kit de fondos de una marca sin media.
   queue,
   mediaImport,
+  // Inspiration: lectura sin login de referencias, sobre la misma cola y el mismo yt-dlp.
+  ...(mediaImport.kind === "mounted"
+    ? {
+        inspiration: mountInspiration({
+          env: process.env,
+          registry: new FileModelRegistry({ path: registryPath }),
+          logger,
+        }),
+      }
+    : {}),
   // `PU-PUB-003…008`: publicadores reales, tokens, túnel y guardas.
   publishing: mountPublishing({
     db: handle.db,
@@ -323,6 +335,18 @@ const { handlers: HANDLERS, unmounted } = createHandlers({
   // `PU-AUTO-004`: métricas de vuelta (IG, Threads, FB; X sólo con
   // `METRICS_X_ENABLED=true` porque leer cuesta) y auto-tune del mix.
   metrics: createMetricsAdapters(process.env),
+  // `P4-ENGAGE-001…012`: Engagement de Reddit — descubrimiento, juicio JV-2,
+  // borradores, seguimiento de hilos y ban meter (JV-5 etiqueta, el código
+  // cuenta). Nunca publica: "Send" es de la API, con confirmación humana.
+  engagement: mountEngagement({
+    db: handle.db,
+    appRole,
+    logger,
+    clock,
+    queue,
+    llmSource,
+    env: process.env,
+  }),
 });
 
 for (const [name, handler] of Object.entries(HANDLERS)) {

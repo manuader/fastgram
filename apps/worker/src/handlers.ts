@@ -47,6 +47,7 @@ import {
   createAutoBrandKitTrigger,
 } from "./brand-kit/mount.js";
 import { createInfluencerPipelineHandler } from "./influencers/pipeline-handler.js";
+import { createInfluencerCharacterMount } from "./influencers/mount.js";
 import { createQuotaResetHandler } from "./jobs/quota-reset-handler.js";
 import { createMediaNormalizationHandler } from "./media/normalization-handler.js";
 import { createPublishHandler } from "./publishing/publish-handler.js";
@@ -54,6 +55,9 @@ import type { PublishingMount } from "./publishing/mount.js";
 import { createPublishingSweepHandler } from "./publishing/sweep-handler.js";
 import { createWatchHandler } from "./publishing/watch-handler.js";
 import { createMediaImportHandler } from "./media-import/handler.js";
+import { createMediaImportDispatcher } from "./inspiration/dispatcher.js";
+import { createInspirationIngestHandler } from "./inspiration/ingest-handler.js";
+import type { InspirationMount } from "./inspiration/mount.js";
 import { createMetricsSyncHandler } from "./metrics/sync-handler.js";
 import type { MediaImportMount } from "./media-import/mount.js";
 
@@ -118,6 +122,13 @@ export interface WorkerHandlerDeps {
    */
   readonly mediaImport?: MediaImportMount;
   /**
+   * Inspiration de uso personal: la lectura sin login de las referencias
+   * (`inspiration/mount.ts`). Viaja por `media-import` y se monta sólo junto
+   * con él (mismo `yt-dlp`). Ausente = los payloads con `inspirationItemId`
+   * los recibe el handler del import, que los descarta por inválidos.
+   */
+  readonly inspiration?: InspirationMount;
+  /**
    * `PU-LATER-005`. El handler de `ai-studio-generation` (`genai/mount.ts`).
    * Ausente = no se monta (tests que no lo miran).
    */
@@ -133,6 +144,12 @@ export interface WorkerHandlerDeps {
    * auto-tune del mix. Ausente = no se monta (tests que no lo miran).
    */
   readonly metrics?: Readonly<Record<string, SocialMetrics>>;
+  /**
+   * `P4-ENGAGE-001…012`. Los consumidores de `reddit-lead-discovery`,
+   * `reddit-thread-monitoring` y `ban-risk-computation` (`engagement/mount.ts`).
+   * Montarlos enciende sus crons. Ausente = no se montan (tests que no los miran).
+   */
+  readonly engagement?: Readonly<Record<string, JobHandler<unknown>>>;
 }
 
 export type BrandAnalysisMount =
@@ -269,6 +286,8 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
       clock,
       appRole,
       logger,
+      // PU-LATER-004: personajes de Higgsfield (Soul ID) e imágenes con ellos.
+      characters: createInfluencerCharacterMount({ storage, env: process.env }),
     }),
     /**
      * `discovery-refill` — lo encola `POST /blitz` con la cola vacía, un job por
@@ -447,7 +466,7 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
    */
   if (deps.mediaImport !== undefined) {
     if (deps.mediaImport.kind === "mounted" && deps.queue !== undefined) {
-      handlers[JOB_QUEUES.mediaImport] = createMediaImportHandler({
+      const importHandler = createMediaImportHandler({
         db,
         storage,
         queue: deps.queue,
@@ -456,6 +475,20 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
         logger,
         ...deps.mediaImport.deps,
       });
+      // Inspiration comparte la cola: ver `inspiration/dispatcher.ts`.
+      handlers[JOB_QUEUES.mediaImport] =
+        deps.inspiration === undefined
+          ? importHandler
+          : createMediaImportDispatcher({
+              mediaImport: importHandler,
+              inspiration: createInspirationIngestHandler({
+                db,
+                storage,
+                appRole,
+                logger,
+                ...deps.inspiration,
+              }),
+            });
     } else {
       unmounted.push({
         queue: JOB_QUEUES.mediaImport,
@@ -514,6 +547,12 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
       tokens: deps.publishing?.tokens ?? null,
       queue: deps.queue,
     });
+  }
+
+  // `P4-ENGAGE-001…012`: Engagement de Reddit. Montarlo enciende sus tres crons.
+  if (deps.engagement !== undefined) {
+    for (const [queue, handler] of Object.entries(deps.engagement))
+      handlers[queue] = handler;
   }
 
   return { handlers, unmounted };

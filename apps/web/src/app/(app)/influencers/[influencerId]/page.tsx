@@ -1,27 +1,19 @@
 import type { Metadata } from "next";
-import { RoutePlaceholder } from "@/components/placeholder/RoutePlaceholder";
+import { InfluencerDetailScreen } from "@/components/influencers/InfluencerDetailScreen";
 
 export const metadata: Metadata = { title: "Influencer · FastGram" };
 
 /**
- * `/influencers/:influencerId` · PRD:236-238.
- *
- * El PRD §3.3 fija las tabs (`Images` · `Videos` · `Configuration`) y que se
- * navegan por query param `?tab=`. No se dibujan aquí porque las tres están
- * vacías: unas tabs que sólo cambian cuál de los tres placeholders se ve
- * enseñan menos que decir que la pantalla no está.
+ * `/influencers/:influencerId` · FR-081 adaptado (`PU-LATER-004`). Las tabs
+ * `Videos` y `Configuration` de PRD §3.3 no están: video con personaje no está
+ * documentado por la API de Higgsfield, y la configuración (ángulos, cuentas,
+ * sets) queda para después.
  */
-export default function InfluencerDetailPage() {
-  return (
-    <RoutePlaceholder
-      screen="Influencer detail"
-      spec="PRD §3.1 · §3.3 · FR-081…FR-083"
-      task="P4-INFL-001"
-    >
-      <p>
-        Tabs <code>?tab=images|videos|configuration</code> plus a{" "}
-        <code>Configure in Blitz →</code> link, per PRD §3.3.
-      </p>
-    </RoutePlaceholder>
-  );
+export default async function InfluencerDetailPage({
+  params,
+}: {
+  readonly params: Promise<{ influencerId: string }>;
+}) {
+  const { influencerId } = await params;
+  return <InfluencerDetailScreen influencerId={influencerId} />;
 }

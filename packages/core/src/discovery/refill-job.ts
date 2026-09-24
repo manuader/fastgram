@@ -193,6 +193,16 @@ export interface SuggestionNarrative {
    * igual que sin elegible (`AI-002`, «Reintentos»).
    */
   readonly influencerWithoutMedia?: string | undefined;
+  /**
+   * `PU-LATER-004`: entre cuántos personajes **con media para el formato** se
+   * eligió al azar el que se usa. `0`, `1` o ausente = había uno solo.
+   */
+  readonly pickedAmong?: number | undefined;
+  /**
+   * `PU-LATER-004`: la tirada salió, había varios candidatos y **ninguno**
+   * tiene media en sus sets para el formato.
+   */
+  readonly candidatesWithoutMedia?: number | undefined;
   /** Formatos del mix que no se pudieron planificar: sin media en el Media Bank. */
   readonly skippedFormats?: readonly BlitzContentType[] | undefined;
   /**
@@ -323,6 +333,13 @@ function influencerLine(plan: SuggestionPlan, narrative: SuggestionNarrative): s
       "has no media in their sets for this format, so this is regular content."
     );
   }
+  const sinMedia = narrative.candidatesWithoutMedia ?? 0;
+  if (sinMedia > 0) {
+    return (
+      `Influencer: none — none of your ${String(sinMedia)} matching characters has ` +
+      "media in their sets for this format, so this is regular content."
+    );
+  }
   if (plan.influencer.decision === "none") {
     switch (plan.influencer.reason) {
       case "green_screen":
@@ -338,9 +355,12 @@ function influencerLine(plan: SuggestionPlan, narrative: SuggestionNarrative): s
   }
 
   if (narrative.influencerName !== undefined && narrative.influencerName.trim() !== "") {
+    const among = narrative.pickedAmong ?? 0;
     return (
       `Influencer: ${oneLine(narrative.influencerName, MAX_ANGLE_TITLE_CHARS)} — ` +
-      "the only eligible character for this format."
+      (among > 1
+        ? `picked at random among ${String(among)} characters with media for this format.`
+        : "the only eligible character for this format.")
     );
   }
 

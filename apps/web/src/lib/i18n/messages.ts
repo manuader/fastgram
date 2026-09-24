@@ -22,6 +22,7 @@ export const webEn = {
   // Los 17 labels del sidebar son literales del PRD:293-338.
   "nav.home": "Home", // literal
   "nav.engagement": "Engagement", // literal
+  "nav.inspiration": "Inspiration", // literal (sidebar de Fastlane)
   "nav.blitz": "Blitz", // literal
   "nav.aiStudio": "AI Studio", // literal
   "nav.influencers": "Influencers", // literal

@@ -163,3 +163,6 @@ export * from "./background-removal/index.js";
 
 /** `PU-MODEL-003`/`004`/`005`: imagen y video con Higgsfield y fal, gasto local. */
 export * from "./genai/index.js";
+
+/** `FR-140`, `F-190`: Reddit para Engagement (OAuth propio, lectura, comentario con confirmación). */
+export * from "./reddit/index.js";

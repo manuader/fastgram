@@ -290,6 +290,7 @@ export const en = {
   "command.switchTo": "Switch to {name}",
   "command.group.create": "Create", // nuevo · PU-BLITZ-003
   "command.createFromPrompt": "Create from prompt…", // nuevo · PU-BLITZ-003
+  "command.saveInspiration": "Save inspiration from link…", // nuevo · Inspiration (OQ-13)
   "command.themeLight": "Use light theme",
   "command.themeDark": "Use dark theme",
   "command.themeSystem": "Match system theme",
@@ -741,6 +742,358 @@ export const en = {
   "analytics.mix.change": "{date} · by auto-tune", // nuevo
   "analytics.mix.samples": "{n} measured posts", // nuevo
   "analytics.mix.error": "Couldn't load the content mix.", // nuevo
+
+  /* ------- Inspiration · tablero de referencias propio · FR-040 adaptado (nuevo) */
+  // `OQ-13`: sin catálogo de terceros. Lo marcado `literal` sale de FR-040.
+  "inspiration.title": "Inspiration", // literal PRD:342
+  "inspiration.subtitle":
+    "Your own board of references. Save posts you like and remix them for this brand.", // nuevo
+  "inspiration.save": "Save inspiration", // nuevo
+  "inspiration.searchLabel": "Search inspiration", // literal FR-040
+  "inspiration.clearSearch": "Clear search", // literal FR-040
+  "inspiration.clearAll": "Clear all", // literal §12
+  "inspiration.filter.format": "Format", // nuevo
+  "inspiration.filter.tag": "Filter by tag", // nuevo (FR-040 dice «Filter by niche»)
+  "inspiration.filter.all": "All", // nuevo
+  "inspiration.format.video": "Video", // nuevo
+  "inspiration.format.slideshow": "Slideshow", // nuevo
+  "inspiration.format.image": "Image", // nuevo
+  "inspiration.format.text": "Text", // nuevo
+  "inspiration.error": "We could not load inspiration right now. Try again in a moment.", // literal FR-040
+  "inspiration.emptyBoard.title": "No references yet", // nuevo
+  "inspiration.emptyBoard.description":
+    "Paste a link to a TikTok, Reel, Short or post you like. We read what's public and keep it here to remix.", // nuevo
+  "inspiration.page": "Page {page}", // nuevo
+  "inspiration.card.pending": "Reading the link…", // nuevo
+  "inspiration.card.failed": "Couldn't read this link. You can still remix it.", // nuevo
+  "inspiration.card.open": "Open original", // literal FR-040
+  "inspiration.card.remix": "Remix this", // literal FR-040
+  "inspiration.card.delete": "Delete", // nuevo
+  "inspiration.card.deleteFailed": "Couldn't delete it. Try again.", // nuevo
+  "inspiration.card.views": "{count} views", // nuevo
+  "inspiration.card.likes": "{count} likes", // nuevo
+  "inspiration.card.fromMediaBank": "From your Media Bank", // nuevo
+  "inspiration.card.untitled": "Untitled reference", // nuevo
+  "inspiration.card.onScreen": "On screen: {text}", // nuevo
+  "inspiration.saveDialog.title": "Save inspiration", // nuevo
+  "inspiration.saveDialog.description":
+    "We read the title, caption, author and public counts without logging in. Transcripts aren't read.", // nuevo
+  "inspiration.saveDialog.fromLink": "From a link", // nuevo
+  "inspiration.saveDialog.fromMediaBank": "From my Media Bank", // nuevo
+  "inspiration.saveDialog.urlLabel": "Link", // nuevo
+  "inspiration.saveDialog.tagsLabel": "Tags", // nuevo
+  "inspiration.saveDialog.tagsHint": "Optional. Separate with commas, up to {max}.", // nuevo
+  "inspiration.saveDialog.saveClip": "Also save the video to my Media Bank", // nuevo
+  "inspiration.saveDialog.rights":
+    "Only save what you have the right to use. You're responsible for what you publish.", // nuevo · D-12
+  "inspiration.saveDialog.pickClip": "Pick a clip", // nuevo
+  "inspiration.saveDialog.mediaEmpty":
+    "Your Media Bank is empty. Upload a clip in Library first.", // nuevo
+  "inspiration.saveDialog.submit": "Save", // nuevo
+  "inspiration.saveDialog.saving": "Saving…", // nuevo
+  "inspiration.saveDialog.unsupportedUrl":
+    "That link can't be read. Paste a public http(s) link.", // nuevo
+  "inspiration.remix.title": "Remix this", // literal FR-040
+  "inspiration.remix.description":
+    "We'll write new pieces for this brand that borrow the post's hook, format and tone — never its words. They land at the top of Blitz.", // nuevo
+  "inspiration.remix.noteLabel": "Note (optional)", // nuevo
+  "inspiration.remix.notePlaceholder": "e.g. make it about our winter menu", // nuevo
+  "inspiration.remix.formatLabel": "Format", // nuevo
+  "inspiration.remix.formatAuto": "Match the reference", // nuevo
+  "inspiration.remix.countLabel": "How many", // nuevo
+  "inspiration.remix.submit": "Remix", // nuevo
+  "inspiration.remix.running": "Writing your remixes…", // nuevo
+  "inspiration.remix.done": "Your remixes are at the top of Blitz.", // nuevo
+  "inspiration.remix.openBlitz": "Open Blitz", // nuevo
+  "inspiration.remix.noteTooShort": "Write at least {min} characters, or leave it empty.", // nuevo
+  /* ---------- Influencers · PU-LATER-004 (FR-080…FR-083 adaptados, Soul ID) */
+  "influencers.title": "Influencers", // literal FR-080
+  "influencers.subtitle": "Persistent AI characters — train once, generate endlessly.", // literal FR-080
+  "influencers.new": "New influencer", // literal FR-080 (`+ New influencer`)
+  "influencers.empty.title": "No influencers yet", // nuevo
+  "influencers.empty.body":
+    "Create a character from 4–20 photos of the same person. Their images can then show up in Blitz.", // nuevo
+  "influencers.error": "Couldn't load your influencers.", // nuevo
+  "influencers.setup.title": "Influencers need Higgsfield", // nuevo
+  "influencers.setup.body":
+    "Characters are created with Higgsfield Soul ID. Set Higgsfield as the image or video provider in Settings → Models.", // nuevo
+  "influencers.setup.action": "Open Settings → Models", // nuevo
+  "influencers.budget.exhausted":
+    "This month's AI budget is used up. Raise it in Settings → Models to create a character.", // nuevo
+  "influencers.status.generating_variations": "Uploading photos", // nuevo
+  "influencers.status.training": "Training", // nuevo
+  "influencers.status.ready": "Active", // literal FR-080 (badge `ACTIVE`)
+  "influencers.status.failed": "Failed", // nuevo
+  "influencers.status.inactive": "Inactive", // nuevo
+  "influencers.progress": "{progress}%", // nuevo
+  "influencers.failure.not_configured":
+    "Higgsfield is no longer set up in Settings → Models.", // nuevo
+  "influencers.failure.references_missing":
+    "Some reference photos are gone from the Media Bank. Create the influencer again.", // nuevo
+  "influencers.failure.upload_failed": "The photos couldn't be sent to Higgsfield.", // nuevo
+  "influencers.failure.training_failed": "Higgsfield couldn't train this character.", // nuevo
+  "influencers.failure.quota_exceeded": "Your Higgsfield account is out of credits.", // nuevo
+  "influencers.failure.unauthorized":
+    "Higgsfield rejected the saved key. Check Settings → Models.", // nuevo
+  "influencers.failure.rate_limited": "Higgsfield is busy. Try again in a moment.", // nuevo
+  "influencers.failure.provider_unavailable": "Higgsfield is unavailable right now.", // nuevo
+  "influencers.failure.bad_request": "Higgsfield rejected the request.", // nuevo
+  "influencers.failure.timeout": "Higgsfield didn't finish in time.", // nuevo
+  "influencers.failure.provider_contract_violation":
+    "Higgsfield answered something unexpected.", // nuevo
+  "influencers.wizard.title": "New influencer ({step}/3)", // literal FR-080
+  "influencers.wizard.back": "Back", // literal FR-080
+  "influencers.wizard.next": "Next", // literal FR-080
+  "influencers.wizard.cancel": "Cancel", // nuevo
+  "influencers.wizard.create": "Create influencer", // literal FR-080
+  "influencers.wizard.creating": "Creating…", // nuevo
+  "influencers.wizard.name": "Name", // literal FR-080 (`NAME`)
+  "influencers.wizard.traitsHint":
+    "Optional. They label the character and drive Blitz's gender filter; the look comes from the photos.", // nuevo
+  "influencers.wizard.gender": "Gender", // literal FR-080
+  "influencers.wizard.gender.none": "Not set", // nuevo
+  "influencers.wizard.gender.female": "Female", // nuevo
+  "influencers.wizard.gender.male": "Male", // nuevo
+  "influencers.wizard.gender.other": "Other", // nuevo
+  "influencers.wizard.age": "Age", // literal FR-080
+  "influencers.wizard.age.set": "Set an age", // nuevo
+  "influencers.wizard.ethnicity": "Ethnicity", // literal FR-080
+  "influencers.wizard.details": "Additional details (optional)", // literal FR-080
+  "influencers.wizard.detailsPlaceholder":
+    "e.g. freckles, athletic build, curly red hair", // literal FR-080
+  "influencers.wizard.photos.title": "Reference photos", // nuevo
+  "influencers.wizard.photos.hint":
+    "Pick {min}–{max} photos of the same person from the Media Bank: different angles and light, one face, no filters.", // nuevo
+  "influencers.wizard.photos.count": "{count} selected", // nuevo
+  "influencers.wizard.photos.empty":
+    "The Media Bank has no images yet. Upload photos in the Library first.", // nuevo
+  "influencers.wizard.photos.upload": "Upload in the Library", // nuevo
+  "influencers.wizard.photos.more": "Load more", // nuevo
+  "influencers.wizard.photos.error": "Couldn't load the Media Bank.", // nuevo
+  "influencers.wizard.confirm.body":
+    "Higgsfield will create {name} from {count} photos. It usually takes a few minutes; you can leave this page.", // nuevo
+  "influencers.wizard.confirm.cost": "Cost", // literal FR-080 (`COST`)
+  "influencers.wizard.confirm.costUnknown":
+    "Not published by Higgsfield. It's charged to your Higgsfield credits and isn't counted in FastGram's budget.", // nuevo
+  "influencers.wizard.error": "Couldn't create the influencer.", // nuevo
+  "influencers.detail.back": "Influencers", // literal FR-081 (`‹ Influencers`)
+  "influencers.detail.notFound":
+    "We couldn't find this influencer. It may have been deleted.", // literal FR-080
+  "influencers.detail.error": "Couldn't load this influencer.", // nuevo
+  "influencers.detail.training":
+    "Higgsfield is creating this character. Images can be generated once it's active.", // nuevo
+  "influencers.detail.blitz": "Configure in Blitz →", // literal FR-081
+  "influencers.detail.blitzHint":
+    "Images generated here go to this influencer's slideshow set. Blitz uses them when Influencer frequency picks this character.", // nuevo
+  "influencers.images.title": "Images", // literal FR-081
+  "influencers.images.empty":
+    "No images yet. Describe a scene below to generate the first ones.", // nuevo
+  "influencers.images.error": "Couldn't load the images.", // nuevo
+  "influencers.images.prompt": "Prompt", // nuevo
+  "influencers.images.placeholder.female": "e.g. her at the beach", // literal FR-081
+  "influencers.images.placeholder.male": "e.g. him at the beach", // literal FR-081
+  "influencers.images.placeholder.other": "e.g. at the beach, golden hour", // nuevo
+  "influencers.images.aspect": "Aspect ratio", // nuevo
+  "influencers.images.count": "How many", // nuevo
+  "influencers.images.generate": "Generate", // literal FR-081
+  "influencers.images.generating": "Starting…", // nuevo
+  "influencers.images.started": "Generating. The images show up here when they're ready.", // nuevo
+  "influencers.images.failedToStart": "Couldn't start the generation.", // nuevo
+  "influencers.images.estimate": "Estimated cost", // nuevo
+  "influencers.images.estimating": "Estimating…", // nuevo
+  "influencers.images.estimateIdle": "Write a prompt to see the cost.", // nuevo
+  "influencers.images.overBudget": "Over this month's budget: {remaining} left.", // nuevo
+  "influencers.images.budgetExceeded":
+    "That would go over this month's AI budget. Raise it in Settings → Models or wait for next month.", // nuevo
+  "influencers.images.pending": "Higgsfield is working on it…", // nuevo
+  "influencers.images.video":
+    "Video and Talking Head aren't available: Higgsfield doesn't document them with a character through its API.", // nuevo
+
+  // Engagement (Reddit) · FR-140, MOD-014, P4-ENGAGE-006…012. `literal` = texto
+  // de la UI de Fastlane citado en el PRD (FR-140 / F-197 / F-200); `nuevo` = nuestro.
+  "engagement.connect": "Connect Reddit Account", // literal FR-140
+  "engagement.noConnection": "No active Reddit connection", // literal FR-140
+  "engagement.connectedAs": "Connected as u/{username}", // nuevo
+  "engagement.reconnect": "Reconnect", // nuevo
+  "engagement.disconnect": "Disconnect", // nuevo
+  "engagement.expired":
+    "Your Reddit connection expired. Reconnect it to keep discovering and sending.", // nuevo
+  "engagement.policy.title": "Reddit API access needs Reddit's approval", // nuevo
+  "engagement.policy.body":
+    "Reddit requires explicit approval before any app uses its Data API, and written approval for commercial use. Until your app is approved, add posts by link, copy the reply and post it yourself — everything else works the same.", // nuevo
+  "engagement.policy.link": "Read Reddit's Responsible Builder Policy", // nuevo
+  "engagement.app.title": "Your Reddit app", // nuevo
+  "engagement.app.hint":
+    "Create a “web app” at reddit.com/prefs/apps and set this redirect URI:", // nuevo
+  "engagement.app.clientId": "Client ID", // nuevo
+  "engagement.app.clientSecret": "Client secret", // nuevo
+  "engagement.app.secretSaved": "Saved — leave empty to keep it", // nuevo
+  "engagement.app.username": "Your Reddit username (for the User-Agent)", // nuevo
+  "engagement.app.save": "Save app", // nuevo
+  "engagement.app.saved": "Reddit app saved", // nuevo
+  "engagement.app.scopes": "Permissions requested: {scopes}", // nuevo
+  "engagement.settings.subredditsTitle": "Configure discovery subreddits", // literal FR-140
+  "engagement.settings.subreddits": "Subreddits (one per line or comma separated)", // nuevo
+  "engagement.settings.keywords": "Keywords (optional — posts must mention one)", // nuevo
+  "engagement.settings.discoveryEnabled": "Discover new leads every hour", // nuevo
+  "engagement.settings.replyTitle": "Reply Settings", // literal FR-140
+  "engagement.settings.tone": "Tone", // nuevo
+  "engagement.settings.tone.casual": "Casual — sounds like a regular Redditor", // nuevo
+  "engagement.settings.tone.professional":
+    "Proper capitalization, polished, business-appropriate", // literal FR-140
+  "engagement.settings.tone.friendly_expert":
+    "Friendly expert — a practitioner helping a peer", // nuevo
+  "engagement.settings.customRules": "Custom rules", // nuevo
+  "engagement.settings.customRulesPlaceholder":
+    "e.g. Never promise results. Always suggest a free option first.", // nuevo
+  "engagement.settings.allowLinks":
+    "Allow one link to our website when it genuinely helps", // nuevo
+  "engagement.settings.save": "Save Changes", // literal FR-140
+  "engagement.settings.saved": "Changes saved", // nuevo
+  "engagement.settings.invalidSubreddits": "These subreddit names aren't valid: {names}", // nuevo
+  "engagement.settings.invalidKeywords":
+    "These keywords are too short or too long: {names}", // nuevo
+  "engagement.discovery.run": "Fetch new leads", // nuevo
+  "engagement.discovery.queued": "Discovering new Reddit leads", // literal FR-140
+  "engagement.discovery.lastRun": "Last run {when}", // nuevo
+  "engagement.discovery.rateLimited": "Rate limited - will retry {when}", // literal FR-140
+  "engagement.discovery.needsSetup":
+    "Connect Reddit and add subreddits to discover leads automatically.", // nuevo
+  "engagement.views.all": "All Leads", // nuevo
+  "engagement.views.top": "Top Scored Leads", // literal FR-140
+  "engagement.views.engaged": "Most Engaged Leads", // literal FR-140
+  "engagement.unseenOnly": "Unseen only", // literal FR-140
+  "engagement.search": "Search leads", // nuevo
+  "engagement.newActivity": "New activity", // literal FR-140
+  "engagement.addManual": "Add a post by link", // nuevo
+  "engagement.addManual.url": "Reddit post link", // nuevo
+  "engagement.addManual.title": "Post title", // nuevo
+  "engagement.addManual.body": "Post text (optional)", // nuevo
+  "engagement.addManual.submit": "Add lead", // nuevo
+  "engagement.addManual.invalidUrl":
+    "Paste the link of a Reddit post (reddit.com/r/…/comments/…).", // nuevo
+  "engagement.empty.title": "No leads yet", // nuevo
+  "engagement.empty.body":
+    "Try adjusting your filters or fetch new leads to discover conversations where your audience is seeking solutions.", // literal FR-140
+  "engagement.list.error": "Couldn't load the leads.", // nuevo
+  "engagement.tier.top": "Top", // nuevo
+  "engagement.tier.general": "Lead", // nuevo
+  "engagement.tier.pending": "Scoring…", // nuevo
+  "engagement.tier.unscored": "Not scored", // nuevo
+  "engagement.tier.manual": "Added by you", // nuevo
+  "engagement.score": "Score {score}", // nuevo
+  "engagement.comments": "{count} comments", // nuevo
+  "engagement.selectLead": "Pick a lead to see the post and write a reply.", // nuevo
+  "engagement.detail.title": "Post Details", // literal FR-140
+  "engagement.detail.back": "Back to Leads", // literal FR-140
+  "engagement.detail.viewOnReddit": "View on Reddit", // literal FR-140
+  "engagement.detail.delete": "Delete lead", // literal FR-140
+  "engagement.detail.notFoundTitle": "Lead Not Found", // literal FR-140
+  "engagement.detail.notFoundBody":
+    "This lead may have been deleted or is no longer available.", // literal FR-140
+  "engagement.detail.error": "Couldn't load this lead.", // nuevo
+  "engagement.detail.topComments": "Top comments", // nuevo
+  "engagement.why.title": "Why this lead?", // literal FR-140
+  "engagement.why.pending": "The explanation appears once the lead is scored.", // nuevo
+  "engagement.why.buyingSignal": "Buying signal", // nuevo
+  "engagement.why.fitToAudience": "Fits your audience", // nuevo
+  "engagement.why.hasProblem": "Has a problem you solve", // nuevo
+  "engagement.why.replyWelcome": "A reply is welcome", // nuevo
+  "engagement.why.alreadyAnswered": "Already answered", // nuevo
+  "engagement.reply.title": "Your reply", // nuevo
+  "engagement.reply.generate": "Generate AI reply", // literal FR-140
+  "engagement.reply.regenerate": "Regenerate reply", // literal FR-140
+  "engagement.reply.generating": "Writing a reply…", // nuevo
+  "engagement.reply.failed":
+    "Couldn't write a reply. Try again, or check that a text model is set in Settings → Models.", // nuevo
+  "engagement.reply.placeholder": "Write a helpful reply, or generate one.", // nuevo
+  "engagement.reply.saveDraft": "Save draft", // nuevo
+  "engagement.reply.issue.empty": "The reply is empty.", // nuevo
+  "engagement.reply.issue.too_long": "The reply is too long for a Reddit comment.", // nuevo
+  "engagement.reply.issue.brand_without_disclosure":
+    "You mention the brand without saying you're affiliated. Add a line like “full disclosure, I work on it”.", // nuevo
+  "engagement.reply.issue.contains_link":
+    "The reply has a link. Links are off for this brand — make sure it helps.", // nuevo
+  "engagement.send": "Send", // nuevo
+  "engagement.send.confirmTitle": "Post this reply on Reddit?", // nuevo
+  "engagement.send.confirmBody":
+    "It will be posted from u/{username} as a comment on this thread. FastGram never posts without you pressing Send.", // nuevo
+  "engagement.send.confirm": "Post comment", // nuevo
+  "engagement.send.sent": "Reply posted. Tracking conversation now.", // literal FR-140 (2.ª frase)
+  "engagement.send.unknown":
+    "Reddit didn't answer in time. The comment may have been posted — check the thread before trying again.", // nuevo
+  "engagement.copyOpen": "Copy & open thread", // nuevo
+  "engagement.copyOpen.copied":
+    "Reply copied. Paste it on Reddit, then mark it as posted.", // nuevo
+  "engagement.markSent": "I posted it", // nuevo
+  "engagement.markSent.url": "Link to your comment (optional)", // nuevo
+  "engagement.markSent.done": "Marked as posted. The ban meter counts it.", // nuevo
+  "engagement.blocked.reddit_app_not_configured":
+    "Add your Reddit app to send from here. You can still copy the reply.", // nuevo
+  "engagement.blocked.reddit_not_connected":
+    "Connect a Reddit account to send from here. You can still copy the reply.", // nuevo
+  "engagement.blocked.reddit_reconnect_required":
+    "Your Reddit connection expired. Reconnect it to send.", // nuevo
+  "engagement.blocked.ban_meter_danger":
+    "Sending is off: your ban meter is in Danger. Stop replying through FastGram and let the account recover.", // nuevo
+  "engagement.blocked.reply_blocked": "Fix the issues above before sending.", // nuevo
+  "engagement.error.reddit_rejected": "Reddit didn't accept it.", // nuevo
+  "engagement.error.reddit_unavailable":
+    "Reddit isn't answering right now. Try again in a minute.", // nuevo
+  "engagement.error.reddit_rate_limited":
+    "Reddit is rate limiting this account. Wait a few minutes.", // nuevo
+  "engagement.error.lead_locked": "This thread no longer accepts comments.", // nuevo
+  "engagement.error.oauth_state_wrong_brand":
+    "That login was started from another brand. Switch back and try again.", // nuevo
+  "engagement.error.oauth_state_invalid":
+    "That login link expired or was already used. Try connecting again.", // nuevo
+  "engagement.error.oauth_denied": "Reddit didn't grant access.", // nuevo
+  "engagement.error.generic": "Something went wrong. Try again.", // nuevo
+  "engagement.connected": "Reddit connected as u/{username}", // nuevo
+  "engagement.sync": "Sync with Reddit", // literal FR-140
+  "engagement.sync.done": "Thread state verified and updated.", // literal FR-140
+  "engagement.sync.queued": "Checking the thread on Reddit…", // nuevo
+  "engagement.thread.new": "Not replied yet", // nuevo
+  "engagement.thread.tracking": "Tracking conversation", // nuevo
+  "engagement.thread.comment_missing":
+    "Your comment isn't visible in the thread — it may have been removed or spam-filtered.", // nuevo
+  "engagement.thread.locked": "Thread locked", // nuevo
+  "engagement.thread.repliesToUs": "{count} direct replies to you", // nuevo
+  "engagement.thread.noDirectReplies":
+    "Activity found from you on this post, but none are direct replies to this specific lead. Make sure you're replying to the right comment/post.", // literal FR-140 (adaptado)
+  "engagement.sent.title": "Sent replies", // nuevo
+  "engagement.sent.tone.value_add": "Value", // nuevo
+  "engagement.sent.tone.subtle_mention": "Subtle", // nuevo
+  "engagement.sent.tone.direct_promo": "Direct", // nuevo
+  "engagement.sent.tone.pending": "Not classified yet", // nuevo
+  "engagement.banMeter.title": "Ban risk", // nuevo
+  "engagement.banMeter.refresh": "Refresh ban meter", // literal FR-140
+  "engagement.banMeter.level.safe": "Safe - Healthy engagement pattern", // literal FR-140
+  "engagement.banMeter.level.caution": "Caution - Monitor engagement", // literal FR-140
+  "engagement.banMeter.level.warning": "Warning - High risk, reduce promotional content", // literal FR-140
+  "engagement.banMeter.level.danger":
+    "Danger - Very high risk, stop promotional engagement", // literal FR-140
+  "engagement.banMeter.recommendation.safe":
+    "Keep up the good work. Continue providing value-first content.", // literal FR-140
+  "engagement.banMeter.recommendation.caution":
+    "Your engagement shows some concerning patterns. Minor adjustments recommended.", // literal FR-140
+  "engagement.banMeter.recommendation.warning":
+    "Balance promotional content with more value-add contributions. Monitor your visibility.", // literal FR-140
+  "engagement.banMeter.recommendation.danger":
+    "High risk detected. You're likely being spam-filtered on some subreddits. Stop replying through FastGram. Focus only on normal Reddit activity — browse, upvote, and scroll to let your account reputation recover.", // literal FR-140 (con nuestra marca en lugar de «Fastlane»)
+  "engagement.banMeter.ratio": "Aim for 60-70% value, 20-30% subtle, 10-20% direct.", // literal FR-140 / F-200
+  "engagement.banMeter.perPromo":
+    "We recommend at least 3-4 value-add replies for every promotional one.", // literal FR-140 (recortado)
+  "engagement.banMeter.counts":
+    "Last {days} days: {value} value · {subtle} subtle · {direct} direct", // nuevo
+  "engagement.banMeter.unlabeled":
+    "{count} replies not classified yet — they don't count until they are.", // nuevo
+  "engagement.banMeter.smallSample":
+    "Few replies so far: the meter uses the 3-to-1 rule until there are more.", // nuevo
+  "engagement.banMeter.promoRatio": "{percent}% promotional", // nuevo
+  "engagement.insights.title": "How your replies read", // nuevo
+  "engagement.insights.body":
+    "The model only labels each sent reply as value, subtle or direct. The percentages and the level are counted by FastGram, never guessed by a model.", // nuevo
 } as const;
 
 export type MessageKey = keyof typeof en;

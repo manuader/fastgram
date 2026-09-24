@@ -42,6 +42,8 @@ export * from "./resources/models.js";
 export * from "./resources/genai.js";
 export * from "./resources/strategy.js";
 export * from "./resources/autopilot.js";
+export * from "./resources/inspiration.js";
+export * from "./resources/engagement.js";
 
 // OpenAPI
 export * from "./openapi.js";

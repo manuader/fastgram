@@ -42,7 +42,7 @@
  * propuso el refill. Ver {@link QUEUE_ORDER}.
  */
 
-import { and, asc, desc, eq, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, or, sql, type SQL } from "drizzle-orm";
 
 import type { Executor } from "../client.js";
 import {
@@ -154,8 +154,9 @@ export interface QueuedSuggestionView {
   readonly trending: {
     readonly permalink: string;
     readonly thumbnailUrl: string | null;
-    readonly likes: number;
-    readonly views: number;
+    /** `null` = el sitio no lo dio (referencias del dueño, `0022`). */
+    readonly likes: number | null;
+    readonly views: number | null;
   } | null;
 }
 
@@ -200,7 +201,18 @@ export async function listQueuedSuggestions(
         eq(contentAngles.companyId, suggestions.companyId),
       ),
     )
-    .leftJoin(trendingItems, eq(trendingItems.id, suggestions.sourceTrendingItemId))
+    .leftJoin(
+      trendingItems,
+      and(
+        eq(trendingItems.id, suggestions.sourceTrendingItemId),
+        // \`0022\`: las referencias del dueño son de una marca. La RLS ya lo
+        // corta; esto lo sostiene también con una conexión sin GUC.
+        or(
+          isNull(trendingItems.companyId),
+          eq(trendingItems.companyId, suggestions.companyId),
+        ),
+      ),
+    )
     .where(
       and(eq(suggestions.companyId, scope.companyId), eq(suggestions.status, "queued")),
     )
@@ -223,8 +235,8 @@ export async function listQueuedSuggestions(
         : {
             permalink: f.trendingPermalink,
             thumbnailUrl: f.trendingThumbnailUrl,
-            likes: f.trendingLikes ?? 0,
-            views: f.trendingViews ?? 0,
+            likes: f.trendingLikes,
+            views: f.trendingViews,
           },
   }));
 }
