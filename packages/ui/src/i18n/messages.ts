@@ -215,6 +215,79 @@ export const en = {
   "toast.dismiss": "Dismiss",
   "toast.region": "Notifications",
   "avatar.fallbackLabel": "{name} avatar",
+
+  /* ------------------------------ Shell 2026 · PU-UI-001 (copy nuevo, no PRD) */
+  // Todo este bloque lo escribió la sesión del sprint 1 de uso personal
+  // (PRD §2.7 D-07, D-15; PLAN-USO-PERSONAL §7). Ninguna clave es literal.
+  "nav.studio": "Studio",
+  "nav.automations": "Automations",
+  "nav.toolsLabel": "Tools",
+  "nav.footerLabel": "Help and settings",
+  "nav.search": "Search",
+  "nav.searchShortcut": "Search or jump to…",
+  "settings.nav.label": "Settings sections",
+  "settings.nav.general": "General",
+  "settings.nav.brands": "Brands",
+  "settings.nav.models": "Models",
+
+  /* ------------------------- Marcas (workspaces) · PU-BRAND-001, D-07 (nuevo) */
+  "brands.switcherLabel": "Switch brand",
+  "brands.menuLabel": "Brands",
+  "brands.new": "New brand",
+  "brands.manage": "Manage brands",
+  "brands.loading": "Loading brands…",
+  "brands.loadError": "Couldn't load your brands.",
+  "brands.empty": "No brands yet. Create the first one.",
+  "brands.active": "Active",
+  "brands.switch": "Switch",
+  "brands.switched": "Switched to {name}",
+  "brands.invalidReset":
+    "That brand is no longer available. You're back on your default brand.",
+  "brands.status.pending": "Not analysed yet",
+  "brands.status.ready": "Analysed",
+  "brands.status.failed": "Analysis failed",
+  "brands.status.partial": "Partially analysed",
+  "brands.page.title": "Brands",
+  "brands.page.description":
+    "Each brand is its own workspace: connections, strategy and queue.",
+  "brands.page.standardMode": "Multiple brands are only available in personal mode.",
+  "brands.create.title": "New brand",
+  "brands.create.description":
+    "Just a name for now. You'll teach FastGram about it on the Brand page.",
+  "brands.create.nameLabel": "Brand name",
+  "brands.create.namePlaceholder": "e.g. Acme Coffee",
+  "brands.create.submit": "Create brand",
+  "brands.name.required": "Enter a name.",
+  "brands.name.tooLong": "Use 80 characters or fewer.",
+  "brands.created.title": "Brand created",
+  "brands.created.description":
+    "\u201c{name}\u201d is ready. Analyse it now so FastGram learns its voice.",
+  "brands.created.setUp": "Switch and analyse",
+  "brands.created.later": "Later",
+  "brands.rename": "Rename",
+  "brands.rename.label": "New name for {name}",
+  "brands.rename.save": "Save",
+  "brands.renamed": "Brand renamed",
+  "brands.delete": "Delete",
+  "brands.delete.title": "Delete \u201c{name}\u201d?",
+  "brands.delete.body":
+    "Its connections, strategy and queue go with it. You can't undo this from the app.",
+  "brands.delete.confirm": "Delete brand",
+  "brands.delete.lastBrand":
+    "You can't delete your only brand. Create another one first.",
+  "brands.deleted": "Brand deleted",
+
+  /* ------------------------------------------ Command palette ⌘K (nuevo) */
+  "command.label": "Command palette",
+  "command.placeholder": "Type a command or search…",
+  "command.empty": "No results.",
+  "command.group.brands": "Brands",
+  "command.group.navigation": "Go to",
+  "command.group.theme": "Theme",
+  "command.switchTo": "Switch to {name}",
+  "command.themeLight": "Use light theme",
+  "command.themeDark": "Use dark theme",
+  "command.themeSystem": "Match system theme",
 } as const;
 
 export type MessageKey = keyof typeof en;

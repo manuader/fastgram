@@ -324,3 +324,70 @@ export const InboxIcon = (props: IconProps) => (
     <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
   </Icon>
 );
+
+/* ------------------------------------ Shell 2026 · PU-UI-001, PU-BRAND-001 */
+
+export const SearchIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="m20 20-3.5-3.5" />
+  </Icon>
+);
+
+export const PlusIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M12 5v14" />
+    <path d="M5 12h14" />
+  </Icon>
+);
+
+export const ChevronsUpDownIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="m7 15 5 5 5-5" />
+    <path d="m7 9 5-5 5 5" />
+  </Icon>
+);
+
+export const PencilIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+    <path d="m15 5 4 4" />
+  </Icon>
+);
+
+export const TrashIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M3 6h18" />
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+  </Icon>
+);
+
+export const ZapIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" />
+  </Icon>
+);
+
+export const LayersIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="m12 2 10 5-10 5L2 7Z" />
+    <path d="m2 17 10 5 10-5" />
+    <path d="m2 12 10 5 10-5" />
+  </Icon>
+);
+
+export const CpuIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <rect x="5" y="5" width="14" height="14" rx="2" />
+    <rect x="9" y="9" width="6" height="6" />
+    <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" />
+  </Icon>
+);
+
+export const SunMoonIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z" />
+    <path d="M17 3v2M21 7h-2" />
+  </Icon>
+);

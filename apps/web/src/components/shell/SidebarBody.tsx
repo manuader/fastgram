@@ -1,8 +1,10 @@
 "use client";
 
+import { LayoutGroup } from "motion/react";
+import { useWorkspace } from "@/components/brands/WorkspaceProvider";
 import { SidebarNav } from "@/components/shell/SidebarNav";
 import { tw } from "@/lib/i18n/t";
-import { PRIMARY_NAV, visibleSecondaryNav } from "@/lib/nav/navigation";
+import { PRIMARY_NAV, SECONDARY_NAV, TOOLS_NAV, visibleNav } from "@/lib/nav/navigation";
 
 interface SidebarBodyProps {
   pathname: string;
@@ -10,10 +12,13 @@ interface SidebarBodyProps {
   isStaff: boolean;
   attention?: ReadonlySet<string>;
   onNavigate?: () => void;
+  /** Namespace del resalte animado: `rail` o `drawer` (ver `SidebarNav`). */
+  scope: string;
 }
 
 /**
- * Los dos bloques del sidebar (PRD:293-338).
+ * Los bloques del sidebar: el circuito diario, las herramientas y, abajo, el
+ * bloque con `Settings` (`lib/nav/navigation.ts`).
  *
  * Está separado del contenedor porque el mismo contenido va en dos sitios: el
  * riel de escritorio y el drawer de móvil (`NFR-019`). Duplicarlo sería
@@ -25,26 +30,37 @@ export function SidebarBody({
   isStaff,
   attention,
   onNavigate,
+  scope,
 }: SidebarBodyProps) {
+  const { mode } = useWorkspace();
+  const visibility = { isStaff, mode };
+  const shared = {
+    pathname,
+    collapsed,
+    ...(attention === undefined ? {} : { attention }),
+    ...(onNavigate === undefined ? {} : { onNavigate }),
+  };
+
   return (
-    <div className="fgw-sidebar__body">
-      <SidebarNav
-        items={PRIMARY_NAV}
-        pathname={pathname}
-        collapsed={collapsed}
-        label={tw("nav.primaryLabel")}
-        {...(attention === undefined ? {} : { attention })}
-        {...(onNavigate === undefined ? {} : { onNavigate })}
-      />
-      <hr className="fgw-sidebar__separator" />
-      <SidebarNav
-        items={visibleSecondaryNav(isStaff)}
-        pathname={pathname}
-        collapsed={collapsed}
-        label={tw("nav.secondaryLabel")}
-        {...(attention === undefined ? {} : { attention })}
-        {...(onNavigate === undefined ? {} : { onNavigate })}
-      />
-    </div>
+    <LayoutGroup id={scope}>
+      <div className="fgw-sidebar__body">
+        <SidebarNav
+          items={visibleNav(PRIMARY_NAV, visibility)}
+          label={tw("nav.primaryLabel")}
+          {...shared}
+        />
+        <hr className="fgw-sidebar__separator" />
+        <SidebarNav
+          items={visibleNav(TOOLS_NAV, visibility)}
+          label={tw("nav.toolsLabel")}
+          {...shared}
+        />
+        <SidebarNav
+          items={visibleNav(SECONDARY_NAV, visibility)}
+          label={tw("nav.footerLabel")}
+          {...shared}
+        />
+      </div>
+    </LayoutGroup>
   );
 }

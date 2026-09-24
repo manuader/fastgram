@@ -9,12 +9,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  applyTheme,
-  readStoredTheme,
-  storeTheme,
-  type ThemeChoice,
-} from "@/lib/theme/theme";
+import { DEFAULT_THEME, readThemeChoice } from "@/components/theme/default-theme";
+import { applyTheme, storeTheme, type ThemeChoice } from "@/lib/theme/theme";
 
 interface ThemeContextValue {
   theme: ThemeChoice;
@@ -30,15 +26,15 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
  * este componente existiera. Este provider sólo mantiene sincronizados el
  * `localStorage`, el atributo del `<html>` y el control que lo muestra.
  *
- * Arranca en `system` en servidor y en cliente, y lee el valor real en un
- * efecto. Si leyera `localStorage` durante el render, el HTML del servidor y el
+ * Arranca en el default (`dark`, `default-theme.ts`) en servidor y en
+ * cliente, y lee el valor real en un efecto. Si leyera `localStorage` durante el render, el HTML del servidor y el
  * del cliente discreparían y React tiraría el árbol entero.
  */
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<ThemeChoice>("system");
+  const [theme, setThemeState] = useState<ThemeChoice>(DEFAULT_THEME);
 
   useEffect(() => {
-    setThemeState(readStoredTheme());
+    setThemeState(readThemeChoice());
   }, []);
 
   const setTheme = useCallback((choice: ThemeChoice) => {

@@ -25,12 +25,18 @@
   --fg-neutral-200: #e7e5e4;
   --fg-neutral-300: #d6d3d1;
   --fg-neutral-400: #a8a29e;
+  /* Entre 400 y 500: el `text-subtle` del tema oscuro (P1-UI-011). El 500 daba
+     3,65:1 sobre surface y 3,16:1 sobre raised; éste pasa AA (4,5:1) en los
+     dos y sigue un escalón por debajo de `muted` (400). */
+  --fg-neutral-450: #938d88;
   --fg-neutral-500: #78716c;
   --fg-neutral-600: #57534e;
   --fg-neutral-700: #44403c;
   --fg-neutral-800: #292524;
   --fg-neutral-900: #1c1917;
   --fg-neutral-950: #0d0d0d;
+  /* El "cromo" del tema oscuro: lo que rodea al panel de contenido (PU-UI-001). */
+  --fg-neutral-975: #080807;
 
   /* Acento: naranja. Única pista cromática que da el PRD (burbuja de soporte
      naranja, §3.2) y el host os.usefastlane.ai sobre #0d0d0d. */
@@ -117,6 +123,16 @@
   --fg-color-skeleton: var(--fg-neutral-200);
   --fg-color-skeleton-sheen: var(--fg-neutral-100);
 
+  /* Shell 2026 (PU-UI-001). `chrome` es el fondo de la shell alrededor del
+     panel de contenido, `panel` el del panel; `nav-active` es la píldora de la
+     entrada activa. En claro el cromo es `neutral-50` y no `100`: sobre el 100
+     el `text-subtle` (500) cae a 4,4:1 (test de contraste). */
+  --fg-color-chrome: var(--fg-neutral-50);
+  --fg-color-panel: var(--fg-neutral-0);
+  --fg-color-nav-active: var(--fg-neutral-0);
+  --fg-color-nav-hover: rgb(28 25 23 / 5%);
+  --fg-color-overlay-blur: rgb(28 25 23 / 30%);
+
   /* ----------------------------------------------------------- tipografía */
   --fg-font-sans:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
@@ -178,6 +194,10 @@
   --fg-shadow-md: 0 4px 12px rgb(28 25 23 / 10%), 0 2px 4px rgb(28 25 23 / 4%);
   --fg-shadow-lg: 0 12px 32px rgb(28 25 23 / 14%), 0 4px 8px rgb(28 25 23 / 6%);
   --fg-shadow-overlay: 0 24px 64px rgb(28 25 23 / 22%);
+  /* Leve profundidad: el borde de 1px dentro de la sombra, para que el panel
+     se lea como una pieza apoyada y no como un rectángulo con línea. */
+  --fg-shadow-panel: 0 0 0 1px rgb(28 25 23 / 6%), 0 1px 3px rgb(28 25 23 / 6%);
+  --fg-shadow-popover: 0 0 0 1px rgb(28 25 23 / 8%), 0 12px 32px rgb(28 25 23 / 14%);
 
   /* ---------------------------------------------------------- superficies */
   --fg-control-height-sm: 2rem; /* 32px */
@@ -202,6 +222,9 @@
   --fg-duration-slow: 400ms;
   --fg-ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --fg-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  /* Un pelo de rebote para micro-transiciones en CSS; lo "con física" de
+     verdad (resorte) lo hace `motion` en la shell. */
+  --fg-ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
 /* ------------------------------------------------------------ tema oscuro */
@@ -220,7 +243,7 @@
 
     --fg-color-text: var(--fg-neutral-50);
     --fg-color-text-muted: var(--fg-neutral-400);
-    --fg-color-text-subtle: var(--fg-neutral-500);
+    --fg-color-text-subtle: var(--fg-neutral-450);
     --fg-color-text-inverse: var(--fg-neutral-950);
 
     --fg-color-accent: var(--fg-accent-500);
@@ -259,6 +282,18 @@
     --fg-shadow-md: 0 4px 12px rgb(0 0 0 / 55%), 0 2px 4px rgb(0 0 0 / 30%);
     --fg-shadow-lg: 0 12px 32px rgb(0 0 0 / 60%), 0 4px 8px rgb(0 0 0 / 35%);
     --fg-shadow-overlay: 0 24px 64px rgb(0 0 0 / 70%);
+
+    --fg-color-chrome: var(--fg-neutral-975);
+    --fg-color-panel: var(--fg-neutral-950);
+    --fg-color-nav-active: rgb(255 255 255 / 7%);
+    --fg-color-nav-hover: rgb(255 255 255 / 4%);
+    --fg-color-overlay-blur: rgb(0 0 0 / 55%);
+    --fg-shadow-panel:
+      inset 0 1px 0 rgb(255 255 255 / 4%), 0 0 0 1px rgb(255 255 255 / 6%),
+      0 8px 24px rgb(0 0 0 / 45%);
+    --fg-shadow-popover:
+      inset 0 1px 0 rgb(255 255 255 / 5%), 0 0 0 1px rgb(255 255 255 / 8%),
+      0 16px 40px rgb(0 0 0 / 60%);
   }
 }
 
@@ -275,7 +310,7 @@
 
   --fg-color-text: var(--fg-neutral-50);
   --fg-color-text-muted: var(--fg-neutral-400);
-  --fg-color-text-subtle: var(--fg-neutral-500);
+  --fg-color-text-subtle: var(--fg-neutral-450);
   --fg-color-text-inverse: var(--fg-neutral-950);
 
   --fg-color-accent: var(--fg-accent-500);
@@ -313,6 +348,18 @@
   --fg-shadow-md: 0 4px 12px rgb(0 0 0 / 55%), 0 2px 4px rgb(0 0 0 / 30%);
   --fg-shadow-lg: 0 12px 32px rgb(0 0 0 / 60%), 0 4px 8px rgb(0 0 0 / 35%);
   --fg-shadow-overlay: 0 24px 64px rgb(0 0 0 / 70%);
+
+  --fg-color-chrome: var(--fg-neutral-975);
+  --fg-color-panel: var(--fg-neutral-950);
+  --fg-color-nav-active: rgb(255 255 255 / 7%);
+  --fg-color-nav-hover: rgb(255 255 255 / 4%);
+  --fg-color-overlay-blur: rgb(0 0 0 / 55%);
+  --fg-shadow-panel:
+    inset 0 1px 0 rgb(255 255 255 / 4%), 0 0 0 1px rgb(255 255 255 / 6%),
+    0 8px 24px rgb(0 0 0 / 45%);
+  --fg-shadow-popover:
+    inset 0 1px 0 rgb(255 255 255 / 5%), 0 0 0 1px rgb(255 255 255 / 8%),
+    0 16px 40px rgb(0 0 0 / 60%);
 }
 
 :root[data-theme="dark"] {

@@ -1,11 +1,13 @@
 "use client";
 
-import Link from "next/link";
+import { Tooltip } from "@fastgram/ui";
+import { BrandSwitcher } from "@/components/brands/BrandSwitcher";
+import { ShortcutHint } from "@/components/command/ShortcutHint";
+import { useShellActions } from "@/components/shell/ShellActions";
 import { SidebarBody } from "@/components/shell/SidebarBody";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
-import { PanelLeftIcon } from "@/icons";
+import { PanelLeftIcon, SearchIcon } from "@/icons";
 import { tw } from "@/lib/i18n/t";
-import { ROUTES } from "@/lib/nav/routes";
 
 interface SidebarProps {
   pathname: string;
@@ -16,10 +18,12 @@ interface SidebarProps {
 }
 
 /**
- * Riel lateral de escritorio y tablet · `P1-UI-003` / `FR-001`.
+ * Riel lateral de escritorio y tablet · `P1-UI-003` / `FR-001`, rediseñado en
+ * `PU-UI-001`.
  *
- * Encabezado con el logotipo y el botón de colapsar (PRD:293), los dos bloques
- * de navegación, y abajo el selector de tema.
+ * Arriba de todo, **la marca activa** (el selector es el primer elemento, PLAN
+ * §7); debajo, la entrada a la paleta ⌘K; los bloques de navegación; y abajo
+ * el tema y el botón de colapsar.
  *
  * `aria-expanded` en el botón, y el `<aside>` con `data-collapsed`: el estado
  * lo dice el atributo, no sólo el ancho en píxeles.
@@ -31,6 +35,27 @@ export function Sidebar({
   isStaff,
   attention,
 }: SidebarProps) {
+  const { openPalette } = useShellActions();
+  const searchLabel = tw("nav.searchShortcut");
+
+  const search = (
+    <button
+      type="button"
+      className="fgw-sidebar__search fg-focusable"
+      onClick={openPalette}
+      aria-label={collapsed ? searchLabel : undefined}
+      aria-keyshortcuts="Meta+K Control+K"
+    >
+      <SearchIcon size={16} />
+      {!collapsed && (
+        <>
+          <span className="fgw-sidebar__search-label">{searchLabel}</span>
+          <ShortcutHint />
+        </>
+      )}
+    </button>
+  );
+
   return (
     <aside
       className="fgw-sidebar"
@@ -38,34 +63,37 @@ export function Sidebar({
       aria-label={tw("nav.menu")}
     >
       <div className="fgw-sidebar__header">
-        <Link href={ROUTES.home} className="fgw-brand fg-focusable">
-          <span className="fgw-brand__mark" aria-hidden="true">
-            FG
-          </span>
-          <span className={collapsed ? "fg-visually-hidden" : "fgw-brand__name"}>
-            FastGram
-          </span>
-        </Link>
+        <BrandSwitcher collapsed={collapsed} />
+      </div>
+
+      {collapsed ? (
+        <Tooltip content={searchLabel} side="right">
+          {search}
+        </Tooltip>
+      ) : (
+        search
+      )}
+
+      <SidebarBody
+        pathname={pathname}
+        collapsed={collapsed}
+        isStaff={isStaff}
+        scope="rail"
+        {...(attention === undefined ? {} : { attention })}
+      />
+
+      <div className="fgw-sidebar__footer">
+        <ThemeToggle />
         <button
           type="button"
           className="fgw-sidebar__collapse fg-focusable"
           onClick={onToggleCollapsed}
           aria-expanded={!collapsed}
           aria-label={collapsed ? tw("nav.expand") : tw("nav.collapse")}
+          title={collapsed ? tw("nav.expand") : tw("nav.collapse")}
         >
           <PanelLeftIcon size={18} />
         </button>
-      </div>
-
-      <SidebarBody
-        pathname={pathname}
-        collapsed={collapsed}
-        isStaff={isStaff}
-        {...(attention === undefined ? {} : { attention })}
-      />
-
-      <div className="fgw-sidebar__footer">
-        <ThemeToggle />
       </div>
     </aside>
   );

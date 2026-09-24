@@ -72,7 +72,6 @@ function resolve(token: string): string {
 }
 
 const AA_NORMAL = 4.5;
-const AA_LARGE = 3;
 
 describe("modo claro", () => {
   it.each([
@@ -95,36 +94,42 @@ describe("modo oscuro", () => {
   });
 
   /**
-   * **Limitación conocida, medida, no un descuido.**
+   * `P1-UI-011`, resuelto en `PU-UI-001`.
    *
-   * `--fg-color-text-subtle` en oscuro es `--fg-neutral-500` y da 3,65:1
-   * sobre surface y 3,16:1 sobre raised. Los dos **quedan por debajo del
-   * 4,5:1 de AA para texto normal**; sólo cumplen el 3:1 de texto grande.
-   *
-   * Consecuencia práctica: en modo oscuro, `text-subtle` **no se puede usar
-   * para texto de tamaño normal**. Sirve para etiquetas grandes o en negrita,
-   * y para texto decorativo.
-   *
-   * No lo "arreglo" subiéndolo a `neutral-400` porque ahí vive `muted` y se
-   * perdería la distinción entre los dos niveles. Es una decisión de paleta,
-   * de quien la diseñe. Queda anotado como `P1-UI-011` en `tasks.md`.
-   *
-   * Estos tests fijan los valores medidos: si alguien oscurece más la paleta,
-   * fallan. Es lo que impide que una limitación conocida se vuelva peor en
-   * silencio.
+   * `--fg-color-text-subtle` en oscuro era `--fg-neutral-500`: 3,65:1 sobre
+   * surface y 3,16:1 sobre raised, por debajo del 4,5:1 de AA. Ahora es
+   * `--fg-neutral-450`, una primitiva nueva entre `muted` (400) y el 500:
+   * pasa AA en los dos fondos y sigue siendo un escalón más tenue que `muted`
+   * (el último test lo fija, para que la distinción entre niveles no se pierda
+   * por arreglar el contraste).
    */
-  it("subtle sobre surface: sólo alcanza para texto grande", () => {
-    const r = contrast("fg-neutral-500", "fg-neutral-900");
-    expect(r).toBeGreaterThanOrEqual(AA_LARGE);
-    expect(r).toBeLessThan(AA_NORMAL);
-    expect(r).toBeCloseTo(3.65, 1);
+  it.each([
+    ["subtle sobre surface", "fg-neutral-450", "fg-neutral-900"],
+    ["subtle sobre raised", "fg-neutral-450", "fg-neutral-800"],
+    ["subtle sobre bg", "fg-neutral-450", "fg-neutral-950"],
+    ["subtle sobre chrome", "fg-neutral-450", "fg-neutral-975"],
+    ["muted sobre chrome", "fg-neutral-400", "fg-neutral-975"],
+  ])("%s cumple AA para texto normal", (_n, fg, bg) => {
+    expect(contrast(fg, bg)).toBeGreaterThanOrEqual(AA_NORMAL);
   });
 
-  it("subtle sobre raised: sólo alcanza para texto grande", () => {
-    const r = contrast("fg-neutral-500", "fg-neutral-800");
-    expect(r).toBeGreaterThanOrEqual(AA_LARGE);
-    expect(r).toBeLessThan(AA_NORMAL);
-    expect(r).toBeCloseTo(3.16, 1);
+  it("subtle sigue siendo más tenue que muted", () => {
+    expect(contrast("fg-neutral-450", "fg-neutral-900")).toBeLessThan(
+      contrast("fg-neutral-400", "fg-neutral-900"),
+    );
+  });
+
+  it("el 500 sigue sin alcanzar AA en oscuro: no volver a usarlo para subtle", () => {
+    expect(contrast("fg-neutral-500", "fg-neutral-800")).toBeLessThan(AA_NORMAL);
+  });
+});
+
+describe("modo claro · shell 2026", () => {
+  it.each([
+    ["muted sobre chrome", "fg-neutral-600", "fg-neutral-50"],
+    ["subtle sobre chrome", "fg-neutral-500", "fg-neutral-50"],
+  ])("%s cumple AA para texto normal", (_n, fg, bg) => {
+    expect(contrast(fg, bg)).toBeGreaterThanOrEqual(AA_NORMAL);
   });
 });
 

@@ -44,6 +44,8 @@
  * viven en el entorno del proceso.
  */
 
+import { isWorkspaceId, WORKSPACE_HEADER } from "@/lib/brands/workspace-cookie";
+
 /** Variable de entorno con la API key. **Sin `NEXT_PUBLIC_`**, y a propósito. */
 export const API_KEY_ENV = "FASTGRAM_API_KEY";
 
@@ -72,6 +74,21 @@ export const DEFAULT_UPSTREAM_BASE = "http://localhost:3001/api/v1";
  * se consultan por polling (ADR-014).
  */
 export const UPSTREAM_TIMEOUT_MS = 10_000;
+
+/**
+ * El header de marca que se suma al reenvío (`PU-BRAND-001`), a partir del
+ * valor crudo de la cookie `fg_workspace`.
+ *
+ * Vacío si no hay cookie o si no tiene forma de uuid: sin header la API opera
+ * sobre la company de la key, que es la marca por defecto. Un valor raro no se
+ * reenvía "a ver qué pasa" — lo que sale de acá lleva la key del servidor.
+ */
+export function workspaceHeaderFor(
+  cookieValue: string | undefined,
+): Readonly<Record<string, string>> {
+  if (!isWorkspaceId(cookieValue)) return {};
+  return { [WORKSPACE_HEADER]: cookieValue.toLowerCase() };
+}
 
 export interface UpstreamConfig {
   readonly base: string;

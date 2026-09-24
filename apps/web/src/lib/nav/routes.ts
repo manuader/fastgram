@@ -39,6 +39,10 @@ export const ROUTES = {
   referAndEarn: "/refer-and-earn",
   upgrade: "/upgrade",
   settings: "/settings",
+  /** `PU-BRAND-001` — gestionar marcas (workspaces) en modo personal. */
+  settingsBrands: "/settings/brands",
+  /** `PU-MODELS-*` — proveedor por tarea (la página la construye otro agente). */
+  settingsModels: "/settings/models",
   developers: "/developers",
   developer: "/developer",
   status: "/status",

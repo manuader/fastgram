@@ -38,9 +38,18 @@
  *    API la aplicó; reintentar acá la duplicaría en los endpoints sin
  *    `Idempotency-Key`. El `502` sube al cliente, que decide — y si reintenta,
  *    lo hace con la misma key.
+ * 6. **La marca activa viaja como `X-Fastgram-Workspace`** (`PU-BRAND-001`),
+ *    tomada de la cookie `fg_workspace` y sólo si tiene forma de uuid
+ *    (`lib/brands/workspace-cookie.ts`). No da permisos: la API la valida
+ *    contra el dueño de la key y responde `404` si no es suya. Un
+ *    `X-Fastgram-Workspace` que mande el navegador **no** pasa (regla 3).
+ *    Va en lecturas y escrituras por igual, y la guarda CSRF de la regla 1
+ *    corre antes, así que una página ajena no puede usar la cookie para
+ *    escribir en otra marca.
  */
 import { type NextRequest } from "next/server";
 import { readSession } from "@/lib/auth/server-session";
+import { WORKSPACE_COOKIE } from "@/lib/brands/workspace-cookie";
 import {
   APP_ORIGIN_ENV,
   checkCsrf,
@@ -53,6 +62,7 @@ import {
   readUpstreamConfig,
   resolveUpstreamUrl,
   UPSTREAM_TIMEOUT_MS,
+  workspaceHeaderFor,
 } from "@/lib/api/upstream";
 
 /**
@@ -173,6 +183,12 @@ async function forward(
   // Si el navegador trae un id de traza, que la traza cruce el puente.
   const requestId = request.headers.get(REQUEST_ID_HEADER);
   if (requestId !== null) headers[REQUEST_ID_HEADER] = requestId;
+  // Regla 6: la marca activa sale de **nuestra** cookie, nunca de un header
+  // que mande el navegador (ese no está en la lista blanca de la regla 3).
+  Object.assign(
+    headers,
+    workspaceHeaderFor(request.cookies.get(WORKSPACE_COOKIE)?.value),
+  );
 
   const init: RequestInit = {
     method,

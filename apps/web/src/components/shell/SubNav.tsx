@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 export interface SubNavLink {
   readonly href: string;
   readonly label: string;
+  /** Activo sólo con la ruta exacta (una sección padre, p. ej. `/settings`). */
+  readonly exact?: boolean;
 }
 
 /**
@@ -29,7 +31,9 @@ export function SubNav({
     <nav className="fgw-subnav" aria-label={label}>
       <ul className="fgw-subnav__list">
         {links.map((link) => {
-          const active = pathname === link.href || pathname.startsWith(`${link.href}/`);
+          const active =
+            pathname === link.href ||
+            (link.exact !== true && pathname.startsWith(`${link.href}/`));
           return (
             <li key={link.href}>
               <Link

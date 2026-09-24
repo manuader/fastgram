@@ -287,3 +287,61 @@ describe("proxy · GET sigue igual", () => {
     expect(upstream).not.toHaveBeenCalled();
   });
 });
+
+describe("proxy · marca activa (PU-BRAND-001)", () => {
+  const BRAND = "3f2b8c1e-9a4d-4c6b-8e2f-1a2b3c4d5e6f";
+
+  function getWith(cookie: string, extra: Record<string, string> = {}): NextRequest {
+    return new NextRequest(`${SELF}/api/fastgram/v1/content`, {
+      headers: { host: HOST, cookie, ...extra },
+    });
+  }
+
+  it("la cookie fg_workspace sale como X-Fastgram-Workspace", async () => {
+    const res = await GET(
+      getWith(`fg_session=abc; fg_workspace=${BRAND}`),
+      context(["content"]),
+    );
+    expect(res.status).toBe(200);
+    expect(new Headers(sentInit().headers).get("x-fastgram-workspace")).toBe(BRAND);
+  });
+
+  it("también en escrituras, después de pasar la guarda CSRF", async () => {
+    const res = await PATCH(
+      writeRequest("PATCH", { cookie: `fg_session=abc; fg_workspace=${BRAND}` }),
+      context(["blitz", "preferences"]),
+    );
+    expect(res.status).toBe(200);
+    expect(new Headers(sentInit().headers).get("x-fastgram-workspace")).toBe(BRAND);
+  });
+
+  it("una escritura cross-site con la cookie puesta sigue siendo 403 y no llega a la API", async () => {
+    const res = await DELETE(
+      writeRequest("DELETE", {
+        origin: "https://evil.test",
+        cookie: `fg_session=abc; fg_workspace=${BRAND}`,
+      }),
+      context(["workspaces", BRAND]),
+    );
+    expect(res.status).toBe(403);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it("sin cookie no hay header: la API usa la marca de la key", async () => {
+    await GET(getWith("fg_session=abc"), context(["content"]));
+    expect(new Headers(sentInit().headers).get("x-fastgram-workspace")).toBeNull();
+  });
+
+  it("una cookie sin forma de uuid no se reenvía", async () => {
+    await GET(getWith("fg_workspace=..%2Fadmin"), context(["content"]));
+    expect(new Headers(sentInit().headers).get("x-fastgram-workspace")).toBeNull();
+  });
+
+  it("un X-Fastgram-Workspace que manda el navegador no pasa", async () => {
+    await GET(
+      getWith("fg_session=abc", { "x-fastgram-workspace": BRAND }),
+      context(["content"]),
+    );
+    expect(new Headers(sentInit().headers).get("x-fastgram-workspace")).toBeNull();
+  });
+});

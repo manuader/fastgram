@@ -1,6 +1,7 @@
 "use client";
 
 import { Tooltip } from "@fastgram/ui";
+import { motion } from "motion/react";
 import Link from "next/link";
 import { ExternalLinkIcon } from "@/icons";
 import { tw } from "@/lib/i18n/t";
@@ -11,7 +12,7 @@ interface SidebarNavProps {
   pathname: string;
   /** Modo icono: el label se oculta visualmente, **no** se quita del DOM. */
   collapsed: boolean;
-  /** Etiqueta del grupo para lectores de pantalla (`Main` / `More`). */
+  /** Etiqueta del grupo para lectores de pantalla. */
   label: string;
   /** Ids con punto de atención pendiente (PRD:338, hoy `Settings`). */
   attention?: ReadonlySet<string>;
@@ -32,6 +33,12 @@ interface SidebarNavProps {
  *    así que el modo icono no deja fuera a quien no usa mouse.
  * 3. **`aria-current="page"`**, no sólo una clase. El resalte de color es para
  *    quien ve; `aria-current` es para todos los demás.
+ *
+ * El resalte de la entrada activa es **una sola pieza** (`layoutId`) que se
+ * desliza de una entrada a otra al navegar (`PU-UI-001`, "transiciones con
+ * física"). El `LayoutGroup` que la contiene lo pone `SidebarBody`, para que
+ * el riel y el drawer no se disputen la misma pieza. Con
+ * `prefers-reduced-motion` el `MotionConfig` de la shell la hace saltar.
  */
 export function SidebarNav({
   items,
@@ -41,6 +48,7 @@ export function SidebarNav({
   attention,
   onNavigate,
 }: SidebarNavProps) {
+  if (items.length === 0) return null;
   return (
     <nav aria-label={label} className="fgw-nav">
       <ul className="fgw-nav__list">
@@ -62,8 +70,16 @@ export function SidebarNav({
                 : {})}
               {...(onNavigate === undefined ? {} : { onClick: onNavigate })}
             >
+              {active && (
+                <motion.span
+                  layoutId="fgw-nav-active"
+                  className="fgw-nav__highlight"
+                  aria-hidden="true"
+                  transition={{ type: "spring", stiffness: 480, damping: 38, mass: 0.8 }}
+                />
+              )}
               <span className="fgw-nav__icon">
-                <Icon />
+                <Icon size={18} />
               </span>
               <span className={collapsed ? "fg-visually-hidden" : "fgw-nav__label"}>
                 {text}
