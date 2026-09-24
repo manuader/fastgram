@@ -696,19 +696,22 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 
 ## P3-AUTO — Automations
 
-- [ ] **P3-AUTO-001** `DATA-021` + `DATA-022` con sus dos máquinas de estados · `FR-150`
-- [ ] **P3-AUTO-002** Wizard de configuración · `F-211`
-- [ ] **P3-AUTO-003** `prefsSnapshot` **congelado**: cambiar prefs del workspace no altera la campaña · `F-212`
-- [ ] **P3-AUTO-004** Generación de slots + cuota por campaña · `F-213`
-- [ ] **P3-AUTO-005** **Tipo con peso 0 queda excluido, nunca es fallback** · `AI-012` · ⚠️ regla dura
-- [ ] **P3-AUTO-006** `FAILED_GEN` con `no_unique_content` / `no_demo_video` · `AI-012`
-- [ ] **P3-AUTO-007** Dedup de contenido con pgvector + juicio sólo en borderline · `ADR-003`
-- [ ] **P3-AUTO-008** Review: editar slot, captions por plataforma, re-roll · `F-214`, `F-215`
-- [ ] **P3-AUTO-009** `launchValidation` con todos los gates · `F-216`
-- [ ] **P3-AUTO-010** Launch: reserva slots y cobra · `F-217`
-- [ ] **P3-AUTO-011** YouTube exige `slideshowWeight = 0` · `FR-150`
-- [ ] **P3-AUTO-012** Cancel / delete con sus restricciones · `F-219`
-- [ ] **P3-AUTO-013** Vistas Calendar y Grid · `F-220`
+> **Hecho 2026-09-24 (uso personal):** las 13 tareas. Verificado con Ollama real en una base aparte: campaña de 1 semana → 7 piezas construidas → launch con 14 slots → cancel. Web sin pasada visual del agente (la hace el coordinador).
+
+
+- [x] **P3-AUTO-001** `DATA-021` + `DATA-022` con sus dos máquinas de estados · `FR-150`
+- [x] **P3-AUTO-002** Wizard de configuración · `F-211`
+- [x] **P3-AUTO-003** `prefsSnapshot` **congelado**: cambiar prefs del workspace no altera la campaña · `F-212`
+- [x] **P3-AUTO-004** Generación de slots + cuota por campaña · `F-213`
+- [x] **P3-AUTO-005** **Tipo con peso 0 queda excluido, nunca es fallback** · `AI-012` · ⚠️ regla dura
+- [x] **P3-AUTO-006** `FAILED_GEN` con `no_unique_content` / `no_demo_video` · `AI-012`
+- [x] **P3-AUTO-007** Dedup de contenido con pgvector + juicio sólo en borderline · `ADR-003`
+- [x] **P3-AUTO-008** Review: editar slot, captions por plataforma, re-roll · `F-214`, `F-215`
+- [x] **P3-AUTO-009** `launchValidation` con todos los gates · `F-216`
+- [x] **P3-AUTO-010** Launch: reserva slots y cobra · `F-217`
+- [x] **P3-AUTO-011** YouTube exige `slideshowWeight = 0` · `FR-150`
+- [x] **P3-AUTO-012** Cancel / delete con sus restricciones · `F-219`
+- [x] **P3-AUTO-013** Vistas Calendar y Grid · `F-220`
 
 ---
 

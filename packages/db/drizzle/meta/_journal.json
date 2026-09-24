@@ -162,6 +162,13 @@
       "when": 1790008494115,
       "tag": "0022_inspiration_references",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790008494123,
+      "tag": "0023_automation_campaigns",
+      "breakpoints": true
     }
   ]
 }

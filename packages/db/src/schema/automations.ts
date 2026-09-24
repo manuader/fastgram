@@ -11,11 +11,12 @@ import {
   jsonb,
   pgTable,
   text,
+  uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
 
-import { createdAtOnly, tsColumn, timestamps } from "./_shared.js";
+import { tsColumn, timestamps } from "./_shared.js";
 import { companyRef } from "./identity.js";
 import { contents } from "./content.js";
 import {
@@ -55,10 +56,27 @@ export const automations = pgTable(
     prefsSnapshot: jsonb(),
     generationQuotaUsed: integer().notNull().default(0),
     launchValidation: jsonb(),
-    ...createdAtOnly(),
+    /**
+     * `0023` — NO ESTÁN EN EL PRD. Horarios fijos del wizard (`HH:MM` locales;
+     * `null` = los de la estrategia), el tope de generaciones (2 por slot), el
+     * motivo estable de un `FAILED` y las fechas del ciclo de vida. Ver la
+     * migración.
+     */
+    postingTimes: text().array(),
+    generationQuota: integer().notNull().default(0),
+    failureCode: text(),
+    launchedAt: tsColumn(),
+    cancelledAt: tsColumn(),
+    completedAt: tsColumn(),
+    ...timestamps(),
   },
   (t) => [
     index("automations_company_created_idx").on(t.companyId, t.createdAt),
+    index("automations_company_status_idx").on(t.companyId, t.status),
+    check(
+      "automations_generation_quota_used_nonnegative",
+      sql`${t.generationQuotaUsed} >= 0`,
+    ),
     check(
       "automations_per_account_per_day_range",
       sql`${t.perAccountPerDay} between ${sql.raw(String(AUTOMATION_LIMITS.perAccountPerDayMin))} and ${sql.raw(String(AUTOMATION_LIMITS.perAccountPerDayMax))}`,
@@ -102,10 +120,24 @@ export const automationSlots = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::uuid[]`),
+    /**
+     * `0023` — NO ESTÁN EN EL PRD. Posición en la grilla (única por campaña),
+     * motivo nuestro de un fallo fuera del enum del PRD, huella del dedup y
+     * contabilidad de la generación. Ver la migración.
+     */
+    slotIndex: integer().notNull().default(0),
+    errorCode: text(),
+    dedupFingerprint: text(),
+    generationAttempts: integer().notNull().default(0),
+    generatingSince: tsColumn(),
     ...timestamps(),
   },
   (t) => [
     index("automation_slots_company_created_idx").on(t.companyId, t.createdAt),
     index("automation_slots_automation_created_idx").on(t.automationId, t.createdAt),
+    uniqueIndex("automation_slots_automation_index_uq").on(t.automationId, t.slotIndex),
+    index("automation_slots_company_fingerprint_idx")
+      .on(t.companyId, t.dedupFingerprint)
+      .where(sql`${t.dedupFingerprint} is not null`),
   ],
 );

@@ -42,6 +42,7 @@ import {
   type StrategyNetwork,
 } from "@fastgram/core";
 import {
+  automationStore,
   connectionRepository,
   contentRepository,
   plannedSlotRepository,
@@ -222,11 +223,25 @@ export function createPublishingSweepHandler(deps: SweepDeps): JobHandler<unknow
 
     let converted = 0;
     for (const slot of slots) {
-      const plan = planSlotConversion(
-        slot.network,
-        active.map((c) => ({ id: c.id, platform: c.platform })),
-        postable,
-      );
+      // `FR-150`: un slot de campaña con conexión elegida se convierte con
+      // **esa** conexión (si está activa y es de la red); si no, espera. Sin
+      // conexión elegida (destino "planificado"), el criterio de siempre.
+      const plan =
+        slot.connectionId !== null
+          ? active.some(
+              (c) => c.id === slot.connectionId && c.platform === slot.network,
+            ) && postable.includes(slot.network)
+            ? ({
+                kind: "convert",
+                platform: slot.network,
+                connectionId: slot.connectionId,
+              } as const)
+            : ({ kind: "wait" } as const)
+          : planSlotConversion(
+              slot.network,
+              active.map((c) => ({ id: c.id, platform: c.platform })),
+              postable,
+            );
       if (plan.kind === "wait") continue;
       const connection = active.find((c) => c.id === plan.connectionId);
 
@@ -236,6 +251,15 @@ export function createPublishingSweepHandler(deps: SweepDeps): JobHandler<unknow
           // Sólo piezas terminadas: un post en `BUILDING` no tiene quién lo
           // pase a `SCHEDULED` cuando la pieza termina.
           if (content === null || content.status !== "CREATED") return false;
+          const campaign =
+            slot.automationSlotId === null
+              ? null
+              : await campaignPostFields(
+                  tx,
+                  companyId,
+                  slot.automationSlotId,
+                  plan.platform,
+                );
           const post = await postRepository.create(tx, scope, {
             contentId: slot.contentId,
             platform: plan.platform,
@@ -244,6 +268,7 @@ export function createPublishingSweepHandler(deps: SweepDeps): JobHandler<unknow
             connectionUsername: connection?.platformUsername ?? null,
             scheduledAtUtc: slot.scheduledAtUtc,
             status: "SCHEDULED",
+            ...(campaign ?? {}),
           });
           const closed = await plannedSlotRepository.markConverted(
             tx,
@@ -253,6 +278,9 @@ export function createPublishingSweepHandler(deps: SweepDeps): JobHandler<unknow
           );
           // Otra conversión lo cerró entre la lectura y acá: abortar deshace el post.
           if (closed === null) throw new SlotAlreadyConverted();
+          if (slot.automationSlotId !== null) {
+            await automationStore.appendPostId(tx, scope, slot.automationSlotId, post.id);
+          }
           await deps.queue.enqueue(
             publishJob(
               { companyId, postId: post.id },
@@ -271,6 +299,53 @@ export function createPublishingSweepHandler(deps: SweepDeps): JobHandler<unknow
     }
     return converted;
   }
+}
+
+/**
+ * Lo que un post de campaña lleva del slot y de la campaña (`FR-150`): la
+ * caption de **esa** red (para YouTube, título + descripción), el vínculo al
+ * slot, y las etiquetas de la campaña. `null` si el slot ya no está (la
+ * campaña se borró): se publica como un slot planificado cualquiera.
+ */
+async function campaignPostFields(
+  tx: Transaction,
+  companyId: string,
+  automationSlotId: string,
+  platform: string,
+): Promise<{
+  automationSlotId: string;
+  caption: string | null;
+  description: string | null;
+  aiContentDisclaimer: boolean;
+  discloseAsAds: boolean;
+  postingMode: "inbox" | "direct" | null;
+} | null> {
+  const found = await automationStore.slotWithAutomation(
+    tx,
+    { companyId },
+    automationSlotId,
+  );
+  if (found === null) return null;
+  const captions = found.slot.captionsByPlatform;
+  const entry =
+    captions !== null && typeof captions === "object" && !Array.isArray(captions)
+      ? (captions as Record<string, unknown>)[platform]
+      : undefined;
+  const record =
+    entry !== null && typeof entry === "object" && !Array.isArray(entry)
+      ? (entry as Record<string, unknown>)
+      : {};
+  const caption = typeof record["caption"] === "string" ? record["caption"] : null;
+  const description =
+    typeof record["description"] === "string" ? record["description"] : null;
+  return {
+    automationSlotId,
+    caption: caption ?? found.slot.generatedText,
+    description,
+    aiContentDisclaimer: found.automation.aiContentDisclaimer,
+    discloseAsAds: found.automation.discloseAsAds,
+    postingMode: platform === "tiktok" ? found.automation.postingMode : null,
+  };
 }
 
 class SlotAlreadyConverted extends Error {

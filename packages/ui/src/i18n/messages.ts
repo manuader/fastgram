@@ -1094,6 +1094,240 @@ export const en = {
   "engagement.insights.title": "How your replies read", // nuevo
   "engagement.insights.body":
     "The model only labels each sent reply as value, subtle or direct. The percentages and the level are counted by FastGram, never guessed by a model.", // nuevo
+
+  // Automations · FR-150, MOD-015 (F-210…F-220), P3-AUTO-001…013. `literal` =
+  // copy de la UI de Fastlane citado en FR-150 (UI del wizard y detalle);
+  // `nuevo` = nuestro.
+  "automations.title": "Automations", // literal (sidebar)
+  "automations.subtitle":
+    "Plan weeks of content at once, review every post, then launch.", // nuevo
+  "automations.new": "New automation", // literal FR-150
+  "automations.list.label": "Your campaigns", // nuevo
+  "automations.list.error": "We couldn't load your automations.", // nuevo
+  "automations.empty.title": "No automations yet", // nuevo
+  "automations.empty.description":
+    "Set up a campaign once and FastGram drafts every post for the weeks you choose. Nothing goes out until you launch it.", // nuevo
+  "automations.row.meta": "Starts {start} · {weeks} wk · {perDay} per account per day", // nuevo
+  "automations.status.draft": "Draft", // nuevo
+  "automations.status.generating": "Generating", // nuevo
+  "automations.status.review": "In review", // nuevo
+  "automations.status.building": "Building", // literal FR-150 (estado `building`)
+  "automations.status.active": "Active", // nuevo
+  "automations.status.completed": "Completed", // nuevo
+  "automations.status.cancelled": "Cancelled", // nuevo
+  "automations.status.failed": "Failed", // nuevo
+  "automations.progress.generated": "{done} of {total} generated", // nuevo
+  "automations.progress.ready": "{done} of {total} ready", // nuevo
+  "automations.progress.scheduled": "{done} of {total} scheduled", // nuevo
+  "automations.progress.slots": "{done} of {total}", // nuevo
+  "automations.slot.pending": "Waiting", // nuevo
+  "automations.slot.generating": "Generating", // nuevo
+  "automations.slot.ready": "Ready", // nuevo
+  "automations.slot.rerolling": "Re-rolling", // nuevo
+  "automations.slot.failedGen": "Couldn't generate", // nuevo
+  "automations.slot.queuedBuild": "Queued", // nuevo
+  "automations.slot.building": "Building", // nuevo
+  "automations.slot.scheduled": "Scheduled", // nuevo
+  "automations.slot.failed": "Failed", // nuevo
+  "automations.slot.wontPost": "Won't post", // literal FR-150
+  "automations.failure.noUniqueContent":
+    "Every draft repeated something you already posted.", // nuevo (no_unique_content)
+  "automations.failure.noDemoVideo":
+    "Hook demo videos need a demo video in your Media Bank.", // nuevo (no_demo_video)
+  "automations.failure.noMedia": "Your Media Bank has no media for this format.", // nuevo
+  "automations.failure.noLlm":
+    "No text model is set up. Add one in Settings → Models and create the campaign again.", // nuevo
+  "automations.failure.copy":
+    "The model didn't return usable copy. Re-roll to try again.", // nuevo
+  "automations.failure.quota": "This campaign used all its generations.", // nuevo
+  "automations.failure.mediaGone": "Some media of this post was deleted. Re-roll it.", // nuevo
+  "automations.failure.build": "This post couldn't be built.", // nuevo
+  "automations.failure.allBuilds": "None of the posts could be built.", // nuevo
+  "automations.failure.generic": "Something went wrong with this post.", // nuevo
+  "automations.blocked.noContentType":
+    "Select at least one content type in the content mix.", // nuevo (AUTOMATION_NO_CONTENT_TYPE_SELECTED)
+  "automations.blocked.demoVideo":
+    "Hook demo videos need a demo video in your Media Bank (category hook-video).", // nuevo (AUTOMATION_VIDEO_HOOK_NEEDS_DEMO_VIDEO)
+  "automations.blocked.youtube":
+    "YouTube can't publish slideshows as Shorts. Set Slideshow to 0% or remove YouTube.", // nuevo
+  "automations.blocked.noDestinations": "Add at least one account.", // nuevo
+  "automations.blocked.noMedia":
+    "A format in your mix has no media in your Media Bank. Add some or set it to 0%.", // nuevo
+  "automations.blocked.past":
+    "Every posting time of this campaign is already in the past. Move the start date.", // nuevo
+  "automations.blocked.locked": "The configuration is locked once generation starts.", // nuevo
+  "automations.blocked.excludedType": "That format isn't part of this campaign's mix.", // nuevo
+  "automations.blocked.editInEditor":
+    "This post is already open in the editor: edit its text there.", // nuevo
+  "automations.wizard.subtitle":
+    "Choose where and how often to post, and what kind of content. You'll review every post before anything goes out.", // nuevo
+  "automations.wizard.progress": "Automation setup progress", // literal FR-150
+  "automations.wizard.step.basics": "Schedule", // nuevo
+  "automations.wizard.step.accounts": "Accounts", // nuevo
+  "automations.wizard.step.content": "Content", // nuevo
+  "automations.wizard.step.review": "Review", // nuevo
+  "automations.wizard.name": "Campaign name", // literal FR-150
+  "automations.wizard.namePlaceholder": "October on socials", // nuevo
+  "automations.wizard.start": "Start date", // nuevo
+  "automations.wizard.timezone": "Time zone", // nuevo
+  "automations.wizard.weeks": "Campaign length in weeks", // literal FR-150
+  "automations.wizard.perDay": "posts per account per day", // literal FR-150
+  "automations.wizard.strategyTimes": "Use this brand's posting times", // nuevo
+  "automations.wizard.time": "Posting time {n}", // nuevo
+  "automations.wizard.accountsHint":
+    "Pick an account per network. Without an account yet, plan it: the posts are reserved on the calendar and go out once you connect that network.", // nuevo
+  "automations.wizard.connectionsError": "We couldn't load your connected accounts.", // nuevo
+  "automations.wizard.destinationFor": "Where to post on {network}", // nuevo
+  "automations.wizard.dontPost": "Don't post here", // nuevo
+  "automations.wizard.planned": "Plan without an account", // nuevo
+  "automations.wizard.mix": "Content mix", // literal FR-055
+  "automations.wizard.zeroExcluded":
+    "A format at 0% is never used, not even as a fallback: if its media runs out, the campaign posts less.", // nuevo (AI-012)
+  "automations.wizard.youtubeSlideshow":
+    "YouTube destinations need Slideshow at 0%: slideshows can't be published as Shorts.", // nuevo
+  "automations.wizard.removeSlideshow": "Set Slideshow to 0%", // nuevo
+  "automations.wizard.videoHookHint": "Needs a demo video in your Media Bank.", // nuevo
+  "automations.wizard.remix": "Remix ratio", // literal FR-150
+  "automations.wizard.ownMedia": "Own media percentage", // literal FR-150
+  "automations.wizard.influencer": "Influencer frequency", // literal FR-150
+  "automations.wizard.topics": "Topics", // nuevo
+  "automations.wizard.topicsPlaceholder":
+    "One per line — e.g. Brewing guides, Behind the roast", // nuevo
+  "automations.wizard.summary.schedule": "Schedule", // nuevo
+  "automations.wizard.summary.scheduleValue":
+    "{weeks} wk from {start}, {perDay} per account per day", // nuevo
+  "automations.wizard.summary.accounts": "Accounts", // nuevo
+  "automations.wizard.summary.posts": "Posts", // nuevo
+  "automations.wizard.summary.postsValue": "{pieces} pieces · {posts} posts", // nuevo
+  "automations.wizard.tiktokMode": "TikTok posting mode", // literal FR-150
+  "automations.wizard.tiktokInbox": "Send to Inbox", // literal FR-060
+  "automations.wizard.tiktokDirect": "Post Directly", // literal FR-060
+  "automations.wizard.youtubePrivacy": "YouTube privacy", // literal FR-150
+  "automations.wizard.ytPublic": "Public", // nuevo
+  "automations.wizard.ytUnlisted": "Unlisted", // nuevo
+  "automations.wizard.ytPrivate": "Private", // nuevo
+  "automations.wizard.aiLabel": "Add the AI-generated content label", // nuevo
+  "automations.wizard.aiLabelHint":
+    "Adds the AI-generated content label to eligible Instagram and TikTok posts. This cannot be changed after launch.", // literal FR-150
+  "automations.wizard.problem.name": "Give the campaign a name.", // nuevo
+  "automations.wizard.problem.start": "Pick a start date.", // nuevo
+  "automations.wizard.problem.accounts": "Choose at least one account.", // nuevo
+  "automations.wizard.problem.mix": "Select at least one content type.", // nuevo
+  "automations.wizard.problem.youtube": "YouTube destinations need Slideshow at 0%.", // nuevo
+  "automations.wizard.back": "Back", // nuevo
+  "automations.wizard.next": "Continue", // nuevo
+  "automations.wizard.saveDraft": "Save draft", // nuevo
+  "automations.wizard.generate": "Generate", // literal FLOW-004
+  "automations.toast.saved": "Draft saved", // nuevo
+  "automations.toast.generating": "Generating your posts…", // nuevo
+  "automations.toast.slotSaved": "Post updated", // nuevo
+  "automations.toast.rerolling": "Re-rolling this post…", // nuevo
+  "automations.toast.cancelled": "Automation cancelled", // nuevo
+  "automations.edit.title": "Edit {name}", // nuevo
+  "automations.edit.back": "Back to the campaign", // nuevo
+  "automations.detail.error": "We couldn't load this automation.", // nuevo
+  "automations.detail.notFound": "Automation not found", // nuevo
+  "automations.detail.notFound.body":
+    "It may have been deleted, or it belongs to another brand.", // nuevo
+  "automations.detail.slotsError": "We couldn't load the posts of this campaign.", // nuevo
+  "automations.detail.editSetup": "Edit setup", // nuevo
+  "automations.detail.continue": "Continue to launch", // literal FR-150
+  "automations.detail.cancel": "Cancel automation", // literal FR-150
+  "automations.detail.delete": "Delete automation", // nuevo
+  "automations.detail.rename": "Rename automation", // literal FR-150
+  "automations.detail.saveName": "Save name", // literal FR-150
+  "automations.detail.cancelRename": "Cancel rename", // literal FR-150
+  "automations.detail.nameLabel": "Campaign name", // literal FR-150
+  "automations.detail.plannedTag": "planned", // nuevo
+  "automations.detail.generating":
+    "Drafting your posts. You can leave this page: they keep generating.", // nuevo
+  "automations.detail.postLaunch":
+    "Your posts are building and publishing in the background, no further action needed. You can follow progress and analytics on the campaign page, and cancel at any time.", // literal FR-150 (post-lanzamiento, completado)
+  "automations.detail.draftHint":
+    "This campaign is a draft. Generate it to draft every post, then review them here.", // nuevo
+  "automations.detail.noSlots": "This campaign has no posts.", // nuevo
+  "automations.stats.published": "Published", // nuevo
+  "automations.stats.pending": "Pending", // nuevo
+  "automations.stats.failed": "Failed", // nuevo
+  "automations.stats.views": "Views", // nuevo
+  "automations.stats.likes": "Likes", // nuevo
+  "automations.stats.comments": "Comments", // nuevo
+  "automations.view.label": "Campaign views", // nuevo
+  "automations.view.calendar": "Calendar view", // literal FR-150
+  "automations.view.grid": "Grid view", // literal FR-150
+  "automations.view.week": "Week {n}", // nuevo
+  "automations.view.noPosts": "No posts", // nuevo
+  "automations.view.openSlot": "{time} · {type} · {status}", // nuevo
+  "automations.slotDialog.title": "Post details", // literal FR-150
+  "automations.slotDialog.editPost": "Edit post", // literal FR-150
+  "automations.slotDialog.inEditor":
+    "This post is open in the editor: change its text there.", // nuevo
+  "automations.slotDialog.text": "Text {n}", // nuevo
+  "automations.slotDialog.captions": "Captions", // nuevo
+  "automations.slotDialog.caption": "{network} caption", // nuevo
+  "automations.slotDialog.description": "{network} description", // nuevo
+  "automations.slotDialog.adjustSchedule": "Adjust schedule", // literal FR-150
+  "automations.slotDialog.timezone": "Times are in {tz}.", // nuevo
+  "automations.slotDialog.posts": "Posts", // nuevo
+  "automations.slotDialog.openPost": "Open post", // nuevo
+  "automations.slotDialog.metrics": "{views} views · {likes} likes · {comments} comments", // nuevo
+  "automations.slotDialog.rerollType": "Format for the re-roll", // nuevo
+  "automations.slotDialog.sameType": "Same format", // nuevo
+  "automations.slotDialog.reroll": "Re-roll this suggestion", // literal FR-150
+  "automations.slotDialog.rerollHint":
+    "Re-rolling discards this suggestion for good and uses one of the campaign's generations.", // nuevo
+  "automations.slotDialog.remove": "Remove suggestion", // literal FR-150
+  "automations.slotDialog.confirmRemove": "Confirm remove", // literal FR-150
+  "automations.slotDialog.openEditor": "Open in editor", // nuevo
+  "automations.slotDialog.save": "Save changes", // nuevo
+  "automations.launch.title": "Continue to launch", // literal FR-150
+  "automations.launch.validating":
+    "Validating your campaign against your plan and accounts.", // literal FR-150
+  "automations.launch.ready": "Ready to launch", // literal FR-150
+  "automations.launch.allGood":
+    "Everything checks out. Your posts will be reserved on launch.", // literal FR-150
+  "automations.launch.summary": "{pieces} pieces, {posts} posts across your accounts.", // nuevo
+  "automations.launch.blockers": "What's blocking the launch", // nuevo
+  "automations.launch.checkFailed": "Couldn't finish checking this campaign", // literal FR-150
+  "automations.launch.checkFailed.body":
+    "Try again. If this keeps happening, reduce the campaign size.", // literal FR-150
+  "automations.launch.launch": "Launch campaign", // literal FR-150
+  "automations.launch.done": "Campaign launched", // nuevo
+  "automations.gate.notInReview": "Not ready for launch", // nuevo
+  "automations.gate.notInReview.body": "Only a campaign in review can be launched.", // nuevo
+  "automations.gate.generating": "Content is still generating", // literal FR-150
+  "automations.gate.generating.body":
+    "Wait for generation or re-rolls to finish, then try again.", // literal FR-150
+  "automations.gate.noReady": "No posts to launch", // nuevo
+  "automations.gate.noReady.body":
+    "Re-roll the posts that failed, or create the campaign again.", // nuevo
+  "automations.gate.noDestinations": "No accounts", // nuevo
+  "automations.gate.noDestinations.body": "Add at least one account to this campaign.", // nuevo
+  "automations.gate.destination": "An account isn't available", // nuevo
+  "automations.gate.destination.body":
+    "Reconnect it in Settings → Connections, or cancel and set the campaign up again.", // nuevo
+  "automations.gate.past": "Some posts are in the past", // nuevo
+  "automations.gate.past.body": "Adjust schedule on those posts, or remove them.", // nuevo
+  "automations.gate.limits": "Posting limit conflicts", // literal FR-150
+  "automations.gate.limits.body":
+    "Reduce the length, posts per day, or accounts to continue.", // literal FR-150
+  "automations.gate.youtube": "Slideshows can't go to YouTube", // nuevo
+  "automations.gate.youtube.body": "Re-roll or remove the slideshow posts.", // nuevo
+  "automations.gate.budget": "More content saves needed", // literal FR-150
+  "automations.gate.budget.body":
+    "Reduce the length, posts per day, or accounts to continue.", // literal FR-150
+  "automations.gate.aiLabel": "No destination supports the AI label", // nuevo
+  "automations.gate.aiLabel.body":
+    "No current campaign destination supports this label. Turn it off before launching.", // literal FR-150
+  "automations.confirm.cancel.title": "Cancel this automation?", // nuevo
+  "automations.confirm.cancel.body":
+    "Scheduled posts are revoked and nothing else goes out. Posts already published stay live. This can't be undone.", // nuevo (F-219)
+  "automations.confirm.delete.title": "Delete this automation?", // nuevo
+  "automations.confirm.delete.body":
+    "The campaign and its drafts are deleted. Pieces already created stay in your Library.", // nuevo
+  "automations.confirm.keep": "Keep it", // nuevo
+  "error.automationNoContentType.title": "Select at least one content type", // nuevo (AUTOMATION_NO_CONTENT_TYPE_SELECTED)
+  "error.automationDemoVideo.title": "Add a demo video first", // nuevo (AUTOMATION_VIDEO_HOOK_NEEDS_DEMO_VIDEO)
 } as const;
 
 export type MessageKey = keyof typeof en;

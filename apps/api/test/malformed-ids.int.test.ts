@@ -109,6 +109,12 @@ const BODIES: Readonly<Record<string, () => unknown>> = {
   "PUT /engagement/leads/{leadId}/reply": () => ({ text: "borrador" }),
   "POST /engagement/leads/{leadId}/send": () => ({ text: "respuesta", confirm: true }),
   "POST /engagement/leads/{leadId}/mark-sent": () => ({ text: "respuesta" }),
+  // `FR-150`, `P3-AUTO-001…013`: Automations.
+  "PATCH /automations/{automationId}": () => ({ name: "Otro nombre" }),
+  "PATCH /automations/{automationId}/slots/{slotId}": () => ({
+    scheduledAt: new Date("2026-10-01T15:00:00.000Z").getTime(),
+  }),
+  "POST /automations/{automationId}/slots/{slotId}/reroll": () => ({}),
 };
 
 interface Operation {

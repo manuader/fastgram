@@ -108,6 +108,10 @@ export const FAILURE_COPY_KEYS: Readonly<Record<FailureCode, CopyKey>> = {
   MAX_ANGLES_EXCEEDED: "error.maxAngles.title",
   MAX_ANGLES_PER_INFLUENCER_EXCEEDED: "error.maxAnglesPerInfluencer.title",
 
+  // Automations · FR-150
+  AUTOMATION_NO_CONTENT_TYPE_SELECTED: "error.automationNoContentType.title",
+  AUTOMATION_VIDEO_HOOK_NEEDS_DEMO_VIDEO: "error.automationDemoVideo.title",
+
   // Transporte
   network_error: "error.network.title",
   invalid_response: "error.invalidResponse.title",

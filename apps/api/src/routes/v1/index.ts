@@ -12,6 +12,7 @@ import type { ZodApp } from "../../server/types.js";
 import { registerAiStudioRoutes } from "./ai-studio.js";
 import { registerAnalyticsRoutes } from "./analytics.js";
 import { registerAutopilotRoutes } from "./autopilot.js";
+import { registerAutomationRoutes } from "./automations.js";
 import { defaultGenAiRouteDeps, registerGenAiRoutes } from "./genai.js";
 import { registerAngleRoutes } from "./angles.js";
 import { registerBlitzRoutes } from "./blitz.js";
@@ -69,5 +70,7 @@ export async function registerV1Routes(app: ZodApp): Promise<void> {
   registerInspirationRoutes(app);
   // `FR-140`, `P4-ENGAGE-001…012`: Engagement de Reddit (leads, respuestas, ban meter).
   registerEngagementRoutes(app);
+  // `FR-150`, `P3-AUTO-001…013`: Automations (campañas multi-semana).
+  registerAutomationRoutes(app);
   await Promise.resolve();
 }

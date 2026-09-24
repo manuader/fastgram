@@ -413,3 +413,5 @@ export {
 } from "./inspiration.js";
 // `0021`: Engagement de Reddit (leads JV-2, respuestas JV-5, ban meter DP-003).
 export * from "./engagement.js";
+// `FR-150`, `P3-AUTO-001…013`: campañas multi-semana.
+export * from "./automations.js";

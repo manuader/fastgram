@@ -48,6 +48,8 @@ import { createAiStudioMount } from "./genai/mount.js";
 import { createMetricsAdapters } from "./metrics/mount.js";
 import { createAutopilotHandler } from "./autopilot/handler.js";
 import { createRegistryJudgment } from "./autopilot/judgment.js";
+import { createAutomationCampaignHandler } from "./automations/generation-handler.js";
+import { createAutomationBuildScheduleHandler } from "./automations/build-schedule-handler.js";
 import { createAutoBrandKitTrigger } from "./brand-kit/mount.js";
 import { createHealthServer, createWorkerHealth } from "./health/server.js";
 import {
@@ -332,6 +334,29 @@ const { handlers: HANDLERS, unmounted } = createHandlers({
     publishingSweep: true,
     onMediaBankEmpty: createAutoBrandKitTrigger(queue, logger),
   }),
+  // `FR-150`: campañas multi-semana. Misma copy que el refill y el piloto,
+  // misma política de cuota que la API (`personal` registra y no corta).
+  automations: {
+    generation: createAutomationCampaignHandler({
+      db: handle.db,
+      appRole,
+      logger,
+      clock,
+      queue,
+      rng: systemRng,
+      copywriter,
+      quotaPolicy: process.env["FASTGRAM_MODE"] === "personal" ? "unlimited" : "enforced",
+    }),
+    buildSchedule: createAutomationBuildScheduleHandler({
+      db: handle.db,
+      appRole,
+      logger,
+      clock,
+      queue,
+      // `publishing-sweep` se monta con la publicación y la cola, que acá van siempre.
+      publishingSweep: true,
+    }),
+  },
   // `PU-AUTO-004`: métricas de vuelta (IG, Threads, FB; X sólo con
   // `METRICS_X_ENABLED=true` porque leer cuesta) y auto-tune del mix.
   metrics: createMetricsAdapters(process.env),

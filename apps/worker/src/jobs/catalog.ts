@@ -1,5 +1,6 @@
 import {
   AUTOPILOT_SWEEP_CRON,
+  AUTOMATION_BUILD_SWEEP_CRON,
   ENGAGEMENT_CRONS,
   JOB_QUEUES,
   METRICS_SYNC_CRON,
@@ -255,9 +256,16 @@ export const JOB_CATALOG = {
         "la corrida no hace nada si la cola ya está en el objetivo.",
     },
   },
+  /**
+   * `{companyId, automationId}` lo encola el launch y se re-arma cada minuto
+   * mientras la campaña esté `BUILDING`; `{}` es el barrido del cron, la red
+   * por si una cadena se corta y lo que cierra las campañas `ACTIVE`
+   * (`automations/build-schedule-handler.ts`). Idempotente por convergencia:
+   * mira el estado de cada pieza y mueve lo que haya que mover.
+   */
   automationBuildSchedule: {
     name: JOB_QUEUES.automationBuildSchedule,
-    what: "Construye y programa los slots tras el launch.",
+    what: "Mira los builds de las campañas lanzadas: slots SCHEDULED/FAILED, campaña ACTIVE/COMPLETED.",
     prd: "§9.5.12, FR-150",
     maxAttempts: 3,
     backoff: "exponential",
@@ -265,6 +273,13 @@ export const JOB_CATALOG = {
     timeoutSeconds: 900,
     concurrency: null,
     idempotent: true,
+    scheduled: {
+      cron: AUTOMATION_BUILD_SWEEP_CRON,
+      why:
+        "Una campaña lanzada se sigue sola (el job se re-arma), pero un worker " +
+        "reiniciado corta la cadena y nada cerraría las campañas ACTIVE. Cada " +
+        "5 min: barrido de las campañas BUILDING/ACTIVE de todas las marcas.",
+    },
   },
   redditLeadDiscovery: {
     name: JOB_QUEUES.redditLeadDiscovery,

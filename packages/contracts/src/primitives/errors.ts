@@ -57,6 +57,10 @@ export const errorCodeSchema = z.enum([
   // Ángulos · FR-056 PRD:1319 (literales en mayúsculas en el PRD)
   "MAX_ANGLES_EXCEEDED",
   "MAX_ANGLES_PER_INFLUENCER_EXCEEDED",
+
+  // Automations · FR-150 PRD:1801 (literales en mayúsculas en el PRD)
+  "AUTOMATION_NO_CONTENT_TYPE_SELECTED",
+  "AUTOMATION_VIDEO_HOOK_NEEDS_DEMO_VIDEO",
 ]);
 export type ErrorCode = z.infer<typeof errorCodeSchema>;
 

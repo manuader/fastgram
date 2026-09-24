@@ -71,12 +71,14 @@ describe("códigos de error, literales del PRD", () => {
     ["instagram_post_limit_exceeded", "ERR-R05 · PRD:3215"],
     ["MAX_ANGLES_EXCEEDED", "FR-056 · PRD:1319"],
     ["MAX_ANGLES_PER_INFLUENCER_EXCEEDED", "FR-056 · PRD:1319"],
+    ["AUTOMATION_NO_CONTENT_TYPE_SELECTED", "FR-150 · PRD:1801"],
+    ["AUTOMATION_VIDEO_HOOK_NEEDS_DEMO_VIDEO", "FR-150 · PRD:1801"],
   ])("%s está en el enum (%s)", (code) => {
     expect(errorCodeSchema.parse(code)).toBe(code);
   });
 
   it("no hay códigos de más: el enum tiene exactamente los del PRD", () => {
-    expect(errorCodeSchema.options).toHaveLength(31);
+    expect(errorCodeSchema.options).toHaveLength(33);
   });
 });
 

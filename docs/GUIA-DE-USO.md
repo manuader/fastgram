@@ -113,11 +113,10 @@ restore probado. Antes de desplegar falta una decisión tuya: la licencia del bu
 | **Influencers** | Personajes consistentes: subís 4–20 fotos, se crea el personaje (Higgsfield Soul ID) y después generás imágenes con él. Blitz lo usa según "influencer frequency" | Key de Higgsfield. Video con el personaje: todavía no (Higgsfield no lo documenta por API) |
 | **Engagement** | Leads de Reddit: el puntaje se calcula en código, la IA arma la respuesta, **vos la mandás**, y un medidor de riesgo de ban frena si te pasás de promoción | La API de Reddit exige aprobación previa: sin ella, pegás el link del post y usás "Copy & open thread" |
 | **Settings → Models → ComfyUI** | Imagen y video con modelos locales: pegás un workflow exportado en **formato API** | ComfyUI corriendo en tu Mac |
+| **Automations** | Campañas de 1 a varias semanas: elegís marca, redes, frecuencia, mix y temas → se generan todas las piezas → las revisás (editar, captions por red, regenerar una) → **Launch** las agenda en el calendario | Un modelo de texto. Las redes sin conexión quedan reservadas y se publican cuando las conectes |
 | **YouTube Shorts y LinkedIn** | Publicar como en las otras redes | Credenciales. **YouTube: pedí ya la auditoría del proyecto de Google**, sin ella los videos quedan privados |
 
 ## 9. Lo que no está
 
-- **Automations** (campañas de varias semanas de Fastlane): la pantalla existe pero no está
-  construida. El piloto automático cubre la mayor parte del caso de uso.
 - Métricas de TikTok (el modo borrador no las da) y de LinkedIn (permiso restringido).
 - Todo lo que depende de credenciales tuyas (§4) nunca corrió contra la plataforma real.

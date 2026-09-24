@@ -49,3 +49,5 @@ export * from "./engagement/index.js";
 // Inspiration de uso personal: tablero de referencias propio y «Remix this» (FR-040 adaptado, OQ-13).
 export * from "./inspiration/index.js";
 export * from "./influencers/index.js";
+// `FR-150`, `P3-AUTO-001…013`: Automations (campañas multi-semana).
+export * from "./automations/index.js";

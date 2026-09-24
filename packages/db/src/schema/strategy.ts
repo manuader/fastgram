@@ -24,7 +24,8 @@ import {
 import { timestamps, tsColumn } from "./_shared.js";
 import { companies, companyRef } from "./identity.js";
 import { contents } from "./content.js";
-import { posts } from "./publishing.js";
+import { connections, posts } from "./publishing.js";
+import { automationSlots } from "./automations.js";
 
 /**
  * Las redes de la estrategia (`D-09`). **No** es `social_platform` ni
@@ -126,10 +127,23 @@ export const plannedSlots = pgTable(
     scheduledAtUtc: tsColumn().notNull(),
     status: plannedSlotStatusEnum().notNull().default("planned"),
     postId: uuid().references(() => posts.id, { onDelete: "set null" }),
+    /**
+     * `0023` — el slot de campaña que lo reservó (`FR-150`), y la conexión que
+     * la campaña eligió. El barrido de publicación convierte con **esa**
+     * conexión y las captions del slot; sin ellas, con la única activa de la
+     * red y sin caption, como siempre.
+     */
+    automationSlotId: uuid().references(() => automationSlots.id, {
+      onDelete: "set null",
+    }),
+    connectionId: uuid().references(() => connections.id, { onDelete: "set null" }),
     ...timestamps(),
   },
   (t) => [
     index("planned_slots_company_scheduled_idx").on(t.companyId, t.scheduledAtUtc),
+    index("planned_slots_automation_slot_idx")
+      .on(t.automationSlotId)
+      .where(sql`${t.automationSlotId} is not null`),
     index("planned_slots_company_created_idx").on(t.companyId, t.createdAt),
     /** Una pieza no se planifica dos veces en la misma red. */
     uniqueIndex("planned_slots_content_network_planned_uq")

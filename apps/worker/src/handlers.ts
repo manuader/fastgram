@@ -59,6 +59,7 @@ import { createMediaImportDispatcher } from "./inspiration/dispatcher.js";
 import { createInspirationIngestHandler } from "./inspiration/ingest-handler.js";
 import type { InspirationMount } from "./inspiration/mount.js";
 import { createMetricsSyncHandler } from "./metrics/sync-handler.js";
+import { createAutomationGenerationDispatcher } from "./automations/generation-handler.js";
 import type { MediaImportMount } from "./media-import/mount.js";
 
 export interface WorkerHandlerDeps {
@@ -138,6 +139,15 @@ export interface WorkerHandlerDeps {
    * sobre `automation-generation`. Ausente = no se monta (tests que no lo miran).
    */
   readonly autopilot?: JobHandler<unknown>;
+  /**
+   * `FR-150`, `P3-AUTO-001…013`. Las campañas: la generación (que comparte
+   * `automation-generation` con el piloto, despachada por `automationId`) y
+   * `automation-build-schedule`. Ausente = no se montan (tests que no las miran).
+   */
+  readonly automations?: {
+    readonly generation: JobHandler<unknown>;
+    readonly buildSchedule: JobHandler<unknown>;
+  };
   /**
    * `PU-AUTO-004`. Adaptadores de métricas por red (`metrics/mount.ts`). Los
    * tokens salen de `publishing`; sin publicación montada, sólo corre el
@@ -533,6 +543,18 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
   // enciende su cron (`main.ts` sólo programa colas con handler).
   if (deps.autopilot !== undefined) {
     handlers[JOB_QUEUES.automationGeneration] = deps.autopilot;
+  }
+  // `FR-150`: las campañas comparten `automation-generation` con el piloto; un
+  // payload con `automationId` es de campaña, cualquier otro sigue siendo del
+  // piloto (`automations/generation-handler.ts`). `automation-build-schedule`
+  // es sólo de campañas; montarlo enciende su cron.
+  if (deps.automations !== undefined) {
+    handlers[JOB_QUEUES.automationGeneration] = createAutomationGenerationDispatcher({
+      campaign: deps.automations.generation,
+      autopilot: deps.autopilot,
+      logger,
+    });
+    handlers[JOB_QUEUES.automationBuildSchedule] = deps.automations.buildSchedule;
   }
 
   // `PU-AUTO-004`: métricas de vuelta y auto-tune del mix. Montarlo es lo que

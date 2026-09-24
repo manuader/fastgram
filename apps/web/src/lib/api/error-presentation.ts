@@ -89,6 +89,10 @@ const REMEDIES: Readonly<Record<FailureCode, Remedy>> = {
   MAX_ANGLES_EXCEEDED: "none",
   MAX_ANGLES_PER_INFLUENCER_EXCEEDED: "none",
 
+  // Automations · FR-150: se arreglan cambiando la campaña o el Media Bank
+  AUTOMATION_NO_CONTENT_TYPE_SELECTED: "none",
+  AUTOMATION_VIDEO_HOOK_NEEDS_DEMO_VIDEO: "none",
+
   // Transporte
   network_error: "retry",
   invalid_response: "retry",

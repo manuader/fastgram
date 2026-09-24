@@ -1222,6 +1222,17 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 193
     existía: una base que ya aplicó la 0022 se saltearía la 0021 (trampa 52).
     Con agentes en paralelo, recrear las bases de test al integrar.
 
+62. **"Tomar N para procesar" con `LIMIT` en un UPDATE…FROM no limita.** La
+    consulta que reservaba slots de campaña para generar tomó 7 con límite 6.
+    La tanda se elige en un CTE (`select … limit … for update skip locked`) y el
+    UPDATE va contra ese CTE. Lo encontró una corrida real, no los tests.
+
+63. **Dos consumidores en la misma cola se despachan por payload.**
+    `automation-generation` es del piloto (payload por marca) y de las campañas
+    (payload con `automationId`); igual que `discovery-refill`
+    (`promptRequestId`) y `media-import` (`inspirationItemId`). Los tests del
+    piloto fijan que un payload de campaña no lo toca.
+
 ## 8. Qué falta
 
 El backlog real es `tasks.md`. El estado de hoy está en §6.

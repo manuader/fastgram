@@ -261,6 +261,10 @@ export const posts = pgTable(
     index("posts_company_created_idx").on(t.companyId, t.createdAt),
     index("posts_company_scheduled_idx").on(t.companyId, t.scheduledAtUtc),
     index("posts_content_idx").on(t.contentId),
+    /** `0023`: los posts de un slot de campaña (`FR-150`, monitor y cancel). */
+    index("posts_automation_slot_idx")
+      .on(t.automationSlotId)
+      .where(sql`${t.automationSlotId} is not null`),
     /**
      * *"`connectionId` y `warmedAccountId` son **mutuamente excluyentes**"* (DATA-020,
      * FR-060). Exactamente uno de los dos.

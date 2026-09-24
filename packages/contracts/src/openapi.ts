@@ -45,6 +45,7 @@ import * as strategy from "./resources/strategy.js";
 import * as autopilot from "./resources/autopilot.js";
 import * as inspiration from "./resources/inspiration.js";
 import * as engagement from "./resources/engagement.js";
+import * as automations from "./resources/automations.js";
 import {
   imageUploadReservationRequestSchema,
   mediaUploadReservationRequestSchema,
@@ -558,6 +559,213 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
             "404": errorResponse("not_found"),
             "409": errorResponse("conflict — misma Idempotency-Key con otro body"),
             "503": errorResponse("service_unavailable — no hay cola montada"),
+          },
+        },
+      },
+      // Automations (FR-150, MOD-015): campañas multi-semana con revisión antes de publicar.
+      "/automations": {
+        get: {
+          operationId: "listAutomations",
+          summary:
+            "Las campañas de la marca, más nuevas primero, con progreso por estado de slot",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(automations.automationListSchema))),
+          },
+        },
+        post: {
+          operationId: "createAutomation",
+          summary:
+            "Crea una campaña DRAFT (F-210/F-211). prefsSnapshot = preferencias de Blitz de la marca + overrides, congeladas (F-212).",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(automations.createAutomationRequestSchema)),
+          },
+          responses: {
+            "201": ok("Creada", dataOf(toJsonSchema(automations.automationSchema))),
+            "400": errorResponse(
+              "bad_request — rangos, una cuenta por red, conexión ajena o de otra red",
+            ),
+          },
+        },
+      },
+      "/automations/{automationId}": {
+        get: {
+          operationId: "getAutomation",
+          summary: "Una campaña con progreso y totales de sus posts (F-218)",
+          parameters: [pathParam("automationId")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(automations.automationSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+        patch: {
+          operationId: "updateAutomation",
+          summary:
+            "Renombra en cualquier estado; el resto de la configuración sólo en DRAFT (409 si no)",
+          parameters: [pathParam("automationId")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(automations.updateAutomationRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(automations.automationSchema))),
+            "400": errorResponse("bad_request"),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — la configuración se bloquea al generar"),
+          },
+        },
+        delete: {
+          operationId: "deleteAutomation",
+          summary: "Borra una campaña que no esté BUILDING ni ACTIVE (F-219)",
+          parameters: [pathParam("automationId")],
+          responses: {
+            "204": { description: "Borrada" },
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — está BUILDING o ACTIVE: cancelala primero"),
+          },
+        },
+      },
+      "/automations/{automationId}/generate": {
+        post: {
+          operationId: "generateAutomation",
+          summary:
+            "DRAFT → GENERATING: crea los slots y encola la generación (F-213). 422 AUTOMATION_NO_CONTENT_TYPE_SELECTED / AUTOMATION_VIDEO_HOOK_NEEDS_DEMO_VIDEO; 400 con details.reason para YouTube con slideshow, sin destinos o tipo sin media.",
+          parameters: [pathParam("automationId")],
+          responses: {
+            "202": ok("Generando", dataOf(toJsonSchema(automations.automationSchema))),
+            "400": errorResponse(
+              "bad_request — details.reason: AUTOMATION_YOUTUBE_REQUIRES_NO_SLIDESHOW | AUTOMATION_NO_DESTINATIONS | AUTOMATION_CONTENT_TYPE_NEEDS_MEDIA",
+            ),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — no está en DRAFT"),
+            "422": errorResponse(
+              "AUTOMATION_NO_CONTENT_TYPE_SELECTED | AUTOMATION_VIDEO_HOOK_NEEDS_DEMO_VIDEO",
+            ),
+            "503": errorResponse("service_unavailable — la API no tiene cola"),
+          },
+        },
+      },
+      "/automations/{automationId}/slots": {
+        get: {
+          operationId: "listAutomationSlots",
+          summary: "Los slots de la campaña en orden de hora, con sus posts",
+          parameters: [pathParam("automationId")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(automations.automationSlotListSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/automations/{automationId}/slots/{slotId}": {
+        patch: {
+          operationId: "updateAutomationSlot",
+          summary:
+            "Edita un slot READY en REVIEW (F-214): texts (+ generatedText), captionsByPlatform (reemplaza el mapa), scheduledAt",
+          parameters: [pathParam("automationId"), pathParam("slotId")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(automations.updateAutomationSlotRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(automations.automationSlotSchema))),
+            "400": errorResponse("bad_request"),
+            "404": errorResponse("not_found"),
+            "409": errorResponse(
+              "conflict — la campaña no está en REVIEW o el slot no está READY",
+            ),
+          },
+        },
+        delete: {
+          operationId: "removeAutomationSlot",
+          summary: "Remove suggestion: el slot queda CANCELLED (Won't post)",
+          parameters: [pathParam("automationId"), pathParam("slotId")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(automations.automationSlotSchema))),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict"),
+          },
+        },
+      },
+      "/automations/{automationId}/slots/{slotId}/reroll": {
+        post: {
+          operationId: "rerollAutomationSlot",
+          summary:
+            "Re-roll this suggestion (F-215): descarta la sugerencia (irrecuperable), consume cuota de la campaña y regenera. contentType opcional (nunca uno con peso 0, ni slideshow con YouTube).",
+          parameters: [pathParam("automationId"), pathParam("slotId")],
+          requestBody: {
+            required: false,
+            content: json(toJsonSchema(automations.rerollAutomationSlotRequestSchema)),
+          },
+          responses: {
+            "202": ok(
+              "Regenerando",
+              dataOf(toJsonSchema(automations.automationSlotSchema)),
+            ),
+            "400": errorResponse(
+              "bad_request — details.reason: excluded_type | youtube_slideshow",
+            ),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — cuota de la campaña agotada, o estado"),
+            "503": errorResponse("service_unavailable — la API no tiene cola"),
+          },
+        },
+      },
+      "/automations/{automationId}/slots/{slotId}/content": {
+        post: {
+          operationId: "materializeAutomationSlotContent",
+          summary:
+            "Edit post en el editor: crea (una vez) la pieza del slot en BUILDING y devuelve su contentId para /library/{id}/edit. El launch la reusa.",
+          parameters: [pathParam("automationId"), pathParam("slotId")],
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(automations.automationSlotContentSchema)),
+            ),
+            "404": errorResponse("not_found"),
+            "409": errorResponse(
+              "conflict — el slot no está READY o la campaña no está en REVIEW",
+            ),
+            "429": errorResponse("content_quota_exceeded — fuera del modo personal"),
+            "503": errorResponse("service_unavailable — la API no tiene cola"),
+          },
+        },
+      },
+      "/automations/{automationId}/launch-validation": {
+        get: {
+          operationId: "getAutomationLaunchValidation",
+          summary:
+            "launchValidation (F-216): todos los gates incumplidos. Se guarda en la campaña.",
+          parameters: [pathParam("automationId")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(automations.launchValidationSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/automations/{automationId}/launch": {
+        post: {
+          operationId: "launchAutomation",
+          summary:
+            "Launch (F-217): revalida, registra los saves, crea una pieza por slot READY, reserva un slot planificado por destino y arranca los builds. No reversible.",
+          parameters: [pathParam("automationId")],
+          responses: {
+            "200": ok("Lanzada", dataOf(toJsonSchema(automations.automationSchema))),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — details.gates con los gates incumplidos"),
+            "503": errorResponse("service_unavailable — la API no tiene cola"),
+          },
+        },
+      },
+      "/automations/{automationId}/cancel": {
+        post: {
+          operationId: "cancelAutomation",
+          summary:
+            "Cancel automation (F-219): revoca los posts programados, borra los slots planificados, lo restante queda CANCELLED. Lo publicado sigue vivo. Irreversible.",
+          parameters: [pathParam("automationId")],
+          responses: {
+            "200": ok("Cancelada", dataOf(toJsonSchema(automations.automationSchema))),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — DRAFT o ya terminada"),
           },
         },
       },
