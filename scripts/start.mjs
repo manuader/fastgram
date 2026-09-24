@@ -117,6 +117,30 @@ for (const k of EXAMPLE_DEFAULT_KEYS) {
 }
 env.DATABASE_URL ||= DEFAULT_DATABASE_URL;
 
+/**
+ * Análisis de marca desde la web, en uso personal.
+ *
+ * El worker no le pone default a ninguno de estos números a propósito (sesión
+ * 2026-09-23: "ningún número que el PRD no da tiene default"). Pero sin ellos la
+ * cola `brand-source-analysis` no se monta y una marca nueva nunca se analiza.
+ * Para `pnpm start` en una Mac personal los elige el coordinador (2026-09-24):
+ * son límites de higiene para bajar UNA web, no cuotas. Cualquiera se pisa desde
+ * el entorno o `.env.local`.
+ */
+const PERSONAL_BRAND_DEFAULTS = {
+  BRAND_WEBSITE_TIMEOUT_MS: "15000",
+  BRAND_WEBSITE_MAX_BODY_BYTES: "3000000",
+  BRAND_WEBSITE_MAX_REDIRECTS: "5",
+  BRAND_WEBSITE_MAX_SECONDARY_PAGES: "4",
+  BRAND_WEBSITE_MAX_TEXT_CHARS: "40000",
+  BRAND_WEBSITE_USER_AGENT: "FastGram/0.1 (personal brand analysis)",
+  BRAND_WEBSITE_ALLOWED_PORTS: "80,443",
+  BRAND_SNAPSHOT_RAW_RETENTION_DAYS: "30",
+};
+for (const [k, v] of Object.entries(PERSONAL_BRAND_DEFAULTS)) {
+  if (env[k] === undefined || env[k] === "") env[k] = v;
+}
+
 /** Vacío cuenta como ausente: `.env.example` trae muchas `KEY=` sin valor. */
 /** @param {string} k */
 const envValue = (k) => (env[k] === undefined || env[k] === "" ? undefined : env[k]);

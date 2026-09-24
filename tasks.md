@@ -60,19 +60,23 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 ## Sprint 1 — Arranca y genera
 
 - [x] **PU-RUN-001** `pnpm start`: levanta infra, migra, render (con fuentes), API, worker y web **en orden**, con el secreto de render efímero y compartido; un solo Ctrl+C baja todo
-- [ ] **PU-RUN-002** Modo `personal` (`FASTGRAM_MODE=personal`): sin cuotas ni rate limiting, API y web atadas a `127.0.0.1` · `D-06`
+- [x] **PU-RUN-002** Modo `personal` (`FASTGRAM_MODE=personal`): sin cuotas ni rate limiting, API y web atadas a `127.0.0.1` · `D-06`
 - [x] **PU-RUN-003** La web obtiene su key sola al arrancar (sin copiar `FASTGRAM_API_KEY` a mano); vive sólo en el entorno del proceso de la web, nunca en disco
-- [ ] **PU-MODEL-001** Registro de modelos **por tarea** (texto, juicio, visión, imagen, video, recorte) con presets OpenRouter / DeepSeek / Groq / Cerebras / Gemini / Ollama / LM Studio; keys sólo en entorno o `~/.fastgram/` · `D-14`, `ADR-009`
-- [ ] **PU-MODEL-002** Pantalla `Settings → Modelos`: elegir proveedor y modelo por tarea, probar conexión, ver gasto estimado del mes
-- [ ] **PU-UI-001** Shell 2026: sidebar compacta con **selector de marca**, `⌘K`, oscuro por defecto, transiciones · ⚠️ dependencias nuevas las instala el coordinador
-- [ ] **PU-BRAND-001** Crear / cambiar / borrar marcas (workspaces) sin auth · `D-07` · cubre parte de `P1-TENANT-001/002/005`
-- [ ] **PU-BLITZ-001** Deck de Blitz con gestos, teclado y chips · `= P2-BLITZ-001…006`, `P2-BLITZ-013`
-- [ ] **PU-BLITZ-002** Aceptar en Blitz → pieza construida y visible en Library · `= P2-BLITZ-012`, cierra `P2-BLITZ-014`
+- [x] **PU-MODEL-001** Registro de modelos **por tarea** (texto, juicio, visión, imagen, video, recorte) con presets OpenRouter / DeepSeek / Groq / Cerebras / Gemini / Ollama / LM Studio; keys sólo en entorno o `~/.fastgram/` · `D-14`, `ADR-009`
+- [x] **PU-MODEL-002** Pantalla `Settings → Modelos`: elegir proveedor y modelo por tarea, probar conexión, ver gasto estimado del mes
+- [~] **PU-UI-001** Shell 2026: sidebar compacta con **selector de marca**, `⌘K`, oscuro por defecto, transiciones · ⚠️ dependencias nuevas las instala el coordinador
+  > Hecho y con tests (`88fc15f`). **Falta la pasada visual con screenshot**: el 2026-09-24 el panel del navegador estaba oculto y sólo se verificó por texto y DOM.
+- [x] **PU-BRAND-001** Crear / cambiar / borrar marcas (workspaces) sin auth · `D-07` · cubre parte de `P1-TENANT-001/002/005`
+- [x] **PU-BLITZ-001** Deck de Blitz con gestos, teclado y chips · `= P2-BLITZ-001…006`, `P2-BLITZ-013`
+- [x] **PU-BLITZ-002** Aceptar en Blitz → pieza construida y visible en Library · `= P2-BLITZ-012`, cierra `P2-BLITZ-014`
+  > **Verificado de punta a punta el 2026-09-24:** Ollama qwen2.5 7B configurado desde `/settings/models` → refill de 5 sugerencias → deck → `→` → Save to Library → build `CREATED` → slide 1080×1350 legible. Sin simular nada.
+- [ ] **PU-MEDIA-001** **Subir media desde la UI** (Library → Media Bank): drag & drop de varias imágenes y videos, progreso, categorías · ⚠️ sin esto una marca nueva no tiene con qué generar
+- [ ] **PU-MEDIA-002** **Fondos de marca generados localmente**, sin keys: imágenes (degradés y formas con la paleta de la marca) y videos cortos en loop para wall-of-text, categorizados solos · para que Blitz funcione desde cero
 
 ## Sprint 2 — Edito y agendo
 
 - [x] **PU-EDIT-001** **Decidir y documentar en el PRD el mapeo editor→px** (decidido 2026-09-24, PRD FR-051) (propuesta: posición y ancho en % del lienzo; fuente y contorno × `canvas.width/360`) · cierra `P2-CONTENT-004`
-- [ ] **PU-EDIT-002** Las ediciones llegan al video (rebuild con las cajas editadas) · dep: PU-EDIT-001
+- [x] **PU-EDIT-002** Las ediciones llegan al video (rebuild con las cajas editadas) · dep: PU-EDIT-001
 - [ ] **PU-EDIT-003** Editor inline: caption, texto, fondo, música, meme/asset · `= P2-BLITZ-007…011`
 - [ ] **PU-EDIT-004** Preview en vivo en el cliente con la misma escala que el render (lo que ves es lo que sale)
 - [ ] **PU-BLITZ-003** **Crear desde prompt**: tema → pieza de cualquier formato, incluido green-screen con meme de la biblioteca + fondo de marca · `EXT-009`
