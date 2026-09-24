@@ -58,8 +58,6 @@
  * - **No limpia** una reserva abandonada. Ver `ABANDONED_UPLOAD_NOTE`.
  */
 import {
-  BYTES_PER_MB,
-  CONTENT_TYPE_EXTENSIONS,
   contentSchema,
   mbToBytes,
   uploadReservationSchema,
@@ -74,10 +72,33 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../api/client";
 import { newIdempotencyKey } from "../api/idempotency-key";
-import { presentError } from "../api/error-presentation";
-import { ApiRequestError, isApiRequestError } from "../api/errors";
+import type { ApiRequestError } from "../api/errors";
 import { queryKeys } from "../api/keys";
+import {
+  acceptFor,
+  asApiError,
+  checkUpload,
+  contentTypeFrom,
+  extensionsFor,
+  resumeFor,
+  type FileCheck as SharedFileCheck,
+  type FileRejectionReason,
+  type ResumePoint,
+  type UploadCandidate,
+  type UploadStep,
+} from "../media/upload/policy";
 import { putSignedUpload, isSignedUploadError } from "./upload-transport";
+
+// La política (deducir el tipo, traducir el issue de Zod, desde dónde se
+// retoma) vive en `lib/media/upload/policy.ts` desde `PU-MEDIA-001`, porque la
+// comparte el Media Bank. Se re-exporta con los nombres de siempre.
+export { resumeFor, sizeInMb } from "../media/upload/policy";
+export type {
+  FileRejectionReason,
+  ResumePoint,
+  UploadCandidate,
+  UploadStep,
+} from "../media/upload/policy";
 
 /** §9.8 — la reserva. `free` en la tabla de facturación (PRD:2285). */
 export const CUSTOM_VIDEO_RESERVE_PATH = "/content/custom/video/upload-url";
@@ -96,96 +117,30 @@ export const CUSTOM_VIDEO_CONTENT_TYPES: readonly string[] =
   videoContentTypeSchema.options;
 
 /** `[".mp4", ".mov"]` — las extensiones que el contrato ata a esos tipos. */
-export const CUSTOM_VIDEO_EXTENSIONS: readonly string[] = [
-  ...new Set(
-    CUSTOM_VIDEO_CONTENT_TYPES.flatMap((type) => CONTENT_TYPE_EXTENSIONS[type] ?? []),
-  ),
-];
+export const CUSTOM_VIDEO_EXTENSIONS: readonly string[] = extensionsFor(
+  CUSTOM_VIDEO_CONTENT_TYPES,
+);
 
-/**
- * El `accept` del `<input type="file">`.
- *
- * Lleva los content types **y** las extensiones porque no son intercambiables:
- * Windows y algunos Safari no le ponen `type` a un `.mov`, así que filtrar sólo
- * por MIME esconde archivos que sí se aceptan. Y `accept` es una sugerencia del
- * diálogo, nunca una validación: quien arrastre otra cosa pasa igual, y para
- * eso está `describeUpload`.
- */
-export const CUSTOM_VIDEO_ACCEPT: string = [
-  ...CUSTOM_VIDEO_CONTENT_TYPES,
-  ...CUSTOM_VIDEO_EXTENSIONS,
-].join(",");
+/** El `accept` del `<input type="file">`: ver `acceptFor`. */
+export const CUSTOM_VIDEO_ACCEPT: string = acceptFor(CUSTOM_VIDEO_CONTENT_TYPES);
 
-/**
- * Lo mínimo que hace falta de un archivo. Es un `File` del navegador sin
- * depender del DOM, para poder probar la política sin fabricar un `File`.
- */
-export interface UploadCandidate {
-  readonly name: string;
-  /** `""` cuando el sistema no supo decir el tipo. Pasa, y hay que tratarlo. */
-  readonly type: string;
-  readonly size: number;
-}
+export type FileCheck = SharedFileCheck<VideoUploadReservationRequest>;
 
-export type FileRejectionReason =
-  "empty" | "too_large" | "unsupported_type" | "extension_mismatch";
-
-export type FileCheck =
-  | { readonly ok: true; readonly body: VideoUploadReservationRequest }
-  | { readonly ok: false; readonly reason: FileRejectionReason };
-
-/**
- * El content type que se va a **declarar** en la reserva.
- *
- * Si el navegador da uno de los dos del enum, ése. Si no da ninguno, se deduce
- * de la extensión con el mapa del **contrato** leído al revés. Deducir no
- * afloja nada: el servidor tampoco abre el archivo — comprueba exactamente
- * estas dos cosas, el tipo declarado y que la extensión le corresponda. Lo que
- * evita es rechazar en el cliente un `.mov` que el servidor habría aceptado,
- * sólo porque el sistema operativo no rellenó el MIME.
- */
+/** El content type que se va a **declarar** en la reserva: ver `contentTypeFrom`. */
 export function contentTypeFor(file: UploadCandidate): string {
-  if (CUSTOM_VIDEO_CONTENT_TYPES.includes(file.type)) return file.type;
-  const lower = file.name.toLowerCase();
-  const guessed = CUSTOM_VIDEO_CONTENT_TYPES.find((type) =>
-    (CONTENT_TYPE_EXTENSIONS[type] ?? []).some((ext) => lower.endsWith(ext)),
-  );
-  // Sin deducción se devuelve lo que dijo el navegador (o `""`): el schema lo
-  // rechaza con `unsupported_type`, que es la verdad.
-  return guessed ?? file.type;
+  return contentTypeFrom(file, CUSTOM_VIDEO_CONTENT_TYPES);
 }
 
 /**
- * ¿Entra este archivo? La respuesta la da el schema del contrato, y el motivo
- * sale del `path` del issue de Zod — no de una segunda tanda de `if`s que
- * podría discrepar con él.
+ * ¿Entra este archivo? Lo decide `videoUploadReservationRequestSchema`, el
+ * mismo schema que valida el body en `apps/api/src/routes/v1/content.ts`.
  */
 export function describeUpload(file: UploadCandidate): FileCheck {
-  // Un archivo de 0 bytes falla el `.positive()` del schema por `sizeBytes`, o
-  // sea por el mismo camino que uno de 80 MB. Decirle a alguien "el tope son 50
-  // MB" sobre un archivo vacío es un consejo falso, así que se separa antes.
-  if (file.size <= 0) return { ok: false, reason: "empty" };
-
-  const parsed = videoUploadReservationRequestSchema.safeParse({
-    filename: file.name,
-    contentType: contentTypeFor(file),
-    sizeBytes: file.size,
-  });
-  if (parsed.success) return { ok: true, body: parsed.data };
-
-  const paths = new Set(parsed.error.issues.map((issue) => issue.path[0]));
-  // El orden importa: un `.txt` de 80 MB falla por las dos cosas, y lo que hay
-  // que decirle a quien lo eligió es que el formato no entra — renombrarlo no
-  // lo arreglaría, y bajarle el peso tampoco.
-  if (paths.has("contentType")) return { ok: false, reason: "unsupported_type" };
-  if (paths.has("filename")) return { ok: false, reason: "extension_mismatch" };
-  if (paths.has("sizeBytes")) return { ok: false, reason: "too_large" };
-  return { ok: false, reason: "unsupported_type" };
-}
-
-/** `62.4` — el tamaño en MB con un decimal, para decírselo al usuario. */
-export function sizeInMb(bytes: number): string {
-  return (bytes / BYTES_PER_MB).toFixed(1);
+  return checkUpload(
+    file,
+    videoUploadReservationRequestSchema,
+    CUSTOM_VIDEO_CONTENT_TYPES,
+  );
 }
 
 /**
@@ -209,49 +164,6 @@ export const ABANDONED_UPLOAD_NOTE =
 export interface UploadFileSummary {
   readonly name: string;
   readonly sizeBytes: number;
-}
-
-/** Los tres pasos de §9.8, para saber cuál falló. */
-export type UploadStep = "reserve" | "transfer" | "finalize";
-
-/**
- * Desde dónde se puede retomar un fallo.
- *
- * · `restart`  — hay que volver al paso 1 (que es gratis).
- * · `finalize` — los bytes ya están arriba: sólo falta el paso 3.
- * · `none`     — no hay reintento que ayude, y ofrecerlo sería un botón que no
- *                puede funcionar (§19: la cuota agotada es el caso de manual).
- */
-export type ResumePoint = "restart" | "finalize" | "none";
-
-/**
- * Qué se puede hacer con un fallo, según **qué paso** cayó y **qué código**
- * trajo.
- *
- * Es función pura y exportada a propósito: es la política entera de reintento
- * de esta pantalla, y una política que sólo se puede ejercitar montando React y
- * fingiendo tres peticiones acaba sin probarse.
- *
- * La regla de fondo: el reintento se ofrece cuando puede cambiar el resultado,
- * y cuesta lo menos posible. Reintentar el paso 3 no vuelve a subir el archivo;
- * reintentar el paso 1 no cuesta nada (PRD:2285); y reintentar una cuota
- * agotada (`429 content_quota_exceeded`) no cambia nada, así que no se ofrece — que es la lección que
- * `error-presentation.ts` ya dejó escrita y de la que aquí se tira.
- */
-export function resumeFor(step: UploadStep, error: ApiRequestError | null): ResumePoint {
-  // El PUT: la reserva vieja no aporta nada y una nueva es gratis.
-  if (step === "transfer" || error === null) return "restart";
-
-  if (step === "reserve") {
-    return presentError(error).remedy === "retry" ? "restart" : "none";
-  }
-
-  // Paso 3. `410 gone` = la reserva caducó: repetirlo da otro 410.
-  if (error.code === "gone") return "restart";
-  // `409 conflict` en §9.8 es "el objeto todavía no se ve" — recuperable, y
-  // justo el caso en que volver a subir 50 MB sería absurdo.
-  if (error.code === "conflict") return "finalize";
-  return presentError(error).remedy === "retry" ? "finalize" : "none";
 }
 
 export type CustomVideoPhase =
@@ -299,16 +211,6 @@ export interface CustomVideoUploadController {
   readonly cancel: () => void;
   /** Vuelve al estado inicial tras un éxito o un rechazo. */
   readonly reset: () => void;
-}
-
-/** Cualquier cosa que lance `apiRequest`, como error del contrato. */
-function asApiError(cause: unknown): ApiRequestError {
-  if (isApiRequestError(cause)) return cause;
-  return new ApiRequestError({
-    code: "invalid_response",
-    status: 0,
-    serverMessage: cause instanceof Error ? cause.message : String(cause),
-  });
 }
 
 /**

@@ -288,7 +288,199 @@ export const en = {
   "command.themeLight": "Use light theme",
   "command.themeDark": "Use dark theme",
   "command.themeSystem": "Match system theme",
+
+  /* ------------------- Media Bank · subida · PU-MEDIA-001, FR-100 (nuevo) */
+  // Copy nuevo, ninguna clave es literal del PRD. Prefijo `mediaUpload.` para no
+  // chocar con las `media.*` del catálogo local de `apps/web`.
+  "mediaUpload.upload": "Upload",
+  "mediaUpload.inputLabel": "Upload images or videos",
+  "mediaUpload.dropzone.title": "Drop images or videos here",
+  "mediaUpload.dropzone.hint":
+    "JPG, PNG or WebP up to {imageMax} MB · MP4 or MOV up to {videoMax} MB. Several at once.",
+  "mediaUpload.dropzone.browse": "Browse files",
+  "mediaUpload.dropzone.overlay": "Drop to upload",
+  "mediaUpload.empty.description":
+    "Drag images or videos here, or upload them from your computer. Once they're in, Blitz and the Studio can use them.",
+  "mediaUpload.empty.action": "Upload media",
+  "mediaUpload.queue.title": "Uploads",
+  "mediaUpload.queue.progress": "{done} of {total} uploaded",
+  "mediaUpload.queue.clear": "Clear finished",
+  "mediaUpload.phase.queued": "Waiting…",
+  "mediaUpload.phase.reserving": "Preparing…",
+  "mediaUpload.phase.uploading": "Uploading {percent}%",
+  "mediaUpload.phase.uploadingUnknown": "Uploading…",
+  "mediaUpload.phase.finalizing": "Finishing…",
+  "mediaUpload.phase.done": "Uploaded",
+  "mediaUpload.phase.processing": "Uploaded · processing video…",
+  "mediaUpload.phase.processingFailed": "Uploaded, but the video couldn't be processed",
+  "mediaUpload.phase.cancelled": "Cancelled",
+  "mediaUpload.progressLabel": "Upload progress for {name}",
+  "mediaUpload.failed.transfer": "The upload was interrupted.",
+  "mediaUpload.failed.finalize": "The file is up, but we couldn't finish adding it.",
+  "mediaUpload.rejected.empty": "This file is empty.",
+  "mediaUpload.rejected.tooLarge": "{size} MB — {kind} can be up to {max} MB.",
+  "mediaUpload.rejected.unsupported": "Only JPG, PNG, WebP, MP4 and MOV files.",
+  "mediaUpload.rejected.extensionMismatch": "The file extension doesn't match its type.",
+  "mediaUpload.kind.image": "images",
+  "mediaUpload.kind.video": "videos",
+  "mediaUpload.retry": "Retry",
+  "mediaUpload.retryAria": "Retry {name}",
+  "mediaUpload.cancelAria": "Cancel upload of {name}",
+  "mediaUpload.dismissAria": "Remove {name} from the list",
+  "mediaUpload.categories.label": "Use it as",
+  "mediaUpload.categories.groupLabel": "Categories for {name}",
+  "mediaUpload.categories.save": "Save",
+  "mediaUpload.categories.saved": "Categories saved",
+  "mediaUpload.categories.skip": "Skip",
+  "mediaUpload.categories.skipped":
+    "No categories — Blitz won't pick it until you add some.",
+  "mediaUpload.categories.applyToAll.image": "Apply to all {count} images",
+  "mediaUpload.categories.applyToAll.video": "Apply to all {count} videos",
+  "mediaUpload.categories.noneHint": "No categories: Blitz won't pick it automatically.",
+  "mediaUpload.categories.saveFailed": "Couldn't save the categories.",
+  "mediaUpload.category.slideshowImage": "Slideshow image",
+  "mediaUpload.category.greenScreenBackground": "Green screen background",
+  "mediaUpload.category.backgroundVideo": "Background video",
+  "mediaUpload.category.hookVideo": "Hook video",
+  "mediaUpload.category.greenScreenVideo": "Green screen video",
+  "mediaUpload.card.actionsLabel": "Actions for {name}",
+  "mediaUpload.card.editAria": "Edit categories of {name}",
+  "mediaUpload.card.deleteAria": "Delete {name}",
+  "mediaUpload.edit.title": "Edit categories",
+  "mediaUpload.edit.description": "Categories decide where Blitz can use {name}.",
+  "mediaUpload.edit.save": "Save categories",
+  "mediaUpload.delete.title": "Delete “{name}”?",
+  "mediaUpload.delete.body": "It leaves your Media Bank and Blitz stops picking it.",
+  "mediaUpload.delete.confirm": "Delete",
+  /* --------------------------- Editor · PU-EDIT-003/004, FR-051…053, FR-071 */
+  // Copy nuevo salvo donde dice «literal» (el PRD da esos textos tal cual).
+  "editor.title": "Edit content",
+  "editor.back": "Back to the piece",
+  "editor.loading": "Loading the editor…",
+  "editor.notFound": "This piece doesn't exist or isn't in this brand.",
+  "editor.notEditable": "This piece can't be edited here.",
+  "editor.noBoxes": "This piece has no editable text boxes.",
+  "editor.buildingBlocked": "This piece is building. You can edit it when it's ready.",
+  "editor.failedBlocked": "This piece failed to build, so there's nothing to edit.",
+  "editor.view.label": "View",
+  "editor.view.preview": "Preview",
+  "editor.view.rendered": "Rendered",
+  "editor.rendered.empty": "No render yet.",
+  "editor.rendered.stale": "This is the previous render. The new one is building.",
+  "editor.canvas.label":
+    "Canvas preview. Select a text box and drag it, or use the arrow keys (Shift moves 5%).",
+  "editor.canvas.box": "Text box {n}: {text}",
+  "editor.canvas.boxEmpty": "Text box {n} (empty)",
+  "editor.canvas.resize": "Resize text box {n}",
+  "editor.canvas.video": "Meme video. Drag to reposition.",
+  "editor.canvas.mediaError": "Couldn't load this media.",
+  "editor.canvas.noMedia": "No background",
+  "editor.keyboardHint": "Arrows move 1% · Shift + arrows 5%",
+  "editor.deleteNotAllowed": "Text boxes can't be removed from a piece; clear the text instead.",
+  "editor.slides.label": "Slides",
+  "editor.slides.item": "Slide {n}",
+  "editor.slides.previous": "Previous slide",
+  "editor.slides.next": "Next slide",
+  "editor.slides.counter": "{current} / {total}",
+  "editor.assets.title": "Assets",
+  "editor.assets.video": "Video", // literal
+  "editor.assets.audio": "Audio", // literal
+  "editor.assets.imageSet": "Image Set", // literal
+  "editor.assets.image": "Image",
+  "editor.assets.background": "Background",
+  "editor.assets.greenScreenVideo": "Green screen meme",
+  "editor.assets.hookVideo": "Hook video",
+  "editor.assets.demoVideo": "Demo video",
+  "editor.assets.audioTrack": "Audio track", // literal
+  "editor.assets.noAudio": "No audio", // literal
+  "editor.assets.slideImage": "Slide {n} image",
+  "editor.assets.swap": "Swap", // literal
+  "editor.assets.changed": "Changed · save to apply",
+  "editor.mention.label": "Mention your business?", // literal (MENTION YOUR BUSINESS?)
+  "editor.mention.yes": "Yes", // literal
+  "editor.mention.no": "No", // literal
+  "editor.prompt.label": "Prompt", // literal
+  "editor.prompt.placeholder": "Optional instructions for regeneration…", // literal
+  "editor.prompt.counter": "{count}/{max}",
+  "editor.prompt.tooLong": "Use {max} characters or fewer.",
+  "editor.regenerate": "Regenerate Text", // literal
+  "editor.regenerating": "Regenerating…",
+  "editor.regenerate.dirty": "Save or discard your changes before regenerating.",
+  "editor.regenerate.failed":
+    "Couldn't regenerate the text. The previous version is still available.",
+  "editor.text.title": "Text", // literal
+  "editor.text.noSelection": "Select a text box on the canvas to style it.",
+  "editor.text.content": "Content",
+  "editor.text.applyAll": "Apply to all text boxes", // literal
+  "editor.text.font": "Font",
+  "editor.text.fontFallback":
+    "This font isn't available to the render yet. It comes out in Inter.",
+  "editor.text.weight": "Weight: {weight}", // literal `Weight: <Medium>`
+  "editor.text.size": "Size: {size}px", // literal `Size: <18px>`
+  "editor.text.width": "Width: {width}%",
+  "editor.text.color": "Color", // literal
+  "editor.text.stroke": "Stroke: {width}px", // literal `Stroke: <3px>`
+  "editor.text.strokeColor": "Stroke Color", // literal
+  "editor.text.background": "Background", // literal
+  "editor.text.bgNone": "None", // literal
+  "editor.text.bgPill": "Pill",
+  "editor.text.bgFullWidth": "Full width",
+  "editor.text.bgColor": "Background color",
+  "editor.text.bgOpacity": "Opacity: {opacity}%",
+  "editor.text.bgRenderNote":
+    "The render draws any background as a solid pill for now: opacity and full width don't reach the video yet.",
+  "editor.text.hex": "{label} hex",
+  "editor.weight.300": "Light",
+  "editor.weight.400": "Regular",
+  "editor.weight.500": "Medium",
+  "editor.weight.600": "Semibold",
+  "editor.weight.700": "Bold",
+  "editor.video.title": "Video", // literal
+  "editor.video.zoom": "Zoom: {zoom}%", // literal `Zoom: 100%`
+  "editor.video.reset": "Reset Position", // literal
+  "editor.video.dragHint": "Drag video to reposition", // literal
+  "editor.caption.title": "Caption",
+  "editor.caption.unavailable":
+    "A piece has no caption of its own: you write it per network when you schedule the post.",
+  "editor.save": "Save changes",
+  "editor.saving": "Saving…",
+  "editor.discard": "Discard",
+  "editor.done": "Done Editing", // literal
+  "editor.unsaved": "Unsaved changes",
+  "editor.rebuilding": "Rebuilding the piece with your changes…",
+  "editor.rebuilt": "Render updated.",
+  "editor.editFailed":
+    "The last edit couldn't be rendered. The previous version is still available.",
+  "editor.stale": "Someone else changed this piece. Reload to get the latest version.",
+  "editor.reload": "Reload",
+  "editor.invalidMedia": "Pick media from your Media Bank.",
+  "editor.picker.selectVideo": "Select Video", // literal
+  "editor.picker.swapImage": "Swap image for slide {n}", // literal
+  "editor.picker.selectImage": "Select Image",
+  "editor.picker.myVideos": "My Videos", // literal
+  "editor.picker.myImages": "My Images", // literal
+  "editor.picker.library": "Library", // literal
+  "editor.picker.libraryEmpty": "There's no shared library yet. Use your own media.",
+  "editor.picker.empty": "Nothing here yet. Upload media to your Media Bank first.",
+  "editor.picker.filteredEmpty": "No media matches these filters.",
+  "editor.picker.error": "Couldn't load your media.",
+  "editor.picker.retry": "Try again",
+  "editor.picker.filter": "Filter:", // literal
+  "editor.picker.clear": "Clear", // literal
+  "editor.picker.loadMore": "Load more",
+  "editor.picker.cancel": "Cancel", // literal
+  "editor.picker.swap": "Swap", // literal
+  "editor.picker.selected": "New image selected", // literal
+  "editor.picker.category.slideshowImage": "Slideshow image",
+  "editor.picker.category.greenScreenBackground": "Green screen background",
+  "editor.picker.category.backgroundVideo": "Background video",
+  "editor.picker.category.hookVideo": "Hook video",
+  "editor.picker.category.greenScreenVideo": "Green screen video",
+  "editor.audio.title": "Select Audio", // literal
+  "editor.audio.empty": "The shared audio library is empty.",
+  "editor.audio.error": "Couldn't load the audio library.",
 } as const;
+
 
 export type MessageKey = keyof typeof en;
 export type Messages = Record<MessageKey, string>;

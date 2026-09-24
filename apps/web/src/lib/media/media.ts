@@ -11,20 +11,20 @@
  * no filtraría: lo rechazaría el `.strict()` con un `400`. Así que acá no hay
  * más filtro que el tipo, y es una ausencia declarada, no un olvido.
  *
- * ## Sin polling, a propósito
+ * ## Polling mientras haya un video en `processing`
  *
- * Un video se crea en `processing` y se normaliza en background hasta `ready`
- * o `failed` (FR-100). La Library sí pregunta cada 10 s mientras hay un build
- * (ADR-014) y la tentación es copiarlo. **No se copia**, porque hoy no hay
- * quien normalice: `apps/worker` no tiene handler de normalización de media
- * —los que hay son `content-build`, `publishing`, `influencer-pipeline` y el
- * reset de cuota—, así que un asset en `processing` se queda ahí para siempre.
- * Un intervalo contra ese estado sería una petición cada diez segundos, sin
- * fin, contra el límite de §9.6, y no vería cambiar nada nunca.
+ * Un video se crea en `processing` y el worker lo normaliza en background
+ * (`apps/worker/src/media/normalization-handler.ts`) hasta `ready` o `failed`
+ * (FR-100). Mientras quede alguno así en pantalla se pregunta cada 10 s, con
+ * la misma palanca que la Library (`lib/library/content.ts`, ADR-014): un
+ * `refetchInterval` en forma de función que se apaga solo en cuanto no queda
+ * nada procesándose.
  *
- * El día que exista el handler, la palanca es la misma que en
- * `lib/library/content.ts`: un `refetchInterval` en forma de función que mire
- * si queda algo en `processing`.
+ * Hasta `PU-MEDIA-001` esto **no** se hacía, y con razón: no existía el
+ * handler, y un intervalo contra un estado que nadie mueve es una petición cada
+ * diez segundos para siempre. Si el worker no está corriendo, eso vuelve a
+ * pasar — el costo es acotado (una petición cada 10 s, sólo con la pestaña
+ * visible: ver `pollIntervalFor` en `content.ts`).
  */
 import {
   mediaSchema,
@@ -90,6 +90,25 @@ export interface UseMediaListOptions extends MediaFilters {
   readonly limit?: number;
 }
 
+/** La misma cadencia que un build de la Library (NFR-002, ADR-014). */
+export const MEDIA_POLL_INTERVAL_MS = 10_000;
+
+/** ¿Hay algo que el worker todavía tiene que normalizar? */
+export function hasProcessingMedia(items: readonly { status: MediaStatus }[]): boolean {
+  return items.some((item) => item.status === "processing");
+}
+
+export function mediaPollIntervalFor(
+  items: readonly { status: MediaStatus }[],
+): number | false {
+  return hasProcessingMedia(items) ? MEDIA_POLL_INTERVAL_MS : false;
+}
+
+/**
+ * `GET /media` paginado. `staleTime: 0` por lo mismo que `useContentList`:
+ * mezclar una ventana de frescura con una cadencia de polling deja una duda
+ * que sólo se resuelve leyendo la librería.
+ */
 export function useMediaList(
   options: UseMediaListOptions = {},
 ): UseInfiniteQueryResult<CursorPages<Media>, ApiRequestError> {
@@ -101,6 +120,8 @@ export function useMediaList(
     query,
     itemSchema: mediaSchema,
     limit,
+    staleTime: 0,
+    refetchInterval: (q) => mediaPollIntervalFor(flattenMediaPages(q.state.data)),
   });
 }
 

@@ -239,7 +239,7 @@ describe("lo que dice cada tarjeta (PRD:1626)", () => {
     // El contrato no publica poster de video: sin imagen, hueco honesto.
     expect(container.querySelector(".fgw-media-card__image")).toBeNull();
     // Y `processing` se dice: un video recién subido todavía no sirve para
-    // nada, y hoy además no hay quien lo normalice.
+    // nada hasta que el worker lo normaliza.
     expect(screen.getByText("Processing")).toBeInTheDocument();
   });
 
@@ -361,21 +361,40 @@ describe("paginación por cursor (PRD:2345)", () => {
   });
 });
 
-describe("sin polling (ADR-014 NO aplica acá)", () => {
-  it("un asset en `processing` no genera peticiones nuevas", async () => {
+describe("polling mientras haya un video en `processing` (ADR-014)", () => {
+  it("pregunta cada 10 s mientras algo se procesa, y para cuando ya no", async () => {
     vi.useFakeTimers();
     try {
-      listMock.mockResolvedValue(
-        page([asset({ mediaType: "video", filename: "clip.mp4", status: "processing" })]),
-      );
+      const processing = asset({
+        mediaType: "video",
+        filename: "clip.mp4",
+        status: "processing",
+      });
+      listMock.mockResolvedValueOnce(page([processing]));
+      listMock.mockResolvedValue(page([{ ...processing, status: "ready" }]));
       renderTab();
       await vi.advanceTimersByTimeAsync(1);
-
       expect(listMock).toHaveBeenCalledTimes(1);
-      // Treinta segundos, tres intervalos de la Library. Hoy no hay handler de
-      // normalización en `apps/worker`, así que un asset en `processing` se
-      // queda ahí: un intervalo sería una petición cada diez segundos, sin
-      // fin, contra el límite de §9.6, y no vería cambiar nada nunca.
+
+      // El worker normaliza (`media-normalization`): a los 10 s se vuelve a
+      // pedir, y el video ya está `ready`.
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(listMock).toHaveBeenCalledTimes(2);
+
+      // Sin nada en `processing` el intervalo se apaga: treinta segundos más
+      // no generan ni una petición.
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(listMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("un bank sin nada procesándose no pregunta", async () => {
+    vi.useFakeTimers();
+    try {
+      listMock.mockResolvedValue(page([asset({ status: "ready" })]));
+      renderTab();
       await vi.advanceTimersByTimeAsync(30_000);
       expect(listMock).toHaveBeenCalledTimes(1);
     } finally {

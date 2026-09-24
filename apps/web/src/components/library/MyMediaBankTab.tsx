@@ -1,10 +1,18 @@
 "use client";
 
 import { Button, EmptyState, Select } from "@fastgram/ui";
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ApiErrorState } from "./ApiErrorState";
 import { MediaCard } from "./MediaCard";
+import { DeleteMediaDialog, EditCategoriesDialog } from "./MediaAssetDialogs";
+import {
+  MediaDropTarget,
+  MediaDropzone,
+  UploadGlyph,
+  type MediaDropTargetHandle,
+} from "./MediaDropzone";
 import { MediaGridSkeleton } from "./MediaGridSkeleton";
+import { UploadQueue } from "./UploadQueue";
 import { tw } from "@/lib/i18n/t";
 import {
   MEDIA_TYPES,
@@ -12,7 +20,8 @@ import {
   flattenMediaPages,
   useMediaList,
 } from "@/lib/media/media";
-import type { MediaType } from "@fastgram/contracts";
+import { useMediaUploadQueue } from "@/lib/media/upload/queue";
+import type { Media, MediaStatus, MediaType } from "@fastgram/contracts";
 
 /** `""` es "sin filtro": un `<select>` no puede tener valor `undefined`. */
 const ANY = "";
@@ -42,11 +51,15 @@ function isMediaType(value: string): value is MediaType {
  * pantalla y borrarlos por un fallo de la página siguiente castiga al usuario
  * por algo que no hizo.
  *
+ * ## Subida (`PU-MEDIA-001`)
+ *
+ * Todo el panel es zona de soltar, y `Upload` abre el mismo selector múltiple.
+ * La cola (`UploadQueue`) va **arriba de los cuatro estados** y no dentro de
+ * ninguno: subir el primer archivo desde el vacío no puede hacer desaparecer
+ * la fila que muestra su progreso cuando la grid pasa de vacía a llena.
+ *
  * ## Lo que esta tab no hace, y por qué no se inventa
  *
- * - **No se sube desde acá.** §9.8 son tres pasos (reserva → PUT directo →
- *   finalización) y es una tarea propia. La dropzone del PRD no se dibuja: un
- *   control que parece que sube y no sube es peor que su ausencia.
  * - **No están los filtros ricos de `P2-MEDIA-007`** (categoría, influencer,
  *   búsqueda). El contrato no tiene parámetro para ninguno y `listMediaQuery`
  *   es `.strict()`: mandarlos sería un `400`.
@@ -55,11 +68,24 @@ function isMediaType(value: string): value is MediaType {
  */
 export function MyMediaBankTab() {
   const [type, setType] = useState<MediaType | "">(ANY);
+  const [editing, setEditing] = useState<Media | null>(null);
+  const [deleting, setDeleting] = useState<Media | null>(null);
+  const dropRef = useRef<MediaDropTargetHandle>(null);
 
   const query = useMediaList(type === ANY ? {} : { type });
+  const upload = useMediaUploadQueue();
 
   const items = flattenMediaPages(query.data);
   const filtered = type !== ANY;
+
+  const liveStatus = useMemo(
+    () => new Map<string, MediaStatus>(items.map((item) => [item.mediaId, item.status])),
+    [items],
+  );
+
+  const openPicker = (): void => {
+    dropRef.current?.openPicker();
+  };
 
   const filters = (
     <div className="fgw-library-filters">
@@ -89,95 +115,125 @@ export function MyMediaBankTab() {
               })
           : null}
       </span>
+      <Button
+        size="sm"
+        className="ml-auto"
+        leadingIcon={<UploadGlyph className="h-4 w-4" />}
+        onClick={openPicker}
+      >
+        {tw("mediaUpload.upload")}
+      </Button>
     </div>
   );
 
-  if (query.isError && items.length === 0) {
-    return (
-      <div className="fgw-library-panel">
+  return (
+    <MediaDropTarget ref={dropRef} onFiles={upload.add}>
+      <div className="fgw-library-panel" aria-busy={query.isPending ? "true" : undefined}>
         {filters}
+        <UploadQueue queue={upload} liveStatus={liveStatus} />
+        {renderBody()}
+      </div>
+      <EditCategoriesDialog
+        item={editing}
+        onClose={() => {
+          setEditing(null);
+        }}
+      />
+      <DeleteMediaDialog
+        item={deleting}
+        onClose={() => {
+          setDeleting(null);
+        }}
+      />
+    </MediaDropTarget>
+  );
+
+  function renderBody() {
+    if (query.isError && items.length === 0) {
+      return (
         <ApiErrorState
           error={query.error}
           onRetry={() => {
             void query.refetch();
           }}
         />
-      </div>
-    );
-  }
+      );
+    }
 
-  if (query.isPending) {
-    return (
-      <div className="fgw-library-panel" aria-busy="true">
-        {filters}
-        <MediaGridSkeleton />
-      </div>
-    );
-  }
+    if (query.isPending) return <MediaGridSkeleton />;
 
-  if (items.length === 0) {
-    return (
-      <div className="fgw-library-panel">
-        {filters}
+    if (items.length === 0) {
+      return (
         <EmptyState
           bordered
+          icon={<UploadGlyph className="h-8 w-8" />}
           title={tw("media.empty.title")}
           description={
             filtered
               ? tw("media.empty.filteredDescription")
-              : tw("media.empty.description")
+              : tw("mediaUpload.empty.description")
           }
-          {...(filtered
-            ? {
-                action: (
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setType(ANY);
-                    }}
-                  >
-                    {tw("media.empty.clearFilters")}
-                  </Button>
-                ),
-              }
-            : {})}
+          action={
+            filtered ? (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setType(ANY);
+                }}
+              >
+                {tw("media.empty.clearFilters")}
+              </Button>
+            ) : (
+              <Button
+                size="lg"
+                leadingIcon={<UploadGlyph className="h-5 w-5" />}
+                onClick={openPicker}
+              >
+                {tw("mediaUpload.empty.action")}
+              </Button>
+            )
+          }
         />
-      </div>
+      );
+    }
+
+    return (
+      <>
+        <MediaDropzone onBrowse={openPicker} />
+        <ul className="fgw-media-grid">
+          {items.map((item) => (
+            <MediaCard
+              key={item.mediaId}
+              item={item}
+              onEditCategories={setEditing}
+              onDelete={setDeleting}
+            />
+          ))}
+        </ul>
+
+        {query.isError && (
+          <ApiErrorState
+            error={query.error}
+            onRetry={() => {
+              void query.refetch();
+            }}
+          />
+        )}
+
+        {query.hasNextPage && (
+          <div className="fgw-library-more">
+            <Button
+              variant="secondary"
+              loading={query.isFetchingNextPage}
+              onClick={() => {
+                void query.fetchNextPage();
+              }}
+            >
+              {tw(query.isFetchingNextPage ? "media.loadingMore" : "media.loadMore")}
+            </Button>
+          </div>
+        )}
+      </>
     );
   }
-
-  return (
-    <div className="fgw-library-panel">
-      {filters}
-      <p className="fgw-library-note">{tw("media.uploadHint")}</p>
-      <ul className="fgw-media-grid">
-        {items.map((item) => (
-          <MediaCard key={item.mediaId} item={item} />
-        ))}
-      </ul>
-
-      {query.isError && (
-        <ApiErrorState
-          error={query.error}
-          onRetry={() => {
-            void query.refetch();
-          }}
-        />
-      )}
-
-      {query.hasNextPage && (
-        <div className="fgw-library-more">
-          <Button
-            variant="secondary"
-            loading={query.isFetchingNextPage}
-            onClick={() => {
-              void query.fetchNextPage();
-            }}
-          >
-            {tw(query.isFetchingNextPage ? "media.loadingMore" : "media.loadMore")}
-          </Button>
-        </div>
-      )}
-    </div>
-  );
 }
