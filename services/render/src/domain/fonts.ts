@@ -61,13 +61,14 @@ export const FONT_REGISTRY: Readonly<Record<FontFamily, FontFamilySpec>> = {
     pangoFamily: "TikTok Sans",
     licence: "ofl",
   },
-  // Snapchat no tiene fuente libre conocida: la licencia queda ABIERTA y sin
-  // manifiesto no se puede usar.
+  // Snapchat no tiene fuente libre: el dueño eligió **Inter** como sustituto
+  // (2026-09-24, pensado para Inter Bold). Se baja con los nombres
+  // `snapchat-<peso>.ttf` para que el registro siga siendo 1 familia = 1 clave.
   snapchat: {
     key: "snapchat",
     weights: W_300_700,
-    pangoFamily: null,
-    licence: "unresolved",
+    pangoFamily: "Inter",
+    licence: "ofl",
   },
 
   montserrat: {
@@ -105,8 +106,9 @@ export const FONT_REGISTRY: Readonly<Record<FontFamily, FontFamilySpec>> = {
  * con la versión 1 se dibujó con la fuente de reserva.
  *
  * `"3"` (2026-09-24): `tiktok` pasa a TikTok Sans; antes caía a la reserva.
+ * `"4"` (2026-09-24): `snapchat` pasa a Inter (sustituto elegido por el dueño).
  */
-export const FONT_REGISTRY_VERSION = "3";
+export const FONT_REGISTRY_VERSION = "4";
 
 export function isFontFamily(value: string): value is FontFamily {
   return (FONT_FAMILIES as readonly string[]).includes(value);

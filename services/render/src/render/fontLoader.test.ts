@@ -54,8 +54,8 @@ describe("resolveFont", () => {
     expect(font.pangoDescription).toBe("Inter, 32px");
   });
 
-  it("las familias de marca sin nombre resuelto fallan en estricto", async () => {
-    // `snapchat` está en `FR-051` pero no tiene archivo conocido.
+  it("una familia sin su archivo en el directorio falla en estricto", async () => {
+    // `snapchat` (Inter como sustituto) sin `snapchat-500.ttf` bajado.
     await expect(
       resolveFont("snapchat", 500, 32, { fontDir: dir, strict: true }),
     ).rejects.toMatchObject({ code: "font_unavailable" });

@@ -58,7 +58,8 @@
  *
  * ## Lo que NO baja, y falla diciéndolo
  *
- * `snapchat` tiene `licence: "unresolved"` y `pangoFamily: null` (`tiktok` pasó a TikTok Sans, OFL, el 2026-09-24):
+ * Desde el 2026-09-24 ninguna: `tiktok` es TikTok Sans y `snapchat` es Inter (sustituto
+ * elegido por el dueño). Si una familia volviera a quedar `unresolved`, vale lo de abajo:
  * el PRD la nombra y **no hay archivo distribuible que se pueda nombrar sin
  * inventarlo**. El script la saltea y termina con código 1 si se le pidieron,
  * en vez de dejar 37 de 42 archivos y salir en verde — que se vería idéntico a
