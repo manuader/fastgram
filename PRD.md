@@ -182,6 +182,10 @@ Funcionalidad que **el clon tendrá y Fastlane no**. Decidida por el equipo de p
 | EXT-006 | Recorte inteligente en slideshows en vez de `stretch-to-canvas` | El original documenta la distorsión como limitación conocida de su v1 | `FR-070` |
 | **EXT-007** | **Pre-flight de publicación**: detectar antes de programar lo que la plataforma va a rechazar o ajustar | En Fastlane el fallo se descubre *después* de publicar (`instagram_repeated_mention`, `captionAdjustmentReason`, límites de plataforma son todos post-mortem) | `JV-3` en §25 |
 | **EXT-008** | **Judgment layer**: capa explícita para las decisiones semánticas del sistema, con puerto propio y adaptadores intercambiables | El PRD especifica decenas de decisiones con salida finita pero no define su mecanismo. Sin una capa declarada, cada una se resolvería ad-hoc con un LLM parseado o un if-else frágil | §9.15 y §25 |
+| **EXT-009** | **Crear desde prompt en Blitz**: un tema → una pieza de cualquier formato, incluido green-screen con meme de la biblioteca y fondo de marca | Pedido del dueño (2026-09-24): generar por tema, no sólo lo que propone la cola | `docs/PLAN-USO-PERSONAL.md` §2 |
+| **EXT-010** | **Importar memes y audio por link**, con recorte de fondo automático y etiquetado IA | Sin el catálogo licenciado de Fastlane, es la fuente de clips (`D-12`) | `docs/PLAN-USO-PERSONAL.md` §6 |
+| **EXT-011** | **Piloto automático por marca** | Automatizar el manejo de redes casi sin intervención (`D-08`) | `docs/PLAN-USO-PERSONAL.md` §2 |
+| **EXT-012** | **Registro de modelos por tarea**, con proveedores en la nube y locales | `D-14` | `docs/PLAN-USO-PERSONAL.md` §4 |
 
 **Regla transversal:** una extensión nunca puede romper un comportamiento CONFIRMED. `EXT-001` es **estrictamente aditiva**: el camino "pego mi web" sigue funcionando igual que en Fastlane, con sus mismas validaciones y su mismo copy.
 
@@ -196,6 +200,17 @@ Decisiones **cerradas** por el equipo de producto. No son hipótesis ni recomend
 | **D-03** | Profundidad del análisis de contenido | **Texto + OCR en Fase 1; ASR en Fase 2** | Bio, captions, hashtags, link-in-bio y texto superpuesto. La transcripción de audio se difiere. Ver `FR-011.3` y `AI-016`. |
 | **D-04** | Importación de posts propios al Media Bank | **Fase 1, opt-in durante el alta** | El Media Bank puede arrancar con media real de la marca. Ver `FR-011.5.1`. |
 | **D-05** | Cómo se resuelven las decisiones semánticas del sistema | **Puerto `Judgment` con adaptador LLM por defecto; Jev (TypeSafe) detrás de bandera, pendiente de validación** | Ninguna decisión semántica llama a un proveedor directamente. Ver §9.15, §25 y `EVAL-JEV.md`. |
+| **D-06** | Para quién es la app (2026-09-24) | **Uso personal: un usuario, sin auth, billing, cuotas ni rate limiting** | Modo `personal`. La rama `auth-y-suscripciones` queda para después. Ver `docs/PLAN-USO-PERSONAL.md`. |
+| **D-07** | Multicuenta | **Una marca = un workspace**, con selector en el shell | Cada marca tiene sus conexiones, su estrategia y su cola. |
+| **D-08** | Autonomía | **Configurable por marca: manual (Blitz) o piloto automático** | El piloto aprueba con pre-chequeo (`JV-3`) y manda un resumen diario. |
+| **D-09** | Redes, en orden | **Instagram, TikTok, X, Threads, Facebook**. YouTube y LinkedIn después | Una sola app de Meta cubre IG, Threads y FB. |
+| **D-10** | Cómo se publica en TikTok | **Upload como borrador (`IN_USER_INBOX`)**, no Direct Post | TikTok declara *not acceptable* la herramienta para publicar en cuentas propias: sin auditoría, todo sale privado. |
+| **D-11** | Automatización | **Sólo APIs oficiales**; nunca automatizar el navegador ni usar APIs privadas | Topes propios por debajo de los oficiales, jitter y nada de likes/follows automáticos. |
+| **D-12** | Origen de los memes | **Importar por link** (yt-dlp) + recorte de fondo | Los derechos de lo que se publica son responsabilidad del dueño. |
+| **D-13** | Lectura de perfiles sociales | **Scraper open source auditado**, nunca con las cuentas propias logueadas | Salta el gate `OQ-16` **sólo para uso personal**; se reabre si la app se abre a terceros. |
+| **D-14** | Modelos de IA | **Multi-proveedor por tarea**: Higgsfield + opciones baratas o gratis; locales después. Presupuesto de US$20–50 por mes | Puertos `ImageGen`, `VideoGen` y `BackgroundRemoval`, más un registro de modelos. Ningún id de modelo fijo en el código. |
+| **D-15** | Recorte de alcance | **Fuera**: Warmed Accounts, Billing, API pública, MCP y Growth. **Al final**: Engagement e Inspiration | Esas épicas quedan anotadas en `tasks.md`. |
+| **D-16** | Dónde corre | **En la Mac, después en un VPS** | `pnpm start` local primero; Docker Compose para 24/7 después. |
 
 **Sobre D-05.** La evaluación de arquitectura (`EVAL-JEV.md`, 2026-09-21) concluyó que Jev encaja genuinamente en dos huecos que este PRD deja sin motor (`DP-001`, `DP-002`) y habilita dos comportamientos nuevos (`DP-004`, `DP-007`), pero que **no conviene comprometerse con el proveedor todavía**: tiene semanas de vida, no publica cifras de latencia y no hay benchmarks independientes. Lo que sí conviene, y cuesta casi nada mientras no haya código, es **declarar la capa**. De ahí D-05: se adopta la *forma*, no el proveedor.
 

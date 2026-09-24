@@ -44,6 +44,88 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 `P<fase>-<ÉPICA>-<nnn>`. Los IDs son **estables**: si una tarea se cancela se marca `~~tachada~~` con el motivo, no se reutiliza el número.
 
+La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo** (decisión del dueño, 2026-09-24).
+
+---
+
+# PU — Uso personal (prioridad actual)
+
+> **Plan completo y porqué:** [`docs/PLAN-USO-PERSONAL.md`](docs/PLAN-USO-PERSONAL.md) · decisiones `D-06`…`D-16` en PRD §2.7.
+> **Criterio de salida:** levanto la app con un comando, doy de alta varias marcas, la IA llena
+> Blitz, apruebo (o la marca va en piloto), y cada pieza se publica sola en IG/Threads/FB/X y queda
+> como borrador en TikTok, en su horario.
+>
+> Cuando una tarea `PU` cubre una tarea `P*` existente, se cita (`= P2-BLITZ-001`) y **se tachan las dos juntas**.
+
+## Sprint 1 — Arranca y genera
+
+- [ ] **PU-RUN-001** `pnpm start`: levanta infra, migra, render (con fuentes), API, worker y web **en orden**, con el secreto de render efímero y compartido; un solo Ctrl+C baja todo
+- [ ] **PU-RUN-002** Modo `personal` (`FASTGRAM_MODE=personal`): sin cuotas ni rate limiting, API y web atadas a `127.0.0.1` · `D-06`
+- [ ] **PU-RUN-003** La web obtiene su key sola al arrancar (sin copiar `FASTGRAM_API_KEY` a mano), guardada fuera del repo (`~/.fastgram/`)
+- [ ] **PU-MODEL-001** Registro de modelos **por tarea** (texto, juicio, visión, imagen, video, recorte) con presets OpenRouter / DeepSeek / Groq / Cerebras / Gemini / Ollama / LM Studio; keys sólo en entorno o `~/.fastgram/` · `D-14`, `ADR-009`
+- [ ] **PU-MODEL-002** Pantalla `Settings → Modelos`: elegir proveedor y modelo por tarea, probar conexión, ver gasto estimado del mes
+- [ ] **PU-UI-001** Shell 2026: sidebar compacta con **selector de marca**, `⌘K`, oscuro por defecto, transiciones · ⚠️ dependencias nuevas las instala el coordinador
+- [ ] **PU-BRAND-001** Crear / cambiar / borrar marcas (workspaces) sin auth · `D-07` · cubre parte de `P1-TENANT-001/002/005`
+- [ ] **PU-BLITZ-001** Deck de Blitz con gestos, teclado y chips · `= P2-BLITZ-001…006`, `P2-BLITZ-013`
+- [ ] **PU-BLITZ-002** Aceptar en Blitz → pieza construida y visible en Library · `= P2-BLITZ-012`, cierra `P2-BLITZ-014`
+
+## Sprint 2 — Edito y agendo
+
+- [ ] **PU-EDIT-001** **Decidir y documentar en el PRD el mapeo editor→px** (propuesta: posición y ancho en % del lienzo; fuente y contorno × `canvas.width/360`) · cierra `P2-CONTENT-004`
+- [ ] **PU-EDIT-002** Las ediciones llegan al video (rebuild con las cajas editadas) · dep: PU-EDIT-001
+- [ ] **PU-EDIT-003** Editor inline: caption, texto, fondo, música, meme/asset · `= P2-BLITZ-007…011`
+- [ ] **PU-EDIT-004** Preview en vivo en el cliente con la misma escala que el render (lo que ves es lo que sale)
+- [ ] **PU-BLITZ-003** **Crear desde prompt**: tema → pieza de cualquier formato, incluido green-screen con meme de la biblioteca + fondo de marca · `EXT-009`
+- [ ] **PU-CAL-001** Aprobar → **auto-slot** en el próximo horario libre de la estrategia de la marca
+- [ ] **PU-CAL-002** Calendario semana/mes, drag & drop, filtro por marca o todas · completa `P2-CAL-001…003`
+- [ ] **PU-BRAND-002** Estrategia por marca: redes, piezas/día por red, horarios, mix de formatos, idioma, **autonomía manual/piloto** · `D-08`
+- [ ] **PU-BRAND-003** Alta de marca de punta a punta (web + perfiles → revisión) · usa `P1-ONB-*` existentes
+
+## Sprint 3 — Se publica solo
+
+- [ ] **PU-RUN-005** **URL pública para la media** (túnel o bucket público) · ⚠️ IG y las fotos de TikTok la traen por URL · decisión del dueño
+- [ ] **PU-PUB-001** Tokens de redes cifrados en reposo · `= P3-OAUTH-007`
+- [ ] **PU-PUB-002** App de Meta: conectar IG (Instagram Login) y FB/Threads (Facebook Login) por marca · `= P3-OAUTH-003`
+- [ ] **PU-PUB-003** Adaptador Instagram: reel, carrusel e imagen · `= P3-SCHED-008`
+- [ ] **PU-PUB-004** Adaptadores Threads y Facebook Pages (reels)
+- [ ] **PU-PUB-005** Adaptador X (pago por uso; sin links en el texto por defecto)
+- [ ] **PU-PUB-006** TikTok **Upload → `IN_USER_INBOX`** + aviso "terminalo en la app" + marcar hecho · `D-10` · `= P3-OAUTH-002`
+- [ ] **PU-PUB-007** Guardas anti-bot: tope por red y día (default 3), jitter ±7 min, separación entre cuentas, nunca la misma pieza en dos marcas · `D-11`
+- [ ] **PU-PUB-008** Reintentos, reconexión y aviso de fallo · `= P3-PUB-002`, `P3-OAUTH-008`
+- [ ] **PU-UI-002** Pantalla **Hoy**: lo que se publica hoy, lo que espera aprobación, fallos y borradores de TikTok
+
+## Sprint 4 — Memes e IA generativa
+
+- [ ] **PU-MEME-001** Importar video o audio por link (`yt-dlp`) al Media Bank · `D-12`
+- [ ] **PU-MEME-002** Recorte de fondo: chromakey local si es verde; BiRefNet (fal) → video con alfa si no; el render compone el alfa
+- [ ] **PU-MEME-003** Etiquetado automático de clips (emoción, situación, duración) con un modelo con visión
+- [ ] **PU-MODEL-003** Puerto `ImageGen` + adaptadores Higgsfield y fal · copiar el resultado a storage propio (Higgsfield lo guarda 7 días)
+- [ ] **PU-MODEL-004** Puerto `VideoGen` + adaptadores Higgsfield y fal (Kling/Wan/Seedance/LTX)
+- [ ] **PU-MODEL-005** Costo estimado antes de generar + **tope mensual** que corta la generación
+- [ ] **PU-SCRAPE-001** Extractores IG / TikTok / X con el scraper open source elegido, **auditado a mano** · `D-13` · `= P1-BRAND-007…009`
+- [ ] **PU-SCRAPE-002** IG Business Discovery como vía oficial cuando la cuenta califica
+
+## Sprint 5 — Piloto automático
+
+- [ ] **PU-AUTO-001** Generación continua por marca: mantiene la cola según la frecuencia de su estrategia
+- [ ] **PU-AUTO-002** Piloto: pre-chequeo (`JV-3`) → aprobación automática → calendario · `= P4-JV-001/002`
+- [ ] **PU-AUTO-003** Resumen diario (qué se generó, qué se publicó, qué falló)
+- [ ] **PU-AUTO-004** Métricas de vuelta y ajuste de pesos de formatos y ángulos · `= P3-METRIC-001`
+
+## Sprint 6 — 24/7
+
+- [ ] **PU-RUN-004** Docker Compose completo para un VPS (incluye verificar las fuentes del render en Linux)
+- [ ] **PU-RUN-006** Backups de Postgres y del bucket, **con un restore probado**
+
+## Después
+
+- [ ] **PU-LATER-001** YouTube Shorts (pedir la auditoría de Google **al empezar el sprint 3**, porque tarda)
+- [ ] **PU-LATER-002** LinkedIn
+- [ ] **PU-LATER-003** Modelos locales: endpoint compatible con OpenAI (ya funciona) + adaptador ComfyUI
+- [ ] **PU-LATER-004** Influencers, **sólo si** Higgsfield expone personajes consistentes por API (no verificado)
+- [ ] **PU-LATER-005** AI Studio sobre `ImageGen` / `VideoGen`
+- [ ] **PU-LATER-006** Engagement Reddit e Inspiration · `D-15`
+
 ---
 
 # P0 — Bootstrap
@@ -587,6 +669,8 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P3-WARM — Warmed Accounts
 
+> **Fuera de alcance por `D-15` (2026-09-24, uso personal).** Las tareas quedan como referencia; no se trabajan salvo que el dueño lo reabra.
+
 - [x] **P3-WARM-001** `DATA-017`…`DATA-019` · `FR-130`
 - [ ] **P3-WARM-002** Compra y configuración (plataforma, país, nicho) · `F-181`
 - [ ] **P3-WARM-003** Flujo de aprobación por el owner · `F-183`
@@ -670,6 +754,8 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P4-BILL — Billing
 
+> **Fuera de alcance por `D-15` (2026-09-24, uso personal).** Las tareas quedan como referencia; no se trabajan salvo que el dueño lo reabra.
+
 - [ ] **P4-BILL-001** Puerto `Payments` + adaptador · `INT-008`
 - [x] **P4-BILL-002** Los 4 planes con sus límites · PRD §16.1
 - [ ] **P4-BILL-003** Upgrade prorrateado / downgrade programable · PRD §16.3
@@ -681,6 +767,8 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 
 ## P4-PUBAPI — API pública
 
+> **Fuera de alcance por `D-15` (2026-09-24, uso personal).** Las tareas quedan como referencia; no se trabajan salvo que el dueño lo reabra.
+
 - [ ] **P4-PUBAPI-001** Los 29 endpoints de PRD §9.3 · dep: P1-API-002
 - [ ] **P4-PUBAPI-002** Gestión de API keys en Settings · `F-239`
 - [ ] **P4-PUBAPI-003** Documentación embebida `/developers` · `F-243`
@@ -688,6 +776,8 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [ ] **P4-PUBAPI-005** Webhooks salientes · `EXT-002`, `OQ-11`
 
 ## P4-MCP — Servidor MCP
+
+> **Fuera de alcance por `D-15` (2026-09-24, uso personal).** Las tareas quedan como referencia; no se trabajan salvo que el dueño lo reabra.
 
 - [ ] **P4-MCP-001** `apps/mcp` con JSON-RPC 2.0 stateless · `AI-015`
 - [ ] **P4-MCP-002** Los 16 tools de lectura · `AI-015`
@@ -715,6 +805,8 @@ Checklist ejecutable de todas las fases. **Cada agente tacha lo que termina.**
 - [ ] **P5-MEMBER-003** Matriz de permisos completa · PRD §4.2, `OQ-01`
 
 ## P5-GROWTH — Crecimiento y soporte
+
+> **Fuera de alcance por `D-15` (2026-09-24, uso personal).** Las tareas quedan como referencia; no se trabajan salvo que el dueño lo reabra.
 
 - [ ] **P5-GROWTH-001** Refer & Earn · `F-250`
 - [ ] **P5-GROWTH-002** Guide · `F-251`

@@ -78,6 +78,28 @@ El detalle está en `docs/IMPLEMENTATION-PLAN.md` §2. No lo repito acá para qu
 
 ## 4. Qué cambió, sesión por sesión
 
+### Sesión 2026-09-24 — El plan cambia: uso personal y piloto automático
+
+**Decisión del dueño:** la app es para él, sin auth, límites ni billing, y tiene que manejar
+**varias marcas casi sin intervención**. La IA entiende cada marca por su web y sus perfiles,
+genera contenido sin parar, él aprueba en Blitz (o la marca va en piloto) y se publica sola. El
+plan está en **[`PLAN-USO-PERSONAL.md`](PLAN-USO-PERSONAL.md)**, el orden en `tasks.md` §PU (va
+primero) y las decisiones `D-06`…`D-16` en PRD §2.7, más `EXT-009`…`EXT-012`.
+
+Lo que costó tiempo y no se deduce del código:
+- **TikTok no aprueba apps para publicar en cuentas propias**: su guía lo declara *not
+  acceptable*, y sin auditoría todo sale privado. Por eso TikTok va por **borrador**
+  (`IN_USER_INBOX`, `D-10`).
+- **IG y las fotos de TikTok traen la media por URL pública.** MinIO en localhost no sirve para
+  publicar: hace falta un túnel o un bucket público (`PU-RUN-005`).
+- **Ningún scraper de IG o X anda sin cuenta de forma confiable hoy.** Para esos, una cuenta
+  secundaria descartable (§6.1 del plan).
+- **El render ya compone green-screen con croma**: un meme verde importado sale local y gratis.
+- **Higgsfield tiene API oficial** (asíncrona, SDK Node), pero lipsync, personajes y upscale
+  **no figuran por API**. Los Influencers no se planifican encima hasta verificarlo.
+
+Fuera por `D-15`: Warmed Accounts, Billing, API pública, MCP y Growth.
+
 ### Sesión 2026-09-23 (5) — La primera pieza real
 
 **Verificado a mano, de punta a punta, sin simular nada:** subida real al Media Bank →

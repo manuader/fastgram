@@ -234,6 +234,8 @@ Eso también corrige la expectativa de ADR-009: el self-host no es "cuando el vo
 
 ## 6. Fases
 
+> **2026-09-24: el orden de trabajo lo manda [`PLAN-USO-PERSONAL.md`](PLAN-USO-PERSONAL.md)** (uso personal, `D-06`…`D-16`). Las fases de abajo siguen describiendo la paridad con Fastlane, pero no el orden.
+
 Las cinco fases son las del PRD §21. Aquí sólo el criterio de entrada/salida y lo que cambia respecto del PRD.
 
 | Fase | Objetivo | Criterio de salida (del PRD, verificable) |
