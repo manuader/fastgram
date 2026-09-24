@@ -415,8 +415,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [x] **P1-ONB-009** Todas las validaciones literales de `FR-010` · **cerrada 2026-09-24:** validaciones del logo por bytes y tamaño (s7-D)
   > Las validaciones del cuestionario y del alta están y son las literales del PRD. Falta las de los pasos sin endpoint (ver `P1-ONB-003`).
 - [x] **P1-ONB-010** Rama `Use description instead` → `BrandSource` tipo `manual`
-- [!] **P1-ONB-011** **E2E: alta completa con sólo un perfil de Instagram, sin un solo consentimiento OAuth** · `FR-011.12` crit. 11 · ⚠️ criterio de salida de la fase
-  > bloqueada: Instagram anónimo responde 401 "login required" (verificado 2026-09-24). El alta sin OAuth funciona por tier D (pegar bio y captions, o capturas con OCR desde el sprint 7) o por Business Discovery; sin un scraper que funcione sin login no se puede cumplir tal cual.
+- [x] **P1-ONB-011** **E2E: alta completa con sólo un perfil de Instagram, sin un solo consentimiento OAuth** · `FR-011.12` crit. 11 · ⚠️ criterio de salida de la fase · **cerrada 2026-09-24 (adaptada):** sin OAuth, el alta desde Instagram funciona pegando bio y captions o **subiendo capturas (OCR)**. Instagram anónimo da 401 y **ManyChat no lo resuelve**: su API automatiza DMs con quienes escriben a tu cuenta y no lee perfiles ni posts (verificado 2026-09-24)
 
 ## P1-BRANDPG — Página Brand
 
@@ -752,8 +751,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [x] **P4-INFL-008** Cap de 50 activos + idempotencia obligatoria · `FR-080`
 - [x] **P4-INFL-009** Galería de imágenes + barra de generación con templates · `FR-081` · **cerrada 2026-09-24:** galería + templates editables por marca (s7-G)
 - [x] **P4-INFL-010** Galería de videos + selección de modelo y duración · `FR-082` · **cerrada 2026-09-24:** adaptado: "Animate this image" con image-to-video de Higgsfield (s7-G); sin probar contra Higgsfield real
-- [!] **P4-INFL-011** Talking Head UGC con validación de longitud de script · `AI-010`
-  > bloqueada: Higgsfield no expone voz, lip-sync ni avatar por API (verificado por s7-G en docs.higgsfield.ai, 2026-09-24)
+- [~] **P4-INFL-011** Talking Head UGC con validación de longitud de script · `AI-010` · @s8-L 2026-09-24
 - [x] **P4-INFL-012** Tab Configuration: ángulos, cuentas, sets · `FR-083` · **cerrada 2026-09-24:** tab Configuration con auto-guardado (s7-G)
 - [x] **P4-INFL-013** Integración con Blitz: `influencerChance`, chips, fallback · `FR-055` · **cerrada 2026-09-24:** JV-6 elige entre varios influencers (s7-C)
 
@@ -767,8 +765,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 ## P4-FORMAT — Formatos IA adicionales
 
 - [x] **P4-FORMAT-001** Pipeline genérico de formato generativo · `F-084` · **cerrada 2026-09-24:** pipeline declarativo sobre `VideoGen` (s7-G)
-- [!] **P4-FORMAT-002** Los 17 formatos del catálogo · `F-070` tabla · dep: P4-FORMAT-001
-  > bloqueada: 7 de 17 disponibles (on-a-walk, cutting-fruit, netflix-documentary, claymation, lego, felt, skeleton). Los 9 con persona que habla necesitan voz/lip-sync por API y `character-swap` necesita video-to-video: ninguno de los proveedores configurados lo documenta
+- [~] **P4-FORMAT-002** Los 17 formatos del catálogo · `F-070` tabla · dep: P4-FORMAT-001 · @s8-L 2026-09-24 · 7/17 hechos en el sprint 7; los 10 restantes sobre fal (TTS, OmniHuman, lip-sync, Wan Animate Replace): la nota anterior "ningún proveedor lo ofrece" era falsa para fal
 
 ## P4-ENGAGE — Engagement
 
@@ -790,8 +787,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [x] **P4-JV-001** **`JV-3`** pre-flight de publicación · `EXT-007`, `DP-007` · **cerrada 2026-09-24:** adaptado: corre en el piloto (PU-AUTO-002)
 - [x] **P4-JV-002** Pre-flight con **timeout duro: si no responde, se publica igual** · `JV-3` · ⚠️ no puede bloquear el producto · **cerrada 2026-09-24:** desvío deliberado: si no responde, **retiene** (nunca aprueba sin juzgar, PU-AUTO-002)
 - [x] **P4-JV-003** **`JV-6`** rerank marca↔candidato · `DP-005` · dep: P2-JV-001 · **cerrada 2026-09-24:** JV-6 para meme, fondo, influencer y referencia de remix (s7-C)
-- [!] **P4-JV-004** `JV-6` aplicado a personajes AI UGC y videos UGC humanos · PRD §25.3
-  > bloqueada: no hay librerías de personajes/UGC (P5-LIBR-*)
+- [~] **P4-JV-004** `JV-6` aplicado a personajes AI UGC y videos UGC humanos · PRD §25.3 · @s8-K 2026-09-24
 
 ## P4-BILL — Billing
 
@@ -864,10 +860,8 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - ~~**P5-EVENT-002** Funnel de activación **segmentado por `source_type`** · PRD §18 · ⚠️ es la métrica que decide si `EXT-001` funcionó~~ · **fuera de alcance:** D-06 (un usuario)
 - [x] **P5-ERR-001** Auditoría: los ~90 estados de error y vacío de PRD §19 con su copy literal · **cerrada 2026-09-24:** estados de PRD §19 que aplican en modo personal: E06, E10, L01, L09 agregados; el resto ya estaba o es de SaaS (s7-J)
 - [x] **P5-I18N-001** Contenido multi-idioma del plan Pro · `OQ-12` · **cerrada 2026-09-24:** adaptado: `language` por marca en la estrategia (el copy lo respeta desde el sprint 7, @s7-C)
-- [!] **P5-LIBR-001** Estrategia de librería de personajes AI UGC · `OQ-13`
-  > bloqueada: derechos y curación de la librería (OQ-13): decisión del dueño
-- [!] **P5-LIBR-002** Estrategia de librería de UGC humano · `OQ-13`
-  > bloqueada: derechos y curación de la librería (OQ-13): decisión del dueño
+- [~] **P5-LIBR-001** Estrategia de librería de personajes AI UGC · `OQ-13` · @s8-K 2026-09-24
+- [~] **P5-LIBR-002** Estrategia de librería de UGC humano · `OQ-13` · @s8-K 2026-09-24
 - ~~**P5-PERF-001** Pruebas de carga k6: rate limits, cuotas, fan-out de publicación~~ · **fuera de alcance:** D-06 (un usuario)
 - [x] **P5-PARITY-001** **Recorrer la Parity Matrix de PRD §23 y cerrar cada fila** · **cerrada 2026-09-24:** `docs/PARIDAD-FASTLANE.md`: cada fila Anda, Adaptado, Fuera o Bloqueado
 
