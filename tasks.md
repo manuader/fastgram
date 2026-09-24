@@ -154,9 +154,9 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [x] **PU-S7-006** Avisos: campana, ntfy/Telegram, banner de conexiones, salud de colas; borrar marca apaga todo · agente E
 - [x] **PU-S7-007** Content Studio, custom video, Media Bank con búsqueda/tags/sets, importar posts propios · agente F
 - [x] **PU-S7-008** Formatos IA (7/17), influencers (config, templates, regenerar, video), AI Studio con picker, lectores YouTube/LinkedIn · agente G
-- [~] **PU-S7-009** Segunda tanda: sub-pasos del análisis, oferta post-análisis, Remixed From en el refill, extraer audio · @s7-H 2026-09-24
-- [~] **PU-S7-010** Segunda tanda: validación de URLs en `POST /content`, config del influencer en Blitz, formatos IA desde el prompt, miniaturas de video · @s7-I 2026-09-24
-- [~] **PU-S7-011** Segunda tanda: estados de error de PRD §19 y WCAG AA · @s7-J 2026-09-24
+- [x] **PU-S7-009** Segunda tanda: sub-pasos del análisis, oferta post-análisis, Remixed From en el refill, extraer audio
+- [x] **PU-S7-010** Segunda tanda: validación de URLs en `POST /content`, config del influencer en Blitz, formatos IA desde el prompt, miniaturas de video
+- [x] **PU-S7-011** Segunda tanda: estados de error de PRD §19 y WCAG AA
 
 ---
 
@@ -407,10 +407,10 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [x] **P1-ONB-004** Paso 3: cuestionario de perfilado (6 preguntas) · `F-006` · **cerrada 2026-09-24:** tarjeta de perfilado en `/brand` (s7-D)
   > **Cerrada la mitad que se podía.** El hueco era más chico: `assertValidProfiling` tiene dos bucles y el de los 4 000 caracteres ya recorría **todo lo que se le pasara** — faltaba que alguien pasara `expectations`. Ahora se recoge, se persiste y se acota, medido rompiéndolo.
   > **No se hizo obligatoria, a propósito:** la lista de Validation de `FR-010` trae mensaje para las otras cinco preguntas y **ninguno** para expectativas. Rechazarla vacía exigiría inventar copy CONFIRMED.
-- [~] **P1-ONB-005** Paso 4: estados de procesamiento con sub-pasos por tipo de fuente · `FR-011.2` · @s7-H 2026-09-24
+- [x] **P1-ONB-005** Paso 4: estados de procesamiento con sub-pasos por tipo de fuente · `FR-011.2` · **cerrada 2026-09-24:** `analysis_phase` real (0031), pasos con check en `BrandSourcesCard`; verificado en la app (fase `verifying` vista) (s7-H)
   > **Parcial (`01a32df`):** estado por fuente con ERR-B* traducidos, polling de 10 s mientras haya `pending`/`analyzing`. **Los sub-pasos no se pueden mostrar**: la API no expone progreso por sub-paso, así que se listan sin marcar (sólo los de Instagram, los únicos que da el PRD). `pending`-para-siempre dicho con honestidad: `Queued`, y a los 3 min (FR-011.12 crit. 9) «hasn't started yet»; nunca `Workspace ready!`.
 - [x] **P1-ONB-006** **Pantalla de revisión** con `Worth a quick check` para los campos de confianza baja · `FR-011.2` · **cerrada 2026-09-24** (auditoría: ya implementada)
-- [~] **P1-ONB-007** Oferta post-análisis de conectar + importar media, **después** del análisis · `D-04`, `FR-011.5.1` · @s7-H 2026-09-24
+- [x] **P1-ONB-007** Oferta post-análisis de conectar + importar media, **después** del análisis · `D-04`, `FR-011.5.1` · **cerrada 2026-09-24:** tarjeta post-análisis descartable: conectar cuentas + importar posts (opt-in) (s7-H); verificada en la app
 - [x] **P1-ONB-008** Importación opt-in de posts propios al Media Bank, checkbox desmarcado · `FR-011.5.1` · **cerrada 2026-09-24:** `POST /media/own-posts/import` opt-in (IG Graph, YouTube, perfil público con yt-dlp; TikTok falla, X no soportado) (s7-F)
 - [x] **P1-ONB-009** Todas las validaciones literales de `FR-010` · **cerrada 2026-09-24:** validaciones del logo por bytes y tamaño (s7-D)
   > Las validaciones del cuestionario y del alta están y son las literales del PRD. Falta las de los pasos sin endpoint (ver `P1-ONB-003`).
@@ -523,7 +523,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [!] **P2-RENDER-008** 12 familias tipográficas con sus pesos permitidos · `FR-051` · **11 de 12 (2026-09-24):** `tiktok` pasó a **TikTok Sans** (OFL 1.1, Google Fonts); 37 `.ttf` bajan con `fonts:fetch`
   > bloqueada: `snapchat` no tiene fuente libre conocida. Hace falta que el dueño elija un sustituto (se mapea con `fonts.json`) o la saque del selector.
   > **32 de 42 verifican** (`835628e`): `fonts:fetch` baja las 10 familias OFL fuera del repo y el servicio las activa por proceso. Siguen `tiktok`/`snapchat` sin archivo (licencia). Bug encontrado de paso: `"Montserrat 700 42px"` Pango lo leía como familia inexistente — ahora `"Familia, Peso NNpx"`.
-- [~] **P2-RENDER-009** **Validación de que toda URL de media pertenece al workspace o a la librería compartida** · `FR-070` · ⚠️ se rechaza antes de iniciar el build · @s7-I 2026-09-24
+- [x] **P2-RENDER-009** **Validación de que toda URL de media pertenece al workspace o a la librería compartida** · `FR-070` · ⚠️ se rechaza antes de iniciar el build · **cerrada 2026-09-24:** `POST /content` rechaza con 400 media/audio que no es de la marca antes de cobrar y encolar (s7-I)
 - [x] **P2-RENDER-010** **Cache por hash del payload**: no re-encodear si sólo cambió el texto · IMPL §5
 - [x] **P2-RENDER-011** Golden-file tests por formato · IMPL §4
 - [x] **P2-RENDER-012** Recorte inteligente en vez de `stretch-to-canvas` · `EXT-006`
@@ -860,18 +860,18 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 ## P5-QUALITY — Calidad transversal
 
 - ~~**P5-AUDIT-001** Audit log de acciones destructivas y facturables · `EXT-004`, PRD §9.12~~ · **fuera de alcance:** D-06 (un usuario, sin billing; `judgment_records` cubre las decisiones de IA)
-- [~] **P5-A11Y-001** WCAG 2.1 AA · `NFR-020` · @s7-J 2026-09-24
+- [x] **P5-A11Y-001** WCAG 2.1 AA · `NFR-020` · **cerrada 2026-09-24:** contraste AA del texto de color (31 usos), `aria-describedby` en Dialog/Drawer/Checkbox, foco visible, regiones vivas, calendario con `E`, reducir movimiento en videos (s7-J + coordinador); sin lector de pantalla real ni `axe-core` (no instalado)
 - [x] **P5-A11Y-002** **Alternativa no gestual al swipe de Blitz** · `NFR-020` · ⚠️ el swipe no puede ser el único camino · **cerrada 2026-09-24:** botones + `aria-keyshortcuts` + flechas en `BlitzDeck.tsx`
 - ~~**P5-EVENT-001** Suite completa de eventos de PRD §18~~ · **fuera de alcance:** D-06 (un usuario)
 - ~~**P5-EVENT-002** Funnel de activación **segmentado por `source_type`** · PRD §18 · ⚠️ es la métrica que decide si `EXT-001` funcionó~~ · **fuera de alcance:** D-06 (un usuario)
-- [~] **P5-ERR-001** Auditoría: los ~90 estados de error y vacío de PRD §19 con su copy literal · @s7-J 2026-09-24
+- [x] **P5-ERR-001** Auditoría: los ~90 estados de error y vacío de PRD §19 con su copy literal · **cerrada 2026-09-24:** estados de PRD §19 que aplican en modo personal: E06, E10, L01, L09 agregados; el resto ya estaba o es de SaaS (s7-J)
 - [x] **P5-I18N-001** Contenido multi-idioma del plan Pro · `OQ-12` · **cerrada 2026-09-24:** adaptado: `language` por marca en la estrategia (el copy lo respeta desde el sprint 7, @s7-C)
 - [!] **P5-LIBR-001** Estrategia de librería de personajes AI UGC · `OQ-13`
   > bloqueada: derechos y curación de la librería (OQ-13): decisión del dueño
 - [!] **P5-LIBR-002** Estrategia de librería de UGC humano · `OQ-13`
   > bloqueada: derechos y curación de la librería (OQ-13): decisión del dueño
 - ~~**P5-PERF-001** Pruebas de carga k6: rate limits, cuotas, fan-out de publicación~~ · **fuera de alcance:** D-06 (un usuario)
-- [~] **P5-PARITY-001** **Recorrer la Parity Matrix de PRD §23 y cerrar cada fila** · @coordinador 2026-09-24: auditoría hecha (96 filas); se cierra con el sprint 7
+- [x] **P5-PARITY-001** **Recorrer la Parity Matrix de PRD §23 y cerrar cada fila** · **cerrada 2026-09-24:** `docs/PARIDAD-FASTLANE.md`: cada fila Anda, Adaptado, Fuera o Bloqueado
 
 ---
 

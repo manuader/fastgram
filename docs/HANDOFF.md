@@ -78,6 +78,28 @@ El detalle está en `docs/IMPLEMENTATION-PLAN.md` §2. No lo repito acá para qu
 
 ## 4. Qué cambió, sesión por sesión
 
+### Sesión 2026-09-24 (3) — Sprint 7: paridad con Fastlane, backlog cerrado
+
+Detalle y porqué: [`SESSION-2026-09-24-sprint7-paridad.md`](SESSION-2026-09-24-sprint7-paridad.md).
+Mapa por feature: [`PARIDAD-FASTLANE.md`](PARIDAD-FASTLANE.md).
+
+Una auditoría de las ~230 tareas `P1–P5` que nunca se habían reconciliado con PU encontró 75 hechas
+sin tachar, 56 fuera de alcance y 69 huecos. Dos tandas de agentes (A–G, H–J) los cerraron:
+**`tasks.md` queda sin tareas abiertas** salvo la plantilla de DoD, con 11 `[!]` que esperan al
+dueño, derechos o un proveedor con voz por API.
+
+Lo que el uso diario pegaba de frente: todo post fuera de Automations salía **sin caption**; la
+**música nunca llegaba al video**; un video propio subido terminaba siempre `FAILED`; no había cómo
+programar a mano ni reintentar un fallo. Todo arreglado.
+
+**Verificado en la app real:** Blitz → prompt → green screen → **búsqueda automática del meme en
+YouTube** → clip recortado → tarjeta con el meme sobre el fondo → Schedule… → render 1080×1920
+mirado; música importada por link → swap en el editor → rebuild con la mezcla medida; JV-4
+verificando el perfil con qwen 7B; campana con un aviso real. Sin credenciales, nada de
+publicación ni generación paga corrió contra el servicio real.
+
+Migraciones `0024–0032`. `verify` 18/18; `test:int` worker 373, api 738, db 260.
+
 ### Sesión 2026-09-24 (2) — Uso personal: sprints 1 a 4 construidos y probados en la app real
 
 Cuatro tandas de agentes en paralelo y una pasada en el navegador por cada una. **Para usarla:**
@@ -1233,7 +1255,40 @@ grep -c '^- \[ \]' tasks.md     # pendientes — hoy: 193
     (`promptRequestId`) y `media-import` (`inspirationItemId`). Los tests del
     piloto fijan que un payload de campaña no lo toca.
 
+64. **Reservar migraciones como `SELECT 1` funciona sólo si la app no migra en el medio.**
+    Drizzle aplica por `when` y marca aplicada la que corrió: si `pnpm start` corre mientras
+    una reservada sigue vacía, su contenido real nunca se ejecuta en esa base. Reservar, llenar e
+    integrar **con la app bajada o sin reiniciarla**, y recrear las bases de test al integrar.
+
+65. **Buscar un meme por el tema literal no encuentra memes.** YouTube los indexa por reacción
+    ("facepalm", "slow clap"). Primero palabras de reacción (modelo de texto), después el tema.
+
+66. **`cover` a canvas completo destruye un clip 16:9 en 9:16** (~70 % recortado). El meme va
+    `contain` en el tramo de abajo; el editor decía `fill` "porque el render estira" y era falso:
+    el default del render es `cover`.
+
+67. **Instagram no acepta Reels de menos de 3 s**, y un meme de reacción dura 2–3 s. El render
+    repite el clip hasta ≥ 5 s (`-stream_loop`).
+
+68. **`pnpm verify` con `next dev` corriendo falla en `.next/types`.** Bajar la app antes.
+
+69. **Los tests de api/worker leían el `~/.fastgram` real del dueño** (y llamaban a su Ollama).
+    Los configs de vitest ponen un `FASTGRAM_HOME` temporal; un test que necesita otro lo pisa.
+
+70. **Dos `test:int` en paralelo sobre la misma base se traban en los `truncate`.** Un agente que
+    corre integración a la vez que otro usa un `DATABASE_URL` propio.
+
+71. **qwen 7B mezcla alfabetos** (un hashtag en chino en copy en inglés). Con idioma latino, otro
+    alfabeto descarta la copy (`foreign_script`).
+
 ## 8. Qué falta
+
+> **Al cierre del sprint 7 (2026-09-24):** `tasks.md` no tiene tareas abiertas. Lo que falta es
+> (1) credenciales del dueño para la primera publicación real, (2) sus decisiones (`snapchat`,
+> licencia de FFmpeg, `OQ-13`), (3) un proveedor con voz/lip-sync por API para 10 formatos y el
+> talking head, y (4) la deuda chica listada en `handoffs/HANDOFF-2026-09-24-sprint7.md`. Las
+> tablas de abajo son **históricas** (fase SaaS): varias filas ya no aplican o están cerradas
+> (render montado, fuentes 11/12, contraste, colas con consumidor, UI contra la API).
 
 El backlog real es `tasks.md`. El estado de hoy está en §6.
 
@@ -1322,6 +1377,9 @@ Salieron de acá, cerrados: `P0-REPO-013`, `P1-DATA-014`, `P1-DATA-015`,
 | [`../EVAL-JEV.md`](../EVAL-JEV.md) | por qué existe el puerto `Judgment` y qué se evaluó de TypeSafe/Jev |
 | [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md) | **cómo**: arquitectura, stack, 15 ADRs con su razón |
 | [`../tasks.md`](../tasks.md) | **en qué orden**, y dónde tachar |
+| [`PARIDAD-FASTLANE.md`](PARIDAD-FASTLANE.md) | cada feature de Fastlane: anda, adaptada, fuera o bloqueada, y por qué |
+| [`GUIA-DE-USO.md`](GUIA-DE-USO.md) | cómo usar la app hoy, y qué necesita algo del dueño |
+| [`SESSION-2026-09-24-sprint7-paridad.md`](SESSION-2026-09-24-sprint7-paridad.md) | la auditoría del backlog, los huecos que el uso diario pegaba de frente, y lo que costó |
 | [`COST-MODEL.md`](COST-MODEL.md) | **cuánto cuesta** cada driver, con fuente y fecha. **Caduca rápido**: los precios de IA se mueven en semanas |
 | [`SESSION-2026-09-21-plan-implementacion.md`](SESSION-2026-09-21-plan-implementacion.md) | cómo se llegó del PRD al plan, y qué se descartó |
 | [`SESSION-2026-09-21-implementacion.md`](SESSION-2026-09-21-implementacion.md) | cómo se organizó el trabajo en paralelo, y las trampas que costaron tiempo |
