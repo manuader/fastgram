@@ -36,9 +36,13 @@
  * con `suggestionRepository.list` (el único que el repositorio sabe dar), y el
  * PRD no define otro. Cambiarlo acá sería una decisión de producto escondida en
  * un cambio de mecanismo.
+ *
+ * **Con una excepción, que sí es decisión de producto** (`PU-BLITZ-003`,
+ * `EXT-009`): lo que el usuario pidió con un prompt va **antes** que lo que
+ * propuso el refill. Ver {@link QUEUE_ORDER}.
  */
 
-import { and, desc, eq, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, sql, type SQL } from "drizzle-orm";
 
 import type { Executor } from "../client.js";
 import {
@@ -60,8 +64,23 @@ export type SuggestionContentType = SuggestionRow["contentType"];
  * de arriba es la que saldría, y dos `ORDER BY` escritos por separado son dos
  * órdenes el día que alguien toque uno. El desempate por id importa: un refill
  * inserta varias filas en una sentencia y comparten el `now()` de la transacción.
+ *
+ * Primero van las de un pedido de «crear desde prompt» (`prompt_request_id` no
+ * nulo, `PU-BLITZ-003`): el usuario las pidió y las está esperando, y un refill
+ * que entre mientras tanto no las puede tapar. `false` ordena antes que `true`,
+ * así que `(prompt_request_id is null) asc` las pone arriba. Entre ellas, el
+ * mismo orden de siempre; `blitzPromptStore.completePromptRequest` escalona su
+ * `created_at` para que dentro de un pedido salgan en el orden en que se
+ * planificaron.
  */
-const QUEUE_ORDER = [desc(suggestions.createdAt), desc(suggestions.id)] as const;
+const QUEUE_ORDER = [
+  asc(sql`(${suggestions.promptRequestId} is null)`),
+  desc(suggestions.createdAt),
+  desc(suggestions.id),
+] as const;
+
+/** El mismo orden, para quien lista sugerencias de un pedido (`blitz-prompt.ts`). */
+export const SUGGESTION_QUEUE_ORDER = QUEUE_ORDER;
 
 /**
  * La próxima sugerencia `queued` del workspace, **bloqueada** hasta el fin de la

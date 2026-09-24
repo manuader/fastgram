@@ -229,6 +229,7 @@ export const en = {
   "settings.nav.general": "General",
   "settings.nav.brands": "Brands",
   "settings.nav.models": "Models",
+  "settings.nav.strategy": "Strategy", // PU-BRAND-002
 
   /* ------------------------- Marcas (workspaces) · PU-BRAND-001, D-07 (nuevo) */
   "brands.switcherLabel": "Switch brand",
@@ -376,7 +377,8 @@ export const en = {
   "editor.canvas.mediaError": "Couldn't load this media.",
   "editor.canvas.noMedia": "No background",
   "editor.keyboardHint": "Arrows move 1% · Shift + arrows 5%",
-  "editor.deleteNotAllowed": "Text boxes can't be removed from a piece; clear the text instead.",
+  "editor.deleteNotAllowed":
+    "Text boxes can't be removed from a piece; clear the text instead.",
   "editor.slides.label": "Slides",
   "editor.slides.item": "Slide {n}",
   "editor.slides.previous": "Previous slide",
@@ -480,7 +482,6 @@ export const en = {
   "editor.audio.empty": "The shared audio library is empty.",
   "editor.audio.error": "Couldn't load the audio library.",
 } as const;
-
 
 export type MessageKey = keyof typeof en;
 export type Messages = Record<MessageKey, string>;

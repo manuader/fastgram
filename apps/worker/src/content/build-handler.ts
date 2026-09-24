@@ -229,6 +229,12 @@ interface BuildSubject {
    * tal cual.
    */
   readonly textBoxes?: readonly ContentTextBox[];
+  /**
+   * Sólo en un rebuild: `contents.studioState`, donde viven los swaps de media
+   * del editor (`PU-EDIT-003`). `toEditedRenderJob` los aplica sobre el
+   * `buildPayload` original.
+   */
+  readonly studioState?: unknown;
 }
 
 type ReadOutcome =
@@ -391,6 +397,7 @@ export function createContentRenderHandler(
             contentType: row.type,
             revision: row.revision,
             textBoxes: boxes,
+            studioState: row.studioState,
           },
         };
       }
@@ -603,14 +610,19 @@ export function createContentRenderHandler(
 
     if (outcome.kind === "build") {
       const boxes = outcome.subject.textBoxes ?? [];
-      const mapped =
-        boxes.length > 0
-          ? toEditedRenderJob(
-              outcome.subject.buildPayload,
-              outcome.subject.contentType,
-              boxes,
-            )
-          : toRenderJob(outcome.subject.buildPayload, outcome.subject.contentType);
+      const studioState = outcome.subject.studioState ?? null;
+      // Un rebuild pasa por el camino editado si hay cajas **o** swaps de
+      // media: una pieza sin cajas también puede haber cambiado de fondo.
+      const edited =
+        boxes.length > 0 || (studioState !== null && studioState !== undefined);
+      const mapped = edited
+        ? toEditedRenderJob(
+            outcome.subject.buildPayload,
+            outcome.subject.contentType,
+            boxes,
+            studioState,
+          )
+        : toRenderJob(outcome.subject.buildPayload, outcome.subject.contentType);
       if (!mapped.ok) {
         failure = permanent(mapped.reason, mapped.code);
       } else {

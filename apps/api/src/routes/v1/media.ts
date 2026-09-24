@@ -50,22 +50,33 @@
  *   `media_sets` por pertenencia a un array; el filtro declarativo de los
  *   repositorios no tiene un operador de "contiene".
  */
+import { randomUUID } from "node:crypto";
 import type { FastifyReply } from "fastify";
 import { z } from "zod";
 import {
   BYTES_PER_MB,
+  brandKitRequestSchema,
   finalizeMediaRequestSchema,
   imageMediaCategorySchema,
   listMediaQuerySchema,
   mediaUploadReservationRequestSchema,
+  optionalIdempotencyHeaderSchema,
   updateImageMediaRequestSchema,
   updateMediaRequestSchema,
   updateVideoMediaRequestSchema,
   videoMediaCategorySchema,
+  type BrandKitJob,
 } from "@fastgram/contracts";
-import { JOB_QUEUES } from "@fastgram/core";
+import {
+  DEFAULT_BRAND_KIT_IMAGES,
+  DEFAULT_BRAND_KIT_VIDEOS,
+  JOB_QUEUES,
+  brandKitSingletonKey,
+  type BrandBackgroundsJob,
+} from "@fastgram/core";
 import { mediaRepository, uploadReservationRepository, type media } from "@fastgram/db";
 
+import { ApiRejection } from "../../http/errors.js";
 import { rateLimit } from "../../plugins/rate-limit.js";
 import {
   canonicalObjectUrl,
@@ -74,7 +85,7 @@ import {
   type UploadRejection,
 } from "../../support/upload-reservations.js";
 import { toMedia } from "../../support/serializers.js";
-import { crossTenant, data, page } from "./shared.js";
+import { crossTenant, data, idempotencyKeyOf, page, withIdempotency } from "./shared.js";
 import type { ZodApp } from "../../server/types.js";
 
 const mediaParams = z.object({ id: z.string().min(1) });
@@ -120,6 +131,20 @@ interface MediaNormalizationRequest {
  */
 const MEDIA_NORMALIZATION_RETRY_LIMIT = 2;
 
+/** Los `maxAttempts: 3` de `brandBackgrounds` en el catálogo del worker. */
+const BRAND_KIT_RETRY_LIMIT = 2;
+
+/** §9.3 — la ruta tal como la nombra el registro de idempotencia. */
+const BRAND_KIT_ROUTE = "POST /media/brand-kit";
+
+/**
+ * Orígenes que el Media Bank **lista**. FR-100: generados, de demo e internos
+ * nunca. `brand_kit` (`PU-MEDIA-002`, migración `0013`) sí: son fondos que la
+ * app generó *para* el usuario y que él tiene que poder ver, recategorizar y
+ * borrar como si los hubiera subido.
+ */
+const LISTED_ORIGINS = ["manual_upload", "brand_kit"] as const;
+
 type FinalizeOutcome =
   | { readonly ok: true; readonly row: MediaRow }
   | { readonly ok: false; readonly rejection: UploadRejection }
@@ -132,7 +157,7 @@ type PatchOutcome =
   | { readonly kind: "ok"; readonly row: MediaRow };
 
 export function registerMediaRoutes(app: ZodApp): void {
-  const { clock, limiter, storage, queue } = app.deps;
+  const { clock, idempotency, limiter, storage, queue } = app.deps;
 
   // ── POST /media/upload-url ──
   app.post(
@@ -306,12 +331,95 @@ export function registerMediaRoutes(app: ZodApp): void {
               // el listado del Media Bank, no un índice de todo lo que hay en el bucket:
               // sin este filtro, cada imagen que genera el pipeline aparecería en la grid
               // del usuario como si la hubiera subido él.
-              origin: { eq: "manual_upload" },
+              //
+              // `brand_kit` sí se lista: ver `LISTED_ORIGINS`.
+              origin: { in: [...LISTED_ORIGINS] },
             },
           },
         ),
       );
       return reply.send(page(result, toMedia));
+    },
+  );
+
+  // ── POST /media/brand-kit ──
+  //
+  // `PU-MEDIA-002`: fondos de marca generados por `services/render` (sin keys
+  // ni proveedores) para que una marca sin media pueda usar Blitz. `202`: lo
+  // que termina es el encolado; las filas aparecen en el Media Bank cuando el
+  // worker (`brand-backgrounds`) termina, ya `ready` y categorizadas.
+  //
+  // Sin worker con servicio de render, el job espera en la cola —igual que
+  // `media-normalization`— y el arranque del worker lo dice.
+  app.post(
+    "/media/brand-kit",
+    {
+      schema: {
+        // El cuerpo entero es opcional: `POST` sin body = kit por defecto.
+        // `nullish` y no `optional`: sin cuerpo, Fastify entrega `null`.
+        body: brandKitRequestSchema.nullish(),
+        headers: optionalIdempotencyHeaderSchema,
+      },
+      preHandler: rateLimit(limiter, "restPerWorkspace"),
+    },
+    async (request, reply) => {
+      if (queue === undefined) {
+        // Antes de consumir la `Idempotency-Key`: quemarla por una caída de
+        // infraestructura impediría el reintento (mismo criterio que
+        // `POST /brand/sources`).
+        return reply.status(503).send({
+          error: {
+            code: "service_unavailable",
+            message: "Brand backgrounds are temporarily unavailable.",
+          },
+        });
+      }
+      const body = request.body ?? {};
+      const companyId = request.auth.companyId;
+      const images = body.images ?? DEFAULT_BRAND_KIT_IMAGES;
+      const videos = body.videos ?? DEFAULT_BRAND_KIT_VIDEOS;
+      if (images + videos === 0) {
+        throw new ApiRejection(
+          400,
+          "bad_request",
+          "Ask for at least one image or video.",
+        );
+      }
+
+      const run = async (): Promise<BrandKitJob> => {
+        const job: BrandBackgroundsJob = {
+          companyId,
+          // Sin semilla, una nueva: pedir el kit otra vez es pedir **otros**
+          // fondos. Con `Idempotency-Key`, el replay devuelve esta misma.
+          seed: body.seed ?? `kit-${randomUUID()}`,
+          images,
+          videos,
+        };
+        // Clave por marca + semilla + cantidades, fija a propósito (trampa 39):
+        // la misma semilla produce los mismos bytes, así que repetir el job no
+        // daría nada nuevo. `created: false` se devuelve como `enqueued: false`
+        // en vez de fingir que se encoló (trampa 45).
+        const enqueued = await queue.enqueue<BrandBackgroundsJob>({
+          queue: JOB_QUEUES.brandBackgrounds,
+          payload: job,
+          options: {
+            singletonKey: brandKitSingletonKey(job),
+            retryLimit: BRAND_KIT_RETRY_LIMIT,
+            retryBackoff: true,
+          },
+        });
+        return { seed: job.seed, images, videos, enqueued: enqueued.created };
+      };
+
+      const key = idempotencyKeyOf({ ...request.headers });
+      if (key === "") return reply.status(202).send(data(await run()));
+      return withIdempotency(
+        idempotency,
+        request,
+        reply,
+        { key, route: BRAND_KIT_ROUTE, body, successStatus: 202 },
+        run,
+      );
     },
   );
 

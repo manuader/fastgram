@@ -102,7 +102,17 @@ export const mediaTypeEnum = pgEnum("media_type", MEDIA_TYPE);
 export const MEDIA_STATUS = ["processing", "ready", "failed"] as const;
 export const mediaStatusEnum = pgEnum("media_status", MEDIA_STATUS);
 
-export const MEDIA_ORIGIN = ["manual_upload", "generated", "demo", "internal"] as const;
+/**
+ * `brand_kit` (migración `0013`, `PU-MEDIA-002`): fondos de marca generados por
+ * `services/render`. A diferencia de `generated`, **se listan** en el Media Bank.
+ */
+export const MEDIA_ORIGIN = [
+  "manual_upload",
+  "generated",
+  "demo",
+  "internal",
+  "brand_kit",
+] as const;
 export const mediaOriginEnum = pgEnum("media_origin", MEDIA_ORIGIN);
 
 // ───────────────────────── DATA-011 · MediaSet ─────────────────────────

@@ -349,6 +349,26 @@ export const JOB_CATALOG = {
     concurrency: null,
     idempotent: true,
   },
+  /**
+   * `PU-MEDIA-002` — no está en §9.5: sale del plan de uso personal (una marca
+   * nueva sin media no puede usar Blitz). Idempotente por construcción: las
+   * claves de storage son deterministas por semilla y el handler sólo genera
+   * las piezas que todavía no tienen fila (`apps/worker/src/brand-kit`).
+   */
+  brandBackgrounds: {
+    name: JOB_QUEUES.brandBackgrounds,
+    what: "Genera fondos de marca (imágenes y loops) en services/render y los suma al Media Bank.",
+    prd: "PLAN-USO-PERSONAL §2 paso 3, PU-MEDIA-002 (fuera de §9.5)",
+    maxAttempts: 3,
+    backoff: "exponential",
+    retryDelaySeconds: 30,
+    // Ocho imágenes (~0,3 s c/u) y tres loops de 8 s (~4 s c/u) medidos en una
+    // M-series; diez minutos es margen para una máquina lenta o cargada.
+    timeoutSeconds: 600,
+    // Encodear video es CPU pura: uno a la vez no le quita el render a los builds.
+    concurrency: 1,
+    idempotent: true,
+  },
 } as const satisfies Record<string, JobPolicy>;
 
 export type JobKey = keyof typeof JOB_CATALOG;

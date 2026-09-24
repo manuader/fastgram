@@ -64,6 +64,8 @@ export const deckSuggestionSchema = z.object({
     .optional(),
   remixSource: remixSourceSchema.nullable().optional(),
   preview: previewSchema.nullable().optional(),
+  /** `PU-BLITZ-003`: salió de un «Create from prompt». Dibuja el chip. */
+  promptRequestId: z.string().nullable().optional(),
 });
 export type DeckSuggestion = z.infer<typeof deckSuggestionSchema>;
 

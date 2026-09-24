@@ -22,6 +22,11 @@ export function CardChips({ suggestion }: { suggestion: DeckSuggestion }) {
       className="flex flex-wrap items-center justify-center gap-2"
       aria-label={td("deck.tags")}
     >
+      {suggestion.promptRequestId != null && (
+        <li>
+          <Badge tone="success">{td("deck.fromPrompt")}</Badge>
+        </li>
+      )}
       <li>
         <Badge tone="accent">{tw(BLITZ_TYPE_COPY[suggestion.contentType])}</Badge>
       </li>

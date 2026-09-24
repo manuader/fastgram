@@ -81,6 +81,8 @@
 import { createHash } from "node:crypto";
 import {
   PortError,
+  type BrandBackgroundGenerator,
+  type BrandBackgroundRequest,
   type Clock,
   type MediaAuthorization,
   type MediaProbe,
@@ -261,7 +263,7 @@ export interface HttpRenderBuild {
   readonly renderMs: number;
 }
 
-export class HttpMediaRenderer implements MediaRenderer {
+export class HttpMediaRenderer implements MediaRenderer, BrandBackgroundGenerator {
   readonly #baseUrl: string;
   readonly #engineVersion: string;
   readonly #timeoutMs: number;
@@ -474,6 +476,42 @@ export class HttpMediaRenderer implements MediaRenderer {
     });
     if (!response.ok) throw await translateHttp(response, "thumbnail");
     return await this.#openDescribedMedia(await readJson(response), "thumbnail");
+  }
+
+  /**
+   * `PU-MEDIA-002` — `POST /brand-backgrounds`. Un fondo de marca generado por
+   * el servicio, sin proveedor: misma forma que `/thumbnail` (metadatos en la
+   * respuesta, bytes por el `href`), así que se abre con el mismo camino.
+   *
+   * El grant no autoriza URLs —no hay media que leer— sino **al que pide**: con
+   * `RENDER_REQUIRE_GRANT=true` el servicio no genera nada sin uno válido.
+   */
+  async generateBrandBackground(
+    request: BrandBackgroundRequest,
+    auth: MediaAuthorization,
+  ): Promise<RenderedMedia> {
+    const grant = this.#grant(auth);
+    const response = await this.#request("POST", "/brand-backgrounds", {
+      palette: request.palette,
+      seed: request.seed,
+      kind: request.kind,
+      ...(request.kind === "image"
+        ? { aspectRatio: request.aspectRatio }
+        : { aspectRatio: "9:16", durationSeconds: request.durationSeconds }),
+      ...(grant === undefined ? {} : { grant }),
+    });
+    if (!response.ok) throw await translateHttp(response, "brand-backgrounds");
+    const media = await this.#openDescribedMedia(
+      await readJson(response),
+      "brand-backgrounds",
+    );
+    const expected = request.kind === "image" ? "image/jpeg" : "video/mp4";
+    if (media.contentType !== expected) {
+      throw contractViolation(
+        `brand-backgrounds returned ${media.contentType} for a ${request.kind}`,
+      );
+    }
+    return media;
   }
 
   /**
@@ -1220,7 +1258,13 @@ const SERVICE_CODE_TO_PORT: Readonly<Record<string, PortErrorCode>> = {
 };
 
 type Operation =
-  "render" | "artifact" | "capabilities" | "probe" | "normalize" | "thumbnail";
+  | "render"
+  | "artifact"
+  | "capabilities"
+  | "probe"
+  | "normalize"
+  | "thumbnail"
+  | "brand-backgrounds";
 
 /**
  * Los mensajes de acá pueden cruzar hacia el cliente (`PortError.toPublic`),

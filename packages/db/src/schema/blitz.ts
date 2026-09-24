@@ -106,6 +106,50 @@ export const blitzPreferences = pgTable(
   ],
 );
 
+/** Estados de un pedido de «crear desde prompt» (`PU-BLITZ-003`). */
+export const BLITZ_PROMPT_STATUS = ["queued", "running", "done", "failed"] as const;
+
+/**
+ * NO ESTÁ EN EL PRD como entidad: un pedido de «crear desde prompt» —
+ * `EXT-009`, `PU-BLITZ-003`, migración `0012`.
+ *
+ * Existe para que la web pueda preguntar **en qué quedó** su pedido: el job
+ * corre en el worker y puede fallar por algo que el usuario tiene que ver
+ * (sin LLM, sin media para el formato que forzó). Las sugerencias que produjo
+ * no se listan acá: son las filas de `suggestions` con `prompt_request_id`
+ * apuntando a ésta, una sola fuente de verdad.
+ *
+ * `failureReason` es un **código estable** (`PROMPT_FAILURE_REASONS` de
+ * `core`), nunca un error crudo de proveedor.
+ */
+export const blitzPromptRequests = pgTable(
+  "blitz_prompt_requests",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    companyId: companyRef(),
+    /** El tema, tal cual lo escribió el usuario. Dato, nunca instrucción. */
+    prompt: text().notNull(),
+    /** El formato forzado, o `null` = lo decide el content mix. */
+    contentType: suggestionContentTypeEnum(),
+    count: integer().notNull(),
+    status: text({ enum: BLITZ_PROMPT_STATUS }).notNull().default("queued"),
+    failureReason: text(),
+    ...timestamps(),
+  },
+  (t) => [
+    index("blitz_prompt_requests_company_created_idx").on(t.companyId, t.createdAt),
+    check(
+      "blitz_prompt_requests_prompt_length",
+      sql`char_length(${t.prompt}) between 3 and 500`,
+    ),
+    check("blitz_prompt_requests_count_range", sql`${t.count} between 1 and 5`),
+    check(
+      "blitz_prompt_requests_status",
+      sql`${t.status} in ('queued', 'running', 'done', 'failed')`,
+    ),
+  ],
+);
+
 /**
  * DATA-007 — `Suggestion` (cola de discovery).
  * Objetivo ~5 en cola; el PRD admite que refills concurrentes la excedan
@@ -136,6 +180,14 @@ export const suggestions = pgTable(
      * Migración `0011`.
      */
     buildPlan: jsonb(),
+    /**
+     * NO ESTÁ EN `DATA-007`: el pedido de «crear desde prompt» que la produjo
+     * (`PU-BLITZ-003`, migración `0012`), o `null` si salió del refill. Las que
+     * lo tienen van **primeras** en la cola (`QUEUE_ORDER`).
+     */
+    promptRequestId: uuid().references(() => blitzPromptRequests.id, {
+      onDelete: "set null",
+    }),
     status: suggestionStatusEnum().notNull().default("queued"),
     ...createdAtOnly(),
   },

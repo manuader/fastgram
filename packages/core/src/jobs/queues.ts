@@ -63,6 +63,12 @@ export const JOB_QUEUES = {
   brandSourceStalenessSweep: "brand-source-staleness-sweep",
   snapshotPurge: "snapshot-purge",
   ownPostImport: "own-post-import",
+  /**
+   * `PU-MEDIA-002` — fondos de marca generados por `services/render` (sin
+   * proveedor) para que una marca sin media pueda usar Blitz. No es de §9.5:
+   * es del plan de uso personal.
+   */
+  brandBackgrounds: "brand-backgrounds",
 } as const;
 
 export type JobQueueKey = keyof typeof JOB_QUEUES;

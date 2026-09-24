@@ -44,6 +44,14 @@ const sendMock = vi.mocked(apiSend);
 
 const CONTENT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
+/**
+ * El chip de tipo de la tarjeta, no la opción homónima del selector de formato
+ * de «Create from prompt» (`PU-BLITZ-003`), que está en la pantalla desde el
+ * primer render: sin esto, esperar «Wall of Text» resolvía antes de que
+ * cargara la cola.
+ */
+const CHIP_ONLY = { ignore: "option, script, style" } as const;
+
 function suggestion(overrides: Readonly<Record<string, unknown>> = {}): DeckSuggestion {
   return deckSuggestionSchema.parse({
     id: "s1",
@@ -165,7 +173,7 @@ describe("BlitzDeck · carga y tarjeta", () => {
       await Promise.resolve();
     });
 
-    expect(await screen.findByText("Wall of Text")).toBeInTheDocument();
+    expect(await screen.findByText("Wall of Text", CHIP_ONLY)).toBeInTheDocument();
     expect(screen.queryByTestId("deck-loading")).not.toBeInTheDocument();
     expect(topCardLabel()).toBe("Wall of Text suggestion");
     expect(screen.getByText("👤 Ella")).toBeInTheDocument();
@@ -216,7 +224,7 @@ describe("BlitzDeck · carga y tarjeta", () => {
   it("sin remix ni audio, no hay panel ni botón de mute", async () => {
     installBackend({});
     renderDeck();
-    await screen.findByText("Wall of Text");
+    await screen.findByText("Wall of Text", CHIP_ONLY);
     expect(
       screen.queryByRole("region", { name: "Remixed From" }),
     ).not.toBeInTheDocument();
@@ -228,7 +236,7 @@ describe("BlitzDeck · teclado (F-052)", () => {
   it("← descarta la de arriba y pasa a la siguiente", async () => {
     installBackend({});
     const { user } = renderDeck();
-    await screen.findByText("Wall of Text");
+    await screen.findByText("Wall of Text", CHIP_ONLY);
 
     await user.keyboard("{ArrowLeft}");
 
@@ -242,7 +250,7 @@ describe("BlitzDeck · teclado (F-052)", () => {
   it("→ abre `What would you like to do?` y no cobra nada hasta elegir", async () => {
     installBackend({});
     const { user } = renderDeck();
-    await screen.findByText("Wall of Text");
+    await screen.findByText("Wall of Text", CHIP_ONLY);
 
     await user.keyboard("{ArrowRight}");
 
@@ -261,7 +269,7 @@ describe("BlitzDeck · teclado (F-052)", () => {
   it("con modificadores o escribiendo en un campo, las flechas no deciden", async () => {
     installBackend({});
     const { user } = renderDeck();
-    await screen.findByText("Wall of Text");
+    await screen.findByText("Wall of Text", CHIP_ONLY);
 
     await user.keyboard("{Shift>}{ArrowLeft}{/Shift}");
     await user.keyboard("{Meta>}{ArrowRight}{/Meta}");
@@ -275,7 +283,7 @@ describe("BlitzDeck · botones", () => {
   it("✕ descarta igual que ←", async () => {
     installBackend({});
     const { user } = renderDeck();
-    await screen.findByText("Wall of Text");
+    await screen.findByText("Wall of Text", CHIP_ONLY);
 
     await user.click(screen.getByRole("button", { name: "Skip" }));
 
@@ -289,7 +297,7 @@ describe("BlitzDeck · botones", () => {
     installBackend({});
     sendMock.mockRejectedValue(apiError(500, "service_unavailable"));
     const { user } = renderDeck();
-    await screen.findByText("Wall of Text");
+    await screen.findByText("Wall of Text", CHIP_ONLY);
 
     await user.click(screen.getByRole("button", { name: "Skip" }));
 
@@ -300,7 +308,7 @@ describe("BlitzDeck · botones", () => {
   it("Edit y Schedule Post se ven pero están deshabilitados (sprint 2)", async () => {
     installBackend({});
     const { user } = renderDeck();
-    await screen.findByText("Wall of Text");
+    await screen.findByText("Wall of Text", CHIP_ONLY);
 
     expect(screen.getByRole("button", { name: "Edit" })).toHaveAttribute(
       "aria-disabled",
@@ -320,7 +328,7 @@ describe("BlitzDeck · aceptar → pieza construida (PU-BLITZ-002)", () => {
     let buildStatus: Content["status"] = "BUILDING";
     installBackend({ contentItem: () => Promise.resolve(built(buildStatus)) });
     const { user } = renderDeck();
-    await screen.findByText("Wall of Text");
+    await screen.findByText("Wall of Text", CHIP_ONLY);
 
     await user.click(screen.getByRole("button", { name: "Accept" }));
     const dialog = await screen.findByRole("dialog");
@@ -371,7 +379,7 @@ describe("BlitzDeck · aceptar → pieza construida (PU-BLITZ-002)", () => {
       },
     });
     const { user } = renderDeck();
-    await screen.findByText("Wall of Text");
+    await screen.findByText("Wall of Text", CHIP_ONLY);
 
     await user.keyboard("{ArrowRight}");
     const dialog = await screen.findByRole("dialog");
@@ -393,7 +401,7 @@ describe("BlitzDeck · aceptar → pieza construida (PU-BLITZ-002)", () => {
       accept: () => Promise.reject(apiError(422, "content_unavailable_for_type")),
     });
     const { user } = renderDeck();
-    await screen.findByText("Wall of Text");
+    await screen.findByText("Wall of Text", CHIP_ONLY);
 
     await user.keyboard("{ArrowRight}");
     await user.click(

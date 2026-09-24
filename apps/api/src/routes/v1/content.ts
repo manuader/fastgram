@@ -70,21 +70,35 @@ import {
   updateContentRequestSchema,
   videoUploadReservationRequestSchema,
   type Canvas,
+  type ContentAssets,
+  type ContentAssetsPatch,
   type ContentBuildPayload,
   type ContentTextBox,
   type EditableContent,
   type UploadReservation,
 } from "@fastgram/contracts";
 import {
+  audioTrackRepository,
   contentBuildStore,
   contentRepository,
   contentTextBoxRepository,
+  mediaRepository,
   postRepository,
   uploadReservationRepository,
   type Transaction,
   type contentTextBoxes,
 } from "@fastgram/db";
-import { CONTENT_BUILD_QUEUE, JOB_QUEUES } from "@fastgram/core";
+import {
+  CONTENT_BUILD_QUEUE,
+  JOB_QUEUES,
+  applyAssetSwaps,
+  assetsOf,
+  readAssetSwaps,
+  resolveAssetPatch,
+  withAssetSwaps,
+  type AssetSwaps,
+  type IncomingAsset,
+} from "@fastgram/core";
 import { MAX_SIGNED_URL_TTL_SECONDS, type Queue } from "@fastgram/ports";
 import { randomUUID } from "node:crypto";
 import type { FastifyReply } from "fastify";
@@ -367,6 +381,115 @@ async function enqueueRebuild(
         "La pieza quedaría en BUILDING sin nadie que la reconstruya.",
     );
   }
+}
+
+/**
+ * La media vigente de una pieza para el editor: el payload original con los
+ * swaps de `studioState` aplicados — la misma función que usa el rebuild
+ * (`applyAssetSwaps` de `core`), para que el editor no dibuje un fondo que no
+ * es el que va a salir.
+ *
+ * `null` si el payload no parsea (ERR-F04: se omite la media). Swaps ilegibles
+ * o que ya no calzan se ignoran acá; el rebuild, en cambio, los rechaza con
+ * código estable y la versión anterior sigue usable.
+ */
+function assetsFor(buildPayload: unknown, studioState: unknown): ContentAssets | null {
+  const parsed = contentBuildPayloadSchema.safeParse(buildPayload);
+  if (!parsed.success) return null;
+  const swaps = readAssetSwaps(studioState) ?? {};
+  const applied = applyAssetSwaps(parsed.data, swaps);
+  return assetsOf(applied.ok ? applied.payload : parsed.data) as ContentAssets;
+}
+
+/**
+ * Valida el `assets` de un `PATCH` y devuelve los swaps a guardar.
+ *
+ * Dos rechazos, los dos `400 bad_request` y **antes** del build (`FR-070`,
+ * PRD:1459):
+ *
+ *  - la forma no calza con la pieza: un slot que el formato no tiene o un slide
+ *    que no existe (`core/content/asset-swaps.ts`);
+ *  - una URL **nueva** que no es del workspace. Imagen o video: tiene que ser
+ *    una fila `ready` del Media Bank de **este** workspace y del tipo que pide
+ *    el slot. Audio: una pista del catálogo compartido de ese formato.
+ *
+ * Esto sí valida el Media Bank, al revés que `POST /content` (ver la cabecera):
+ * acá cada URL nueva sale de un selector del Media Bank o del catálogo, así que
+ * no hay URL legítima que caiga afuera — la de la "librería compartida" de
+ * imágenes y videos no existe todavía.
+ */
+async function resolveSwaps(
+  tx: Transaction,
+  companyId: string,
+  row: LiveContentRow,
+  patch: ContentAssetsPatch,
+): Promise<AssetSwaps> {
+  const parsed = contentBuildPayloadSchema.safeParse(row.buildPayload);
+  if (!parsed.success) {
+    throw new ContentRejection(
+      422,
+      "content_not_editable",
+      "This piece's media can't be changed here.",
+    );
+  }
+  const stored = readAssetSwaps(row.studioState) ?? {};
+  const resolved = resolveAssetPatch(parsed.data, stored, patch);
+  if (!resolved.ok) {
+    throw new ContentRejection(
+      400,
+      "bad_request",
+      "That media slot isn't part of this piece.",
+      { reason: resolved.code },
+    );
+  }
+
+  const foreign: string[] = [];
+  for (const asset of resolved.incoming) {
+    if (!(await ownsAsset(tx, companyId, row.type, asset))) foreign.push(asset.slot);
+  }
+  if (foreign.length > 0) {
+    throw new ContentRejection(400, "bad_request", "Pick media from your Media Bank.", {
+      invalidAssets: foreign,
+    });
+  }
+  return resolved.swaps;
+}
+
+/** El catálogo de audio es chico y no tiene índice por URL: se recorre. */
+const AUDIO_PAGE_SIZE = 100;
+
+async function ownsAsset(
+  tx: Transaction,
+  companyId: string,
+  contentType: string,
+  asset: IncomingAsset,
+): Promise<boolean> {
+  if (asset.kind === "audio") {
+    if (contentType !== "wall-of-text" && contentType !== "video-hook") return false;
+    let cursor: string | undefined;
+    for (;;) {
+      const chunk = await audioTrackRepository.list(tx, {
+        library: contentType,
+        limit: AUDIO_PAGE_SIZE,
+        ...(cursor === undefined ? {} : { cursor }),
+      });
+      if (chunk.items.some((track) => track.url === asset.url)) return true;
+      if (!chunk.hasMore || chunk.cursor === null) return false;
+      cursor = chunk.cursor;
+    }
+  }
+  const matches = await mediaRepository.count(
+    tx,
+    { companyId },
+    {
+      filter: {
+        r2Url: { eq: asset.url },
+        mediaType: { eq: asset.kind },
+        status: { eq: "ready" },
+      },
+    },
+  );
+  return matches > 0;
 }
 
 /** Fila de `contents` tal como la devuelve el repositorio. */
@@ -699,9 +822,11 @@ export function registerContentRoutes(app: ZodApp): void {
         });
       }
 
+      const assets = assetsFor(found.row.buildPayload, found.row.studioState);
       const editable: EditableContent = {
         canvas,
         textBoxes: found.boxes.map(toContentTextBox),
+        ...(assets === null ? {} : { assets }),
       };
       return reply.send(data(editable));
     },
@@ -801,6 +926,16 @@ export function registerContentRoutes(app: ZodApp): void {
                   // cruzada y tiene que salir como el 404 de §9.2, no como un 500.
                   throw new ContentRejection(404, "not_found", "content not found");
                 }
+              }
+
+              // Swap de media (`PU-EDIT-003`). Después de las cajas y antes de
+              // subir la revisión: un rechazo acá lanza y la transacción vuelve
+              // atrás entera, cajas incluidas (*"sin aplicar ningún cambio"*).
+              if (body.assets !== undefined) {
+                const swaps = await resolveSwaps(tx, companyId, row, body.assets);
+                await contentRepository.update(tx, { companyId }, row.id, {
+                  studioState: withAssetSwaps(row.studioState, swaps),
+                });
               }
 
               return bumpAndRebuild(

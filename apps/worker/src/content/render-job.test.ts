@@ -201,3 +201,77 @@ describe("toEditedRenderJob — las cajas del editor llegan al job (PU-EDIT-002)
     expect(r).toMatchObject({ ok: false, code: "invalid_build_payload" });
   });
 });
+
+describe("toEditedRenderJob — los swaps de media llegan al job (PU-EDIT-003)", () => {
+  const NUEVO = { ...MEDIA, url: "https://cdn.example.test/nuevo.mp4" };
+
+  it("green-screen: el video nuevo y su zoom reemplazan al original", () => {
+    const zoom = { ...NUEVO, drawX: -270, drawY: -480, drawW: 1620, drawH: 2880 };
+    const r = toEditedRenderJob(GREEN_SCREEN, "green-screen", [], {
+      assets: { video: zoom },
+    });
+    if (!r.ok) throw new Error(r.reason);
+    if (r.job.format !== "green-screen") throw new Error(r.job.format);
+    expect(r.job.video).toEqual(zoom);
+    expect(r.job.image).toEqual(MEDIA);
+  });
+
+  it("slideshow: Swap image for slide 1 sólo cambia ese slide", () => {
+    const dos = {
+      ...SLIDESHOW,
+      num_images: 2,
+      images: [...SLIDESHOW.images, ...SLIDESHOW.images],
+    };
+    const r = toEditedRenderJob(dos, "slideshow", [], {
+      assets: { slides: [{ index: 1, image: NUEVO }] },
+    });
+    if (!r.ok) throw new Error(r.reason);
+    if (r.job.format !== "slideshow") throw new Error(r.job.format);
+    expect(r.job.images.map((s) => s.image.url)).toEqual([MEDIA.url, NUEVO.url]);
+  });
+
+  it("wall-of-text: No audio omite el bloque (FR-053.1)", () => {
+    const conAudio = {
+      ...WALL_OF_TEXT,
+      audio: { url: "https://cdn.example.test/a.mp3" },
+    };
+    const r = toEditedRenderJob(conAudio, "wall-of-text", [], {
+      assets: { audio: null },
+    });
+    if (!r.ok) throw new Error(r.reason);
+    expect("audio" in r.job).toBe(false);
+  });
+
+  it("swaps y cajas juntos", () => {
+    const r = toEditedRenderJob(
+      WALL_OF_TEXT,
+      "wall-of-text",
+      [
+        {
+          id: "t0",
+          text: "x",
+          position: { x: 50, y: 50 },
+          widthPercent: 80,
+          font: { family: "inter", weight: 700, size: 18 },
+          color: "#FFFFFF",
+          stroke: { width: 0, color: "#000000" },
+          background: null,
+        },
+      ],
+      { assets: { video: NUEVO } },
+    );
+    if (!r.ok) throw new Error(r.reason);
+    if (r.job.format !== "wall-of-text") throw new Error(r.job.format);
+    expect(r.job.video.url).toBe(NUEVO.url);
+    expect(r.job.text.content).toBe("x");
+  });
+
+  it("studioState ilegible o swap que no calza → edit_not_renderable", () => {
+    expect(
+      toEditedRenderJob(WALL_OF_TEXT, "wall-of-text", [], { assets: "roto" }),
+    ).toMatchObject({ ok: false, code: "edit_not_renderable" });
+    expect(
+      toEditedRenderJob(WALL_OF_TEXT, "wall-of-text", [], { assets: { image: MEDIA } }),
+    ).toMatchObject({ ok: false, code: "edit_not_renderable" });
+  });
+});

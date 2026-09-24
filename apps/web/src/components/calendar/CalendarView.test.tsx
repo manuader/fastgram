@@ -1,58 +1,63 @@
 /**
- * `/calendar` · F-140..F-143: los estados de FR-110, los chips, los contadores,
- * la navegación y el tope de paginación.
+ * `/calendar` · FR-110 + `PU-CAL-002`: estados, chips por red, semana/mes,
+ * filtro de marcas y arrastrar para mover.
  *
  * ## Qué se mockea
  *
- * `apiList`, como en las tabs de la Library: lo que queda bajo test es
- * `lib/calendar/data.ts` y esta pantalla, no el parser de `client.ts`. El mock
- * **despacha por ruta**, porque la vista pide dos listados (`/posts` y
- * `/content`) y un mock que devolviera lo mismo a los dos haría pasar el join
- * de tipos por casualidad.
+ * `apiRequest`: lo que queda bajo test es la pantalla, `lib/calendar/data.ts` y
+ * `lib/calendar/board.ts`. El mock despacha por método y ruta.
  *
- * ## El reloj y la zona van por prop, no con `vi.useFakeTimers`
+ * ## El arrastre, sin puntero
  *
- * Con los timers falsos, `waitFor`/`findBy*` —que esperan con `setTimeout`— no
- * avanzan y el test se cuelga o expira. `now` y `timeZone` son props de la
- * vista justo para esto: cada test fija las dos y ninguno depende de la zona
- * ni del día de la máquina.
+ * jsdom no tiene layout: `getBoundingClientRect` da ceros y los sensores de
+ * dnd-kit no pueden calcular sobre qué celda se soltó. Así que el test envuelve
+ * el `DndContext` real para quedarse con su `onDragEnd` y lo llama con el
+ * evento que dnd-kit entregaría (`active.id` del chip, `over.id` de la celda).
+ * Lo que se mide es lo nuestro: qué se le pide a la API al soltar, el salto
+ * optimista y que lo que no se mueve no dispare nada. Que dnd-kit detecte la
+ * celda bajo el puntero es de dnd-kit.
  *
- * ## Cómo se espera
+ * ## El reloj y la zona van por prop
  *
- * La señal neutral es que la sección deje de estar `aria-busy` (trampa 38 del
- * HANDOFF): es verdadera tanto si se dibuja el dato como el vacío o el error,
- * así que las negativas que vienen después miden lo que dicen medir.
+ * Con timers falsos `waitFor` no avanza. `now` y `timeZone` son props.
  */
-import {
-  contentSchema,
-  postSchema,
-  type Content,
-  type ContentType,
-  type Post,
-} from "@fastgram/contracts";
+import type { Calendar, CalendarItem } from "@fastgram/contracts";
+import { calendarSchema } from "@fastgram/contracts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError } from "@/lib/api/errors";
-import { CALENDAR_MAX_PAGES } from "@/lib/calendar/data";
+import type * as ApiClient from "@/lib/api/client";
+import type * as Dnd from "@dnd-kit/core";
 import { CalendarView } from "./CalendarView";
 
-import type * as ApiClient from "@/lib/api/client";
+let lastDragEnd: ((event: Dnd.DragEndEvent) => void) | undefined;
+
+vi.mock("@dnd-kit/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof Dnd>();
+  function DndContext(props: ComponentProps<typeof actual.DndContext>) {
+    lastDragEnd = props.onDragEnd;
+    return <actual.DndContext {...props} />;
+  }
+  return { ...actual, DndContext };
+});
 
 vi.mock("@/lib/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof ApiClient>()),
-  apiList: vi.fn(),
+  apiRequest: vi.fn(),
 }));
 
-import { apiList, type ApiListOptions, type CursorPage } from "@/lib/api/client";
+import { apiRequest, type ApiRequestOptions } from "@/lib/api/client";
 
-const listMock = vi.mocked(apiList);
+const requestMock = vi.mocked(apiRequest);
 
 const BA = "America/Argentina/Buenos_Aires";
-/** "Ahora": martes 22 de septiembre de 2026, 15:00 en Buenos Aires. */
+/** Martes 22 de septiembre de 2026, 15:00 en Buenos Aires. */
 const NOW = Date.UTC(2026, 8, 22, 18, 0);
+const BRAND_A = "00000000-0000-4000-8000-00000000000a";
+const BRAND_B = "00000000-0000-4000-8000-00000000000b";
 
 let seq = 0;
 function uuid(): string {
@@ -60,70 +65,60 @@ function uuid(): string {
   return `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`;
 }
 
-function post(overrides: Readonly<Record<string, unknown>> = {}): Post {
-  return postSchema.parse({
-    _id: uuid(),
-    contentId: uuid(),
-    platform: "tiktok",
-    accountType: "oauth",
-    scheduledAtUtc: Date.UTC(2026, 8, 22, 14, 56), // 11:56 AM en BA
-    caption: "",
-    description: "",
+function item(over: Partial<CalendarItem> = {}): CalendarItem {
+  return {
+    kind: "post",
+    id: uuid(),
+    brandId: BRAND_A,
+    brandName: "Acme",
+    contentId: uuid() as CalendarItem["contentId"],
+    contentType: "slideshow",
+    network: "tiktok",
     status: "SCHEDULED",
-    views: 0,
-    likes: 0,
-    comments: 0,
-    ...overrides,
+    at: Date.UTC(2026, 8, 23, 12, 7), // miércoles 09:07 en BA
+    movable: true,
+    ...over,
+  };
+}
+
+function calendar(
+  items: readonly CalendarItem[],
+  over: Partial<Calendar> = {},
+): Calendar {
+  return calendarSchema.parse({
+    items,
+    brands: [{ id: BRAND_A, name: "Acme", timezone: BA }],
+    counts: { posted: 3, inbox: 1, scheduled: items.length },
+    truncated: false,
+    ...over,
   });
 }
 
-function content(id: string, type: ContentType): Content {
-  return contentSchema.parse({
-    _id: id,
-    type,
-    status: "CREATED",
-    files: [],
-    revision: 0,
+type Handler = (path: string, options: ApiRequestOptions<unknown>) => Promise<unknown>;
+
+function serve(handler: Handler): void {
+  requestMock.mockImplementation(((
+    path: string,
+    options: ApiRequestOptions<unknown> = {},
+  ) => handler(path, options)) as typeof apiRequest);
+}
+
+function getCalls(): ApiRequestOptions<unknown>[] {
+  return requestMock.mock.calls
+    .filter(
+      ([path, options]) => path === "calendar" && (options?.method ?? "GET") === "GET",
+    )
+    .map(([, options]) => options ?? {});
+}
+
+function renderView(props: { initialView?: "week" | "month" } = {}) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-}
-
-function contentFor(posts: readonly Post[], type: ContentType = "slideshow"): Content[] {
-  return posts.map((p) => content(p.contentId, type));
-}
-
-type Pages<T> = readonly (readonly T[])[];
-
-/**
- * Un servidor de mentira con cursor: la página `n` se pide con cursor `"n"`.
- * Un `Error` en lugar de páginas hace fallar todas las de esa ruta.
- */
-function serve(
-  postPages: Pages<Post> | Error,
-  contentPages: Pages<Content> | Error = [[]],
-  options: { endless?: boolean } = {},
-): void {
-  listMock.mockImplementation((path: string, opts?: ApiListOptions<unknown>) => {
-    const pages = path === "/posts" ? postPages : contentPages;
-    if (pages instanceof Error) return Promise.reject(pages);
-    const index =
-      opts?.cursor === undefined || opts.cursor === null ? 0 : Number(opts.cursor);
-    const items = pages[index] ?? [];
-    const hasMore = options.endless === true || index < pages.length - 1;
-    const page: CursorPage<unknown> = {
-      items,
-      cursor: hasMore ? String(index + 1) : null,
-      hasMore,
-    };
-    return Promise.resolve(page);
-  });
-}
-
-function renderView(props: { timeZone?: string; now?: number } = {}) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
   }
-  return render(<CalendarView timeZone={props.timeZone ?? BA} now={props.now ?? NOW} />, {
+  return render(<CalendarView timeZone={BA} now={NOW} {...props} />, {
     wrapper: Wrapper,
   });
 }
@@ -146,368 +141,278 @@ function cell(container: HTMLElement, key: string): HTMLElement {
   return el;
 }
 
-function chipTitles(el: HTMLElement): string[] {
-  return Array.from(
-    el.querySelectorAll(".fgw-cal-chip__title"),
-    (n) => n.textContent ?? "",
-  );
-}
-
-function postCalls(): number {
-  return listMock.mock.calls.filter(([path]) => path === "/posts").length;
+function chips(el: HTMLElement): HTMLElement[] {
+  return Array.from(el.querySelectorAll<HTMLElement>(".fgw-cal-chip"));
 }
 
 beforeEach(() => {
-  listMock.mockReset();
+  requestMock.mockReset();
+  lastDragEnd = undefined;
 });
 
-describe("los estados de FR-110 (PRD:1664)", () => {
-  it("loading: la cuadrícula sin chips ni contadores, y `aria-busy`", () => {
-    listMock.mockReturnValue(new Promise(() => undefined));
+describe("los estados de FR-110", () => {
+  it("loading: la grilla sin chips y `aria-busy`", () => {
+    requestMock.mockReturnValue(new Promise(() => undefined));
     const { container } = renderView();
-
     expect(section(container)).toHaveAttribute("aria-busy", "true");
     expect(screen.getByRole("heading", { name: "September 2026" })).toBeInTheDocument();
-    expect(container.querySelectorAll(".fgw-cal-chip")).toHaveLength(0);
-    expect(screen.queryByRole("list", { name: "Post totals" })).toBeNull();
+    expect(chips(container)).toHaveLength(0);
     expect(screen.queryByText("No posts")).toBeNull();
   });
 
   it("un fallo de la API es un error, NO un mes vacío", async () => {
-    serve(new ApiRequestError({ code: "network_error", status: 0 }));
+    serve(() =>
+      Promise.reject(new ApiRequestError({ code: "network_error", status: 0 })),
+    );
     const { container } = renderView();
-
     await settled(container);
-    // Negativas primero: `No posts` tras un timeout le dice a alguien que no
-    // tiene nada programado.
     expect(screen.queryByText("No posts")).toBeNull();
-    expect(screen.queryByRole("list", { name: "Post totals" })).toBeNull();
     expect(screen.queryByRole("table")).toBeNull();
-    expect(screen.getByRole("alert")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
-  it("desde el error se vuelve a pedir y aparece el mes", async () => {
-    const user = userEvent.setup();
-    const p = post();
-    serve(new ApiRequestError({ code: "network_error", status: 0 }), [contentFor([p])]);
+  it("vacío: la grilla y el estado vacío", async () => {
+    serve(() => Promise.resolve(calendar([])));
     const { container } = renderView();
-    await screen.findByRole("alert");
-
-    serve([[p]], [contentFor([p])]);
-    await user.click(screen.getByRole("button", { name: "Try again" }));
-
-    await waitFor(() => {
-      expect(chipTitles(cell(container, "2026-09-22"))).toEqual(["TikTok: Slideshow"]);
-    });
-    expect(screen.queryByRole("alert")).toBeNull();
-  });
-
-  it("empty: un mes sin posts dice `No posts`, aunque otros meses tengan", async () => {
-    const october = post({ scheduledAtUtc: Date.UTC(2026, 9, 10, 15, 0) });
-    serve([[october]], [contentFor([october])]);
-    const { container } = renderView();
-
     await settled(container);
     expect(screen.getByText("No posts")).toBeInTheDocument();
-    expect(
-      screen.getByText("Nothing is scheduled or posted in September 2026."),
-    ).toBeInTheDocument();
-    // La cuadrícula sigue: desde un mes vacío se navega al que tiene posts.
     expect(screen.getByRole("table")).toBeInTheDocument();
-    // Y los contadores son globales: el post de octubre cuenta.
-    expect(screen.getByText("1 scheduled")).toBeInTheDocument();
   });
 });
 
-describe("chips (F-141) y contador por día (F-142)", () => {
-  it("cada chip: `Plataforma: Tipo`, la hora y el tono de la plataforma, ordenados por hora", async () => {
-    const late = post({
-      platform: "instagram",
-      scheduledAtUtc: Date.UTC(2026, 8, 23, 2, 56),
+describe("la vista mes", () => {
+  it("pide el rango del mes con un día de margen y dibuja cada ítem en su día y hora", async () => {
+    const post = item();
+    const slot = item({
+      kind: "slot",
+      network: "x",
+      status: "PLANNED",
+      at: Date.UTC(2026, 8, 25, 22, 0),
     });
-    const early = post({
-      platform: "youtube",
-      scheduledAtUtc: Date.UTC(2026, 8, 22, 12, 5),
-    });
-    const posts = [late, early]; // el API los da por creación, no por hora
-    serve(
-      [posts],
-      [
-        [
-          content(late.contentId, "wall-of-text"),
-          content(early.contentId, "green-screen"),
-        ],
-      ],
-    );
+    serve(() => Promise.resolve(calendar([post, slot])));
     const { container } = renderView();
     await settled(container);
 
-    // 02:56Z del 23 es 11:56 PM del 22 en Buenos Aires: mismo día, último.
-    const day = cell(container, "2026-09-22");
-    expect(chipTitles(day)).toEqual(["YouTube: Green Screen", "Instagram: Wall of Text"]);
-    expect(
-      Array.from(day.querySelectorAll(".fgw-cal-chip__time"), (n) => n.textContent),
-    ).toEqual(["9:05 AM", "11:56 PM"]);
-    expect(
-      Array.from(day.querySelectorAll(".fgw-cal-chip"), (n) =>
-        n.getAttribute("data-tone"),
-      ),
-    ).toEqual(["youtube", "instagram"]);
-    expect(cell(container, "2026-09-23").querySelectorAll(".fgw-cal-chip")).toHaveLength(
-      0,
-    );
-  });
+    const query = getCalls()[0]?.query ?? {};
+    // 31-ago 00:00 BA → 2-oct 00:00 BA.
+    expect(query["from"]).toBe(Date.UTC(2026, 7, 31, 3, 0));
+    expect(query["to"]).toBe(Date.UTC(2026, 9, 2, 3, 0));
+    expect(query["brands"]).toBe("current");
 
-  it("`(N posts)` junto al número, y la celda se nombra con la cantidad", async () => {
-    const posts = [post(), post(), post({ scheduledAtUtc: Date.UTC(2026, 8, 5, 15) })];
-    serve([posts], [contentFor(posts)]);
-    const { container } = renderView();
-    await settled(container);
+    const wed = chips(cell(container, "2026-09-23"));
+    expect(wed).toHaveLength(1);
+    expect(wed[0]).toHaveTextContent("TikTok: Slideshow");
+    expect(wed[0]).toHaveTextContent("9:07 AM");
+    expect(wed[0]).toHaveAttribute("data-network", "tiktok");
 
-    const day22 = cell(container, "2026-09-22");
-    expect(within(day22).getByText("(2 posts)")).toBeInTheDocument();
-    // Hoy (22) lo dice la etiqueta y `aria-current`.
-    expect(day22).toHaveAttribute("aria-current", "date");
-    expect(
-      within(day22).getByText("Today, Tuesday, September 22, 2 posts"),
-    ).toBeInTheDocument();
+    const fri = chips(cell(container, "2026-09-25"));
+    expect(fri[0]).toHaveTextContent("(Planned)");
+    expect(fri[0]).toHaveAttribute("data-kind", "slot");
+    expect(fri[0]).toHaveTextContent("7:00 PM");
 
-    const day5 = cell(container, "2026-09-05");
-    expect(within(day5).getByText("(1 post)")).toBeInTheDocument();
-    expect(within(day5).getByText("Saturday, September 5, 1 post")).toBeInTheDocument();
-    expect(day5).not.toHaveAttribute("aria-current");
-
-    const day6 = cell(container, "2026-09-06");
-    expect(day6.querySelector(".fgw-calendar__day-count")).toBeNull();
-    expect(within(day6).getByText("Sunday, September 6, no posts")).toBeInTheDocument();
-  });
-
-  it("borde de mes: 23:30 del 30/09 en Buenos Aires es septiembre acá y octubre en UTC", async () => {
-    const edge = post({ scheduledAtUtc: Date.UTC(2026, 9, 1, 2, 30) });
-    serve([[edge]], [contentFor([edge])]);
-
-    const ba = renderView({ timeZone: BA });
-    await settled(ba.container);
-    expect(chipTitles(cell(ba.container, "2026-09-30"))).toEqual(["TikTok: Slideshow"]);
-    expect(screen.queryByText("No posts")).toBeNull();
-    ba.unmount();
-
-    const utc = renderView({ timeZone: "UTC" });
-    await settled(utc.container);
-    expect(chipTitles(cell(utc.container, "2026-09-30"))).toEqual([]);
-    expect(screen.getByText("No posts")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Next month" }));
-    expect(chipTitles(cell(utc.container, "2026-10-01"))).toEqual(["TikTok: Slideshow"]);
-  });
-
-  it("sin la pieza en `GET /content`, el chip dice sólo la plataforma y la pantalla lo avisa", async () => {
-    const known = post({ platform: "instagram" });
-    const orphan = post();
-    serve([[known, orphan]], [[content(known.contentId, "video-hook")]]);
-    const { container } = renderView();
-    await settled(container);
-
-    expect(chipTitles(cell(container, "2026-09-22")).sort()).toEqual([
-      "Instagram: Video Hook",
-      "TikTok",
-    ]);
     expect(
       screen.getByText(
-        "Some posts don't show their content type because it couldn't be loaded.",
+        "Days and times are in Acme's time zone (America/Argentina/Buenos_Aires).",
+        { exact: false },
       ),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("list", { name: "Post totals" })).getByText("3"),
     ).toBeInTheDocument();
   });
 
-  it("si `GET /content` falla, el calendario sigue en pie sin tipos", async () => {
-    const p = post();
-    serve([[p]], new ApiRequestError({ code: "network_error", status: 0 }));
-    const { container } = renderView();
-    await settled(container);
-
-    expect(chipTitles(cell(container, "2026-09-22"))).toEqual(["TikTok"]);
-    expect(screen.queryByRole("alert")).toBeNull();
-  });
-});
-
-describe("contadores de cabecera (F-143)", () => {
-  it("✓ publicados, 📥 inbox, 📅 programados — contra los estados reales", async () => {
-    const posts = [
-      post({ status: "POSTED", postedAt: Date.UTC(2026, 8, 1, 15) }),
-      post({ status: "POSTED", postedAt: Date.UTC(2026, 7, 1, 15) }),
-      post({ status: "IN_USER_INBOX" }),
-      post({ status: "SCHEDULED" }),
-      post({ status: "BUILDING" }),
-      post({ status: "FAILED" }),
-      post({ status: "CANCELLED" }),
-    ];
-    serve([posts], [contentFor(posts)]);
-    const { container } = renderView();
-    await settled(container);
-
-    const counters = screen.getByRole("list", { name: "Post totals" });
-    expect(within(counters).getByText("2 posted")).toBeInTheDocument();
-    expect(within(counters).getByText("1 in inbox")).toBeInTheDocument();
-    expect(within(counters).getByText("2 scheduled")).toBeInTheDocument();
-    expect(
-      Array.from(
-        counters.querySelectorAll(".fgw-calendar__counter-value"),
-        (n) => n.textContent,
-      ),
-    ).toEqual(["2", "1", "2"]);
-  });
-});
-
-describe("navegación ‹ › (F-140)", () => {
-  it("el título `MMMM YYYY` sigue a los botones, y sin pedir otra vez a la API", async () => {
+  it("la navegación pide el mes siguiente", async () => {
     const user = userEvent.setup();
-    serve([[]]);
+    serve(() => Promise.resolve(calendar([])));
     const { container } = renderView();
     await settled(container);
-    const calls = listMock.mock.calls.length;
-
-    expect(screen.getByRole("heading", { name: "September 2026" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Next month" }));
-    expect(screen.getByRole("heading", { name: "October 2026" })).toBeInTheDocument();
-    expect(container.querySelector('td[data-day="2026-10-31"]')).not.toBeNull();
-    await user.click(screen.getByRole("button", { name: "Previous month" }));
-    await user.click(screen.getByRole("button", { name: "Previous month" }));
-    expect(screen.getByRole("heading", { name: "August 2026" })).toBeInTheDocument();
-    // "Navegación mensual sin recarga" (PRD:1662): los datos ya están.
-    expect(listMock.mock.calls.length).toBe(calls);
-  });
-
-  it("cruza el año en los dos sentidos", async () => {
-    const user = userEvent.setup();
-    serve([[]]);
-    const { container } = renderView({ now: Date.UTC(2026, 11, 15, 15) });
-    await settled(container);
-
-    expect(screen.getByRole("heading", { name: "December 2026" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Next month" }));
-    expect(screen.getByRole("heading", { name: "January 2027" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Previous month" }));
-    await user.click(screen.getByRole("button", { name: "Previous month" }));
-    expect(screen.getByRole("heading", { name: "November 2026" })).toBeInTheDocument();
-  });
-
-  it("abre en el mes de hoy **en la zona de la vista**: 1/10 02:00Z es septiembre en Buenos Aires", async () => {
-    serve([[]]);
-    const { container } = renderView({ now: Date.UTC(2026, 9, 1, 2, 0) });
-    await settled(container);
-    expect(screen.getByRole("heading", { name: "September 2026" })).toBeInTheDocument();
-    expect(cell(container, "2026-09-30")).toHaveAttribute("aria-current", "date");
-  });
-});
-
-describe("el tope de paginación (GET /posts no filtra por fecha)", () => {
-  it("pide páginas solas hasta el final cuando el final llega antes del tope", async () => {
-    const first = [post()];
-    const second = [post({ scheduledAtUtc: Date.UTC(2026, 8, 3, 15) })];
-    serve([first, second], [contentFor([...first, ...second])]);
-    const { container } = renderView();
-    await settled(container);
-
-    expect(postCalls()).toBe(2);
-    expect(chipTitles(cell(container, "2026-09-03"))).toEqual(["TikTok: Slideshow"]);
-    expect(screen.getByText("2 scheduled")).toBeInTheDocument();
-    expect(screen.queryByText(/most recently created posts/)).toBeNull();
-  });
-
-  it("se detiene en el tope, lo dice, y los contadores pasan a ser un mínimo", async () => {
-    const pages = Array.from({ length: CALENDAR_MAX_PAGES }, () => [
-      post({ status: "POSTED", postedAt: Date.UTC(2026, 8, 10, 15) }),
-    ]);
-    serve(pages, [[]], { endless: true });
-    const { container } = renderView();
-    await settled(container);
-
-    expect(postCalls()).toBe(CALENDAR_MAX_PAGES);
     expect(
-      screen.getByText(/Showing the 500 most recently created posts/),
+      await screen.findByRole("heading", { name: "October 2026" }),
     ).toBeInTheDocument();
-    const counters = screen.getByRole("list", { name: "Post totals" });
-    expect(within(counters).getByText("At least 5 posted")).toBeInTheDocument();
-    expect(
-      Array.from(
-        counters.querySelectorAll(".fgw-calendar__counter-value"),
-        (n) => n.textContent,
-      ),
-    ).toEqual(["5+", "0+", "0+"]);
-  });
-
-  it("un mes vacío con la lista cortada no se afirma vacío", async () => {
-    serve([[post({ scheduledAtUtc: Date.UTC(2026, 9, 3, 15) })]], [[]], {
-      endless: true,
-    });
-    const { container } = renderView();
-    await settled(container);
-    expect(
-      screen.getByText(
-        "Nothing loaded for September 2026. Older posts aren't loaded, so this month may not be empty.",
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it("si falla una página que no es la primera, lo cargado se queda y el error se ve", async () => {
-    const p = post();
-    let postCall = 0;
-    listMock.mockImplementation((path: string) => {
-      if (path !== "/posts")
-        return Promise.resolve({ items: [], cursor: null, hasMore: false });
-      postCall += 1;
-      if (postCall === 1)
-        return Promise.resolve({ items: [p], cursor: "1", hasMore: true });
-      return Promise.reject(new ApiRequestError({ code: "network_error", status: 0 }));
-    });
-    const { container } = renderView();
-    await settled(container);
-
-    expect(container.querySelectorAll(".fgw-cal-chip")).toHaveLength(1);
-    expect(screen.getByRole("alert")).toBeInTheDocument();
-    expect(screen.queryByText("No posts")).toBeNull();
-    expect(screen.getByText("At least 1 scheduled")).toBeInTheDocument();
-    expect(postCall).toBe(2);
-  });
-
-  it("reintentar una página que sigue fallando pide UNA vez, no entra en bucle", async () => {
-    // La guarda `!isError` de `useCollectedList` es lo único que impide que el
-    // efecto vuelva a pedir la página que acaba de fallar. Con un rechazo
-    // **inmediato** del mock (como en el test anterior) el bucle no se ve ni
-    // quitándola: TanStack resuelve dentro del mismo lote, no hay render con
-    // `isFetching: true` y el efecto no ve el flanco (medido: 2 peticiones con
-    // y sin guarda). Con el fallo llegando tarde, como en la red, sin la guarda
-    // ya el primer error dispara otra petición: `expected 3 to be 2`.
-    const user = userEvent.setup();
-    let postCall = 0;
-    listMock.mockImplementation((path: string) => {
-      if (path !== "/posts")
-        return Promise.resolve({ items: [], cursor: null, hasMore: false });
-      postCall += 1;
-      if (postCall === 1)
-        return Promise.resolve({ items: [post()], cursor: "1", hasMore: true });
-      // El fallo llega **tarde**, como en la red. Con un rechazo inmediato,
-      // TanStack resuelve la petición dentro del mismo lote y el render con
-      // `isFetching: true` no llega a existir: sin ese render el efecto no ve
-      // ningún flanco y el bucle no se reproduce ni con la guarda quitada.
-      return new Promise((_, reject) => {
-        setTimeout(() => {
-          reject(new ApiRequestError({ code: "network_error", status: 0 }));
-        }, 10);
-      });
-    });
-    renderView();
-    await screen.findByRole("alert");
-    const afterFirstError = postCall;
-
-    await user.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => {
-      expect(postCall).toBeGreaterThan(afterFirstError);
+      expect(getCalls().at(-1)?.query?.["from"]).toBe(Date.UTC(2026, 8, 30, 3, 0));
     });
-    // Espera real: un bucle arrancaría después del segundo error, no antes.
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    expect(afterFirstError).toBe(2);
-    expect(postCall).toBe(3);
-    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+});
+
+describe("la vista semana", () => {
+  it("pide sólo la semana y muestra la miniatura", async () => {
+    const user = userEvent.setup();
+    const withThumb = item({ thumbnailUrl: "https://cdn.example.test/t.jpg" });
+    serve(() => Promise.resolve(calendar([withThumb])));
+    const { container } = renderView();
+    await settled(container);
+
+    await user.click(screen.getByRole("button", { name: "Week" }));
+    await waitFor(() => {
+      // Semana del domingo 20 al sábado 26, con un día de margen.
+      expect(getCalls().at(-1)?.query?.["from"]).toBe(Date.UTC(2026, 8, 19, 3, 0));
+    });
+    expect(getCalls().at(-1)?.query?.["to"]).toBe(Date.UTC(2026, 8, 28, 3, 0));
+    expect(screen.getByRole("heading", { name: "Sep 20 – Sep 26" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(cell(container, "2026-09-23").querySelector("img")).toHaveAttribute(
+        "src",
+        "https://cdn.example.test/t.jpg",
+      );
+    });
+  });
+});
+
+describe("el filtro de marcas", () => {
+  it("'All brands' pide todas y cada chip dice de qué marca es", async () => {
+    const user = userEvent.setup();
+    const a = item();
+    const b = item({ brandId: BRAND_B, brandName: "Globex", network: "instagram" });
+    serve((_path, options) =>
+      Promise.resolve(
+        options.query?.["brands"] === "all"
+          ? calendar([a, b], {
+              brands: [
+                { id: BRAND_A, name: "Acme", timezone: BA },
+                { id: BRAND_B, name: "Globex", timezone: "UTC" },
+              ],
+            })
+          : calendar([a]),
+      ),
+    );
+    const { container } = renderView();
+    await settled(container);
+    expect(chips(cell(container, "2026-09-23"))).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "This brand" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.click(screen.getByRole("button", { name: "All brands" }));
+    await waitFor(() => {
+      expect(chips(cell(container, "2026-09-23"))).toHaveLength(2);
+    });
+    expect(getCalls().at(-1)?.query?.["brands"]).toBe("all");
+    const texts = chips(cell(container, "2026-09-23")).map((c) => c.textContent ?? "");
+    expect(texts.some((t) => t.includes("Globex"))).toBe(true);
+    expect(texts.some((t) => t.includes("Acme"))).toBe(true);
+    // Con varias marcas, la zona es la del navegador y se dice.
+    expect(
+      screen.getByText("your browser's time zone", { exact: false }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("arrastrar para mover", () => {
+  it("soltar en otro día pide el PATCH con la misma hora local y la marca del ítem", async () => {
+    const slot = item({ kind: "slot", network: "x", status: "PLANNED" });
+    // El "servidor": guarda la hora, y el PATCH queda colgado hasta que el test
+    // lo suelte, para ver el salto optimista **antes** de la respuesta.
+    let stored = slot;
+    let release: () => void = () => undefined;
+    let calls = 0;
+    serve((_path, options) => {
+      if (options.method === "PATCH") {
+        return new Promise((resolve) => {
+          release = () => {
+            stored = {
+              ...slot,
+              at: (options.body as { scheduledAtUtc: number }).scheduledAtUtc,
+            };
+            resolve(stored);
+          };
+        });
+      }
+      calls += 1;
+      return Promise.resolve(calendar([stored]));
+    });
+    const { container } = renderView();
+    await settled(container);
+    expect(chips(cell(container, "2026-09-23"))).toHaveLength(1);
+    expect(lastDragEnd).toBeDefined();
+
+    act(() => {
+      lastDragEnd?.({
+        active: { id: `slot:${slot.id}` },
+        over: { id: "day:2026-09-25" },
+      } as unknown as Dnd.DragEndEvent);
+    });
+
+    // Optimista: salta al viernes sin esperar a la API.
+    await waitFor(() => {
+      expect(chips(cell(container, "2026-09-25"))).toHaveLength(1);
+    });
+    expect(chips(cell(container, "2026-09-23"))).toHaveLength(0);
+    const before = calls;
+    act(() => {
+      release();
+    });
+    const patch = requestMock.mock.calls.find(([, o]) => o?.method === "PATCH");
+    expect(patch?.[0]).toBe(`calendar/items/slot/${slot.id}`);
+    expect(patch?.[1]?.body).toEqual({
+      // Viernes 09:07 en BA = 12:07Z.
+      scheduledAtUtc: Date.UTC(2026, 8, 25, 12, 7),
+      brandId: BRAND_A,
+    });
+    // Y después refresca el rango, que ya trae la hora nueva.
+    await waitFor(() => {
+      expect(calls).toBeGreaterThan(before);
+    });
+    expect(chips(cell(container, "2026-09-25"))).toHaveLength(1);
+  });
+
+  it("si la API lo rechaza, vuelve a su día y lo dice", async () => {
+    const post = item();
+    serve((_path, options) =>
+      options.method === "PATCH"
+        ? Promise.reject(new ApiRequestError({ code: "conflict", status: 409 }))
+        : Promise.resolve(calendar([post])),
+    );
+    const { container } = renderView();
+    await settled(container);
+
+    act(() => {
+      lastDragEnd?.({
+        active: { id: `post:${post.id}` },
+        over: { id: "day:2026-09-24" },
+      } as unknown as Dnd.DragEndEvent);
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("couldn't be moved");
+    await waitFor(() => {
+      expect(chips(cell(container, "2026-09-23"))).toHaveLength(1);
+    });
+    expect(chips(cell(container, "2026-09-24"))).toHaveLength(0);
+  });
+
+  it("lo que ya salió no se arrastra ni pide nada", async () => {
+    const posted = item({ status: "POSTED", movable: false });
+    serve(() => Promise.resolve(calendar([posted])));
+    const { container } = renderView();
+    await settled(container);
+    const [chip] = chips(cell(container, "2026-09-23"));
+    expect(chip).toHaveAttribute("data-movable", "false");
+    expect(chip).not.toHaveAttribute("aria-roledescription");
+
+    act(() => {
+      lastDragEnd?.({
+        active: { id: `post:${posted.id}` },
+        over: { id: "day:2026-09-24" },
+      } as unknown as Dnd.DragEndEvent);
+    });
+    expect(requestMock.mock.calls.some(([, o]) => o?.method === "PATCH")).toBe(false);
+  });
+
+  it("soltar en el mismo día, fuera de un día o en el pasado no pide nada", async () => {
+    const post = item();
+    serve(() => Promise.resolve(calendar([post])));
+    const { container } = renderView();
+    await settled(container);
+    for (const over of [{ id: "day:2026-09-23" }, null, { id: "day:2026-09-21" }]) {
+      act(() => {
+        lastDragEnd?.({
+          active: { id: `post:${post.id}` },
+          over,
+        } as unknown as Dnd.DragEndEvent);
+      });
+    }
+    expect(requestMock.mock.calls.some(([, o]) => o?.method === "PATCH")).toBe(false);
   });
 });

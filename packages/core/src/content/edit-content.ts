@@ -390,3 +390,7 @@ export function markEditRebuildSucceeded(
 // El mapeo de cajas a `buildPayload` que usa `content-rebuild` (`PU-EDIT-002`).
 // Re-exportado desde acá para no tocar `index.ts`: es la otra mitad de editar.
 export * from "./text-boxes-to-build-payload.js";
+
+// Los swaps de media del editor (`PU-EDIT-003`): los aplican el rebuild y
+// `GET /content/:id/editable`. Mismo motivo que la línea de arriba.
+export * from "./asset-swaps.js";

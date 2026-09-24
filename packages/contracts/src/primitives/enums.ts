@@ -129,12 +129,17 @@ export type MediaType = z.infer<typeof mediaTypeSchema>;
 export const mediaStatusSchema = z.enum(["processing", "ready", "failed"]);
 export type MediaStatus = z.infer<typeof mediaStatusSchema>;
 
-/** DATA-010 (PRD:2093). `generated`, `demo` e `internal` nunca se listan (PRD:1636). */
+/**
+ * DATA-010 (PRD:2093). `generated`, `demo` e `internal` nunca se listan (PRD:1636).
+ * `brand_kit` (`PU-MEDIA-002`, migración `0013`): fondos de marca generados por
+ * `services/render`; **sí** se listan, junto con `manual_upload`.
+ */
 export const mediaOriginSchema = z.enum([
   "manual_upload",
   "generated",
   "demo",
   "internal",
+  "brand_kit",
 ]);
 export type MediaOrigin = z.infer<typeof mediaOriginSchema>;
 

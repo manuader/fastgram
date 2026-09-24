@@ -1,166 +1,109 @@
 "use client";
 
 /**
- * Los datos del Calendar · F-140..F-143.
+ * Los datos del Calendar — `PU-CAL-002` (y F-140..F-143, FR-110).
  *
- * ## El hueco: `GET /posts` no sabe de fechas
+ * ## `GET /calendar`, no `GET /posts` paginado
  *
- * Una vista mes necesita "los posts de septiembre". La API no lo permite:
+ * Hasta el sprint 1 esto pedía `GET /posts` de a 100 hasta un tope, porque la
+ * API no sabía de fechas, y hacía un join de tipos contra `GET /content`. Ahora
+ * hay un endpoint de rango que trae, en una sola ida, los posts **y los slots
+ * planificados** del `[from, to)` pedido, con tipo, miniatura, marca y si se
+ * puede mover; más los contadores globales de FR-110.
  *
- * · `listPostsQuerySchema` es `.strict()` y sólo contrata `cursor`, `limit` y
- *   `status`. No hay `from`/`to` ni nada parecido: mandarlo es un `400`.
- * · El orden es **`createdAt` descendente** (`createCompanyScopedRepository`,
- *   `packages/db`), no `scheduledAtUtc`. Un post creado hoy puede estar
- *   programado para dentro de tres meses, así que no existe una página a partir
- *   de la cual se pueda afirmar "ya no quedan posts de este mes".
- * · `Post` no publica `createdAt`, así que ni siquiera se puede cortar por él.
+ * ## "Todas las marcas" lo resuelve la API
  *
- * Así que se hace lo único honesto con lo que hay: se piden páginas de 100 (el
- * máximo del contrato) **hasta un tope explícito** de `CALENDAR_MAX_PAGES`, se
- * reparten en el cliente, y si al llegar al tope todavía queda `hasMore`, la
- * pantalla **lo dice** —los contadores llevan `+` y hay un aviso—. Lo que no se
- * hace es paginar sin límite: con un workspace grande, abrir el Calendar
- * serían cientos de peticiones contra el límite de 60/min de §9.6.
+ * El proxy de la web (`app/api/fastgram/v1/[...path]`) arma el header de marca
+ * con **su** cookie y no reenvía uno del navegador, así que pedir marca por
+ * marca desde acá no es posible. `?brands=all` le pide a la API que recorra las
+ * marcas del dueño, cada una con su scope.
  *
- * Lo que cerraría el hueco es un filtro de rango (`scheduledFrom`/`scheduledTo`)
- * en `GET /posts`, o un endpoint de conteos para la cabecera. Ninguno existe.
+ * ## Claves
  *
- * ## El tipo de contenido, que el post no trae
- *
- * F-141 pide `Plataforma: Tipo` en el chip, y `Post` sólo trae `contentId` (ver
- * `lib/library/posts.ts`, que por eso no dibuja el tipo). Acá sí se dibuja, con
- * una petición por **página** y no por post: `GET /content` paginado con el
- * mismo tope, y un mapa `contentId → type`. El contenido nace antes que su
- * post y los dos listados van por `createdAt` descendente, así que las páginas
- * de contenido cubren a las de posts. Un post cuya pieza no llegó en esas
- * páginas —o si `GET /content` falla— lleva el chip sin tipo, y la pantalla lo
- * avisa; no se deduce el tipo de otra cosa.
- *
- * ## Sin polling
- *
- * La Library pregunta cada 10 s mientras haya un `BUILDING`. Acá no: refetchear
- * un listado infinito pide **todas** las páginas cargadas (ver `hooks.ts`), y
- * con cinco de posts y cinco de contenido son 60 peticiones por minuto — el
- * límite entero de §9.6. La vista se refresca al volver a ella o al
- * invalidarse la clave.
+ * Cuelgan de `["posts", "calendar"]`: invalidar los posts (programar, cancelar,
+ * aceptar en Blitz con auto-slot) también refresca el calendario.
  */
 import {
-  PAGINATION_LIMIT_MAX,
-  postSchema,
-  type ContentType,
-  type Post,
+  calendarItemSchema,
+  calendarSchema,
+  type Calendar,
+  type CalendarItem,
 } from "@fastgram/contracts";
-import { useEffect, useMemo } from "react";
-import type { CursorPage, OutputSchema } from "../api/client";
+import { useMutation, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
+import { apiRequest } from "../api/client";
 import type { ApiRequestError } from "../api/errors";
-import { useApiInfiniteQuery, type CursorPages } from "../api/hooks";
-import { queryKeys } from "../api/keys";
-import { libraryContentSchema, type LibraryContent } from "../library/content";
-import { POSTS_PATH } from "../library/posts";
+import { useApiQuery } from "../api/hooks";
+import type { BrandScope, MoveRequest } from "./board";
 
-/** El máximo del contrato (PRD:2345). Menos páginas para el mismo tope. */
-export const CALENDAR_PAGE_LIMIT = PAGINATION_LIMIT_MAX;
+export const CALENDAR_PATH = "calendar";
 
-/**
- * El tope: 5 páginas de 100 = 500 posts. Cubre un workspace que publica varias
- * veces al día durante meses, y al abrir la vista son como mucho 10 peticiones
- * (posts + contenido) de las 60/min.
- */
-export const CALENDAR_MAX_PAGES = 5;
+export const calendarKeys = {
+  all: () => ["posts", "calendar"] as const,
+  range: (brands: BrandScope, from: number, to: number) =>
+    ["posts", "calendar", brands, from, to] as const,
+};
 
-export const CONTENT_PATH = "/content";
-
-export interface CollectedList<TItem> {
-  readonly items: readonly TItem[];
-  /** La primera página todavía no llegó. */
-  readonly pending: boolean;
-  /** Quedan páginas por pedir **dentro del tope**. */
-  readonly collecting: boolean;
-  /** Se llegó al tope y la API dice que hay más. */
-  readonly truncated: boolean;
-  readonly error: ApiRequestError | null;
-  readonly retry: () => void;
-}
-
-interface CollectOptions<TItem> {
-  readonly queryKey: readonly unknown[];
-  readonly path: string;
-  readonly itemSchema: OutputSchema<TItem>;
-  readonly maxPages: number;
-}
-
-function flatten<TItem>(data: CursorPages<TItem> | undefined): readonly TItem[] {
-  if (data === undefined) return [];
-  return data.pages.flatMap((page: CursorPage<TItem>) => page.items);
-}
-
-/**
- * Un listado por cursor que se pide solo, página tras página, hasta el final o
- * hasta `maxPages`. Un error corta la cadena: no se reintenta en bucle.
- */
-function useCollectedList<TItem>(options: CollectOptions<TItem>): CollectedList<TItem> {
-  const { queryKey, path, itemSchema, maxPages } = options;
-  const query = useApiInfiniteQuery<TItem>({
-    queryKey,
-    path,
-    itemSchema,
-    limit: CALENDAR_PAGE_LIMIT,
+export function useCalendar(
+  brands: BrandScope,
+  range: { readonly from: number; readonly to: number } | null,
+): UseQueryResult<Calendar, ApiRequestError> {
+  return useApiQuery<Calendar>({
+    queryKey: calendarKeys.range(brands, range?.from ?? 0, range?.to ?? 0),
+    path: CALENDAR_PATH,
+    query: { from: range?.from, to: range?.to, brands },
+    schema: calendarSchema,
+    enabled: range !== null,
   });
+}
 
-  const loadedPages = query.data?.pages.length ?? 0;
-  const canContinue =
-    query.hasNextPage && loadedPages < maxPages && !query.isError && !query.isFetching;
+interface MoveContext {
+  readonly snapshots: readonly (readonly [readonly unknown[], Calendar | undefined])[];
+}
 
-  const { fetchNextPage } = query;
-  useEffect(() => {
-    if (canContinue) void fetchNextPage();
-  }, [canContinue, fetchNextPage, loadedPages]);
-
-  const items = useMemo(() => flatten(query.data), [query.data]);
-
-  return {
-    items,
-    pending: query.isPending,
-    collecting: query.hasNextPage && loadedPages < maxPages && !query.isError,
-    truncated: query.hasNextPage && loadedPages >= maxPages,
-    error: query.isError ? query.error : null,
-    retry: () => {
-      // Con páginas ya en pantalla, lo que falló es la siguiente: se pide ésa.
-      // `refetch` volvería a pedir todas las cargadas.
-      if (loadedPages > 0) void query.fetchNextPage();
-      else void query.refetch();
+/**
+ * Mover un post o un slot (`PATCH /calendar/items/:kind/:id`).
+ *
+ * **Optimista**: el chip salta al día nuevo apenas se suelta —esperar la
+ * respuesta con el chip de vuelta en su lugar se lee como "no se movió"— y si
+ * la API lo rechaza (ya salió, carril lento de TikTok) vuelve a donde estaba.
+ * Al terminar se invalida igual: mover un post lo recrea con otro id (ver
+ * `apps/api/src/routes/v1/calendar.ts`), y el id nuevo sólo lo trae la API.
+ */
+export function useMoveCalendarItem() {
+  const queryClient = useQueryClient();
+  return useMutation<CalendarItem, ApiRequestError, MoveRequest, MoveContext>({
+    mutationFn: ({ item, scheduledAtUtc }) =>
+      apiRequest<CalendarItem>(
+        `${CALENDAR_PATH}/items/${item.kind}/${encodeURIComponent(item.id)}`,
+        {
+          method: "PATCH",
+          body: { scheduledAtUtc, brandId: item.brandId },
+          schema: calendarItemSchema,
+        },
+      ),
+    onMutate: async ({ item, scheduledAtUtc }) => {
+      await queryClient.cancelQueries({ queryKey: calendarKeys.all() });
+      const snapshots = queryClient.getQueriesData<Calendar>({
+        queryKey: calendarKeys.all(),
+      });
+      for (const [key, value] of snapshots) {
+        if (value === undefined) continue;
+        queryClient.setQueryData<Calendar>(key, {
+          ...value,
+          items: value.items.map((other) =>
+            other.kind === item.kind && other.id === item.id
+              ? { ...other, at: scheduledAtUtc }
+              : other,
+          ),
+        });
+      }
+      return { snapshots };
     },
-  };
-}
-
-export function useCalendarPosts(): CollectedList<Post> {
-  return useCollectedList<Post>({
-    queryKey: queryKeys.calendarPosts(),
-    path: POSTS_PATH,
-    itemSchema: postSchema,
-    maxPages: CALENDAR_MAX_PAGES,
+    onError: (_error, _vars, context) => {
+      for (const [key, value] of context?.snapshots ?? []) {
+        queryClient.setQueryData(key, value);
+      }
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: calendarKeys.all() }),
   });
-}
-
-export interface ContentTypes {
-  readonly typeOf: ReadonlyMap<string, ContentType>;
-  /** Todavía se están pidiendo páginas: un tipo que falta puede llegar. */
-  readonly loading: boolean;
-}
-
-export function useCalendarContentTypes(): ContentTypes {
-  const list = useCollectedList<LibraryContent>({
-    queryKey: queryKeys.calendarContent(),
-    path: CONTENT_PATH,
-    itemSchema: libraryContentSchema,
-    maxPages: CALENDAR_MAX_PAGES,
-  });
-  const typeOf = useMemo(
-    () => new Map(list.items.map((item) => [item._id as string, item.type] as const)),
-    [list.items],
-  );
-  return {
-    typeOf,
-    loading: list.pending || list.collecting,
-  };
 }

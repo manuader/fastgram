@@ -44,6 +44,7 @@ import { AcceptDialog } from "./AcceptDialog";
 import { BuildTray } from "./BuildTray";
 import { CardChips, RemixedFromPanel, WhyPanel, WhyToggle } from "./CardDetails";
 import { CardFace } from "./CardFace";
+import { CreatePromptBar } from "./CreatePromptBar";
 import { CheckIcon, GearIcon, PencilIcon, XIcon } from "./icons";
 import { SwipeCard, type ExitCustom } from "./SwipeCard";
 
@@ -234,6 +235,9 @@ export function BlitzDeck() {
           <span className="ml-1.5">{td("deck.configure")}</span>
         </Link>
       </header>
+
+      {/* `PU-BLITZ-003`: lo que se pide acá entra primero en la cola. */}
+      <CreatePromptBar />
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
         <aside className="order-2 space-y-4 lg:order-1 lg:max-w-xs lg:justify-self-end">

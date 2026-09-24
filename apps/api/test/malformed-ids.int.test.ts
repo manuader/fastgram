@@ -90,6 +90,11 @@ const BODIES: Readonly<Record<string, () => unknown>> = {
   "PATCH /workspaces/{id}": () => ({ name: "Otra marca" }),
   // `:task` no es un uuid, pero una tarea inexistente tiene que dar el mismo 404.
   "PUT /models/{task}": () => ({ provider: "ollama", model: "cualquiera" }),
+  // `PU-CAL-001` / `PU-CAL-002`. `{kind}` también recibe el id: un kind basura es 404.
+  "POST /content/{id}/autoschedule": () => ({}),
+  "PATCH /calendar/items/{kind}/{id}": () => ({
+    scheduledAtUtc: new Date("2026-10-01T15:00:00.000Z").getTime(),
+  }),
 };
 
 interface Operation {

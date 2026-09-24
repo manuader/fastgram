@@ -314,6 +314,86 @@ export const listContentQuerySchema = cursorQuerySchema
   .strict();
 export type ListContentQuery = z.infer<typeof listContentQuerySchema>;
 
+// --- Media del editor · FR-051 `ASSETS`, FR-052, FR-053, FR-071 --------------
+
+/**
+ * La media vigente de una pieza (`GET /content/:id/editable`, `assets`).
+ *
+ * **No es `buildPayload`** (DATA-008 lo prohíbe): es la vista de sus elementos
+ * de media, con los mismos nombres de `FR-070`, igual que `canvas` ya lo era.
+ * El bloque `media` de `?include=media` (§9.7) es otra cosa y sigue sin
+ * contratarse; por eso este campo se llama distinto.
+ *
+ * `audio` sólo aparece en los formatos con pista (`wall-of-text`,
+ * `video-hook`); `null` = la pieza sale sin audio (`FR-053.1`).
+ */
+export const contentAssetsSchema = z
+  .object({
+    slides: z.array(mediaElementSchema).max(SLIDESHOW_MAX_SLIDES).optional(),
+    image: mediaElementSchema.optional(),
+    video: mediaElementSchema.optional(),
+    hook_video: mediaElementSchema.optional(),
+    demo_video: mediaElementSchema.optional(),
+    audio: audioElementSchema.nullable().optional(),
+  })
+  .strict();
+export type ContentAssets = z.infer<typeof contentAssetsSchema>;
+
+/**
+ * Parche sobre un elemento de media: `url` para el swap (`Swap Video`,
+ * `Swap Image`), `draw*` para el zoom y la posición del video del green-screen
+ * (`FR-051`, `Zoom`, `Drag video to reposition`). Lo que no viene se conserva.
+ */
+export const mediaElementPatchSchema = z
+  .object({
+    url: z.string().url().optional(),
+    drawX: z.number().finite().optional(),
+    drawY: z.number().finite().optional(),
+    drawW: z.number().finite().positive().optional(),
+    drawH: z.number().finite().positive().optional(),
+  })
+  .strict()
+  .refine((p) => Object.values(p).some((v) => v !== undefined), {
+    message: "media patch must change something",
+  });
+export type MediaElementPatch = z.infer<typeof mediaElementPatchSchema>;
+
+/**
+ * `assets` de `PATCH /content/:id`. Cada clave ausente = sin cambio.
+ *
+ * - `slides[]`: `Swap image for slide N` (`FR-071`), por índice; sólo slideshow.
+ * - `audio: null`: `No audio` (`FR-053.1`); sólo `wall-of-text` y `video-hook`.
+ * - Un slot que el formato no tiene, o un slide que no existe, es `400`.
+ * - Toda URL **nueva** tiene que ser del Media Bank del workspace (imagen o
+ *   video, del tipo que pide el slot) o, el audio, del catálogo compartido:
+ *   si no, `400` antes del build (`FR-070`).
+ */
+export const contentAssetsPatchSchema = z
+  .object({
+    slides: z
+      .array(
+        z
+          .object({
+            index: z.number().int().nonnegative(),
+            image: mediaElementPatchSchema,
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(SLIDESHOW_MAX_SLIDES)
+      .refine((s) => new Set(s.map((x) => x.index)).size === s.length, {
+        message: "slide indexes must be unique",
+      })
+      .optional(),
+    image: mediaElementPatchSchema.optional(),
+    video: mediaElementPatchSchema.optional(),
+    hook_video: mediaElementPatchSchema.optional(),
+    demo_video: mediaElementPatchSchema.optional(),
+    audio: audioElementSchema.nullable().optional(),
+  })
+  .strict();
+export type ContentAssetsPatch = z.infer<typeof contentAssetsPatchSchema>;
+
 // --- Edición · FR-051 --------------------------------------------------------
 
 /**
@@ -332,6 +412,8 @@ export const updateContentRequestSchema = z
       .refine((boxes) => new Set(boxes.map((b) => b.id)).size === boxes.length, {
         message: "textBox ids must be unique",
       }),
+    /** Swap de media del editor (`PU-EDIT-003`). Ver {@link contentAssetsPatchSchema}. */
+    assets: contentAssetsPatchSchema.optional(),
   })
   .strict();
 export type UpdateContentRequest = z.infer<typeof updateContentRequestSchema>;
@@ -349,6 +431,12 @@ export const editableContentSchema = z
   .object({
     canvas: canvasSchema,
     textBoxes: z.array(contentTextBoxSchema),
+    /**
+     * La media vigente —el payload original con los swaps del editor
+     * aplicados—, para que el editor dibuje lo que va a salir (`PU-EDIT-003`).
+     * Opcional: se omite cuando el payload no se puede leer (ERR-F04).
+     */
+    assets: contentAssetsSchema.optional(),
   })
   .strict();
 export type EditableContent = z.infer<typeof editableContentSchema>;

@@ -37,6 +37,8 @@ export const TIKTOK_DESCRIPTION_MAX = 4000;
 export const BATCH_POST_IDS_MAX = 100;
 /** FR-060 (PRD:1394) — "Warmed-account posts can only be scheduled up to 30 days ahead." */
 export const WARMED_MAX_SCHEDULE_DAYS_AHEAD = 30;
+/** `GET /posts?from&to` — el mismo techo que `GET /calendar` (`CALENDAR_RANGE_MAX_DAYS`). */
+export const POSTS_RANGE_MAX_DAYS = 62;
 /** NFR-015 (PRD:2965) / FR-060 (PRD:1385) — watcher del carril lento de TikTok. */
 export const TIKTOK_SLOW_LANE_RETRY_HOURS = 72;
 
@@ -126,6 +128,17 @@ export const listPostsQuerySchema = cursorQuerySchema
       .transform((raw) => raw.split(","))
       .pipe(z.array(postStatusFilterSchema).min(1))
       .optional(),
+    /**
+     * Rango del calendario (`PU-CAL-002`), ms epoch, `[from, to)` en UTC. Van
+     * **juntos o ninguno** (la ruta responde `400` con uno solo) y cambian el
+     * modo del listado: la fecha que filtra y ordena es la **efectiva**
+     * —`coalesce(postedAt, scheduledAtUtc)`—, en orden **ascendente**, y el
+     * cursor es de ese modo (no se puede reusar uno del listado sin rango).
+     * Propuesta de `docs/SESSION-2026-09-23-sexta-tanda.md`; no está en §12 del
+     * PRD. Rango máximo: {@link POSTS_RANGE_MAX_DAYS} días.
+     */
+    from: z.coerce.number().int().nonnegative().optional(),
+    to: z.coerce.number().int().nonnegative().optional(),
   })
   .strict();
 export type ListPostsQuery = z.infer<typeof listPostsQuerySchema>;

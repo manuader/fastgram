@@ -1,8 +1,18 @@
 "use client";
 
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import type { CalendarCounts, CalendarItem } from "@fastgram/contracts";
 import { buttonVariants, Button, EmptyState } from "@fastgram/ui";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ApiErrorState } from "@/components/library/ApiErrorState";
 import {
   CalendarIcon,
@@ -12,47 +22,43 @@ import {
   InboxIcon,
 } from "@/icons";
 import {
+  dragIdOf,
+  dropIdOf,
+  itemsByDay,
+  monthRange,
+  queryRange,
+  resolveDrop,
+  shiftDay,
+  weekDays,
+  weekRange,
+  weekStartOf,
+  type BrandScope,
+  type CalendarViewMode,
+  type DayRange,
+} from "@/lib/calendar/board";
+import {
   browserTimeZone,
-  countInMonth,
   dayKeyOf,
-  formatChipTime,
   formatDayLabel,
   formatMonthTitle,
-  groupByDay,
-  headerCounts,
   monthGrid,
-  monthOf,
-  PLATFORM_CHIP_TONE,
-  postInstant,
   shiftMonth,
-  type HeaderCounts,
   type YearMonth,
 } from "@/lib/calendar/calendar";
-import {
-  CALENDAR_MAX_PAGES,
-  CALENDAR_PAGE_LIMIT,
-  useCalendarContentTypes,
-  useCalendarPosts,
-} from "@/lib/calendar/data";
+import { useCalendar, useMoveCalendarItem } from "@/lib/calendar/data";
 import { tw, type CopyKey } from "@/lib/i18n/t";
-import { CONTENT_TYPE_COPY } from "@/lib/library/content";
-import {
-  POST_PLATFORM_COPY,
-  POST_STATUS_COPY,
-  POST_STATUS_TONE,
-} from "@/lib/library/posts";
 import { ROUTES } from "@/lib/nav/routes";
-import type { ContentType, Post } from "@fastgram/contracts";
+import { CalendarChip } from "./CalendarChip";
 
 export interface CalendarViewProps {
   /**
-   * La zona IANA en la que se reparten los días. Por defecto, la del navegador
-   * (ver `lib/calendar/calendar.ts`). Es una prop para que los tests fijen la
-   * zona sin depender de la máquina que los corre.
+   * La zona del navegador. Es una prop para que los tests la fijen sin
+   * depender de la máquina que los corre.
    */
   readonly timeZone?: string;
-  /** "Ahora", en ms. Decide el mes con el que abre y qué día es hoy. */
+  /** "Ahora", en ms. Decide el período con el que abre y qué día es hoy. */
   readonly now?: number;
+  readonly initialView?: CalendarViewMode;
 }
 
 /** Las siete columnas, domingo primero (PRD:1657). */
@@ -72,13 +78,10 @@ interface Clock {
 }
 
 /**
- * La zona y "ahora", resueltos **después de montar** si no vienen por prop.
- *
- * El servidor también renderiza este client component, con su propia zona y su
- * propio reloj. Resolverlos en el primer render haría que, en los bordes —un
- * post de las 23:30, o el último día del mes—, el HTML del servidor y el del
- * navegador no coincidan, y React tire la hidratación. Hasta que se resuelven,
- * la vista está en `loading`.
+ * La zona y "ahora", resueltos **después de montar** si no vienen por prop:
+ * resolverlos en el render del servidor haría que, en los bordes de día, el
+ * HTML del servidor y el del navegador no coincidan y React tire la
+ * hidratación. Hasta entonces la vista está en `loading`.
  */
 function useClock(timeZone: string | undefined, now: number | undefined): Clock | null {
   const [resolved, setResolved] = useState<Clock | null>(
@@ -91,56 +94,121 @@ function useClock(timeZone: string | undefined, now: number | undefined): Clock 
   return resolved;
 }
 
+function monthOfKey(key: string): YearMonth {
+  const [year, month] = key.split("-").map(Number);
+  return { year: year ?? 1970, month: month ?? 1 };
+}
+
+const weekTitleFormat = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
+function formatShortDay(key: string): string {
+  const [year, month, day] = key.split("-").map(Number);
+  return weekTitleFormat.format(
+    new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1)),
+  );
+}
+
 /**
- * `/calendar` · F-140 (vista mes), F-141 (chips), F-142 (contador por día),
- * F-143 (contadores de cabecera). FR-110 (PRD:1653-1668).
+ * `/calendar` · FR-110 + `PU-CAL-002`: vistas semana y mes, chips por red con
+ * color, hora y miniatura, **arrastrar para mover**, y filtro "esta marca /
+ * todas las marcas".
  *
- * Los estados de FR-110 (PRD:1664): default · loading · empty (mes sin posts) ·
- * error. Con el mismo orden de ramas que la Library, por la misma razón: un
- * fallo de red y un mes vacío se dibujan igual —una cuadrícula sin chips— y
- * significan lo contrario. `No posts` después de un timeout le dice a alguien
- * que no tiene nada programado.
+ * Los estados de FR-110 (PRD:1664): default · loading · empty · error, con el
+ * orden de ramas de la Library: un fallo de red y un período vacío se dibujan
+ * igual —una grilla sin chips— y significan lo contrario.
  *
- * ## Lo que no está
+ * ## La zona en la que se dibuja
  *
- * - **Click en un chip → detalle del post.** FR-110 lo marca INFERRED y no hay
- *   pantalla de detalle de post en la app. El chip no es un control: uno que
- *   parece clicable y no hace nada es peor.
- * - **Icono de plataforma** (PRD:1659). La app no tiene iconos de marca
- *   (`icons/index.tsx` es SVG a mano, sin `lucide-react` ni logos). El chip
- *   lleva el nombre y el color de la plataforma; falta el logo.
- * - **El alternador de vista** (F-144) es otra tarea.
+ * "Esta marca" dibuja en la zona **de la marca** (la de su estrategia: es la
+ * de las ventanas del auto-slot, así un post de las 09:00 cae a las 09:00).
+ * "Todas las marcas" dibuja en la del navegador, porque cada marca puede
+ * tener otra. La pantalla dice cuál está usando.
+ *
+ * ## Arrastrar
+ *
+ * Soltar en otro día conserva la hora local (`movedInstant`). Lo que ya salió
+ * no se arrastra; la API igual lo rechazaría (409) y el chip vuelve a su lugar.
+ * Con teclado: foco en el chip, espacio, flechas, espacio (dnd-kit).
  */
-export function CalendarView({ timeZone, now }: CalendarViewProps) {
+export function CalendarView({
+  timeZone,
+  now,
+  initialView = "month",
+}: CalendarViewProps) {
   const clock = useClock(timeZone, now);
-  const [shown, setShown] = useState<YearMonth | null>(null);
+  const [view, setView] = useState<CalendarViewMode>(initialView);
+  const [scope, setScope] = useState<BrandScope>("current");
+  const [anchor, setAnchor] = useState<string | null>(null);
 
-  const posts = useCalendarPosts();
-  const types = useCalendarContentTypes();
+  const today = clock === null ? null : dayKeyOf(clock.now, clock.timeZone);
+  const focusDay = anchor ?? today;
 
-  const month = shown ?? (clock === null ? null : monthOf(clock.now, clock.timeZone));
+  const days: DayRange | null =
+    focusDay === null
+      ? null
+      : view === "month"
+        ? monthRange(monthOfKey(focusDay))
+        : weekRange(weekStartOf(focusDay));
+  const range = days === null || clock === null ? null : queryRange(days, clock.timeZone);
 
-  const byDay = useMemo(
-    () =>
-      clock === null
-        ? new Map<string, readonly Post[]>()
-        : groupByDay(posts.items, clock.timeZone),
-    [posts.items, clock],
+  const calendar = useCalendar(scope, range);
+  const move = useMoveCalendarItem();
+
+  const brand = scope === "current" ? calendar.data?.brands[0] : undefined;
+  const displayZone = brand?.timezone ?? clock?.timeZone ?? "UTC";
+
+  const items = calendar.data?.items;
+  const byDay = useMemo(() => itemsByDay(items ?? [], displayZone), [items, displayZone]);
+  const byDragId = useMemo(
+    () => new Map((items ?? []).map((item) => [dragIdOf(item), item] as const)),
+    [items],
   );
 
-  if (clock === null || month === null) {
+  const sensors = useSensors(
+    // Una distancia mínima para que un click no sea un arrastre.
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor),
+  );
+
+  if (clock === null || focusDay === null || days === null) {
     return <section className="fgw-calendar" aria-busy="true" />;
   }
 
-  const firstLoadFailed = posts.error !== null && posts.items.length === 0;
-  const loading = !firstLoadFailed && (posts.pending || posts.collecting);
-  const settled = !posts.pending && !posts.collecting;
-  const monthTitle = formatMonthTitle(month);
-  const today = dayKeyOf(clock.now, clock.timeZone);
-  const monthCount = countInMonth(byDay, month);
-  const lowerBound = posts.truncated || posts.error !== null;
+  const onDragEnd = (event: DragEndEvent): void => {
+    const request = resolveDrop({
+      item: byDragId.get(String(event.active.id)),
+      overId: event.over === null ? null : String(event.over.id),
+      timeZone: displayZone,
+      now: clock.now,
+    });
+    if (request !== null) move.mutate(request);
+  };
 
-  const missingType = posts.items.some((post) => !types.typeOf.has(post.contentId));
+  const loading = calendar.isPending;
+  const failed = calendar.isError;
+  const title =
+    view === "month"
+      ? formatMonthTitle(monthOfKey(focusDay))
+      : tw("calendar.weekTitle", {
+          start: formatShortDay(days.first),
+          end: formatShortDay(days.last),
+        });
+
+  const visibleCount = countVisible(byDay, days);
+  const step = (delta: number): void => {
+    setAnchor(
+      view === "month"
+        ? (() => {
+            const next = shiftMonth(monthOfKey(focusDay), delta);
+            return `${String(next.year)}-${String(next.month).padStart(2, "0")}-01`;
+          })()
+        : shiftDay(focusDay, 7 * delta),
+    );
+  };
 
   return (
     <section className="fgw-calendar" aria-busy={loading ? "true" : "false"}>
@@ -149,80 +217,113 @@ export function CalendarView({ timeZone, now }: CalendarViewProps) {
           <Button
             variant="ghost"
             size="icon"
-            aria-label={tw("calendar.prevMonth")}
+            aria-label={tw(view === "month" ? "calendar.prevMonth" : "calendar.prevWeek")}
             onClick={() => {
-              setShown(shiftMonth(month, -1));
+              step(-1);
             }}
           >
             <ChevronLeftIcon size={18} />
           </Button>
-          {/* `aria-live`: el cambio de mes no mueve el foco —se queda en el
-              botón, para poder pulsarlo otra vez—, así que sin esto quien no ve
-              la pantalla no se entera de a qué mes llegó. */}
           <h2 className="fgw-calendar__title" aria-live="polite">
-            {monthTitle}
+            {title}
           </h2>
           <Button
             variant="ghost"
             size="icon"
-            aria-label={tw("calendar.nextMonth")}
+            aria-label={tw(view === "month" ? "calendar.nextMonth" : "calendar.nextWeek")}
             onClick={() => {
-              setShown(shiftMonth(month, 1));
+              step(1);
             }}
           >
             <ChevronRightIcon size={18} />
           </Button>
         </div>
 
-        {settled && !firstLoadFailed && (
-          <HeaderCounters counts={headerCounts(posts.items)} lowerBound={lowerBound} />
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          <Toggle
+            label={tw("calendar.view.label")}
+            options={[
+              { value: "week", label: tw("calendar.view.week") },
+              { value: "month", label: tw("calendar.view.month") },
+            ]}
+            value={view}
+            onChange={(next) => {
+              setView(next);
+            }}
+          />
+          <Toggle
+            label={tw("calendar.scope.label")}
+            options={[
+              { value: "current", label: tw("calendar.scope.current") },
+              { value: "all", label: tw("calendar.scope.all") },
+            ]}
+            value={scope}
+            onChange={(next) => {
+              setScope(next);
+            }}
+          />
+        </div>
+
+        {calendar.data !== undefined && <HeaderCounters counts={calendar.data.counts} />}
       </div>
 
       <p className="fgw-calendar__note">
-        {tw("calendar.timeZone", { zone: clock.timeZone })}
+        {brand === undefined
+          ? tw("calendar.timeZone", { zone: displayZone })
+          : tw("calendar.timeZoneBrand", { brand: brand.name, zone: displayZone })}{" "}
+        {tw("calendar.dragHint")}
       </p>
-      {posts.truncated && (
+      {calendar.data?.truncated === true && (
         <p className="fgw-calendar__note" role="note">
-          {tw("calendar.truncated", { count: CALENDAR_MAX_PAGES * CALENDAR_PAGE_LIMIT })}
+          {tw("calendar.rangeTruncated")}
         </p>
       )}
-      {/* Sólo cuando ya no puede llegar: mientras el contenido se pide, un
-          tipo que falta es un tipo que todavía no llegó. */}
-      {settled && !types.loading && missingType && (
-        <p className="fgw-calendar__note">{tw("calendar.typesPartial")}</p>
+      {move.isError && (
+        <p className="fgw-calendar__note text-danger" role="alert">
+          {tw("calendar.moveFailed")}
+        </p>
       )}
 
-      {firstLoadFailed ? (
-        <ApiErrorState error={posts.error} onRetry={posts.retry} />
+      {failed ? (
+        <ApiErrorState
+          error={calendar.error}
+          onRetry={() => {
+            void calendar.refetch();
+          }}
+        />
       ) : (
         <>
-          <MonthGrid
-            month={month}
-            monthTitle={monthTitle}
-            byDay={loading ? new Map() : byDay}
-            today={today}
-            timeZone={clock.timeZone}
-            typeOf={types.typeOf}
-          />
+          <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+            {view === "month" ? (
+              <MonthGrid
+                month={monthOfKey(focusDay)}
+                caption={title}
+                byDay={loading ? new Map() : byDay}
+                today={dayKeyOf(clock.now, displayZone)}
+                timeZone={displayZone}
+                showBrand={scope === "all"}
+              />
+            ) : (
+              <WeekGrid
+                start={days.first}
+                caption={title}
+                byDay={loading ? new Map() : byDay}
+                today={dayKeyOf(clock.now, displayZone)}
+                timeZone={displayZone}
+                showBrand={scope === "all"}
+              />
+            )}
+          </DndContext>
 
-          {/* El error de una página que no es la primera no tapa lo que ya
-              está: los posts cargados siguen siendo ciertos. Los contadores
-              pasan a "al menos". */}
-          {posts.error !== null && (
-            <ApiErrorState error={posts.error} onRetry={posts.retry} />
-          )}
-
-          {settled && posts.error === null && monthCount === 0 && (
+          {!loading && visibleCount === 0 && (
             <EmptyState
               bordered
               title={tw("calendar.empty.title")}
-              description={tw(
-                posts.truncated
-                  ? "calendar.empty.truncatedDescription"
-                  : "calendar.empty.description",
-                { month: monthTitle },
-              )}
+              description={
+                view === "month"
+                  ? tw("calendar.empty.description", { month: title })
+                  : tw("calendar.empty.weekDescription")
+              }
               action={
                 <Link href={ROUTES.content} className={buttonVariants()}>
                   {tw("posts.empty.action")}
@@ -236,15 +337,52 @@ export function CalendarView({ timeZone, now }: CalendarViewProps) {
   );
 }
 
-interface HeaderCountersProps {
-  readonly counts: HeaderCounts;
-  /** La lista está cortada o incompleta: cada número es un mínimo. */
-  readonly lowerBound: boolean;
+function countVisible(
+  byDay: ReadonlyMap<string, readonly CalendarItem[]>,
+  days: DayRange,
+): number {
+  let total = 0;
+  for (const [key, bucket] of byDay) {
+    if (key >= days.first && key <= days.last) total += bucket.length;
+  }
+  return total;
 }
 
-/** `✓ 36` · `📥 0` · `📅 19` (PRD:1655). */
-function HeaderCounters({ counts, lowerBound }: HeaderCountersProps) {
-  const items = [
+interface ToggleProps<T extends string> {
+  readonly label: string;
+  readonly options: readonly { readonly value: T; readonly label: string }[];
+  readonly value: T;
+  readonly onChange: (value: T) => void;
+}
+
+/** Botones segmentados con `aria-pressed`: dos opciones no merecen un `<select>`. */
+function Toggle<T extends string>({ label, options, value, onChange }: ToggleProps<T>) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className="inline-flex rounded-md border border-border"
+    >
+      {options.map((option) => (
+        <Button
+          key={option.value}
+          variant={option.value === value ? "secondary" : "ghost"}
+          size="sm"
+          aria-pressed={option.value === value}
+          onClick={() => {
+            onChange(option.value);
+          }}
+        >
+          {option.label}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+/** `✓ 36` · `📥 0` · `📅 19` (PRD:1655). Globales, de las marcas incluidas. */
+function HeaderCounters({ counts }: { readonly counts: CalendarCounts }) {
+  const entries = [
     {
       key: "posted",
       icon: <CheckIcon size={16} />,
@@ -264,25 +402,20 @@ function HeaderCounters({ counts, lowerBound }: HeaderCountersProps) {
       copy: "calendar.counter.scheduled",
     },
   ] as const;
-
   return (
     <ul className="fgw-calendar__counters" aria-label={tw("calendar.counters.label")}>
-      {items.map((item) => {
-        const count = lowerBound
-          ? tw("calendar.counter.atLeast", { count: item.value })
-          : String(item.value);
-        const label = tw(item.copy, { count });
+      {entries.map((entry) => {
+        const label = tw(entry.copy, { count: String(entry.value) });
         return (
           <li
-            key={item.key}
+            key={entry.key}
             className="fgw-calendar__counter"
-            data-counter={item.key}
+            data-counter={entry.key}
             title={label}
           >
-            {item.icon}
+            {entry.icon}
             <span aria-hidden="true" className="fgw-calendar__counter-value">
-              {item.value}
-              {lowerBound ? "+" : ""}
+              {entry.value}
             </span>
             <span className="fg-visually-hidden">{label}</span>
           </li>
@@ -292,100 +425,156 @@ function HeaderCounters({ counts, lowerBound }: HeaderCountersProps) {
   );
 }
 
-interface MonthGridProps {
-  readonly month: YearMonth;
-  readonly monthTitle: string;
-  readonly byDay: ReadonlyMap<string, readonly Post[]>;
+interface GridProps {
+  readonly caption: string;
+  readonly byDay: ReadonlyMap<string, readonly CalendarItem[]>;
   readonly today: string;
   readonly timeZone: string;
-  readonly typeOf: ReadonlyMap<string, ContentType>;
+  readonly showBrand: boolean;
+}
+
+function WeekdayHeader() {
+  return (
+    <thead>
+      <tr>
+        {WEEKDAYS.map((weekday) => (
+          <th key={weekday.short} scope="col" abbr={tw(weekday.long)}>
+            {tw(weekday.short)}
+          </th>
+        ))}
+      </tr>
+    </thead>
+  );
 }
 
 /**
- * La cuadrícula, como `<table>` y no como `role="grid"`.
- *
- * Un `grid` de ARIA promete navegación con flechas entre celdas —y quien usa
- * lector de pantalla la intenta—; sin implementarla, el rol miente. Una tabla
- * da gratis lo que sí hace falta: cabeceras de columna que se anuncian al
- * cambiar de celda (`Tuesday`) y filas por semana.
+ * La cuadrícula del mes, como `<table>` y no `role="grid"`: ver el porqué en la
+ * historia de este archivo (un `grid` promete navegación con flechas que no
+ * hay). Cada día es una zona donde soltar.
  */
-function MonthGrid({
-  month,
-  monthTitle,
-  byDay,
-  today,
-  timeZone,
-  typeOf,
-}: MonthGridProps) {
+function MonthGrid({ month, ...grid }: GridProps & { readonly month: YearMonth }) {
   const weeks = monthGrid(month);
   return (
     <div className="fgw-calendar__scroll">
       <table className="fgw-calendar__grid">
-        <caption className="fg-visually-hidden">{monthTitle}</caption>
-        <thead>
-          <tr>
-            {WEEKDAYS.map((weekday) => (
-              <th key={weekday.short} scope="col" abbr={tw(weekday.long)}>
-                {tw(weekday.short)}
-              </th>
-            ))}
-          </tr>
-        </thead>
+        <caption className="fg-visually-hidden">{grid.caption}</caption>
+        <WeekdayHeader />
         <tbody>
           {weeks.map((week, row) => (
             <tr key={row}>
-              {week.map((cell, column) => {
-                if (cell === null) {
-                  return (
-                    <td key={`pad-${String(column)}`} className="fgw-calendar__pad" />
-                  );
-                }
-                const dayPosts = byDay.get(cell.key) ?? [];
-                const isToday = cell.key === today;
-                return (
-                  <td
+              {week.map((cell, column) =>
+                cell === null ? (
+                  <td key={`pad-${String(column)}`} className="fgw-calendar__pad" />
+                ) : (
+                  <DayCell
                     key={cell.key}
-                    className="fgw-calendar__day"
-                    data-day={cell.key}
-                    data-today={isToday ? "true" : undefined}
-                    aria-current={isToday ? "date" : undefined}
-                  >
-                    <div className="fgw-calendar__day-head">
-                      <span className="fg-visually-hidden">
-                        {dayLabel(cell.key, dayPosts.length, isToday)}
-                      </span>
-                      <span aria-hidden="true" className="fgw-calendar__day-number">
-                        {cell.day}
-                      </span>
-                      {dayPosts.length > 0 && (
-                        <span aria-hidden="true" className="fgw-calendar__day-count">
-                          {dayPosts.length === 1
-                            ? tw("calendar.dayCountOne")
-                            : tw("calendar.dayCount", { count: dayPosts.length })}
-                        </span>
-                      )}
-                    </div>
-                    {dayPosts.length > 0 && (
-                      <ul className="fgw-calendar__chips">
-                        {dayPosts.map((post) => (
-                          <PostChip
-                            key={post._id}
-                            post={post}
-                            timeZone={timeZone}
-                            type={typeOf.get(post.contentId)}
-                          />
-                        ))}
-                      </ul>
-                    )}
-                  </td>
-                );
-              })}
+                    dayKey={cell.key}
+                    label={String(cell.day)}
+                    {...grid}
+                    roomy={false}
+                  />
+                ),
+              )}
             </tr>
           ))}
         </tbody>
       </table>
     </div>
   );
+}
+
+/** La semana: una fila de siete días más altos, con miniaturas. */
+function WeekGrid({ start, ...grid }: GridProps & { readonly start: string }) {
+  return (
+    <div className="fgw-calendar__scroll">
+      <table className="fgw-calendar__grid">
+        <caption className="fg-visually-hidden">{grid.caption}</caption>
+        <WeekdayHeader />
+        <tbody>
+          <tr>
+            {weekDays(start).map((key) => (
+              <DayCell
+                key={key}
+                dayKey={key}
+                label={formatShortDay(key)}
+                {...grid}
+                roomy
+              />
+            ))}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+interface DayCellProps extends GridProps {
+  readonly dayKey: string;
+  readonly label: string;
+  readonly roomy: boolean;
+}
+
+function DayCell({
+  dayKey,
+  label,
+  byDay,
+  today,
+  timeZone,
+  showBrand,
+  roomy,
+}: DayCellProps) {
+  const { setNodeRef, isOver } = useDroppable({ id: dropIdOf(dayKey) });
+  const dayItems = byDay.get(dayKey) ?? [];
+  const isToday = dayKey === today;
+  return (
+    <td
+      ref={setNodeRef}
+      className="fgw-calendar__day"
+      data-day={dayKey}
+      data-today={isToday ? "true" : undefined}
+      data-over={isOver ? "true" : undefined}
+      aria-current={isToday ? "date" : undefined}
+      style={{
+        ...(roomy ? { height: "22rem" } : {}),
+        ...(isOver
+          ? { outline: "2px solid var(--fg-color-accent)", outlineOffset: "-2px" }
+          : {}),
+      }}
+    >
+      <div className="fgw-calendar__day-head">
+        <span className="fg-visually-hidden">
+          {dayLabel(dayKey, dayItems.length, isToday)}
+        </span>
+        <span aria-hidden="true" className="fgw-calendar__day-number">
+          {label}
+        </span>
+        {dayItems.length > 0 && (
+          <span aria-hidden="true" className="fgw-calendar__day-count">
+            {dayItems.length === 1
+              ? tw("calendar.dayCountOne")
+              : tw("calendar.dayCount", { count: dayItems.length })}
+          </span>
+        )}
+      </div>
+      {dayItems.length > 0 && (
+        <ChipList>
+          {dayItems.map((item) => (
+            <CalendarChip
+              key={dragIdOf(item)}
+              item={item}
+              timeZone={timeZone}
+              showBrand={showBrand}
+              roomy={roomy}
+            />
+          ))}
+        </ChipList>
+      )}
+    </td>
+  );
+}
+
+function ChipList({ children }: { readonly children: ReactNode }) {
+  return <ul className="fgw-calendar__chips">{children}</ul>;
 }
 
 function dayLabel(key: string, count: number, isToday: boolean): string {
@@ -397,45 +586,4 @@ function dayLabel(key: string, count: number, isToday: boolean): string {
         ? tw("calendar.dayLabelOne", { date })
         : tw("calendar.dayLabel", { date, count });
   return isToday ? tw("calendar.dayLabelToday", { label }) : label;
-}
-
-interface PostChipProps {
-  readonly post: Post;
-  readonly timeZone: string;
-  readonly type: ContentType | undefined;
-}
-
-/**
- * Un chip · F-141 (PRD:609, 1659): punto de estado + `Plataforma: Tipo` + hora,
- * con fondo tintado por plataforma.
- *
- * Sin tipo cuando la pieza no llegó en las páginas de `GET /content` (ver
- * `lib/calendar/data.ts`): se escribe sólo la plataforma, no un tipo deducido.
- */
-function PostChip({ post, timeZone, type }: PostChipProps) {
-  const platform = tw(POST_PLATFORM_COPY[post.platform]);
-  const title =
-    type === undefined
-      ? platform
-      : tw("calendar.chip.withType", { platform, type: tw(CONTENT_TYPE_COPY[type]) });
-  const time = formatChipTime(postInstant(post), timeZone);
-  const status = tw(POST_STATUS_COPY[post.status]);
-
-  return (
-    <li
-      className="fgw-cal-chip"
-      data-tone={PLATFORM_CHIP_TONE[post.platform]}
-      data-status={post.status}
-      title={tw("calendar.chip.label", { title, time, status })}
-    >
-      <span
-        aria-hidden="true"
-        className="fgw-cal-chip__dot"
-        data-tone={POST_STATUS_TONE[post.status]}
-      />
-      <span className="fgw-cal-chip__title">{title}</span>
-      <span className="fgw-cal-chip__time">{time}</span>
-      <span className="fg-visually-hidden">{status}</span>
-    </li>
-  );
 }

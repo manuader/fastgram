@@ -1,0 +1,43 @@
+-- `media_origin` += `brand_kit` — `PU-MEDIA-002` · `docs/PLAN-USO-PERSONAL.md` §2 paso 3.
+--
+-- ## Para qué
+--
+-- Los fondos de marca que genera `services/render` sin proveedor (degradés,
+-- manchas suaves, loops de video) entran al Media Bank para que una marca sin
+-- media pueda usar Blitz desde cero. Tienen que ser **visibles** en el Media
+-- Bank (el usuario los ve, les cambia las categorías, los borra) y **elegibles**
+-- para Blitz (`listPlanningMedia` no filtra por origen: mira `status`,
+-- `deleted_at` y categorías).
+--
+-- ## Por qué un origen nuevo y no `generated` ni `manual_upload`
+--
+-- - `generated` es lo que FR-100 **nunca lista** (*"Assets generados, de demo e
+--   internos nunca se listan"*): es la salida del pipeline de AI Studio e
+--   influencers, y listarla cambiaría esa regla para todo lo generado, no sólo
+--   para esto.
+-- - `manual_upload` sería mentir en el dato: nadie subió estos archivos, y el
+--   día que haga falta distinguirlos (borrar el kit, regenerarlo) no habría con
+--   qué.
+--
+-- Con `brand_kit`, `GET /media` lista `manual_upload` **y** `brand_kit`; los
+-- otros tres siguen sin listarse.
+--
+-- ## Por qué sin `BEGIN`/`COMMIT` propio y sin usar el valor acá
+--
+-- Drizzle corre todas las migraciones en **una** transacción. Desde Postgres 12
+-- `ALTER TYPE … ADD VALUE` puede ir dentro de una, pero el valor nuevo **no se
+-- puede usar** hasta que esa transacción commitea: ningún `UPDATE` ni `DEFAULT`
+-- de esta migración (ni de una posterior en la misma corrida) puede nombrarlo.
+-- `IF NOT EXISTS` la hace reejecutable sobre una base donde alguien lo agregó a
+-- mano.
+--
+-- ## El `when` del journal
+--
+-- Es mayor que el de `0014_brand_strategy` a propósito, aunque el número sea
+-- menor: el migrador de Drizzle aplica sólo lo que tiene `when` mayor que la
+-- última migración aplicada, y había bases de desarrollo con `0014` ya aplicada
+-- cuando se escribió ésta. Con un `when` menor, en esas bases se saltearía sin
+-- avisar. Las dos son independientes, así que el orden en una base nueva no
+-- importa.
+
+ALTER TYPE "media_origin" ADD VALUE IF NOT EXISTS 'brand_kit';

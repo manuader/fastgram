@@ -49,7 +49,58 @@ import type { SuggestionPlan } from "./plan-suggestion.js";
 /** Lo que viaja en la cola `discovery-refill`. */
 export interface DiscoveryRefillJob {
   readonly companyId: string;
+  /**
+   * `PU-BLITZ-003`: si está, el job **no** es un relleno sino un pedido de
+   * «crear desde prompt», y lo atiende otro handler (ver
+   * {@link parseBlitzPromptJob}). El tema, el formato y la cantidad no viajan
+   * acá: viven en `blitz_prompt_requests`, que el worker lee con el scope del
+   * workspace. Así el payload no carga texto del usuario por las tablas de
+   * pg-boss, que no tienen RLS.
+   */
+  readonly promptRequestId?: string;
 }
+
+/** Un pedido de «crear desde prompt» — `EXT-009`, `PU-BLITZ-003`. */
+export interface BlitzPromptJob {
+  readonly companyId: string;
+  readonly promptRequestId: string;
+}
+
+/**
+ * Los límites del pedido. Los fija la tarea (`PU-BLITZ-003`), no el PRD:
+ * 3–500 caracteres de tema y 1–5 piezas. La base los repite en CHECKs
+ * (migración `0012`) y el contrato en el schema del body.
+ */
+export const BLITZ_PROMPT_LIMITS = {
+  promptMinChars: 3,
+  promptMaxChars: 500,
+  minCount: 1,
+  maxCount: 5,
+} as const;
+
+/**
+ * Por qué puede fallar un pedido — **códigos estables** que la API devuelve y
+ * la web traduce a un mensaje con qué hacer. Nunca un error crudo de proveedor.
+ *
+ * - `llm_not_configured`: no hay modelo para la tarea `text` → Settings → Models.
+ * - `no_media_for_format`: se forzó un formato y el Media Bank no tiene media
+ *   categorizada para él → Library.
+ * - `no_media`: sin formato forzado, ningún formato del content mix tiene media.
+ * - `copy_rejected`: el modelo contestó, pero ninguna copy pasó las reglas
+ *   (vacía, larga de más, o con pinta de instrucción filtrada).
+ * - `llm_failed`: el proveedor falló y se agotaron los reintentos.
+ * - `invalid_state`: el workspace no permite planificar (p. ej. pesos de ángulo
+ *   rotos). No mejora reintentando.
+ */
+export const PROMPT_FAILURE_REASONS = [
+  "llm_not_configured",
+  "no_media_for_format",
+  "no_media",
+  "copy_rejected",
+  "llm_failed",
+  "invalid_state",
+] as const;
+export type PromptFailureReason = (typeof PROMPT_FAILURE_REASONS)[number];
 
 /**
  * La misma forma que `withCompany` exige antes de abrir la transacción.
@@ -90,6 +141,29 @@ export function parseDiscoveryRefillJob(raw: unknown): ParsedDiscoveryRefillJob 
   return { ok: true, payload: { companyId } };
 }
 
+export type ParsedBlitzPromptJob =
+  | { readonly ok: true; readonly payload: BlitzPromptJob }
+  | { readonly ok: false; readonly reason: string };
+
+/** ¿Este payload de `discovery-refill` es un pedido de prompt? Mira la clave, no el valor. */
+export function isBlitzPromptPayload(raw: unknown): boolean {
+  return typeof raw === "object" && raw !== null && "promptRequestId" in raw;
+}
+
+/** Como {@link parseDiscoveryRefillJob}, para un pedido de prompt. */
+export function parseBlitzPromptJob(raw: unknown): ParsedBlitzPromptJob {
+  const base = parseDiscoveryRefillJob(raw);
+  if (!base.ok) return base;
+  const id = (raw as Record<string, unknown>)["promptRequestId"];
+  if (typeof id !== "string" || !UUID_RE.test(id)) {
+    return { ok: false, reason: "promptRequestId is not a UUID" };
+  }
+  return {
+    ok: true,
+    payload: { companyId: base.payload.companyId, promptRequestId: id },
+  };
+}
+
 /**
  * Lo que la explicación sabe del mundo además del plan: nombres.
  *
@@ -121,6 +195,19 @@ export interface SuggestionNarrative {
   readonly influencerWithoutMedia?: string | undefined;
   /** Formatos del mix que no se pudieron planificar: sin media en el Media Bank. */
   readonly skippedFormats?: readonly BlitzContentType[] | undefined;
+  /**
+   * `PU-BLITZ-003`: la pieza salió de un pedido del usuario. Cambia dos líneas
+   * de la explicación —de dónde salió el formato y qué ocupó el lugar del
+   * ángulo— y agrega una que dice cuál fue el pedido.
+   */
+  readonly prompt?: PromptNarrative | undefined;
+}
+
+export interface PromptNarrative {
+  /** El tema, tal cual lo escribió el usuario. Se acota antes de guardar. */
+  readonly topic: string;
+  /** `true` si el usuario forzó el formato; `false` si lo decidió el mix. */
+  readonly forcedFormat: boolean;
 }
 
 /** Cuánto texto ajeno entra en la explicación. Un título largo no la secuestra. */
@@ -145,9 +232,21 @@ export function explainSuggestion(
 ): string {
   const parts: string[] = [];
 
-  parts.push(`Format: ${plan.contentType}, drawn from your content mix.`);
+  if (narrative.prompt !== undefined) {
+    parts.push(
+      `Created from your prompt: "${oneLine(narrative.prompt.topic, MAX_ANGLE_TITLE_CHARS)}".`,
+    );
+  }
 
-  if (plan.angleId === null) {
+  parts.push(
+    narrative.prompt?.forcedFormat === true
+      ? `Format: ${plan.contentType}, as you asked.`
+      : `Format: ${plan.contentType}, drawn from your content mix.`,
+  );
+
+  if (narrative.prompt !== undefined) {
+    parts.push("Angle: none — your prompt is the topic.");
+  } else if (plan.angleId === null) {
     parts.push("Angle: none — this workspace has no active content angle.");
   } else if (narrative.angleTitle === undefined || narrative.angleTitle.trim() === "") {
     parts.push("Angle: picked from your angle weights.");

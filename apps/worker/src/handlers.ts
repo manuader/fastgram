@@ -8,10 +8,12 @@
  * dobles para comprobar qué se monta en cada configuración.
  */
 import type {
+  BrandBackgroundGenerator,
   BrandSourceType,
   Clock,
   JobHandler,
   MediaRenderer,
+  Queue,
   SocialPublisher,
   SocialReader,
   Storage,
@@ -32,6 +34,16 @@ import {
   createDiscoveryRefillHandler,
   type CopywriterProvider,
 } from "./discovery/refill-handler.js";
+import {
+  createBlitzPromptHandler,
+  createDiscoveryDispatcher,
+} from "./discovery/prompt-handler.js";
+import { createBrandBackgroundsHandler } from "./brand-kit/handler.js";
+import {
+  BRAND_BACKGROUNDS_UNMOUNTED_WHY,
+  brandBackgroundGeneratorFrom,
+  createAutoBrandKitTrigger,
+} from "./brand-kit/mount.js";
 import { createInfluencerPipelineHandler } from "./influencers/pipeline-handler.js";
 import { createQuotaResetHandler } from "./jobs/quota-reset-handler.js";
 import { createMediaNormalizationHandler } from "./media/normalization-handler.js";
@@ -68,6 +80,18 @@ export interface WorkerHandlerDeps {
    * mientras el deck está abierto.
    */
   readonly copywriter: SuggestionCopywriter | null | CopywriterProvider;
+  /**
+   * `PU-MEDIA-002`. La cola, para que `discovery-refill` encole el kit de
+   * fondos de una marca sin media. Opcional: sin ella, el refill se comporta
+   * como antes.
+   */
+  readonly queue?: Queue | undefined;
+  /**
+   * `PU-MEDIA-002`. El generador de `brand-backgrounds`. Si no viene, se saca
+   * de `normalizationRenderer` (ver `brand-kit/mount.ts`); `null` explícito =
+   * sin generador.
+   */
+  readonly brandBackgrounds?: BrandBackgroundGenerator | null;
 }
 
 export type BrandAnalysisMount =
@@ -139,6 +163,10 @@ const PUBLISHERS: Readonly<Record<string, SocialPublisher>> = {};
  */
 export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
   const { db, renderer, storage, clock, appRole, logger } = deps;
+  const brandBackgrounds =
+    deps.brandBackgrounds === undefined
+      ? brandBackgroundGeneratorFrom(deps.normalizationRenderer)
+      : deps.brandBackgrounds;
 
   const handlers: Record<string, JobHandler<unknown>> = {
     [JOB_QUEUES.contentBuild]: createContentBuildHandler({
@@ -198,16 +226,32 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
      * Rellena con sugerencias **construibles** (media del Media Bank + copy del
      * LLM, `AI-002`). Sin LLM se monta igual y no escribe nada —una sugerencia
      * sin copy no se puede construir— y el arranque lo dice en `unmounted`.
+     *
+     * La misma cola atiende «crear desde prompt» (`PU-BLITZ-003`): un payload
+     * con `promptRequestId` va a `createBlitzPromptHandler`. Ver su cabecera.
      */
-    [JOB_QUEUES.discoveryRefill]: createDiscoveryRefillHandler({
-      db,
-      // `systemRng` y no uno sembrado: la instancia se comparte entre entregas
-      // concurrentes, así que un `SeededRng` acá no daría el determinismo que
-      // promete — daría una secuencia compartida y entrelazada.
-      rng: systemRng,
-      copywriter: deps.copywriter,
-      appRole,
-      logger,
+    [JOB_QUEUES.discoveryRefill]: createDiscoveryDispatcher({
+      refill: createDiscoveryRefillHandler({
+        db,
+        // `systemRng` y no uno sembrado: la instancia se comparte entre entregas
+        // concurrentes, así que un `SeededRng` acá no daría el determinismo que
+        // promete — daría una secuencia compartida y entrelazada.
+        rng: systemRng,
+        copywriter: deps.copywriter,
+        appRole,
+        logger,
+        // `PU-MEDIA-002`: sin media para el mix, encola el kit de fondos.
+        ...(deps.queue === undefined
+          ? {}
+          : { onMediaBankEmpty: createAutoBrandKitTrigger(deps.queue, logger) }),
+      }),
+      prompt: createBlitzPromptHandler({
+        db,
+        rng: systemRng,
+        copywriter: deps.copywriter,
+        appRole,
+        logger,
+      }),
     }),
     /**
      * **El primer trabajo programado que de verdad hace algo cada noche.**
@@ -285,6 +329,28 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
       renderer: deps.normalizationRenderer,
       storage,
       clock,
+      appRole,
+      logger,
+    });
+  }
+
+  /*
+   * `brand-backgrounds` (`PU-MEDIA-002`) — **montado sólo con `services/render`
+   * configurado**, por la misma razón que `media-normalization`: el de memoria
+   * no genera fondos, y un kit «generado» con bytes sintéticos llenaría el
+   * Media Bank de archivos que no son imágenes. Sin render, los jobs esperan
+   * en la cola, que es verdad: nadie generó nada.
+   */
+  if (brandBackgrounds === null) {
+    unmounted.push({
+      queue: JOB_QUEUES.brandBackgrounds,
+      why: BRAND_BACKGROUNDS_UNMOUNTED_WHY,
+    });
+  } else {
+    handlers[JOB_QUEUES.brandBackgrounds] = createBrandBackgroundsHandler({
+      db,
+      generator: brandBackgrounds,
+      storage,
       appRole,
       logger,
     });

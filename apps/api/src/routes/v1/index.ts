@@ -12,6 +12,7 @@ import type { ZodApp } from "../../server/types.js";
 import { registerAngleRoutes } from "./angles.js";
 import { registerBlitzRoutes } from "./blitz.js";
 import { registerBrandRoutes } from "./brand.js";
+import { registerCalendarRoutes } from "./calendar.js";
 import { registerCatalogRoutes } from "./catalog.js";
 import { registerContentRoutes } from "./content.js";
 import { registerInfluencerRoutes } from "./influencers.js";
@@ -19,6 +20,7 @@ import { registerMediaRoutes } from "./media.js";
 import { registerModelRoutes } from "./models.js";
 import { registerOnboardingRoutes } from "./onboarding.js";
 import { registerPostRoutes } from "./posts.js";
+import { registerStrategyRoutes } from "./strategy.js";
 import { registerWorkspaceRoutes } from "./workspaces.js";
 
 export async function registerV1Routes(app: ZodApp): Promise<void> {
@@ -43,5 +45,8 @@ export async function registerV1Routes(app: ZodApp): Promise<void> {
   registerWorkspaceRoutes(app);
   // `PU-MODEL-001`/`002`: registro de modelos por tarea (D-14).
   registerModelRoutes(app);
+  // `PU-BRAND-002` / `PU-CAL-001` / `PU-CAL-002`: estrategia, auto-slot y calendario.
+  registerStrategyRoutes(app);
+  registerCalendarRoutes(app);
   await Promise.resolve();
 }

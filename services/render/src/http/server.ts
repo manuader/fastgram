@@ -19,6 +19,7 @@ import {
 import { engineVersionFrom } from "../render/engineVersion.js";
 import type { FontActivation } from "../render/fontActivation.js";
 import type { FontStatus } from "../render/fontLoader.js";
+import { brandBackgroundOperation } from "../render/brandBackground.js";
 import {
   normalizeOperation,
   probeOperation,
@@ -206,6 +207,17 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
    */
   app.post("/thumbnail", async (request, reply) => {
     const result = await thumbnailOperation(request.body, deps.engine);
+    return reply.status(200).send(withHref(result));
+  });
+
+  /**
+   * `POST /brand-backgrounds` — `PU-MEDIA-002`: un fondo de marca (imagen o
+   * loop de video) generado acá, sin proveedor. Mismo trato que `/thumbnail`:
+   * metadatos en la respuesta, bytes por el `href`. Ver
+   * `render/brandBackground.ts`.
+   */
+  app.post("/brand-backgrounds", async (request, reply) => {
+    const result = await brandBackgroundOperation(request.body, deps.engine);
     return reply.status(200).send(withHref(result));
   });
 

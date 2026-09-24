@@ -5,8 +5,11 @@ import {
   INFLUENCER_CHANCE_DEFAULT,
   SMART_TEXT_POSITIONING_DEFAULT,
   angleWeightsSchema,
+  BLITZ_PROMPT_FAILURE_REASONS,
+  blitzPromptRequestSchema,
   blitzQueueSchema,
   blitzSuggestionSchema,
+  generateBlitzRequestSchema,
   contentMixWeightsSchema,
   runBlitzRequestSchema,
   settingsApplicationSchema,
@@ -246,5 +249,83 @@ describe("valores por defecto y constantes de respuesta", () => {
         targetQueuedItems: 10,
       }),
     ).toThrow();
+  });
+});
+
+describe("POST /blitz/generate · crear desde prompt (PU-BLITZ-003)", () => {
+  it("acepta el tema solo, y con formato y cantidad", () => {
+    expect(generateBlitzRequestSchema.parse({ prompt: "memes de lunes" })).toEqual({
+      prompt: "memes de lunes",
+    });
+    expect(
+      generateBlitzRequestSchema.parse({
+        prompt: "  memes de lunes  ",
+        contentType: "green-screen",
+        count: 5,
+      }),
+    ).toEqual({ prompt: "memes de lunes", contentType: "green-screen", count: 5 });
+  });
+
+  it("3–500 caracteres DESPUÉS de recortar; 1–5 piezas; nada de custom ni claves extra", () => {
+    const bad = [
+      { prompt: "ab" },
+      { prompt: "   ab   " },
+      { prompt: "x".repeat(501) },
+      { prompt: "memes", count: 0 },
+      { prompt: "memes", count: 6 },
+      { prompt: "memes", count: 1.5 },
+      { prompt: "memes", contentType: "custom" },
+      { prompt: "memes", extra: true },
+      {},
+    ];
+    for (const body of bad) {
+      expect(
+        generateBlitzRequestSchema.safeParse(body).success,
+        JSON.stringify(body),
+      ).toBe(false);
+    }
+    expect(
+      generateBlitzRequestSchema.safeParse({ prompt: "x".repeat(500) }).success,
+    ).toBe(true);
+  });
+
+  it("el estado lleva los códigos estables de core", () => {
+    expect(BLITZ_PROMPT_FAILURE_REASONS).toEqual([
+      "llm_not_configured",
+      "no_media_for_format",
+      "no_media",
+      "copy_rejected",
+      "llm_failed",
+      "invalid_state",
+    ]);
+    expect(
+      blitzPromptRequestSchema.parse({
+        requestId: "r1",
+        status: "failed",
+        suggestionIds: [],
+        failureReason: "no_media_for_format",
+        contentType: "green-screen",
+        count: 2,
+      }).failureReason,
+    ).toBe("no_media_for_format");
+    expect(
+      blitzPromptRequestSchema.safeParse({
+        requestId: "r1",
+        status: "failed",
+        suggestionIds: [],
+        failureReason: "ECONNREFUSED 127.0.0.1:11434",
+        count: 1,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("una sugerencia de la cola puede traer promptRequestId", () => {
+    expect(
+      blitzSuggestionSchema.parse({
+        id: "s1",
+        contentType: "wall-of-text",
+        promptRequestId: "r1",
+      }).promptRequestId,
+    ).toBe("r1");
   });
 });

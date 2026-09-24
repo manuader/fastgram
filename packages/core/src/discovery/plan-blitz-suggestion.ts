@@ -32,7 +32,12 @@ import {
   type EligibleInfluencer,
   type SuggestionPlan,
 } from "./plan-suggestion.js";
-import { explainSuggestion } from "./refill-job.js";
+import { DomainError } from "../errors.js";
+import {
+  explainSuggestion,
+  type PromptFailureReason,
+  type PromptNarrative,
+} from "./refill-job.js";
 
 export interface BlitzPlanningContext {
   readonly activeAngleIds: readonly string[];
@@ -68,6 +73,8 @@ export function planBlitzSuggestion(
   rng: Rng,
   preferences: BlitzPreferences,
   context: BlitzPlanningContext,
+  /** `PU-BLITZ-003`: sólo lo pasa {@link planPromptSuggestion}. */
+  prompt?: PromptNarrative,
 ): PlannedBlitzSuggestion {
   const available = formatsWithMedia(context.bank);
   const skippedFormats = MIX.filter(
@@ -118,6 +125,109 @@ export function planBlitzSuggestion(
       undecidedCandidates: undecided,
       influencerWithoutMedia,
       skippedFormats,
+      prompt,
     }),
   };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Crear desde prompt — `EXT-009`, `PU-BLITZ-003`
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Un pedido de prompt que no se puede planificar, con el **código estable**
+ * que la API devuelve y la web traduce (`PROMPT_FAILURE_REASONS`).
+ *
+ * Es un error tipado aparte de `DomainError` porque quien lo atrapa —el
+ * handler del worker— tiene que distinguir «no hay media para el formato que
+ * pediste» (el usuario lo arregla en la Library) de «el workspace está roto»
+ * (`invalid_state`), y un `DomainError("invalid_state")` genérico no lo dice.
+ */
+export class BlitzPromptError extends Error {
+  override readonly name = "BlitzPromptError";
+  constructor(
+    readonly reason: PromptFailureReason,
+    message: string,
+    readonly details?: Readonly<Record<string, unknown>>,
+  ) {
+    super(message);
+  }
+}
+
+export interface PromptPlanRequest {
+  /** El tema del usuario. Va a la explicación; la copy lo recibe aparte. */
+  readonly topic: string;
+  /** El formato forzado, o `null` = lo decide el content mix. */
+  readonly contentType: BlitzContentType | null;
+}
+
+/**
+ * Una sugerencia de «crear desde prompt», con **la misma selección** que el
+ * refill (`planBlitzSuggestion`): mismas tiradas, misma media del Media Bank,
+ * mismo fallback de influencer. Cambian tres cosas:
+ *
+ *  1. **El formato forzado** se planifica como un mix con ese formato al 100 %.
+ *     Si el Media Bank no tiene media para él, `BlitzPromptError`
+ *     `no_media_for_format` — **antes** de gastar una llamada al LLM.
+ *  2. **Sin ángulo**: el tema del usuario ocupa su lugar. Tirar un ángulo
+ *     encima le daría al modelo dos temas que compiten. Se logra con la lista
+ *     de ángulos activos vacía, así que `pickAngle` no gasta tirada.
+ *  3. **La explicación** dice que salió del prompt.
+ *
+ * Sin formato forzado y sin media para ningún formato del mix,
+ * `BlitzPromptError` `no_media`: mismo criterio que el refill, que no
+ * planifica un formato que el usuario puso en 0.
+ */
+export function planPromptSuggestion(
+  rng: Rng,
+  preferences: BlitzPreferences,
+  context: BlitzPlanningContext,
+  request: PromptPlanRequest,
+): PlannedBlitzSuggestion {
+  const available = formatsWithMedia(context.bank);
+  const forced = request.contentType;
+
+  if (forced !== null && !available.includes(forced)) {
+    throw new BlitzPromptError(
+      "no_media_for_format",
+      `Your Media Bank has no media categorized for ${forced}.`,
+      { contentType: forced, availableFormats: available },
+    );
+  }
+  const effective: BlitzPreferences =
+    forced === null
+      ? preferences
+      : {
+          ...preferences,
+          slideshowWeight: forced === "slideshow" ? 100 : 0,
+          wallOfTextWeight: forced === "wall-of-text" ? 100 : 0,
+          greenScreenWeight: forced === "green-screen" ? 100 : 0,
+          videoHookWeight: forced === "video-hook" ? 100 : 0,
+        };
+  if (
+    forced === null &&
+    !MIX.some(
+      ([format, key]) => (preferences[key] as number) > 0 && available.includes(format),
+    )
+  ) {
+    throw new BlitzPromptError(
+      "no_media",
+      "No content type in your mix has media in your Media Bank.",
+      { availableFormats: available },
+    );
+  }
+
+  try {
+    return planBlitzSuggestion(
+      rng,
+      effective,
+      { ...context, activeAngleIds: [] },
+      { topic: request.topic, forcedFormat: forced !== null },
+    );
+  } catch (error: unknown) {
+    if (error instanceof DomainError && error.code === "invalid_state") {
+      throw new BlitzPromptError("invalid_state", error.message, error.details);
+    }
+    throw error;
+  }
 }

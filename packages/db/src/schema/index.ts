@@ -17,17 +17,24 @@ export * from "./automations.js";
 export * from "./discovery.js";
 export * from "./platform.js";
 export * from "./judgment.js";
+export * from "./strategy.js";
 
 export { tsColumn, timestamps, createdAtOnly, softDelete } from "./_shared.js";
 
 import { brandSources, brandSourceSnapshots, companyProfiles } from "./brand.js";
-import { blitzPreferences, contentAngles, suggestions } from "./blitz.js";
+import {
+  blitzPreferences,
+  blitzPromptRequests,
+  contentAngles,
+  suggestions,
+} from "./blitz.js";
 import { automationSlots, automations } from "./automations.js";
 import { contentTextBoxes, contents } from "./content.js";
 import { banRiskAssessments, leads } from "./discovery.js";
 import { companies, workspaceMemberships } from "./identity.js";
 import { influencerAssets, influencerConfigs, influencers } from "./influencers.js";
 import { judgmentRecords } from "./judgment.js";
+import { brandStrategies, plannedSlots } from "./strategy.js";
 import { media, mediaSets } from "./media.js";
 import {
   apiKeys,
@@ -58,6 +65,7 @@ export const COMPANY_SCOPED_TABLES = [
   contentAngles,
   blitzPreferences,
   suggestions,
+  blitzPromptRequests,
   contents,
   contentTextBoxes,
   media,
@@ -79,6 +87,8 @@ export const COMPANY_SCOPED_TABLES = [
   uploadReservations,
   quotaLedgers,
   judgmentRecords,
+  brandStrategies,
+  plannedSlots,
 ] as const;
 
 /** La raíz de la tenencia. Su política compara `id`, no `company_id`. */

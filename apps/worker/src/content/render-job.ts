@@ -45,7 +45,9 @@ import {
   type MediaElement,
 } from "@fastgram/contracts";
 import {
+  applyAssetSwaps,
   applyTextBoxesToBuildPayload,
+  readAssetSwaps,
   type ContentTextBox,
   type TextFontFamilies,
 } from "@fastgram/core";
@@ -234,16 +236,44 @@ export function toRenderJob(raw: unknown, contentType: string): RenderJobResult 
  * El payload editado **no se persiste**: las cajas son el estado completo del
  * texto, y rehacerlo desde el original en cada edición hace que dos ediciones
  * seguidas no se acumulen sobre un payload ya editado.
+ *
+ * ## La media (`PU-EDIT-003`)
+ *
+ * Antes que las cajas se aplican los swaps de media del editor, guardados en
+ * `contents.studioState` (`applyAssetSwaps` de `core`, la misma función con la
+ * que `GET /content/:id/editable` le muestra la media al editor). El orden no
+ * cambia el resultado —las cajas no leen la media— pero así el payload que se
+ * revalida es el completo. Un `studioState` ilegible, o swaps que ya no calzan
+ * con la pieza, cierran el rebuild con `edit_not_renderable`: renderizar sin
+ * ellos declararía aplicado un swap que no salió.
  */
 export function toEditedRenderJob(
   raw: unknown,
   contentType: string,
   boxes: readonly ContentTextBox[],
+  studioState: unknown = null,
 ): RenderJobResult {
   const parsed = contentBuildPayloadSchema.safeParse(raw);
   if (!parsed.success) return toRenderJob(raw, contentType);
 
-  const edited = applyTextBoxesToBuildPayload(parsed.data, boxes);
+  const swaps = readAssetSwaps(studioState);
+  if (swaps === null) {
+    return {
+      ok: false,
+      code: "edit_not_renderable",
+      reason: "studioState.assets no tiene la forma de los swaps de media",
+    };
+  }
+  const swapped = applyAssetSwaps(parsed.data, swaps);
+  if (!swapped.ok) {
+    return {
+      ok: false,
+      code: "edit_not_renderable",
+      reason: `${swapped.code}: ${swapped.reason}`,
+    };
+  }
+
+  const edited = applyTextBoxesToBuildPayload(swapped.payload, boxes);
   if (!edited.ok) {
     return {
       ok: false,

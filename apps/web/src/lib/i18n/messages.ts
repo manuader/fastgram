@@ -262,6 +262,28 @@ export const webEn = {
   "calendar.empty.description": "Nothing is scheduled or posted in {month}.", // nuevo
   "calendar.empty.truncatedDescription":
     "Nothing loaded for {month}. Older posts aren't loaded, so this month may not be empty.", // nuevo
+  // `PU-CAL-002` — vistas semana/mes, filtro de marcas, arrastre y slots
+  // planificados. Todo `nuevo`: el PRD no tiene nada de esto.
+  "calendar.view.label": "Calendar view", // nuevo
+  "calendar.view.week": "Week", // nuevo
+  "calendar.view.month": "Month", // nuevo
+  "calendar.prevWeek": "Previous week", // nuevo
+  "calendar.nextWeek": "Next week", // nuevo
+  "calendar.weekTitle": "{start} – {end}", // nuevo
+  "calendar.scope.label": "Which brands", // nuevo
+  "calendar.scope.current": "This brand", // nuevo
+  "calendar.scope.all": "All brands", // nuevo
+  "calendar.timeZoneBrand": "Days and times are in {brand}'s time zone ({zone}).", // nuevo
+  "calendar.dragHint":
+    "Drag anything that hasn't gone out to another day to move it. It keeps its time of day.", // nuevo
+  "calendar.moveFailed": "That couldn't be moved. It may have already gone out.", // nuevo
+  "calendar.chip.planned": "Planned", // nuevo · slot sin cuenta conectada
+  "calendar.chip.plannedHint":
+    "Planned: it becomes a post once this brand connects {network}.", // nuevo
+  "calendar.rangeTruncated":
+    "There are more items in this range than the calendar shows. Narrow it to the week view.", // nuevo
+  "calendar.empty.weekDescription": "Nothing is scheduled or posted this week.", // nuevo
+  "calendar.autoschedule.done": "Scheduled on {networks} · first {when}", // nuevo · `useAutoschedule`
 
   /* --------------------------------- My Posts · F-120, FR-100 (PRD:1603-1611) */
   "posts.filter.statusLabel": "Status", // nuevo

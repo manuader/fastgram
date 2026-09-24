@@ -94,6 +94,12 @@ export const blitzSuggestionSchema = z
       .optional(),
     remixSource: blitzSuggestionRemixSourceSchema.optional(),
     preview: blitzSuggestionPreviewSchema.optional(),
+    /**
+     * `PU-BLITZ-003`: el pedido de «crear desde prompt» que la produjo. Sólo
+     * viaja si salió de uno; es lo que dibuja el chip «From your prompt». Las
+     * que lo traen van primeras en la cola.
+     */
+    promptRequestId: z.string().min(1).optional(),
   })
   .strict();
 export type BlitzSuggestion = z.infer<typeof blitzSuggestionSchema>;
@@ -104,6 +110,75 @@ export type BlitzSuggestion = z.infer<typeof blitzSuggestionSchema>;
  */
 export const blitzQueueSchema = z.array(blitzSuggestionSchema);
 export type BlitzQueue = z.infer<typeof blitzQueueSchema>;
+
+// --- Crear desde prompt · `POST /blitz/generate` (PU-BLITZ-003, EXT-009) ------
+//
+// El usuario escribe un tema y, si quiere, fuerza el formato y la cantidad. La
+// API encola un job y devuelve `202 { requestId }`; la web pregunta por el
+// estado con `GET /blitz/generate/:requestId` hasta `done` o `failed`. Las
+// sugerencias que produce entran **primeras** en `GET /blitz/queue`.
+//
+// Los límites (3–500 caracteres, 1–5 piezas) son de la tarea, no del PRD; la
+// base los repite en CHECKs (migración `0012`).
+
+export const BLITZ_PROMPT_MIN_CHARS = 3;
+export const BLITZ_PROMPT_MAX_CHARS = 500;
+export const BLITZ_PROMPT_MAX_COUNT = 5;
+
+/** Body de `POST /blitz/generate`. Requiere `Idempotency-Key`. */
+export const generateBlitzRequestSchema = z
+  .object({
+    /** El tema. Se recorta antes de medir: tres espacios no son un tema. */
+    prompt: z.string().trim().min(BLITZ_PROMPT_MIN_CHARS).max(BLITZ_PROMPT_MAX_CHARS),
+    /** Fuerza el formato. Sin él, lo decide el content mix. */
+    contentType: blitzContentTypeSchema.optional(),
+    /** Cuántas piezas. Default 1. */
+    count: z.number().int().min(1).max(BLITZ_PROMPT_MAX_COUNT).optional(),
+  })
+  .strict();
+export type GenerateBlitzRequest = z.infer<typeof generateBlitzRequestSchema>;
+
+/** `202 { data: { requestId } }`. */
+export const generateBlitzAcceptedSchema = z
+  .object({ requestId: z.string().min(1) })
+  .strict();
+export type GenerateBlitzAccepted = z.infer<typeof generateBlitzAcceptedSchema>;
+
+export const BLITZ_PROMPT_STATUSES = ["queued", "running", "done", "failed"] as const;
+export const blitzPromptStatusSchema = z.enum(BLITZ_PROMPT_STATUSES);
+export type BlitzPromptStatus = z.infer<typeof blitzPromptStatusSchema>;
+
+/**
+ * Por qué falló un pedido — **códigos estables**, los `PROMPT_FAILURE_REASONS`
+ * de `core`. La web traduce cada uno a qué hacer (`llm_not_configured` →
+ * Settings → Models; `no_media_for_format` / `no_media` → Library).
+ */
+export const BLITZ_PROMPT_FAILURE_REASONS = [
+  "llm_not_configured",
+  "no_media_for_format",
+  "no_media",
+  "copy_rejected",
+  "llm_failed",
+  "invalid_state",
+] as const;
+export const blitzPromptFailureReasonSchema = z.enum(BLITZ_PROMPT_FAILURE_REASONS);
+export type BlitzPromptFailureReason = z.infer<typeof blitzPromptFailureReasonSchema>;
+
+/** `GET /blitz/generate/:requestId` → `200 { data }`. */
+export const blitzPromptRequestSchema = z
+  .object({
+    requestId: z.string().min(1),
+    status: blitzPromptStatusSchema,
+    /** Las sugerencias que produjo, en el orden de la cola. Vacío hasta `done`. */
+    suggestionIds: z.array(z.string().min(1)),
+    /** Sólo con `status: failed`. */
+    failureReason: blitzPromptFailureReasonSchema.optional(),
+    /** El formato forzado, si hubo. */
+    contentType: blitzContentTypeSchema.optional(),
+    count: z.number().int().min(1).max(BLITZ_PROMPT_MAX_COUNT),
+  })
+  .strict();
+export type BlitzPromptRequest = z.infer<typeof blitzPromptRequestSchema>;
 
 // --- Preferences · FR-055 (PRD:1285-1300) ------------------------------------
 

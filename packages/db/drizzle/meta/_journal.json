@@ -85,6 +85,27 @@
       "when": 1790008494035,
       "tag": "0011_suggestion_build_plan",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790008494040,
+      "tag": "0012_blitz_prompt_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790008494045,
+      "tag": "0013_media_origin_brand_kit",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790008494050,
+      "tag": "0014_brand_strategy",
+      "breakpoints": true
     }
   ]
 }

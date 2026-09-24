@@ -165,6 +165,13 @@ export interface DiscoveryRefillDeps {
    * puede cambiarlo desde la API.
    */
   readonly targetQueuedItems?: number;
+  /**
+   * `PU-MEDIA-002`: se llama cuando la selección no pudo planificar porque el
+   * Media Bank no tiene media para ningún formato del mix. `handlers.ts` lo
+   * conecta a encolar `brand-backgrounds` (una vez en la vida de la marca, ver
+   * `brand-kit/mount.ts`). No lanza: el refill termina igual que antes.
+   */
+  readonly onMediaBankEmpty?: ((companyId: string) => Promise<void>) | undefined;
 }
 
 /** La copy resuelta en el momento del job. Ver {@link DiscoveryRefillDeps.copywriter}. */
@@ -180,8 +187,11 @@ export const REFILL_WITHOUT_LLM_WHY =
   "(AI-002) no se puede construir, así que discovery-refill no encola nada y " +
   "Blitz responde «cola vacía»";
 
-/** Lo que la transacción 1 trae, ya listo para planificar. */
-interface RefillSubject {
+/**
+ * Lo que la transacción 1 trae, ya listo para planificar. Lo usa también
+ * «crear desde prompt» (`prompt-handler.ts`): misma selección, misma copy.
+ */
+export interface RefillSubject {
   readonly preferences: BlitzPreferences;
   readonly planning: BlitzPlanningContext;
   readonly angles: ReadonlyMap<string, CopyAngle>;
@@ -220,66 +230,7 @@ export function createDiscoveryRefillHandler(
 
   /** Transacción 1: leer todo lo que la selección y la copy necesitan, y soltar. */
   async function read(job: DiscoveryRefillJob): Promise<RefillSubject> {
-    return inCompany(job.companyId, async (tx) => {
-      const scope = { companyId: job.companyId };
-
-      const angleRows = await listAllPages((page) =>
-        contentAngleRepository.listByPage(tx, scope, { page, limit: PAGE_SIZE }),
-      );
-      const activeAngles = angleRows.filter((row) => row.isActive);
-
-      // Sólo los activos: `eligibleInfluencers` descarta el resto igual, y un
-      // workspace Pro puede tener 2000 personajes creados contra 50 activos.
-      const rows = await listAllPages((page) =>
-        influencerRepository.listByPage(tx, scope, {
-          page,
-          limit: PAGE_SIZE,
-          filter: { isActive: { eq: true } },
-        }),
-      );
-      const influencers: EligibleInfluencer[] = rows.map((row) => ({
-        id: row.id,
-        isActive: row.isActive,
-        // `isTrained` no es una columna: `DATA-013` modela el entrenamiento como
-        // el enum de estado, y `ready` es el único que significa entrenado.
-        isTrained: row.status === "ready",
-        gender: row.gender,
-      }));
-
-      const bankRows = await discoveryQueueStore.listPlanningMedia(tx, scope);
-      const company = await companyRepository.load(tx, scope);
-      // `company_profiles` tiene un único índice por `companyId`: la primera
-      // fila es la fila.
-      const profile = (await companyProfileRepository.list(tx, scope, { limit: 1 }))
-        .items[0];
-
-      return {
-        preferences: resolvePreferences(
-          await blitzPreferencesRepository.findById(tx, scope, job.companyId),
-          activeAngles.map((a) => a.id),
-        ),
-        planning: {
-          activeAngleIds: activeAngles.map((a) => a.id),
-          influencers,
-          bank: buildMediaBank(bankRows.media, bankRows.influencerSets),
-          angleTitles: new Map(activeAngles.map((a) => [a.id, a.title])),
-          influencerNames: new Map(rows.map((row) => [row.id, row.name])),
-        },
-        angles: new Map(
-          activeAngles.map((a) => [
-            a.id,
-            {
-              title: a.title,
-              description: a.description,
-              targetAudience: a.targetAudience,
-            },
-          ]),
-        ),
-        businessName: company?.name ?? "",
-        profile: profile ?? {},
-        queued: await discoveryQueueStore.countQueued(tx, scope),
-      };
-    });
+    return inCompany(job.companyId, (tx) => readRefillSubject(tx, job.companyId));
   }
 
   /** Transacción 2: el lock, el conteo que decide y la inserción. */
@@ -368,6 +319,11 @@ export function createDiscoveryRefillHandler(
           { ...base, code: error.code, reason: error.message, details: error.details },
           "refill imposible: la selección no pudo decidir",
         );
+        // `availableFormats` sólo viene en el error de «ningún formato del mix
+        // tiene media» (`plan-suggestion.ts`); el de ángulos no lo trae.
+        if (deps.onMediaBankEmpty !== undefined && error.details?.["availableFormats"]) {
+          await deps.onMediaBankEmpty(job.companyId);
+        }
         return;
       }
       throw error;
@@ -425,14 +381,83 @@ export function createDiscoveryRefillHandler(
 }
 
 /**
+ * Transacción 1 del refill: todo lo que la selección y la copy necesitan.
+ * Exportada para «crear desde prompt» (`PU-BLITZ-003`), que planifica sobre
+ * exactamente el mismo estado.
+ */
+export async function readRefillSubject(
+  tx: Transaction,
+  companyId: string,
+): Promise<RefillSubject> {
+  const scope = { companyId };
+  const angleRows = await listAllPages((page) =>
+    contentAngleRepository.listByPage(tx, scope, { page, limit: PAGE_SIZE }),
+  );
+  const activeAngles = angleRows.filter((row) => row.isActive);
+
+  // Sólo los activos: `eligibleInfluencers` descarta el resto igual, y un
+  // workspace Pro puede tener 2000 personajes creados contra 50 activos.
+  const rows = await listAllPages((page) =>
+    influencerRepository.listByPage(tx, scope, {
+      page,
+      limit: PAGE_SIZE,
+      filter: { isActive: { eq: true } },
+    }),
+  );
+  const influencers: EligibleInfluencer[] = rows.map((row) => ({
+    id: row.id,
+    isActive: row.isActive,
+    // `isTrained` no es una columna: `DATA-013` modela el entrenamiento como
+    // el enum de estado, y `ready` es el único que significa entrenado.
+    isTrained: row.status === "ready",
+    gender: row.gender,
+  }));
+
+  const bankRows = await discoveryQueueStore.listPlanningMedia(tx, scope);
+  const company = await companyRepository.load(tx, scope);
+  // `company_profiles` tiene un único índice por `companyId`: la primera
+  // fila es la fila.
+  const profile = (await companyProfileRepository.list(tx, scope, { limit: 1 })).items[0];
+
+  return {
+    preferences: resolvePreferences(
+      await blitzPreferencesRepository.findById(tx, scope, companyId),
+      activeAngles.map((a) => a.id),
+    ),
+    planning: {
+      activeAngleIds: activeAngles.map((a) => a.id),
+      influencers,
+      bank: buildMediaBank(bankRows.media, bankRows.influencerSets),
+      angleTitles: new Map(activeAngles.map((a) => [a.id, a.title])),
+      influencerNames: new Map(rows.map((row) => [row.id, row.name])),
+    },
+    angles: new Map(
+      activeAngles.map((a) => [
+        a.id,
+        {
+          title: a.title,
+          description: a.description,
+          targetAudience: a.targetAudience,
+        },
+      ]),
+    ),
+    businessName: company?.name ?? "",
+    profile: profile ?? {},
+    queued: await discoveryQueueStore.countQueued(tx, scope),
+  };
+}
+
+/**
  * La copy de una sugerencia planificada, y la fila que resulta. En un
  * slideshow el modelo puede devolver hasta tantos textos como imágenes
  * candidatas, y quedan tantos slides como textos (`finalizeBuildPlan`).
  */
-async function withCopy(
+export async function withCopy(
   copywriter: SuggestionCopywriter,
   subject: RefillSubject,
   p: PlannedBlitzSuggestion,
+  /** `PU-BLITZ-003`: el tema del usuario, directiva principal de la copy. */
+  topic?: string,
 ): Promise<
   | { readonly ok: true; readonly draft: QueuedSuggestionDraft }
   | { readonly ok: false; readonly reason: string }
@@ -445,6 +470,7 @@ async function withCopy(
     profile: subject.profile,
     angle: p.plan.angleId === null ? null : (subject.angles.get(p.plan.angleId) ?? null),
     maxTexts,
+    ...(topic === undefined ? {} : { topic }),
   });
   if (!outcome.ok) return { ok: false, reason: outcome.reason };
 

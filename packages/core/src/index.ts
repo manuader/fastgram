@@ -34,3 +34,4 @@ export * from "./discovery/suggestion-copy.js";
 export * from "./discovery/plan-blitz-suggestion.js";
 export * from "./scheduling/schedule-post.js";
 export * from "./models/index.js";
+export * from "./brand-kit/index.js";

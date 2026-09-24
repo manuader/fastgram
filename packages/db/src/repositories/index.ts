@@ -13,6 +13,7 @@ export * from "./quota-ledger.js";
 export * from "./filters.js";
 export * from "./idempotency.js";
 export * from "./workspace-directory.js";
+export * from "./strategy.js";
 
 import {
   apiKeys,
@@ -334,3 +335,24 @@ export {
   type SuggestionContentType,
   type SuggestionRow,
 } from "./blitz-acceptance.js";
+export {
+  blitzPromptStore,
+  completePromptRequest,
+  createPromptRequest,
+  failPromptRequest,
+  findPromptRequest,
+  isOpenPromptRequest,
+  listPromptSuggestionIds,
+  lockPromptRequest,
+  markPromptRequestRunning,
+  type BlitzPromptRequestRow,
+  type BlitzPromptStatus,
+  type NewPromptRequest,
+} from "./blitz-prompt.js";
+export {
+  brandKitStore,
+  existingBrandKitKeys,
+  insertBrandKitMedia,
+  lockCompanyBrandKit,
+  type BrandKitMediaInput,
+} from "./brand-kit.js";

@@ -99,3 +99,49 @@ export const listMediaQuerySchema = cursorQuerySchema
   .extend({ type: mediaTypeSchema.optional() })
   .strict();
 export type ListMediaQuery = z.infer<typeof listMediaQuerySchema>;
+
+/**
+ * `POST /media/brand-kit` — `PU-MEDIA-002`. Encola la generación de fondos de
+ * marca (imágenes y loops de video) en `services/render`, sin proveedor. Los
+ * fondos entran al Media Bank con `origin: "brand_kit"`, `ready` y ya
+ * categorizados: imágenes → `slideshow-image` + `green-screen-background`;
+ * videos → `background-video`.
+ *
+ * Todo opcional. Sin `seed`, la ruta elige una nueva (otro juego de fondos);
+ * con la misma `seed` y las mismas cantidades, el trabajo no se repite: es
+ * idempotente por marca + semilla. Los topes son los de `core`
+ * (`MAX_BRAND_KIT_IMAGES`, `MAX_BRAND_KIT_VIDEOS`): `contracts` no importa
+ * `core`, así que están escritos dos veces y el test de la ruta los ata.
+ */
+export const BRAND_KIT_MAX_IMAGES = 20;
+export const BRAND_KIT_MAX_VIDEOS = 6;
+
+export const brandKitRequestSchema = z
+  .object({
+    /** 1–100 caracteres ASCII imprimibles, sin espacios. */
+    seed: z
+      .string()
+      .regex(/^[\x21-\x7E]{1,100}$/u, "seed must be 1-100 printable ASCII characters")
+      .optional(),
+    /** Default 8. */
+    images: z.number().int().min(0).max(BRAND_KIT_MAX_IMAGES).optional(),
+    /** Default 3. Cada uno es un loop de 8 s, 1080×1920. */
+    videos: z.number().int().min(0).max(BRAND_KIT_MAX_VIDEOS).optional(),
+  })
+  .strict();
+export type BrandKitRequest = z.infer<typeof brandKitRequestSchema>;
+
+export const brandKitJobSchema = z
+  .object({
+    seed: z.string().min(1),
+    images: z.number().int().nonnegative(),
+    videos: z.number().int().nonnegative(),
+    /**
+     * `false` si ya había un trabajo con esta misma marca, semilla y
+     * cantidades: no se encoló otro. Los fondos de esa semilla ya están (o
+     * están por estar) en el Media Bank.
+     */
+    enqueued: z.boolean(),
+  })
+  .strict();
+export type BrandKitJob = z.infer<typeof brandKitJobSchema>;

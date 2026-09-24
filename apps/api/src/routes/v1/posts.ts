@@ -53,6 +53,7 @@
 import { z } from "zod";
 import {
   PAGINATION_LIMIT_MAX,
+  POSTS_RANGE_MAX_DAYS,
   WARMED_MAX_SCHEDULE_DAYS_AHEAD,
   cancelPostsRequestSchema,
   deletePostsRequestSchema,
@@ -60,19 +61,22 @@ import {
   postAnalyticsRequestSchema,
   scheduleContentRequestSchema,
   type BatchFailureReason,
+  type ListPostsQuery,
   type ScheduleTarget,
 } from "@fastgram/contracts";
 import {
   connectionRepository,
   contentRepository,
+  postCalendar,
   postRepository,
   warmedAccountRepository,
 } from "@fastgram/db";
-import type { JobSpec } from "@fastgram/ports";
-import type { FastifyReply } from "fastify";
+import type { JobSpec, Queue } from "@fastgram/ports";
+import type { FastifyReply, FastifyRequest } from "fastify";
 
 import { JOB_QUEUES } from "@fastgram/core";
 
+import { ApiRejection } from "../../http/errors.js";
 import { rateLimit } from "../../plugins/rate-limit.js";
 import { toPost } from "../../support/serializers.js";
 import { crossTenant, data, notFound, page } from "./shared.js";
@@ -344,7 +348,7 @@ interface ResolvedAccount {
 }
 
 /** Un fallo de programación que ya sabe con qué status y código sale. */
-interface ScheduleRejection {
+export interface ScheduleRejection {
   readonly status: number;
   readonly code: string;
   readonly message: string;
@@ -367,6 +371,11 @@ export function registerPostRoutes(app: ZodApp): void {
     { schema: { querystring: listPostsQuerySchema } },
     async (request) => {
       const q = request.query;
+
+      // `PU-CAL-002`: con `from`/`to` el listado cambia de modo. Ver `listPostsInRange`.
+      if (q.from !== undefined || q.to !== undefined) {
+        return listPostsInRange(request, q);
+      }
 
       const result = await request.tx((tx) =>
         postRepository.list(
@@ -459,88 +468,16 @@ export function registerPostRoutes(app: ZodApp): void {
 
       const targets = body.targets.map(flattenTarget);
 
-      const outcome = await request.tx(async (tx) => {
-        const content = await contentRepository.findById(tx, { companyId }, contentId);
-        if (content === null) return { kind: "content_missing" as const };
-
-        // FR-060 admite programar contenido en `BUILDING` (el post espera en `BUILDING`
-        // hasta que el media esté listo). `FAILED` no lo cubre, y `unsupported_content_state`
-        // es el código que el PRD usa para "el contenido está BUILDING o FAILED" (PRD:1202).
-        if (content.status === "FAILED") return { kind: "content_failed" as const };
-
-        // FR-060: "Si el contenido aún no está `CREATED`, el post queda en `BUILDING`".
-        const status: "SCHEDULED" | "BUILDING" =
-          content.status === "CREATED" ? "SCHEDULED" : "BUILDING";
-
-        // La resolución de cuenta y la fila que sale de ella se arman en el mismo paso:
-        // llevarlas en dos listas paralelas obligaría a indexar una con el índice de la
-        // otra, que es donde un desfase se vuelve un post publicado en la cuenta ajena.
-        const values = [];
-        for (const target of targets) {
-          const resolution = await resolveAccount(tx, companyId, target, {
-            scheduledAtMs: body.scheduledAtUtc,
-            nowMs,
-          });
-          if (!resolution.ok) {
-            return { kind: "rejected" as const, rejection: resolution.rejection };
-          }
-          const account = resolution.account;
-          values.push({
-            contentId: content.id,
-            platform: target.platform,
-            accountType: account.accountType,
-            // El CHECK `posts_account_exclusive` exige **exactamente uno** de los dos no
-            // nulo, y `posts_account_type_matches` que sea el que `accountType` nombra.
-            // `resolveAccount` es el único sitio que decide cuál, justamente para que no
-            // haya una segunda opinión que pueda discrepar con la base.
-            connectionId: account.connectionId,
-            warmedAccountId: account.warmedAccountId,
-            connectionUsername: account.connectionUsername,
-            scheduledAtUtc: scheduledAt,
-            caption: target.caption,
-            description: target.description,
-            discloseAsAds: target.discloseAsAds,
-            aiContentDisclaimer: target.aiContentDisclaimer,
-            instagramSlideshowFormat: target.instagramSlideshowFormat,
-            postingMode: target.postingMode,
-            privacyLevel: target.privacyLevel,
-            tiktokSoundId: target.tiktokSoundId,
-            tiktokSoundMode: target.tiktokSoundMode,
-            status,
-          });
-        }
-
-        const rows = await postRepository.createMany(tx, { companyId }, values);
-
-        // ADR-005: el encolado va **dentro** de la transacción que creó las filas. Si el
-        // commit se cae, no queda ni post ni job; si la cola se cae, `PortError` aborta la
-        // transacción y no quedan posts sin publicador.
-        const jobs: JobSpec<{ companyId: string; postId: string }>[] = rows.map(
-          (row) => ({
-            queue: PUBLISH_POST_QUEUE,
-            // Payload mínimo a propósito: el worker relee la fila con su propio scope. Copiar
-            // caption, cuenta o privacidad acá los congelaría en el momento de programar, y
-            // un `Reschedule` posterior publicaría lo viejo.
-            payload: { companyId, postId: row.id },
-            options: {
-              transaction: tx,
-              startAfter: scheduledAt,
-              // Un post por fila. La fila es nueva en cada programación, así que esto no
-              // deduplica programaciones distintas: deduplica el reintento del mismo
-              // encolado si la transacción se reintenta por un deadlock.
-              singletonKey: `${PUBLISH_POST_QUEUE}:${row.id}`,
-              // Sin reintentos automáticos. `NFR-015` prohíbe duplicar un post y `NFR-005`
-              // prohíbe reintentar solo lo no idempotente: un segundo intento después de un
-              // timeout del proveedor puede publicar dos veces. El watcher del carril lento
-              // (72 h) es el mecanismo de recuperación, no el retry de la cola.
-              retryLimit: 0,
-            },
-          }),
-        );
-        await queue.enqueueMany(jobs);
-
-        return { kind: "created" as const, rows };
-      });
+      const outcome = await request.tx((tx) =>
+        schedulePostsInTx(tx, {
+          companyId,
+          contentId,
+          targets,
+          scheduledAt,
+          nowMs,
+          queue,
+        }),
+      );
 
       if (outcome.kind === "content_missing") {
         throw crossTenant("content", contentId, companyId);
@@ -706,6 +643,208 @@ export function registerPostRoutes(app: ZodApp): void {
 
 type PostRow = Awaited<ReturnType<typeof postRepository.create>>;
 type Tx = Parameters<typeof postRepository.list>[0];
+
+/**
+ * `GET /posts?from&to` — el rango del calendario (`PU-CAL-002`).
+ *
+ * Es la propuesta de `docs/SESSION-2026-09-23-sexta-tanda.md`, tal cual: ventana
+ * `[from, to)` en UTC sobre la **fecha efectiva** `coalesce(postedAt, scheduledAtUtc)`
+ * —un post del carril lento sale hasta 72 h tarde y se dibuja donde salió—, orden
+ * ascendente, y un cursor **propio de este modo**: `r:<ms>:<id>` en base64url. El
+ * cursor del listado sin rango es `(createdAt, id)` descendente; aceptar uno en el
+ * otro modo devolvería una página sin sentido en vez de un error, así que el prefijo
+ * `r:` los distingue y el de otro modo es `400`.
+ *
+ * `status` se sigue aplicando. Con un solo extremo es `400`: un rango abierto no tiene
+ * techo y deja de ser "el mes que se ve".
+ */
+async function listPostsInRange(request: FastifyRequest, q: ListPostsQuery) {
+  const { from, to } = q;
+  if (from === undefined || to === undefined) {
+    throw new ApiRejection(400, "bad_request", "Pass both from and to, or neither.");
+  }
+  if (to <= from) {
+    throw new ApiRejection(400, "bad_request", "to must be after from.");
+  }
+  if (to - from > POSTS_RANGE_MAX_DAYS * DAY_MS) {
+    throw new ApiRejection(
+      400,
+      "bad_request",
+      `The range can't be longer than ${String(POSTS_RANGE_MAX_DAYS)} days.`,
+    );
+  }
+  const after = q.cursor === undefined ? undefined : decodeRangeCursor(q.cursor);
+  const companyId = request.auth.companyId;
+
+  const rows = await request.tx((tx) =>
+    postCalendar.listInRange(
+      tx,
+      { companyId },
+      {
+        fromMs: from,
+        toMs: to,
+        // Uno de más para saber si hay otra página sin un `COUNT`.
+        limit: q.limit + 1,
+        ...(after === undefined ? {} : { after }),
+        ...(q.status === undefined ? {} : { statuses: q.status }),
+      },
+    ),
+  );
+  const hasMore = rows.length > q.limit;
+  const items = hasMore ? rows.slice(0, q.limit) : rows;
+  const last = items[items.length - 1];
+  return page(
+    {
+      items,
+      cursor: hasMore && last !== undefined ? encodeRangeCursor(last) : null,
+      hasMore,
+    },
+    toPost,
+  );
+}
+
+const RANGE_CURSOR_RE =
+  /^r:(\d+):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+
+function encodeRangeCursor(row: PostRow): string {
+  const at = (row.postedAt ?? row.scheduledAtUtc).getTime();
+  return Buffer.from(`r:${String(at)}:${row.id}`, "utf8").toString("base64url");
+}
+
+function decodeRangeCursor(cursor: string): { atMs: number; id: string } {
+  const decoded = Buffer.from(cursor, "base64url").toString("utf8");
+  const match = RANGE_CURSOR_RE.exec(decoded);
+  if (match === null) {
+    throw new ApiRejection(400, "bad_request", "Invalid cursor for a ranged listing.");
+  }
+  return { atMs: Number(match[1]), id: match[2] ?? "" };
+}
+
+/**
+ * El *publishing job* de un post (§9.5 punto 8). Uno por fila, encolado en la
+ * transacción que la creó. Lo usan `schedulePostsInTx` y mover un post en el
+ * calendario (`routes/v1/calendar.ts`), que crea una fila nueva.
+ */
+export function publishJobFor(
+  companyId: string,
+  postId: string,
+  scheduledAt: Date,
+  tx: Tx,
+): JobSpec<{ companyId: string; postId: string }> {
+  return {
+    queue: PUBLISH_POST_QUEUE,
+    // Payload mínimo a propósito: el worker relee la fila con su propio scope. Copiar
+    // caption, cuenta o privacidad acá los congelaría en el momento de programar, y
+    // un `Reschedule` posterior publicaría lo viejo.
+    payload: { companyId, postId },
+    options: {
+      transaction: tx,
+      startAfter: scheduledAt,
+      // Un post por fila. La fila es nueva en cada programación, así que esto no
+      // deduplica programaciones distintas: deduplica el reintento del mismo
+      // encolado si la transacción se reintenta por un deadlock.
+      singletonKey: `${PUBLISH_POST_QUEUE}:${postId}`,
+      // Sin reintentos automáticos. `NFR-015` prohíbe duplicar un post y `NFR-005`
+      // prohíbe reintentar solo lo no idempotente: un segundo intento después de un
+      // timeout del proveedor puede publicar dos veces. El watcher del carril lento
+      // (72 h) es el mecanismo de recuperación, no el retry de la cola.
+      retryLimit: 0,
+    },
+  };
+}
+
+/** Lo que decide `schedulePostsInTx`. `created` trae las filas ya escritas. */
+export type ScheduleOutcome =
+  | { readonly kind: "content_missing" }
+  | { readonly kind: "content_failed" }
+  | { readonly kind: "rejected"; readonly rejection: ScheduleRejection }
+  | { readonly kind: "created"; readonly rows: PostRow[] };
+
+export interface ScheduleParams {
+  readonly companyId: string;
+  readonly contentId: string;
+  readonly targets: readonly FlatTarget[];
+  readonly scheduledAt: Date;
+  readonly nowMs: number;
+  readonly queue: Queue;
+}
+
+/**
+ * El corazón de `POST /content/:id/schedule`, **dentro de la transacción de quien
+ * llama**: resolver la cuenta de cada target, crear un post por target y encolar su
+ * job de publicación en la misma transacción (ADR-005).
+ *
+ * Se sacó del handler para que el auto-slot (`routes/v1/calendar.ts`) y la
+ * conversión de slots planificados creen posts **por el mismo camino** y no por una
+ * copia: la resolución de cuenta y el encolado son exactamente lo que no puede
+ * divergir (trampa 19). Las validaciones de la request —hora futura, cola montada,
+ * `enableCaptionGeneration`— siguen en cada ruta, porque son de la request.
+ */
+export async function schedulePostsInTx(
+  tx: Tx,
+  params: ScheduleParams,
+): Promise<ScheduleOutcome> {
+  const { companyId, contentId, targets, scheduledAt, nowMs, queue } = params;
+  const content = await contentRepository.findById(tx, { companyId }, contentId);
+  if (content === null) return { kind: "content_missing" as const };
+
+  // FR-060 admite programar contenido en `BUILDING` (el post espera en `BUILDING`
+  // hasta que el media esté listo). `FAILED` no lo cubre, y `unsupported_content_state`
+  // es el código que el PRD usa para "el contenido está BUILDING o FAILED" (PRD:1202).
+  if (content.status === "FAILED") return { kind: "content_failed" as const };
+
+  // FR-060: "Si el contenido aún no está `CREATED`, el post queda en `BUILDING`".
+  const status: "SCHEDULED" | "BUILDING" =
+    content.status === "CREATED" ? "SCHEDULED" : "BUILDING";
+
+  // La resolución de cuenta y la fila que sale de ella se arman en el mismo paso:
+  // llevarlas en dos listas paralelas obligaría a indexar una con el índice de la
+  // otra, que es donde un desfase se vuelve un post publicado en la cuenta ajena.
+  const values = [];
+  for (const target of targets) {
+    const resolution = await resolveAccount(tx, companyId, target, {
+      scheduledAtMs: scheduledAt.getTime(),
+      nowMs,
+    });
+    if (!resolution.ok) {
+      return { kind: "rejected" as const, rejection: resolution.rejection };
+    }
+    const account = resolution.account;
+    values.push({
+      contentId: content.id,
+      platform: target.platform,
+      accountType: account.accountType,
+      // El CHECK `posts_account_exclusive` exige **exactamente uno** de los dos no
+      // nulo, y `posts_account_type_matches` que sea el que `accountType` nombra.
+      // `resolveAccount` es el único sitio que decide cuál, justamente para que no
+      // haya una segunda opinión que pueda discrepar con la base.
+      connectionId: account.connectionId,
+      warmedAccountId: account.warmedAccountId,
+      connectionUsername: account.connectionUsername,
+      scheduledAtUtc: scheduledAt,
+      caption: target.caption,
+      description: target.description,
+      discloseAsAds: target.discloseAsAds,
+      aiContentDisclaimer: target.aiContentDisclaimer,
+      instagramSlideshowFormat: target.instagramSlideshowFormat,
+      postingMode: target.postingMode,
+      privacyLevel: target.privacyLevel,
+      tiktokSoundId: target.tiktokSoundId,
+      tiktokSoundMode: target.tiktokSoundMode,
+      status,
+    });
+  }
+
+  const rows = await postRepository.createMany(tx, { companyId }, values);
+
+  // ADR-005: el encolado va **dentro** de la transacción que creó las filas. Si el
+  // commit se cae, no queda ni post ni job; si la cola se cae, `PortError` aborta la
+  // transacción y no quedan posts sin publicador.
+  const jobs = rows.map((row) => publishJobFor(companyId, row.id, scheduledAt, tx));
+  await queue.enqueueMany(jobs);
+
+  return { kind: "created" as const, rows };
+}
 
 /**
  * Trae de una sola vez los posts de un lote, indexados por id.

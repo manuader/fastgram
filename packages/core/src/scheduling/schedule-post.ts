@@ -560,3 +560,14 @@ export function isTerminal(status: PostStatus): boolean {
     status === "CANCELLED"
   );
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// Estrategia y calendario (`PU-CAL-001`, `PU-CAL-002`)
+// ───────────────────────────────────────────────────────────────────────────
+//
+// Se re-exportan desde acá y no desde `src/index.ts` porque ese índice es
+// compartido con otros agentes del sprint 2: `index.ts` ya exporta este
+// archivo, así que los módulos nuevos del área quedan publicados sin tocarlo.
+export * from "./zoned-time.js";
+export * from "./auto-slot.js";
+export * from "./calendar-move.js";

@@ -40,6 +40,7 @@ import * as brand from "./resources/brand.js";
 import * as onboarding from "./resources/onboarding.js";
 import * as models from "./resources/models.js";
 import * as workspaces from "./resources/workspaces.js";
+import * as strategy from "./resources/strategy.js";
 import {
   imageUploadReservationRequestSchema,
   mediaUploadReservationRequestSchema,
@@ -409,6 +410,39 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           },
         },
       },
+      "/blitz/generate": {
+        post: {
+          operationId: "generateBlitzFromPrompt",
+          summary:
+            "Crea sugerencias desde un tema (PU-BLITZ-003): encola un job y devuelve el requestId. Entran primeras en la cola. No cobra. Requiere Idempotency-Key.",
+          parameters: [idempotencyParam],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(blitz.generateBlitzRequestSchema)),
+          },
+          responses: {
+            "202": ok(
+              "Pedido encolado",
+              dataOf(toJsonSchema(blitz.generateBlitzAcceptedSchema)),
+            ),
+            "400": errorResponse("bad_request — prompt, contentType o count inválidos"),
+            "409": errorResponse("conflict — Idempotency-Key en uso con otro body"),
+            "503": errorResponse("service_unavailable — no hay cola montada"),
+          },
+        },
+      },
+      "/blitz/generate/{requestId}": {
+        get: {
+          operationId: "getBlitzPromptRequest",
+          summary:
+            "Estado de un pedido de crear desde prompt: queued | running | done | failed, con las sugerencias o el motivo.",
+          parameters: [pathParam("requestId")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(blitz.blitzPromptRequestSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
       "/blitz/preferences": {
         get: {
           operationId: "getBlitzPreferences",
@@ -663,6 +697,27 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           responses: { "200": ok("OK", pageOf(mediaJs)) },
         },
       },
+      "/media/brand-kit": {
+        post: {
+          operationId: "generateBrandKit",
+          summary:
+            "Encola fondos de marca generados localmente (PU-MEDIA-002). Idempotency-Key opcional.",
+          parameters: [{ ...idempotencyParam, required: false }],
+          requestBody: {
+            required: false,
+            content: json(toJsonSchema(media.brandKitRequestSchema)),
+          },
+          responses: {
+            "202": ok(
+              "Generación encolada",
+              dataOf(toJsonSchema(media.brandKitJobSchema)),
+            ),
+            "400": errorResponse("bad_request"),
+            "409": errorResponse("conflict — misma Idempotency-Key con otro body"),
+            "503": errorResponse("service_unavailable — la API no tiene cola"),
+          },
+        },
+      },
       "/media/{id}": {
         get: {
           operationId: "getMedia",
@@ -749,7 +804,8 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
         },
         patch: {
           operationId: "updateContent",
-          summary: "Edición menor con concurrencia optimista. Requiere Idempotency-Key.",
+          summary:
+            "Edición menor con concurrencia optimista: cajas de texto y, opcionalmente, swap de media (`assets`). Requiere Idempotency-Key.",
           parameters: [pathParam("id"), idempotencyParam],
           requestBody: {
             required: true,
@@ -757,6 +813,9 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           },
           responses: {
             "202": ok("Rebuild encolado", dataOf(contentJs)),
+            "400": errorResponse(
+              "bad_request: caja o slot de media inexistente, o URL fuera del Media Bank / catálogo de audio",
+            ),
             "409": errorResponse(
               "stale_revision / content_edit_in_progress / content_has_linked_posts / unsupported_content_state",
             ),
@@ -776,7 +835,8 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
       "/content/{id}/editable": {
         get: {
           operationId: "getEditableContent",
-          summary: "Representación editable: canvas y cajas de texto",
+          summary:
+            "Representación editable: canvas, cajas de texto y media vigente (`assets`)",
           parameters: [pathParam("id")],
           responses: {
             "200": ok("OK", dataOf(toJsonSchema(content.editableContentSchema))),
@@ -1267,6 +1327,91 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
             "200": ok("OK", dataOf(toJsonSchema(models.providerModelsSchema))),
             "400": errorResponse("bad_request — base URL inválida o faltante"),
             "404": errorResponse("not_found — el proveedor no existe"),
+          },
+        },
+      },
+      /**
+       * Estrategia por marca y calendario — `PU-BRAND-002`, `PU-CAL-001`,
+       * `PU-CAL-002`. Fuera de la §9.3 del PRD (uso personal). Ver la cabecera
+       * de `resources/strategy.ts`.
+       */
+      "/strategy": {
+        get: {
+          operationId: "getStrategy",
+          summary:
+            "Estrategia de publicación de la marca; la por defecto (isDefault) si nunca se guardó",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(strategy.strategySchema))),
+          },
+        },
+        put: {
+          operationId: "updateStrategy",
+          summary: "Reemplaza la estrategia de la marca (y su zona horaria)",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(strategy.updateStrategyRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(strategy.strategySchema))),
+            "400": errorResponse("bad_request"),
+          },
+        },
+      },
+      "/content/{id}/autoschedule": {
+        post: {
+          operationId: "autoscheduleContent",
+          summary:
+            "Aprobar → próximo horario libre por red de la estrategia: post si hay una conexión activa única, slot planificado si no",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(strategy.autoscheduleRequestSchema)),
+          },
+          responses: {
+            "201": ok(
+              "Programado",
+              dataOf(toJsonSchema(strategy.autoscheduleResultSchema)),
+            ),
+            "404": errorResponse("not_found"),
+            "409": errorResponse(
+              "unsupported_content_state — la pieza falló; conflict — ninguna red activa",
+            ),
+            "503": errorResponse(
+              "service_unavailable — hace falta un post y no hay cola",
+            ),
+          },
+        },
+      },
+      "/calendar": {
+        get: {
+          operationId: "getCalendar",
+          summary:
+            "Posts y slots planificados en [from, to) por fecha efectiva, de esta marca o de todas las del dueño",
+          parameters: queryParams(strategy.calendarQuerySchema),
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(strategy.calendarSchema))),
+            "400": errorResponse("bad_request — rango inválido o mayor a 62 días"),
+          },
+        },
+      },
+      "/calendar/items/{kind}/{id}": {
+        patch: {
+          operationId: "moveCalendarItem",
+          summary:
+            "Mueve un post no publicado o un slot planificado a otra hora (brandId opcional, del mismo dueño)",
+          parameters: [pathParam("kind"), pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(strategy.moveCalendarItemRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(strategy.calendarItemSchema))),
+            "400": errorResponse("out_of_range — la hora no es futura"),
+            "404": errorResponse("not_found"),
+            "409": errorResponse(
+              "conflict / invalid_state — ya salió, carril lento o warmed",
+            ),
+            "503": errorResponse("service_unavailable — mover un post necesita la cola"),
           },
         },
       },

@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { createLlmBrandSynthesizer } from "./brand/synthesizer.js";
 import type { SuggestionCopywriter } from "./discovery/copywriter.js";
 import { REFILL_WITHOUT_LLM_WHY } from "./discovery/refill-handler.js";
+import { BRAND_BACKGROUNDS_UNMOUNTED_WHY } from "./brand-kit/mount.js";
 import {
   brandAnalysisUnmountedWhy,
   createHandlers,
@@ -69,6 +70,7 @@ describe("createHandlers", () => {
     expect(Object.keys(handlers).sort()).toEqual(SIEMPRE);
     expect(unmounted).toEqual([
       { queue: JOB_QUEUES.mediaNormalization, why: NORMALIZATION_UNMOUNTED_WHY },
+      { queue: JOB_QUEUES.brandBackgrounds, why: BRAND_BACKGROUNDS_UNMOUNTED_WHY },
       {
         queue: JOB_QUEUES.brandSourceAnalysis,
         why: brandAnalysisUnmountedWhy(["BRAND_SNAPSHOT_RAW_RETENTION_DAYS"]),
@@ -82,7 +84,11 @@ describe("createHandlers", () => {
     expect(Object.keys(handlers).sort()).toEqual(
       [...SIEMPRE, JOB_QUEUES.mediaNormalization].sort(),
     );
-    expect(unmounted.map((u) => u.queue)).toEqual([JOB_QUEUES.brandSourceAnalysis]);
+    // El de memoria no genera fondos: `brand-backgrounds` sigue afuera.
+    expect(unmounted.map((u) => u.queue)).toEqual([
+      JOB_QUEUES.brandBackgrounds,
+      JOB_QUEUES.brandSourceAnalysis,
+    ]);
   });
 
   it("sin configuración de análisis: brand-source-analysis NO se monta y nombra lo que falta", () => {
@@ -111,7 +117,29 @@ describe("createHandlers", () => {
     expect(Object.keys(handlers).sort()).toEqual(
       [...SIEMPRE, JOB_QUEUES.mediaNormalization, JOB_QUEUES.brandSourceAnalysis].sort(),
     );
-    expect(unmounted).toEqual([]);
+    expect(unmounted.map((u) => u.queue)).toEqual([JOB_QUEUES.brandBackgrounds]);
+  });
+
+  it("brand-backgrounds se monta con el generador del renderer de normalización", () => {
+    // Un doble con la forma de `HttpMediaRenderer`: los dos puertos.
+    const both = Object.assign(new MemoryMediaRenderer(), {
+      generateBrandBackground: () =>
+        Promise.reject(new Error("no se llama al construir")),
+    });
+    const { handlers, unmounted } = createHandlers(deps(both));
+    expect(handlers[JOB_QUEUES.brandBackgrounds]).toBeDefined();
+    expect(unmounted.map((u) => u.queue)).not.toContain(JOB_QUEUES.brandBackgrounds);
+  });
+
+  it("trampa 46: el generador NO sale del renderer de builds", () => {
+    // Negativa primero: con el de builds capaz de generar y sin el de
+    // normalización, no se monta — el de builds es el de memoria sin render.
+    const builds = Object.assign(new MemoryMediaRenderer(), {
+      generateBrandBackground: () => Promise.reject(new Error("no se llama")),
+    });
+    const { handlers, unmounted } = createHandlers({ ...deps(null), renderer: builds });
+    expect(handlers[JOB_QUEUES.brandBackgrounds]).toBeUndefined();
+    expect(unmounted.map((u) => u.queue)).toContain(JOB_QUEUES.brandBackgrounds);
   });
 
   it("sin LLM: discovery-refill se monta igual (inerte) y el arranque dice por qué", () => {

@@ -81,6 +81,41 @@ export const deckEn = {
   "deck.unbuildable":
     "That suggestion can't be built anymore, so it was skipped and nothing was charged.", // paráfrasis del 422 de la API
   "deck.skipFailed": "Couldn't skip that suggestion. It's back in the deck.", // nuevo
+  "deck.fromPrompt": "From your prompt", // nuevo · PU-BLITZ-003, chip de la tarjeta
+
+  // Create from prompt · PU-BLITZ-003 (EXT-009). Todo `nuevo`: el PRD no lo dibuja.
+  "prompt.title": "Create from prompt", // nuevo
+  "prompt.label": "What should it be about?", // nuevo
+  "prompt.placeholder": "e.g. a meme about Mondays for my coffee shop", // nuevo
+  "prompt.format": "Format", // nuevo
+  "prompt.format.any": "Any format (your mix)", // nuevo
+  "prompt.count": "How many", // nuevo
+  "prompt.submit": "Create", // nuevo
+  "prompt.tooShort": "Write at least 3 characters.", // nuevo
+  "prompt.tooLong": "Keep it under 500 characters.", // nuevo
+  "prompt.generating": "Creating {count} pieces from your prompt…", // nuevo
+  "prompt.generatingOne": "Creating a piece from your prompt…", // nuevo
+  "prompt.queued": "Waiting for the generator to pick it up…", // nuevo
+  "prompt.done": "{count} new pieces are at the top of your deck.", // nuevo
+  "prompt.doneOne": "Your new piece is at the top of your deck.", // nuevo
+  "prompt.donePartial":
+    "{count} of {requested} pieces made it — the model's copy for the rest didn't pass our checks.", // nuevo
+  "prompt.submitFailed": "Couldn't start that. Try again.", // nuevo
+  "prompt.statusFailed": "Lost track of that request. It may still show up in your deck.", // nuevo
+  "prompt.dismiss": "Dismiss", // nuevo
+  "prompt.failed.llm":
+    "There's no AI model set up for text, so nothing could be written.", // nuevo
+  "prompt.failed.llmLink": "Set up AI models", // nuevo
+  "prompt.failed.llmFailed":
+    "The AI model didn't respond after a few tries. Check it's running, then try again.", // nuevo
+  "prompt.failed.noMediaForFormat":
+    "Your Library has no media for that format yet. Upload some and tag it for that format.", // nuevo
+  "prompt.failed.noMedia":
+    "None of the formats in your mix has media in your Library yet.", // nuevo
+  "prompt.failed.mediaLink": "Go to Library", // nuevo
+  "prompt.failed.copyRejected":
+    "The AI's text didn't pass our checks. Try rewording your prompt.", // nuevo
+  "prompt.failed.generic": "Couldn't create pieces from that prompt.", // nuevo
 } as const;
 
 export type DeckMessageKey = keyof typeof deckEn;

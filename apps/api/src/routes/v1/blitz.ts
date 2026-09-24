@@ -104,6 +104,24 @@
  * UPDATE` **sin** `SKIP LOCKED`—: si llegan a la vez sobre el mismo id, la
  * segunda espera a la primera, ve la fila ya cambiada y responde `409 conflict`.
  * "Ajena o inexistente" es `404`, sin distinguir (§9.2).
+ *
+ * ## Crear desde prompt (`PU-BLITZ-003`, `EXT-009`)
+ *
+ *  - `POST /blitz/generate` guarda el pedido (`blitz_prompt_requests`, migración
+ *    `0012`) y encola el job **en la misma transacción** (ADR-005): un pedido
+ *    `queued` sin job no puede existir. Responde `202 { requestId }`. No cobra:
+ *    igual que el refill, cobra aceptar la pieza.
+ *  - `GET /blitz/generate/:requestId` devuelve en qué quedó, con las
+ *    sugerencias que produjo o el código de por qué no.
+ *
+ * El job viaja por la cola `discovery-refill` con `promptRequestId` (ver la
+ * cabecera de `apps/worker/src/discovery/prompt-handler.ts`). La `singletonKey`
+ * lleva el `requestId`, un UUID nuevo por pedido: no se repite nunca (trampas
+ * 39 y 45), y se mira `created`.
+ *
+ * Las sugerencias que salen de un pedido van **primeras** en `GET /blitz/queue`
+ * y son las que consume `POST /blitz` sin id: el orden es uno solo
+ * (`QUEUE_ORDER` en `db`).
  */
 import { randomUUID } from "node:crypto";
 
@@ -112,9 +130,12 @@ import { z } from "zod";
 import {
   DISCOVERY_QUEUE_TARGET_ITEMS,
   contentBuildPayloadSchema,
+  generateBlitzRequestSchema,
+  idempotencyHeaderSchema,
   optionalIdempotencyHeaderSchema,
   runBlitzRequestSchema,
   updateBlitzPreferencesRequestSchema,
+  type BlitzPromptRequest,
   type BlitzQuotaExceededDetails,
   type BlitzSuggestion,
   type ContentQuotaExceededDetails,
@@ -123,6 +144,7 @@ import {
   BLITZ_DAILY_SWIPE_LIMIT,
   DomainError,
   JOB_QUEUES,
+  PROMPT_FAILURE_REASONS,
   TRIAL_CONTENT_ALLOWANCE,
   acceptBlitzSuggestionUseCase,
   assertValidBlitzRequest,
@@ -146,6 +168,9 @@ import {
   blitzPreferencesRepository,
   claimNextQueuedSuggestion,
   companyProfileRepository,
+  createPromptRequest,
+  findPromptRequest,
+  listPromptSuggestionIds,
   discardQueuedSuggestion,
   findLiveMedia,
   listQueuedSuggestions,
@@ -155,6 +180,7 @@ import {
   contentRepository,
   markSuggestionPopped,
   quotaLedgerStore,
+  type BlitzPromptRequestRow,
   type ContentRow,
   type QueuedSuggestionView,
   type SuggestionRow,
@@ -833,8 +859,32 @@ export function toBlitzSuggestion(
           },
     ),
     ...opt("preview", preview),
+    ...opt("promptRequestId", row.promptRequestId ?? undefined),
   };
 }
+
+/**
+ * Un pedido de «crear desde prompt» → la forma del contrato. `failureReason`
+ * sólo con `failed`, y sólo si es uno de los códigos estables: la columna es
+ * texto, y un valor que no esté en la lista no sale (el worker sólo escribe
+ * códigos de `PROMPT_FAILURE_REASONS`; esto es el cinturón).
+ */
+function toPromptRequest(
+  row: BlitzPromptRequestRow,
+  suggestionIds: readonly string[],
+): BlitzPromptRequest {
+  const reason = PROMPT_FAILURE_REASONS.find((r) => r === row.failureReason);
+  return {
+    requestId: row.id,
+    status: row.status,
+    suggestionIds: [...suggestionIds],
+    ...opt("failureReason", row.status === "failed" ? reason : undefined),
+    ...opt("contentType", row.contentType ?? undefined),
+    count: row.count,
+  };
+}
+
+const promptRequestParams = z.object({ requestId: z.string().min(1) });
 
 /**
  * Una aceptación entera, dentro de `tx`. Lanza `ApiRejection` para los rechazos
@@ -1154,6 +1204,94 @@ export function registerBlitzRoutes(app: ZodApp): void {
       // La cola acaba de perder una.
       await pedirRelleno(request, companyId);
       return reply.status(204).send();
+    },
+  );
+
+  // ── POST /blitz/generate ── (`PU-BLITZ-003`, ver la cabecera)
+  app.post(
+    "/blitz/generate",
+    {
+      schema: {
+        body: generateBlitzRequestSchema,
+        headers: idempotencyHeaderSchema,
+      },
+    },
+    async (request, reply) => {
+      const companyId = request.auth.companyId;
+      const body = request.body;
+
+      if (queue === undefined) {
+        // Sin cola, el pedido quedaría `queued` para siempre y la web haciendo
+        // polling contra nada. Mismo 503 que `POST /blitz`.
+        return reply.status(503).send({
+          error: {
+            code: "service_unavailable",
+            message: "Generating from a prompt is temporarily unavailable.",
+          },
+        });
+      }
+
+      const create = (): Promise<{ requestId: string }> =>
+        request.tx(async (tx) => {
+          const row = await createPromptRequest(
+            tx,
+            { companyId },
+            {
+              prompt: body.prompt,
+              contentType: body.contentType ?? null,
+              count: body.count ?? 1,
+            },
+          );
+          const singletonKey = `${JOB_QUEUES.discoveryRefill}:prompt:${row.id}`;
+          const { created } = await queue.enqueue<DiscoveryRefillJob>({
+            queue: JOB_QUEUES.discoveryRefill,
+            payload: { companyId, promptRequestId: row.id },
+            options: { transaction: tx, singletonKey },
+          });
+          if (!created) {
+            // Con un UUID nuevo por pedido no es alcanzable. Si pasa, que la
+            // transacción vuelva atrás en vez de dejar un pedido sin job.
+            throw new Error(`discovery-refill no encoló el pedido: ${singletonKey}`);
+          }
+          return { requestId: row.id };
+        });
+
+      return withIdempotency(
+        idempotency,
+        request,
+        reply,
+        {
+          key: idempotencyKeyOf(request.headers),
+          route: "POST /blitz/generate",
+          body,
+          successStatus: 202,
+        },
+        create,
+      );
+    },
+  );
+
+  // ── GET /blitz/generate/:requestId ── (`PU-BLITZ-003`)
+  //
+  // Un id que no es uuid lo neutraliza el hook de `route-ids.ts` (el parámetro
+  // termina en `Id`): llega el uuid nulo, no hay fila, y es el mismo 404 que
+  // uno ajeno (§9.2).
+  app.get(
+    "/blitz/generate/:requestId",
+    { schema: { params: promptRequestParams } },
+    async (request) => {
+      const companyId = request.auth.companyId;
+      const { requestId } = request.params;
+      const view = await request.tx(async (tx) => {
+        const row = await findPromptRequest(tx, { companyId }, requestId);
+        if (row === null) return null;
+        return toPromptRequest(
+          row,
+          await listPromptSuggestionIds(tx, { companyId }, requestId),
+        );
+      });
+      if (view === null) throw notFound("prompt request");
+      return data(view);
     },
   );
 

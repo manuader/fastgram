@@ -245,6 +245,8 @@ const { handlers: HANDLERS, unmounted } = createHandlers({
   logger,
   brandAnalysis: brandAnalysisMount(),
   copywriter,
+  // `PU-MEDIA-002`: para que el refill encole el kit de fondos de una marca sin media.
+  queue,
 });
 
 for (const [name, handler] of Object.entries(HANDLERS)) {

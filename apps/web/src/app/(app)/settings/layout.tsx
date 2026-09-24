@@ -20,6 +20,8 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
           { href: ROUTES.settings, label: tw("settings.nav.general"), exact: true },
           { href: ROUTES.settingsBrands, label: tw("settings.nav.brands") },
           { href: ROUTES.settingsModels, label: tw("settings.nav.models") },
+          // `PU-BRAND-002`. Literal y no `ROUTES`: `lib/nav/routes.ts` es de otro agente.
+          { href: "/settings/strategy", label: tw("settings.nav.strategy") },
         ]}
       />
       {children}
