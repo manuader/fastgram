@@ -19,6 +19,7 @@ import {
   finalizeBuildPlan,
   generatedTextOf,
   parseSuggestionBuildPlan,
+  pickBuildPlanAudio,
   rebindMediaUrls,
   slideshowCanvas,
 } from "./blitz-build.js";
@@ -512,5 +513,66 @@ describe("la copy (AI-002) — pedido y lectura", () => {
     expect(composeAiExplanation(["uno", "dos\nlíneas"], "Format: slideshow.")).toBe(
       "• uno\n• dos líneas\n\nFormat: slideshow.",
     );
+  });
+});
+
+describe("la música de la marca en el plan (sprint 7)", () => {
+  const bank = buildMediaBank(FULL, []);
+  const track = { audioId: "a-1", url: "https://cdn.test/audio/co/a.mp3" };
+
+  it("el plan con audio compone el bloque `audio` en los formatos de video", () => {
+    for (const format of ["wall-of-text", "green-screen", "video-hook"] as const) {
+      const sel = selectMedia(seeded(1), bank, format, null);
+      if (sel === null) throw new Error("sin media");
+      const plan = { ...finalizeBuildPlan(sel, ["x"]), audio: track };
+      const payload = composeBlitzBuildPayload(plan);
+      expect(payload).toHaveProperty("audio", { url: track.url });
+      // Y sobrevive a la vuelta por la base (jsonb → parse → rebind).
+      const parsed = parseSuggestionBuildPlan(JSON.parse(JSON.stringify(plan)), format);
+      if (!parsed.ok) throw new Error(parsed.reason);
+      expect(parsed.plan.audio).toEqual(track);
+      const live = new Map(
+        selectionMediaIds(sel).map((id) => [id, `https://live/${id}`]),
+      );
+      expect(rebindMediaUrls(parsed.plan, live).audio).toEqual(track);
+    }
+  });
+
+  it("un plan viejo sin audio sigue valiendo y sale sin música", () => {
+    const sel = selectMedia(seeded(1), bank, "wall-of-text", null);
+    if (sel === null) throw new Error("sin media");
+    const parsed = parseSuggestionBuildPlan(
+      JSON.parse(JSON.stringify(finalizeBuildPlan(sel, ["x"]))),
+      "wall-of-text",
+    );
+    if (!parsed.ok) throw new Error(parsed.reason);
+    expect(parsed.plan.audio).toBeUndefined();
+    expect(composeBlitzBuildPayload(parsed.plan)).not.toHaveProperty("audio");
+  });
+
+  it("un audio roto no descarta la sugerencia: sale sin música", () => {
+    const sel = selectMedia(seeded(1), bank, "wall-of-text", null);
+    if (sel === null) throw new Error("sin media");
+    const raw = { ...finalizeBuildPlan(sel, ["x"]), audio: { url: 3 } };
+    const parsed = parseSuggestionBuildPlan(
+      JSON.parse(JSON.stringify(raw)),
+      "wall-of-text",
+    );
+    if (!parsed.ok) throw new Error(parsed.reason);
+    expect(parsed.plan.audio).toBeUndefined();
+  });
+
+  it("el sorteo: nada en slideshow ni sin pistas; una de las candidatas si hay", () => {
+    const rng = seeded(7);
+    const pick = rng.weightedPick.bind(rng);
+    expect(pickBuildPlanAudio("slideshow", [track], pick)).toBeNull();
+    expect(pickBuildPlanAudio("wall-of-text", [], pick)).toBeNull();
+    const other = { audioId: "a-2", url: "https://cdn.test/audio/co/b.mp3" };
+    const seen = new Set<string>();
+    for (let i = 0; i < 40; i++) {
+      const got = pickBuildPlanAudio("green-screen", [track, other], pick);
+      if (got !== null) seen.add(got.audioId);
+    }
+    expect([...seen].sort()).toEqual(["a-1", "a-2"]);
   });
 });

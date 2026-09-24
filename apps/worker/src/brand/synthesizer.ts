@@ -17,6 +17,9 @@
  * respuesta con `parseBrandSynthesis`, que aplica las dos comprobaciones que
  * ningún prompt puede saltarse (extracto textual, valor que no sea una orden).
  *
+ * Con `verifier`, cada campo pasa por `JV-4` antes de volver: la confianza
+ * deja de ser siempre `low` (`P2-JV-004`).
+ *
  * **No fija modelo, temperatura ni tope de tokens.** ADR-009: «no se fijan
  * modelos ni precios». El modelo sale de `LLM_MODEL` a través del adaptador.
  */
@@ -30,6 +33,8 @@ import {
   type SynthesisInput,
 } from "@fastgram/core";
 import type { Llm } from "@fastgram/ports";
+
+import type { FieldVerifier } from "./field-verifier.js";
 
 export interface BrandSynthesisOutcome {
   readonly fields: readonly DerivedField[];
@@ -63,6 +68,12 @@ export class SynthesisRejectedError extends Error {
 export interface LlmBrandSynthesizerDeps {
   readonly llm: Llm;
   /**
+   * `JV-4` (`DP-004`): mide la confianza de cada campo contra su extracto.
+   * Sin él —o sin `companyId` en el input— todo campo queda en `low`, que es
+   * el comportamiento anterior. Ver `./field-verifier.ts`.
+   */
+  readonly verifier?: FieldVerifier;
+  /**
    * La marca del contenedor de `containUntrusted`. **Tiene que ser
    * impredecible para quien escribió la bio**: si fuera fija, bastaría con
    * escribirla para cerrar el contenedor. Default: 16 bytes aleatorios por
@@ -95,8 +106,15 @@ export function createLlmBrandSynthesizer(
         corpus: request.corpus,
       });
       if (!parsed.ok) throw new SynthesisRejectedError(parsed.reason);
+      const fields =
+        deps.verifier === undefined || input.companyId === undefined
+          ? parsed.fields
+          : await deps.verifier.verify(parsed.fields, {
+              companyId: input.companyId,
+              sourceId: input.sourceId,
+            });
       return {
-        fields: parsed.fields,
+        fields,
         rejected: parsed.rejected,
         fenceEscapeAttempts: request.fenceEscapeAttempts,
         model: completion.model,

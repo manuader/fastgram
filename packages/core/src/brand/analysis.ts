@@ -239,6 +239,12 @@ export function parseBrandSourceAnalysisJob(raw: unknown): ParsedBrandSourceAnal
 
 /** Lo que la recolección (etapa 1) le entrega a la síntesis. */
 export interface SynthesisInput {
+  /**
+   * El workspace, para el sujeto de `JV-4` en `judgment_records`. Opcional:
+   * la síntesis no lo necesita, y un llamador sin él sólo pierde la
+   * verificación (el campo queda en `low`).
+   */
+  readonly companyId?: string;
   readonly sourceId: string;
   readonly sourceType: BrandSourceType;
   readonly profile: SocialProfileSignals;

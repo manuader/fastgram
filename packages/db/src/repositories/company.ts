@@ -87,6 +87,24 @@ export interface CompanyBilling {
 export const companyRepository = {
   table: companies,
 
+  /**
+   * `P1-ONB-003`: el logo de la marca (`companies.logo_url`). Hasta acá nadie
+   * lo escribía. `null` lo borra. Devuelve `false` si la fila no se ve (otro
+   * workspace o inexistente: la ruta lo traduce a 404).
+   */
+  async setLogoUrl(
+    exec: Executor,
+    scope: TenantScope,
+    logoUrl: string | null,
+  ): Promise<boolean> {
+    const rows = await exec
+      .update(companies)
+      .set({ logoUrl, updatedAt: new Date() })
+      .where(eq(companies.id, scope.companyId))
+      .returning({ id: companies.id });
+    return rows.length > 0;
+  },
+
   /** La fila entera. `null` si el workspace no existe. */
   async load(exec: Executor, scope: TenantScope): Promise<CompanyRow | null> {
     const rows = await exec

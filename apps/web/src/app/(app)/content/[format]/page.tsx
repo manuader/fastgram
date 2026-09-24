@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { RoutePlaceholder } from "@/components/placeholder/RoutePlaceholder";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { CustomVideoUpload } from "@/components/studio/CustomVideoUpload";
+import { FormatStudio } from "@/components/studio/FormatStudio";
+import { GenerativeFormatStudio } from "@/components/studio/generative";
 import { CONTENT_FORMATS, findContentFormat } from "@/lib/content/formats";
-import { CUSTOM_FORMAT_ID } from "@/lib/studio/custom-video";
+import { CUSTOM_ROUTE_ID, studioFormatOf } from "@/lib/studio/studio-formats";
 
 interface PageProps {
   params: Promise<{ format: string }>;
@@ -15,12 +16,14 @@ interface PageProps {
  *
  * **Por qué una ruta dinámica y no 22 archivos.** El PRD enumera 22 paths y los
  * 22 existen: `generateStaticParams` los declara uno a uno, así que el build los
- * prerenderiza por separado y salen los 22 en la salida de `next build`. Lo que
- * se evita es copiar 22 veces el mismo archivo, que es 22 veces la oportunidad
- * de que uno se quede atrás cuando el editor cambie.
+ * prerenderiza por separado. Un segmento que no esté en la lista es un **404**.
  *
- * Un segmento que no esté en la lista es un **404**, no una página vacía:
- * `/content/no-existe` no es un formato del producto.
+ * Qué monta cada uno (sprint 7):
+ * - los cuatro formatos base (slideshow, wall of text, green screen, video
+ *   hook) → el Studio: `Create New` paso a paso y `Remix` (`FormatStudio`);
+ * - `custom` → la subida de video propio (`CustomVideoUpload`);
+ * - los 17 generativos → el estudio del agente G (`GenerativeFormatStudio`),
+ *   que decide qué hacer con un formato que todavía no soporta.
  */
 export function generateStaticParams(): { format: string }[] {
   return CONTENT_FORMATS.map((format) => ({ format: format.id }));
@@ -39,14 +42,7 @@ export default async function ContentFormatPage({ params }: PageProps) {
   const found = findContentFormat(format);
   if (found === undefined) notFound();
 
-  /**
-   * `custom` es el único de los 22 que tiene pantalla · `P2-STUDIO-009`,
-   * `F-083`. No es un privilegio: es el único cuyo backend existe entero
-   * (`/content/custom/video/upload-url` + `/content/custom/video`). Los otros
-   * 21 necesitan el wizard de `P2-STUDIO-002`, que no está, y un placeholder
-   * honesto es mejor que un formulario que no puede generar nada.
-   */
-  if (found.id === CUSTOM_FORMAT_ID) {
+  if (found.id === CUSTOM_ROUTE_ID) {
     return (
       <div className="fgw-page">
         <PageHeader title={found.label} description={found.description} />
@@ -55,13 +51,20 @@ export default async function ContentFormatPage({ params }: PageProps) {
     );
   }
 
+  const studio = studioFormatOf(found.id);
+  if (studio !== null) {
+    return (
+      <div className="fgw-page">
+        <PageHeader title={found.label} description={found.description} />
+        <FormatStudio format={studio} />
+      </div>
+    );
+  }
+
   return (
-    <RoutePlaceholder
-      screen={found.label}
-      spec="PRD §3.1 · F-070/F-084 · FR-070"
-      task="P2-STUDIO-001"
-    >
-      <p>{found.description}</p>
-    </RoutePlaceholder>
+    <div className="fgw-page">
+      <PageHeader title={found.label} description={found.description} />
+      <GenerativeFormatStudio formatId={found.id} />
+    </div>
   );
 }

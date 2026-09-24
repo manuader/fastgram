@@ -50,11 +50,22 @@ import { createInfluencerPipelineHandler } from "./influencers/pipeline-handler.
 import { createInfluencerCharacterMount } from "./influencers/mount.js";
 import { createQuotaResetHandler } from "./jobs/quota-reset-handler.js";
 import { createMediaNormalizationHandler } from "./media/normalization-handler.js";
+import { createOwnPostImportHandler } from "./own-posts/handler.js";
+import { YtDlpProfileLister } from "./own-posts/listers.js";
 import { createPublishHandler } from "./publishing/publish-handler.js";
 import type { PublishingMount } from "./publishing/mount.js";
 import { createPublishingSweepHandler } from "./publishing/sweep-handler.js";
 import { createWatchHandler } from "./publishing/watch-handler.js";
-import { createMediaImportHandler } from "./media-import/handler.js";
+import {
+  createMediaImportHandler,
+  createMediaImportRunner,
+} from "./media-import/handler.js";
+import type { Jv6JudgmentProvider } from "./discovery/jv6.js";
+import {
+  MEME_IMPORT_MAX_SECONDS,
+  createMemeFinder,
+  createYtDlpMemeSearcher,
+} from "./discovery/meme-finder.js";
 import { createMediaImportDispatcher } from "./inspiration/dispatcher.js";
 import { createInspirationIngestHandler } from "./inspiration/ingest-handler.js";
 import type { InspirationMount } from "./inspiration/mount.js";
@@ -122,6 +133,11 @@ export interface WorkerHandlerDeps {
    * que no lo miran). Necesita `queue` para encolar la normalización.
    */
   readonly mediaImport?: MediaImportMount;
+  /**
+   * Sprint 7 (`JV-6`, `DP-005`): el juicio que elige entre varios candidatos
+   * en el refill y en «crear desde prompt». Ausente = el ranking por tema.
+   */
+  readonly jv6Judgment?: Jv6JudgmentProvider;
   /**
    * Inspiration de uso personal: la lectura sin login de las referencias
    * (`inspiration/mount.ts`). Viaja por `media-import` y se monta sólo junto
@@ -240,6 +256,9 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
     [JOB_QUEUES.contentBuild]: createContentBuildHandler({
       db,
       renderer,
+      // Sprint 7 (F): el video propio (`custom`) se normaliza con el de
+      // normalización, no con el del build (otro presupuesto — trampa 46).
+      normalizer: deps.normalizationRenderer,
       storage,
       clock,
       appRole,
@@ -278,6 +297,9 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
             tokens: deps.publishing.tokens ?? undefined,
             media: deps.publishing.media ?? undefined,
             fingerprinter: deps.publishing.fingerprinter,
+            // Sprint 7 (publish-flow): caption derivada de X y Reel de slideshow.
+            allowXLinks: deps.publishing.allowXLinks,
+            slideshowReels: deps.publishing.slideshowReels,
           }),
     }),
     /**
@@ -320,6 +342,9 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
         copywriter: deps.copywriter,
         appRole,
         logger,
+        // Sprint 7 (`JV-6`): etiquetas de los clips y juicio entre candidatos.
+        storage,
+        ...(deps.jv6Judgment === undefined ? {} : { judgment: deps.jv6Judgment }),
         // `PU-MEDIA-002`: sin media para el mix, encola el kit de fondos.
         ...(deps.queue === undefined
           ? {}
@@ -331,6 +356,32 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
         copywriter: deps.copywriter,
         appRole,
         logger,
+        // Sprint 7: `JV-6` y «buscar el meme si no hay» (con `yt-dlp` montado).
+        storage,
+        ...(deps.jv6Judgment === undefined ? {} : { judgment: deps.jv6Judgment }),
+        ...(deps.mediaImport?.kind === "mounted" && deps.queue !== undefined
+          ? {
+              memeFinder: createMemeFinder({
+                searcher: createYtDlpMemeSearcher({
+                  binary: process.env["YTDLP_PATH"]?.trim() || "yt-dlp",
+                }),
+                // El import de siempre, con topes de meme: la bajada tiene
+                // que caber en el plazo del job de prompt (120 s).
+                runImport: createMediaImportRunner({
+                  db,
+                  storage,
+                  queue: deps.queue,
+                  clock,
+                  appRole,
+                  logger,
+                  ...deps.mediaImport.deps,
+                  maxDurationSeconds: MEME_IMPORT_MAX_SECONDS,
+                  timeoutMs: 45_000,
+                }),
+                logger,
+              }),
+            }
+          : {}),
       }),
     }),
     /**
@@ -531,6 +582,7 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
       clock,
       appRole,
       logger,
+      allowXLinks: deps.publishing.allowXLinks,
     });
   }
 
@@ -576,6 +628,35 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
     for (const [queue, handler] of Object.entries(deps.engagement))
       handlers[queue] = handler;
   }
+
+  /*
+   * `own-post-import` (`FR-011.5.1`, `P1-ONB-008`, sprint 7 F) — con cola
+   * (encola la normalización de cada video). Conexiones: con los tokens de la
+   * publicación; perfiles y videos de YouTube: con el `yt-dlp` del import por
+   * link. Sin alguno de los dos, esos imports cierran `failed` con código
+   * estable (`connection_unavailable` / `listing_failed`), no quedan colgados.
+   */
+  if (deps.queue !== undefined) {
+    const ytdlp = deps.mediaImport?.kind === "mounted" ? deps.mediaImport.deps : null;
+    handlers[JOB_QUEUES.ownPostImport] = createOwnPostImportHandler({
+      db,
+      storage,
+      queue: deps.queue,
+      clock,
+      appRole,
+      logger,
+      tokens: deps.publishing?.tokens ?? null,
+      downloader: ytdlp?.downloader ?? null,
+      profiles:
+        ytdlp === null
+          ? null
+          : new YtDlpProfileLister({
+              binary: process.env["YTDLP_PATH"]?.trim() || "yt-dlp",
+            }),
+    });
+  }
+  // Sin cola no se monta ni se reporta, como el watcher y el barrido de
+  // publicación: `main.ts` siempre la pasa; sólo los tests la omiten.
 
   return { handlers, unmounted };
 }

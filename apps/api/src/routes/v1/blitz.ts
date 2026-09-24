@@ -151,6 +151,7 @@ import {
   assertValidBlitzRequest,
   assertValidPreferencesPatch,
   composeBlitzBuildPayload,
+  autoFoundMemeOf,
   parseSuggestionBuildPlan,
   rebindMediaUrls,
   selectionMediaIds,
@@ -865,7 +866,16 @@ export function toBlitzSuggestion(
     ),
     ...opt("preview", preview),
     ...opt("promptRequestId", row.promptRequestId ?? undefined),
+    // Sprint 7: el meme lo encontró la búsqueda automática (chip «Auto-found meme»).
+    ...opt("autoFoundMeme", autoFoundMemeView(row.buildPlan)),
   };
+}
+
+/** La anotación `autoFoundMeme` del `build_plan`, en la forma del contrato. */
+function autoFoundMemeView(buildPlan: unknown): { sourceUrl: string } | undefined {
+  const meme = autoFoundMemeOf(buildPlan);
+  const url = meme === null ? undefined : absoluteUrl(meme.sourceUrl);
+  return url === undefined ? undefined : { sourceUrl: url };
 }
 
 /**
@@ -886,6 +896,11 @@ function toPromptRequest(
     ...opt("failureReason", row.status === "failed" ? reason : undefined),
     ...opt("contentType", row.contentType ?? undefined),
     count: row.count,
+    // Sprint 7: la fase sólo dice algo mientras el pedido está abierto.
+    ...opt(
+      "phase",
+      row.status === "running" && row.phase === "searching_meme" ? row.phase : undefined,
+    ),
   };
 }
 

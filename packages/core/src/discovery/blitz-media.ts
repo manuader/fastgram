@@ -47,9 +47,15 @@
  * librería compartida. Los payloads de Blitz salen **sin bloque `audio`**, que
  * `FR-053.1` define como válido (`No audio`).
  */
-import type { Rng } from "@fastgram/ports";
+import type { ClipTags, Rng } from "@fastgram/ports";
 import type { BlitzContentType } from "../content/content.js";
 import { HARD_CAPS } from "../quota/plans.js";
+import {
+  rankByRelevance,
+  topMatches,
+  type Ranked,
+  type RelevanceText,
+} from "./relevance.js";
 
 /** `FR-100` — las cinco categorías, con el nombre literal del PRD. */
 export const BLITZ_MEDIA_CATEGORIES = {
@@ -67,6 +73,34 @@ export interface PlanningMedia {
   /** La URL canónica guardada en `media.r2Url`. Es la que viaja al payload. */
   readonly url: string;
   readonly categories: readonly string[];
+  /**
+   * Sprint 7 (`JV-6`): lo que describe al asset para elegirlo por tema. El
+   * título es el nombre de archivo (un import lo arma con el título del
+   * sitio); las etiquetas, las de `PU-MEME-003` si el clip las tiene. Todo
+   * opcional: sin ellas el asset compite igual, con puntaje 0.
+   */
+  readonly title?: string | null | undefined;
+  readonly tags?: ClipTags | null | undefined;
+  /** Lo encontró solo «crear desde prompt» (`meme-search.ts`). */
+  readonly autoFound?: boolean | undefined;
+}
+
+/** El texto de relevancia de un asset: etiquetas del clip y título. */
+export function mediaRelevanceText(m: PlanningMedia): RelevanceText {
+  return {
+    title: m.title?.replace(/\.[A-Za-z0-9]{2,4}$/u, "") ?? null,
+    emotion: m.tags?.emotion ?? null,
+    situation: m.tags?.situation ?? null,
+    tags: m.tags?.tags ?? [],
+  };
+}
+
+/** El pool ordenado por relevancia al tema (estable: sin tema, igual que entró). */
+export function rankMedia(
+  topic: string | null | undefined,
+  pool: readonly PlanningMedia[],
+): readonly Ranked<PlanningMedia>[] {
+  return rankByRelevance(topic, pool, mediaRelevanceText);
 }
 
 /**
@@ -233,6 +267,21 @@ export function influencerCoversFormat(
   return pools !== null && covers(pools, format);
 }
 
+/**
+ * Sprint 7: con tema, se sortea **entre los que mejor le corresponden**; sin
+ * tema o sin ninguno que matchee, entre todos, como antes. Consume una sola
+ * tirada en los dos casos, así que un seed viejo sin tema da lo mismo.
+ */
+function pickRelevant(
+  rng: Rng,
+  pool: readonly PlanningMedia[],
+  topic: string | null | undefined,
+): PlanningMedia {
+  const best =
+    topic === null || topic === undefined ? [] : topMatches(rankMedia(topic, pool));
+  return pickOne(rng, best.length > 0 ? best : pool);
+}
+
 function pickOne(rng: Rng, pool: readonly PlanningMedia[]): PlanningMedia {
   const chosen = pool[rng.nextInt(0, pool.length)];
   if (chosen === undefined) throw new Error("pickOne sobre un pool vacío");
@@ -264,17 +313,16 @@ export function selectMedia(
   bank: MediaBank,
   format: BlitzContentType,
   influencerId: string | null,
+  /**
+   * Sprint 7 (`JV-6`): el tema de la pieza (el prompt del usuario o el
+   * ángulo). Los roles de un solo asset —el meme, el fondo, el clip de fondo—
+   * se sortean entre los que mejor le corresponden. Los slides y el demo no:
+   * los slides son un set, y el demo es el producto.
+   */
+  topic?: string | null,
 ): MediaSelection | null {
-  let pools: RolePools;
-  if (influencerId === null) {
-    pools = workspacePools(bank, format);
-  } else {
-    const pool = bank.influencerPools.get(influencerId);
-    const p = pool === undefined ? null : influencerPools(bank, pool, format);
-    if (p === null) return null;
-    pools = p;
-  }
-  if (!covers(pools, format)) return null;
+  const pools = poolsFor(bank, format, influencerId);
+  if (pools === null || !covers(pools, format)) return null;
 
   switch (format) {
     case "slideshow":
@@ -285,12 +333,12 @@ export function selectMedia(
           .map(ref),
       };
     case "wall-of-text":
-      return { format, video: ref(pickOne(rng, pools.video ?? [])) };
+      return { format, video: ref(pickRelevant(rng, pools.video ?? [], topic)) };
     case "green-screen":
       return {
         format,
-        image: ref(pickOne(rng, pools.image ?? [])),
-        video: ref(pickOne(rng, pools.video ?? [])),
+        image: ref(pickRelevant(rng, pools.image ?? [], topic)),
+        video: ref(pickRelevant(rng, pools.video ?? [], topic)),
       };
     case "video-hook": {
       // El demo primero: es el que habilita el formato (§15.8) y el más escaso.
@@ -299,10 +347,68 @@ export function selectMedia(
         (pools.hookVideo ?? []).filter((h) => h.id !== demoId);
       const demosWithHook = demos.filter((d) => hooksFor(d.id).length > 0);
       const demo = pickOne(rng, demosWithHook);
-      const hook = pickOne(rng, hooksFor(demo.id));
+      const hook = pickRelevant(rng, hooksFor(demo.id), topic);
       return { format, hookVideo: ref(hook), demoVideo: ref(demo) };
     }
   }
+}
+
+function poolsFor(
+  bank: MediaBank,
+  format: BlitzContentType,
+  influencerId: string | null,
+): RolePools | null {
+  if (influencerId === null) return workspacePools(bank, format);
+  const pool = bank.influencerPools.get(influencerId);
+  return pool === undefined ? null : influencerPools(bank, pool, format);
+}
+
+/** Los roles de un solo asset que `JV-6` puede re-elegir. */
+export type JudgeableRole = "video" | "image";
+
+/**
+ * Los candidatos de un rol, del más al menos relevante al tema, **sólo los
+ * que tienen algo en común con él**. Es la lista que ve el juicio de `JV-6`:
+ * un candidato con puntaje 0 no aporta nada que el ranking no sepa.
+ */
+export function relevantCandidates(
+  bank: MediaBank,
+  format: BlitzContentType,
+  influencerId: string | null,
+  role: JudgeableRole,
+  topic: string | null | undefined,
+  max: number,
+): readonly PlanningMedia[] {
+  const pools = poolsFor(bank, format, influencerId);
+  const pool = role === "video" ? pools?.video : pools?.image;
+  if (pool === undefined || topic === null || topic === undefined) return [];
+  return rankMedia(topic, pool)
+    .filter((r) => r.score > 0)
+    .slice(0, max)
+    .map((r) => r.item);
+}
+
+/** Reemplaza el asset de un rol en una selección de un formato que lo tiene. */
+export function withRoleMedia(
+  selection: MediaSelection,
+  role: JudgeableRole,
+  media: MediaRef,
+): MediaSelection {
+  switch (selection.format) {
+    case "green-screen":
+      return role === "video"
+        ? { ...selection, video: media }
+        : { ...selection, image: media };
+    case "wall-of-text":
+      return role === "video" ? { ...selection, video: media } : selection;
+    default:
+      return selection;
+  }
+}
+
+/** Una `MediaRef` a partir de un asset del banco. */
+export function mediaRefOf(m: PlanningMedia): MediaRef {
+  return ref(m);
 }
 
 /** Los ids de media que una selección usa. Es lo que se verifica al aceptar. */

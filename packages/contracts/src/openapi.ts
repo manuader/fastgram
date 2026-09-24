@@ -46,6 +46,7 @@ import * as autopilot from "./resources/autopilot.js";
 import * as inspiration from "./resources/inspiration.js";
 import * as engagement from "./resources/engagement.js";
 import * as automations from "./resources/automations.js";
+import * as notifications from "./resources/notifications.js";
 import {
   imageUploadReservationRequestSchema,
   mediaUploadReservationRequestSchema,
@@ -1220,6 +1221,70 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           responses: { "200": ok("OK", pageOf(toJsonSchema(audio.audioTrackSchema))) },
         },
       },
+      // Sprint 7: la biblioteca de audio de la marca (migración 0025).
+      "/audio/library": {
+        get: {
+          operationId: "listBrandAudio",
+          summary:
+            "La biblioteca de audio de la marca, más nuevas primero; q busca en el título",
+          parameters: queryParams(audio.listBrandAudioQuerySchema),
+          responses: {
+            "200": ok("OK", pageOf(toJsonSchema(audio.brandAudioTrackSchema))),
+          },
+        },
+        post: {
+          operationId: "finalizeBrandAudio",
+          summary: "Finaliza la subida de audio y crea la pista en la biblioteca",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(audio.finalizeBrandAudioRequestSchema)),
+          },
+          responses: {
+            "201": ok("Creada", dataOf(toJsonSchema(audio.brandAudioTrackSchema))),
+            "404": errorResponse(
+              "not_found — la reserva no existe o es de otro workspace",
+            ),
+            "409": errorResponse("conflict — el objeto no llegó o ya se finalizó"),
+            "410": errorResponse("gone — reserva expirada"),
+          },
+        },
+      },
+      "/audio/library/upload-url": {
+        post: {
+          operationId: "reserveBrandAudioUpload",
+          summary: "Reserva de subida de audio (MP3/M4A/AAC/WAV, ≤20 MB)",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(audio.brandAudioUploadRequestSchema)),
+          },
+          responses: { "200": ok("Reserva creada", dataOf(reservationJs)) },
+        },
+      },
+      "/audio/library/{audioId}": {
+        patch: {
+          operationId: "updateBrandAudio",
+          summary: "Renombra la pista o la saca del sorteo de Blitz (autoUse)",
+          parameters: [pathParam("audioId")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(audio.updateBrandAudioRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(audio.brandAudioTrackSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+        delete: {
+          operationId: "deleteBrandAudio",
+          summary:
+            "Borra la pista de la biblioteca (el archivo queda: las piezas que ya la usan se siguen pudiendo renderizar)",
+          parameters: [pathParam("audioId")],
+          responses: {
+            "204": { description: "Borrada" },
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
       "/media/upload-url": {
         post: {
           operationId: "reserveMediaUpload",
@@ -1274,6 +1339,92 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           summary: "Media Bank del workspace",
           parameters: queryParams(media.listMediaQuerySchema),
           responses: { "200": ok("OK", pageOf(mediaJs)) },
+        },
+      },
+      // Sprint 7 (F): etiquetas, Media Sets e importación de posts propios.
+      "/media/tags": {
+        get: {
+          operationId: "listMediaTags",
+          summary: "Etiquetas en uso en el Media Bank, con su cuenta (P2-MEDIA-007)",
+          responses: { "200": ok("OK", dataOf({ type: "array" })) },
+        },
+      },
+      "/media/sets": {
+        get: {
+          operationId: "listMediaSets",
+          summary: "Media Sets de la marca (DATA-011, F-127)",
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf({ type: "array", items: toJsonSchema(media.mediaSetSchema) }),
+            ),
+          },
+        },
+        post: {
+          operationId: "createMediaSet",
+          summary: "Crea un set con al menos 5 assets vivos de la marca",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(media.createMediaSetRequestSchema)),
+          },
+          responses: {
+            "201": ok("Creado", dataOf(toJsonSchema(media.mediaSetSchema))),
+            "400": errorResponse("bad_request — details.missingMediaIds"),
+          },
+        },
+      },
+      "/media/sets/{id}": {
+        delete: {
+          operationId: "deleteMediaSet",
+          summary: "Borra el set (no toca los assets)",
+          parameters: [pathParam("id")],
+          responses: {
+            "204": { description: "Borrado" },
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/media/own-posts/import": {
+        post: {
+          operationId: "importOwnPosts",
+          summary:
+            "Importa los posts propios al Media Bank (FR-011.5.1, opt-in): cuenta conectada " +
+            "(Instagram, YouTube) o link de perfil público (TikTok, YouTube). Asíncrono.",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(media.ownPostImportRequestSchema)),
+          },
+          responses: {
+            "202": ok("Encolado", dataOf(toJsonSchema(media.ownPostImportSchema))),
+            "400": errorResponse(
+              "bad_request — details.reason = unsupported_url | unsupported_platform | connection_unavailable",
+            ),
+            "404": errorResponse("not_found — la conexión no existe o es de otra marca"),
+            "503": errorResponse("service_unavailable — la API no tiene cola"),
+          },
+        },
+      },
+      "/media/own-posts/imports": {
+        get: {
+          operationId: "listOwnPostImports",
+          summary: "Los últimos imports de posts propios",
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf({ type: "array", items: toJsonSchema(media.ownPostImportSchema) }),
+            ),
+          },
+        },
+      },
+      "/media/own-posts/import/{id}": {
+        get: {
+          operationId: "getOwnPostImport",
+          summary: "Estado de un import de posts propios",
+          parameters: [pathParam("id")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(media.ownPostImportSchema))),
+            "404": errorResponse("not_found"),
+          },
         },
       },
       "/media/brand-kit": {
@@ -1363,30 +1514,21 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           },
         },
         /**
-         * **Acá había un `409 media_in_use` documentado que la ruta no devuelve
-         * nunca**, y se quita en vez de dejarlo.
-         *
-         * `apps/api/src/routes/v1/media.ts` responde `204` siempre — es
-         * deliberado (§9.2: *"los borrados idempotentes de media tratan ids
-         * ajenos/desconocidos como no-ops seguros que no revelan si el registro
-         * existe"*)—, y el `409` de `FR-100` no está implementado porque
-         * comprobar que el asset sigue referenciado exige preguntar por
-         * pertenencia a un array en `contents`, `influencer_configs` y
-         * `media_sets`, y el filtro declarativo de los repositorios no tiene un
-         * operador de "contiene" (nota en `media.ts:48-51`).
-         *
-         * Se quita del documento y no se deja "por si acaso" porque esto **es**
-         * el contrato que lee un integrador: un `409` documentado hace que
-         * alguien escriba la rama que lo maneja, y esa rama es código muerto.
-         * Lo que hace falta para devolverlo está en el reporte; el día que
-         * exista, vuelve acá **con** la ruta, no antes.
+         * `P2-MEDIA-004` (sprint 7): el `409 media_in_use` de `FR-100` vuelve
+         * **con** la ruta. "En uso" está definido en
+         * `packages/db/src/repositories/media-usage.ts` (pieza no borrada,
+         * personaje activo o media set). Un id ajeno o inexistente sigue
+         * siendo `204` (§9.2: no revela existencia); el `409` sólo sale para
+         * una media propia y viva, así que tampoco revela nada ajeno.
          */
         delete: {
           operationId: "deleteMedia",
-          summary: "Borrado idempotente: 204 también para un id ajeno o inexistente",
+          summary:
+            "Borrado idempotente: 204 también para un id ajeno o inexistente; 409 si sigue en uso",
           parameters: [pathParam("id")],
           responses: {
             "204": { description: "Borrado" },
+            "409": errorResponse("media_in_use"),
           },
         },
       },
@@ -1506,6 +1648,26 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           },
         },
       },
+      "/content/studio": {
+        post: {
+          operationId: "createStudioContent",
+          summary:
+            "Content Studio · Create New: el servidor arma el payload de FR-070 desde ids " +
+            "del Media Bank, textos y estilo; con `ai`, el texto lo escribe el modelo de la " +
+            "tarea text antes del render.",
+          parameters: [idempotencyParam],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(content.studioContentRequestSchema)),
+          },
+          responses: {
+            "201": ok("Creado (BUILDING)", dataOf(contentJs)),
+            "400": errorResponse("bad_request — details.mediaIds"),
+            "402": errorResponse("content_quota_exceeded"),
+            "503": errorResponse("service_unavailable — la API no tiene cola"),
+          },
+        },
+      },
       "/content/custom/video/upload-url": {
         post: {
           operationId: "reserveCustomVideoUpload",
@@ -1543,6 +1705,75 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           parameters: [pathParam("id")],
           responses: {
             "200": ok("OK", dataOf(postJs)),
+            "404": errorResponse("not_found"),
+          },
+        },
+        // Sprint 7 (publish-flow): editar caption/hora de un post que no salió.
+        patch: {
+          operationId: "updatePost",
+          summary:
+            "Edita caption/descripción y/o la hora de un post que no salió (cambiar la hora recrea el post: otro _id)",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(posts.updatePostRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(postJs)),
+            "400": errorResponse("bad_request — caption de más para la red"),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — el post ya salió o está en curso"),
+          },
+        },
+      },
+      // Sprint 7 (publish-flow): reintentar un post fallido.
+      "/posts/{id}/retry": {
+        post: {
+          operationId: "retryPost",
+          summary:
+            "Re-encola un post FAILED (ahora + margen, o a scheduledAtUtc). confirmNotPublished si la entrega fue incierta",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: false,
+            content: json(toJsonSchema(posts.retryPostRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(postJs)),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — no está FAILED o falta confirmNotPublished"),
+            "503": errorResponse("service_unavailable — sin cola"),
+          },
+        },
+      },
+      // Sprint 7 (publish-flow): caption con IA y opciones del diálogo de Schedule.
+      "/content/{id}/caption": {
+        post: {
+          operationId: "generateCaption",
+          summary:
+            "Genera (regenerate) o mejora (improve) la caption de una red con el modelo text",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(posts.generateCaptionRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(posts.generatedCaptionSchema))),
+            "400": errorResponse("bad_request"),
+            "404": errorResponse("not_found"),
+            "503": errorResponse(
+              "service_unavailable — sin modelo text, el modelo no respondió o su respuesta no sirvió (details.reason)",
+            ),
+          },
+        },
+      },
+      "/content/{id}/schedule-options": {
+        get: {
+          operationId: "getScheduleOptions",
+          summary:
+            "Captions por defecto, conexiones, redes de la estrategia y próximo horario libre para el diálogo de Schedule",
+          parameters: [pathParam("id")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(posts.scheduleOptionsSchema))),
             "404": errorResponse("not_found"),
           },
         },
@@ -1841,6 +2072,82 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           responses: {
             "200": ok("OK", dataOf(toJsonSchema(brand.companyProfileSchema))),
             "400": errorResponse("bad_request — body vacío"),
+            "409": errorResponse(
+              "conflict — expectedBrandRevision no coincide (details.reason = brand_revision_changed)",
+            ),
+          },
+        },
+      },
+      "/brand/profile/proposals": {
+        get: {
+          operationId: "listCompanyProfileProposals",
+          summary:
+            "EXTENSION · P1-BRANDPG-005 · lo que las fuentes proponen para campos editados a mano o sin procedencia (ERR-B14)",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(brand.brandProfileProposalsSchema))),
+          },
+        },
+      },
+      "/brand/profile/proposals/{field}": {
+        post: {
+          operationId: "resolveCompanyProfileProposal",
+          summary: "EXTENSION · aceptar o descartar la propuesta vigente de un campo",
+          parameters: [pathParam("field")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(brand.resolveBrandProfileProposalRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(brand.companyProfileSchema))),
+            "404": errorResponse("not_found — el campo no existe"),
+            "409": errorResponse(
+              "conflict — la revisión o la propuesta cambiaron (brand_revision_changed | proposal_changed)",
+            ),
+          },
+        },
+      },
+      "/brand/logo": {
+        get: {
+          operationId: "getBrandLogo",
+          summary: "EXTENSION · P1-ONB-003 · el logo de la marca (data: URL) o null",
+          responses: { "200": ok("OK", dataOf(toJsonSchema(brand.brandLogoSchema))) },
+        },
+        put: {
+          operationId: "updateBrandLogo",
+          summary:
+            "EXTENSION · P1-ONB-003 · sube el logo (PNG/JPEG/WebP ≤ 256 KB como data: URL)",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(brand.updateBrandLogoRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(brand.brandLogoSchema))),
+            "400": errorResponse("bad_request — tipo o tamaño inválido"),
+          },
+        },
+        delete: {
+          operationId: "deleteBrandLogo",
+          summary: "EXTENSION · P1-ONB-003 · borra el logo",
+          responses: { "200": ok("OK", dataOf(toJsonSchema(brand.brandLogoSchema))) },
+        },
+      },
+      "/brand/ocr": {
+        post: {
+          operationId: "readBrandScreenshot",
+          summary:
+            "EXTENSION · P1-BRAND-014 · texto de una captura de perfil (OCR o modelo de visión); no persiste nada",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(brand.brandOcrRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(brand.brandOcrResultSchema))),
+            "400": errorResponse(
+              "bad_request — no es una imagen soportada o supera 700 KB",
+            ),
+            "503": errorResponse(
+              "service_unavailable — sin servicio de visión ni modelo `vision`",
+            ),
           },
         },
       },
@@ -2012,6 +2319,16 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
             "503": errorResponse("service_unavailable — no se pudo escribir el registro"),
           },
         },
+        delete: {
+          operationId: "clearModelTaskOverride",
+          summary:
+            "Borra el modelo propio de un punto de decisión de juicio (P1-JUDGE-004): vuelve a heredar `judgment`",
+          parameters: [pathParam("task")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(models.modelTaskConfigSchema))),
+            "404": errorResponse("not_found — no es un override de juicio"),
+          },
+        },
       },
       "/models/test": {
         post: {
@@ -2129,6 +2446,211 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           responses: {
             "200": ok("OK", dataOf(toJsonSchema(genai.generationSchema))),
             "404": errorResponse("not_found — no existe o es de otra marca"),
+          },
+        },
+      },
+      /**
+       * Sprint 7 (agente G): formatos generativos (`P4-FORMAT-001`/`002`) e
+       * influencers (Configuration, templates, base por texto, video). Fuera
+       * de la §9.3 del PRD (uso personal). Ver `resources/genai.ts` e
+       * `influencers.ts`.
+       */
+      "/ai-studio/formats": {
+        get: {
+          operationId: "listGenerativeFormats",
+          summary:
+            "Los 17 formatos generativos (disponibles o bloqueados con el motivo), modelos de texto a video y tope",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(genai.generativeFormatsViewSchema))),
+          },
+        },
+      },
+      "/ai-studio/formats/{format}/estimate": {
+        post: {
+          operationId: "estimateFormatRun",
+          summary: "Costo estimado del clip de un formato generativo",
+          parameters: [pathParam("format")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(genai.formatRunRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(genai.formatRunEstimateSchema))),
+            "400": errorResponse("bad_request — con details.field"),
+            "404": errorResponse("not_found — el formato no existe"),
+            "409": errorResponse("conflict — sin modelo de texto a video"),
+            "503": errorResponse("service_unavailable — el proveedor falló"),
+          },
+        },
+      },
+      "/ai-studio/formats/{format}/runs": {
+        post: {
+          operationId: "createFormatRun",
+          summary:
+            "Estima, reserva en el tope y encola el clip; al terminar arma la pieza (202)",
+          parameters: [pathParam("format")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(genai.formatRunRequestSchema)),
+          },
+          responses: {
+            "202": ok("Accepted", dataOf(toJsonSchema(genai.formatRunSchema))),
+            "400": errorResponse("bad_request — con details.field"),
+            "402": errorResponse("payment_required — details.reason = budget_exceeded"),
+            "404": errorResponse("not_found — el formato no existe"),
+            "409": errorResponse("conflict — sin modelo de texto a video"),
+            "503": errorResponse("service_unavailable — sin cola o proveedor caído"),
+          },
+        },
+      },
+      "/ai-studio/format-runs": {
+        get: {
+          operationId: "listFormatRuns",
+          summary: "Corridas de formatos de la marca, más nuevas primero",
+          parameters: [...queryParams(genai.generationListQuerySchema)],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(genai.formatRunListSchema))),
+          },
+        },
+      },
+      "/ai-studio/format-runs/{id}": {
+        get: {
+          operationId: "getFormatRun",
+          summary: "Una corrida con su estado, su clip y la pieza",
+          parameters: [pathParam("id")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(genai.formatRunSchema))),
+            "404": errorResponse("not_found — no existe o es de otra marca"),
+          },
+        },
+      },
+      "/influencers/templates": {
+        get: {
+          operationId: "getInfluencerTemplates",
+          summary: "Templates de prompt de la marca (los de fábrica si no se editaron)",
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(influencers.influencerTemplatesViewSchema)),
+            ),
+          },
+        },
+        put: {
+          operationId: "updateInfluencerTemplates",
+          summary: "Reemplaza los templates; null vuelve a los de fábrica",
+          requestBody: {
+            required: true,
+            content: json(
+              toJsonSchema(influencers.updateInfluencerTemplatesRequestSchema),
+            ),
+          },
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(influencers.influencerTemplatesViewSchema)),
+            ),
+            "400": errorResponse("bad_request — lista inválida"),
+          },
+        },
+      },
+      "/influencers/base-image/estimate": {
+        post: {
+          operationId: "estimateInfluencerBaseImage",
+          summary: "Costo de generar la imagen base por texto",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(influencers.influencerBaseImageRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(genai.generationEstimateSchema))),
+            "400": errorResponse("bad_request — nada que describir"),
+            "409": errorResponse("conflict — sin modelo de imagen"),
+          },
+        },
+      },
+      "/influencers/base-image": {
+        post: {
+          operationId: "generateInfluencerBaseImage",
+          summary:
+            "Genera la imagen base por texto (una generación de AI Studio); regenerar = persona nueva (202)",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(influencers.influencerBaseImageRequestSchema)),
+          },
+          responses: {
+            "202": ok("Accepted", dataOf(toJsonSchema(genai.generationSchema))),
+            "400": errorResponse("bad_request — nada que describir"),
+            "402": errorResponse("payment_required — details.reason = budget_exceeded"),
+            "409": errorResponse("conflict — sin modelo de imagen"),
+            "503": errorResponse("service_unavailable — sin cola"),
+          },
+        },
+      },
+      "/influencers/{id}/config": {
+        get: {
+          operationId: "getInfluencerConfig",
+          summary: "Configuration (FR-083): ángulos, cuentas y sets, y entre qué elegir",
+          parameters: [pathParam("id")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(influencers.influencerConfigViewSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+        put: {
+          operationId: "updateInfluencerConfig",
+          summary: "Auto-guardado de la Configuration",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(influencers.updateInfluencerConfigRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(influencers.influencerConfigViewSchema))),
+            "400": errorResponse("bad_request — un id que no es de la marca"),
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/influencers/{id}/videos/estimate": {
+        post: {
+          operationId: "estimateInfluencerVideo",
+          summary:
+            "Costo de animar una imagen del personaje (image-to-video de Higgsfield)",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(influencers.influencerVideoRequestSchema)),
+          },
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(influencers.influencerImageEstimateSchema)),
+            ),
+            "400": errorResponse("bad_request — con details.field"),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — sin Higgsfield"),
+          },
+        },
+      },
+      "/influencers/{id}/videos": {
+        post: {
+          operationId: "generateInfluencerVideo",
+          summary: "Anima una imagen del personaje: reserva en el tope y encola (202)",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(influencers.influencerVideoRequestSchema)),
+          },
+          responses: {
+            "202": ok(
+              "Accepted",
+              dataOf(toJsonSchema(influencers.influencerGenerationSchema)),
+            ),
+            "400": errorResponse("bad_request — con details.field"),
+            "402": errorResponse("payment_required — details.reason = budget_exceeded"),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — sin Higgsfield"),
+            "503": errorResponse("service_unavailable — sin cola o proveedor caído"),
           },
         },
       },
@@ -2491,6 +3013,104 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
             "Refresh ban meter: recalcula el nivel en código sobre las etiquetas guardadas y encola las que faltan",
           responses: {
             "200": ok("OK", dataOf(toJsonSchema(engagement.banMeterSchema))),
+          },
+        },
+      },
+      /**
+       * Notificaciones — `P5-NOTIF-001…004`, PRD §13 (sprint 7). Ver la
+       * cabecera de `resources/notifications.ts`.
+       */
+      "/notifications": {
+        get: {
+          operationId: "listNotifications",
+          summary: "La campana: avisos de las marcas del dueño, más nuevos primero",
+          parameters: queryParams(notifications.listNotificationsQuerySchema),
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(notifications.notificationListSchema))),
+          },
+        },
+      },
+      "/notifications/{id}/read": {
+        post: {
+          operationId: "markNotificationRead",
+          summary: "Marca un aviso como leído (idempotente)",
+          parameters: [pathParam("id")],
+          responses: {
+            "204": { description: "Leído" },
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/notifications/read-all": {
+        post: {
+          operationId: "markAllNotificationsRead",
+          summary: "Marca todos los avisos como leídos",
+          requestBody: {
+            required: false,
+            content: json(
+              toJsonSchema(notifications.markAllNotificationsReadRequestSchema),
+            ),
+          },
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(notifications.markAllNotificationsReadResponseSchema)),
+            ),
+          },
+        },
+      },
+      "/notifications/connection-alerts": {
+        get: {
+          operationId: "listConnectionAlerts",
+          summary: "Conexiones vencidas o por vencer (≤7 días) de las marcas del dueño",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(notifications.connectionAlertsSchema))),
+          },
+        },
+      },
+      "/notifications/settings": {
+        get: {
+          operationId: "getNotificationSettings",
+          summary: "Preferencias por categoría y canales (ntfy, Telegram), enmascarados",
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(notifications.notificationSettingsSchema)),
+            ),
+          },
+        },
+        put: {
+          operationId: "updateNotificationSettings",
+          summary: "Actualiza preferencias y canales; un secreto omitido se conserva",
+          requestBody: {
+            required: true,
+            content: json(
+              toJsonSchema(notifications.updateNotificationSettingsRequestSchema),
+            ),
+          },
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(notifications.notificationSettingsSchema)),
+            ),
+            "400": errorResponse("bad_request"),
+          },
+        },
+      },
+      "/notifications/test": {
+        post: {
+          operationId: "sendTestNotification",
+          summary:
+            "Manda un aviso de prueba por un canal; el fallo del canal es 200 con ok=false",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(notifications.testNotificationRequestSchema)),
+          },
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(notifications.notificationTestResultSchema)),
+            ),
           },
         },
       },

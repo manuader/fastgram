@@ -185,6 +185,11 @@ const RESERVED_PROVIDERS: readonly ModelProvider[] = ["custom"];
 export const MODEL_TASK_SPECS: readonly ModelTaskSpec[] = [
   { task: "text", kind: "llm", wired: true, providers: LLM_PROVIDERS },
   { task: "judgment", kind: "llm", wired: true, providers: LLM_PROVIDERS },
+  // `P1-JUDGE-004`: overrides por punto de decisión. Mismo adaptador que
+  // `judgment`; sin entrada propia heredan de ahí (`resolveLlmConfig`).
+  { task: "judgment.autopilot", kind: "llm", wired: true, providers: LLM_PROVIDERS },
+  { task: "judgment.brand", kind: "llm", wired: true, providers: LLM_PROVIDERS },
+  { task: "judgment.engagement", kind: "llm", wired: true, providers: LLM_PROVIDERS },
   { task: "vision", kind: "llm", wired: true, providers: LLM_PROVIDERS },
   { task: "image", kind: "genai", wired: true, providers: GENAI_PROVIDERS },
   { task: "video", kind: "genai", wired: true, providers: GENAI_PROVIDERS },

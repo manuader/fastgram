@@ -24,10 +24,16 @@ describe("orden del circuito personal (PU-UI-001)", () => {
 describe("D-15: lo que el modo personal esconde", () => {
   const all = [...PRIMARY_NAV, ...TOOLS_NAV, ...SECONDARY_NAV];
 
-  it("en personal no hay Warmed Accounts ni Refer & Earn", () => {
+  it("en personal no hay Warmed Accounts, Refer & Earn, Guide, Feedback ni Discord", () => {
     const visible = ids(visibleNav(all, { isStaff: false, mode: "personal" }));
-    expect(visible).not.toContain("warmed-accounts");
-    expect(visible).not.toContain("refer-and-earn");
+    for (const hidden of [
+      "warmed-accounts",
+      "refer-and-earn",
+      "guide",
+      "feedback",
+      "discord",
+    ])
+      expect(visible).not.toContain(hidden);
     expect(visible).toContain("settings");
   });
 
@@ -40,6 +46,8 @@ describe("D-15: lo que el modo personal esconde", () => {
     const visible = ids(visibleNav(all, { isStaff: false, mode: "standard" }));
     expect(visible).toContain("warmed-accounts");
     expect(visible).toContain("refer-and-earn");
+    expect(visible).toContain("guide");
+    expect(visible).toContain("feedback");
   });
 
   it("Admin sigue siendo sólo para staff", () => {
@@ -56,8 +64,13 @@ describe("paleta ⌘K", () => {
     expect(links).not.toContain("nav:warmed-accounts");
     expect(links).not.toContain("nav:refer-and-earn");
     expect(links).not.toContain("nav:discord");
+    expect(links).not.toContain("nav:guide");
+    expect(links).not.toContain("nav:feedback");
     expect(links).toContain("nav:settings-brands");
     expect(links).toContain("nav:settings-models");
+    // Sprint 7: las secciones del hub de Settings también están en la paleta.
+    for (const section of ["strategy", "connections", "integrations", "notifications"])
+      expect(links).toContain(`nav:settings-${section}`);
   });
 
   it("los ids no se repiten (cmdk los usa como value)", () => {

@@ -27,7 +27,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 
 import type { Executor } from "../client.js";
-import { media } from "../schema/index.js";
+import { media, type MediaNormalizationOutcome } from "../schema/index.js";
 import type { TenantScope } from "./base.js";
 
 export type MediaRow = typeof media.$inferSelect;
@@ -72,6 +72,8 @@ export interface CompleteNormalizationInput {
   /** `null` deja la columna como está: el probe no siempre informa duración. */
   readonly videoDurationSec: number | null;
   readonly now: Date;
+  /** `0029`: qué hizo la normalización. Ausente = no se toca la columna. */
+  readonly normalization?: MediaNormalizationOutcome | undefined;
 }
 
 /**
@@ -97,6 +99,9 @@ export async function completeMediaNormalization(
       ...(input.videoDurationSec === null
         ? {}
         : { videoDurationSec: input.videoDurationSec }),
+      ...(input.normalization === undefined
+        ? {}
+        : { normalization: input.normalization }),
       updatedAt: input.now,
     })
     .where(

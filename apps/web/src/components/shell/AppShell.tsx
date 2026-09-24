@@ -8,6 +8,8 @@ import { BrandSwitcher } from "@/components/brands/BrandSwitcher";
 import { NewBrandDialog } from "@/components/brands/NewBrandDialog";
 import { useWorkspace, WorkspaceProvider } from "@/components/brands/WorkspaceProvider";
 import { CommandPalette } from "@/components/command/CommandPalette";
+import { ConnectionBanner } from "@/components/notifications/ConnectionBanner";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { usePaletteHotkey } from "@/components/command/use-palette-hotkey";
 import { ShellActionsProvider, type ShellActions } from "@/components/shell/ShellActions";
 import { Sidebar } from "@/components/shell/Sidebar";
@@ -58,7 +60,7 @@ export function AppShell(props: AppShellProps) {
 function ShellFrame({ children, isStaff, attention }: AppShellProps) {
   const pathname = usePathname();
   const sidebar = useSidebarState();
-  const { isPersonal } = useWorkspace();
+  const { isPersonal, mode } = useWorkspace();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [newBrandOpen, setNewBrandOpen] = useState(false);
 
@@ -126,11 +128,14 @@ function ShellFrame({ children, isStaff, attention }: AppShellProps) {
               >
                 <SearchIcon size={20} />
               </button>
+              <NotificationBell className="fgw-topbar__menu" />
               <ThemeToggle />
             </div>
           </header>
 
           <main id="main" className="fgw-content">
+            {/* Sprint 7: conexiones vencidas o por vencer, en todas las pantallas. */}
+            <ConnectionBanner />
             {children}
           </main>
         </div>
@@ -170,7 +175,10 @@ function ShellFrame({ children, isStaff, attention }: AppShellProps) {
         />
         <NewBrandDialog open={newBrandOpen} onClose={closeNewBrand} />
 
-        <SupportBubble />
+        {/* Sprint 7: la burbuja no abre nada (no hay proveedor de soporte); en el
+            modo personal no tiene a quién llamar. Mismo criterio que D-15 en el
+            sidebar: mientras el modo no se sabe, tampoco. */}
+        {mode === "standard" && <SupportBubble />}
       </div>
     </ShellActionsProvider>
   );

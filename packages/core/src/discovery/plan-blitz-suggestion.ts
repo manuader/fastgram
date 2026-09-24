@@ -30,10 +30,15 @@ import type { BlitzContentType } from "../content/content.js";
 import {
   formatsWithMedia,
   influencerCoversFormat,
+  rankMedia,
   selectMedia,
+  withRoleMedia,
+  type JudgeableRole,
   type MediaBank,
+  type MediaRef,
   type MediaSelection,
 } from "./blitz-media.js";
+import { topMatches } from "./relevance.js";
 import type { BlitzPreferences } from "./blitz-preferences.js";
 import {
   planSuggestion,
@@ -45,6 +50,7 @@ import {
   explainSuggestion,
   type PromptFailureReason,
   type PromptNarrative,
+  type SuggestionNarrative,
 } from "./refill-job.js";
 
 export interface BlitzPlanningContext {
@@ -63,6 +69,19 @@ export interface PlannedBlitzSuggestion {
   readonly media: MediaSelection;
   /** La parte determinista de `aiExplanation` (`explainSuggestion`). */
   readonly derivedExplanation: string;
+  /**
+   * Sprint 7 (`JV-6`): el tema con el que se eligió la media — el prompt del
+   * usuario o, en el refill, el título del ángulo. `null` = sin tema (azar).
+   */
+  readonly topic: string | null;
+  /**
+   * Sprint 7 (`JV-6`): los personajes con media entre los que se sorteó el
+   * influencer. Vacío salvo con dos o más: es lo que el juicio puede
+   * re-elegir con {@link rebindInfluencer}.
+   */
+  readonly influencerCandidates: readonly string[];
+  /** Con qué se armó la explicación, para rearmarla si `JV-6` cambia algo. */
+  readonly narrative: SuggestionNarrative;
 }
 
 const MIX: readonly [BlitzContentType, keyof BlitzPreferences][] = [
@@ -118,29 +137,154 @@ export function planBlitzSuggestion(
     }
   }
 
-  const media = selectMedia(rng, context.bank, plan.contentType, influencerId);
+  const angleTitle =
+    plan.angleId === null ? undefined : context.angleTitles.get(plan.angleId);
+  // Sprint 7 (`JV-6`): el tema elige la media. El del usuario manda; sin
+  // prompt, el ángulo que salió.
+  const topic = prompt?.topic ?? angleTitle ?? null;
+  const media = selectMedia(rng, context.bank, plan.contentType, influencerId, topic);
   if (media === null) {
     // `formatsWithMedia` y `influencerCoversFormat` ya lo garantizaron. Llegar
     // acá es que las dos funciones divergieron.
     throw new Error(`selectMedia no encontró media para ${plan.contentType}`);
   }
 
+  const narrative: SuggestionNarrative = {
+    angleTitle,
+    influencerName:
+      influencerId === null ? undefined : context.influencerNames.get(influencerId),
+    candidatesWithoutMedia,
+    influencerWithoutMedia,
+    pickedAmong,
+    skippedFormats,
+    prompt,
+    mediaLines: topicMediaLines(context.bank, media, topic),
+  };
   return {
     plan,
     influencerId,
     media,
-    derivedExplanation: explainSuggestion(plan, {
-      angleTitle:
-        plan.angleId === null ? undefined : context.angleTitles.get(plan.angleId),
-      influencerName:
-        influencerId === null ? undefined : context.influencerNames.get(influencerId),
-      candidatesWithoutMedia,
-      influencerWithoutMedia,
-      pickedAmong,
-      skippedFormats,
-      prompt,
-    }),
+    derivedExplanation: explainSuggestion(plan, narrative),
+    topic,
+    influencerCandidates:
+      pickedAmong > 1
+        ? plan.influencer.decision === "use"
+          ? plan.influencer.candidates.filter((id) =>
+              influencerCoversFormat(context.bank, id, plan.contentType),
+            )
+          : []
+        : [],
+    narrative,
   };
+}
+
+/**
+ * La línea de la explicación cuando el tema eligió el meme de un
+ * green-screen: sólo si el clip elegido está entre los que matchean.
+ */
+function topicMediaLines(
+  bank: MediaBank,
+  media: MediaSelection,
+  topic: string | null,
+): readonly string[] {
+  if (media.format !== "green-screen" || topic === null) return [];
+  const clip = bank.media.find((m) => m.id === media.video.mediaId);
+  if (clip === undefined) return [];
+  const pool = bank.media.filter(
+    (m) => m.mediaType === "video" && m.categories.includes("green-screen-video"),
+  );
+  const matches = topMatches(rankMedia(topic, pool));
+  return matches.some((m) => m.id === clip.id)
+    ? ["Meme: picked from your Media Bank because its labels match the topic."]
+    : [];
+}
+
+/**
+ * `JV-6`: el juicio eligió **otro** personaje entre
+ * {@link PlannedBlitzSuggestion.influencerCandidates}. La media se vuelve a
+ * elegir de **sus** sets (con el mismo tema) y la explicación lo dice.
+ * Consume el `Rng` otra vez: sólo pasa con juicio, que ya no es reproducible
+ * por seed.
+ */
+export function rebindInfluencer(
+  rng: Rng,
+  context: BlitzPlanningContext,
+  planned: PlannedBlitzSuggestion,
+  influencerId: string,
+): PlannedBlitzSuggestion {
+  if (!planned.influencerCandidates.includes(influencerId)) return planned;
+  const media = selectMedia(
+    rng,
+    context.bank,
+    planned.plan.contentType,
+    influencerId,
+    planned.topic,
+  );
+  if (media === null) return planned;
+  const narrative: SuggestionNarrative = {
+    ...planned.narrative,
+    influencerName: context.influencerNames.get(influencerId),
+    influencerJudged: true,
+  };
+  return {
+    ...planned,
+    influencerId,
+    media,
+    narrative,
+    derivedExplanation: explainSuggestion(planned.plan, narrative),
+  };
+}
+
+/**
+ * `JV-6` o la búsqueda automática cambiaron el asset de un rol (el meme o el
+ * fondo). `line` reemplaza a las líneas de media de la explicación.
+ */
+export function withJudgedMedia(
+  planned: PlannedBlitzSuggestion,
+  role: JudgeableRole,
+  media: MediaRef,
+  line: string,
+): PlannedBlitzSuggestion {
+  const narrative: SuggestionNarrative = {
+    ...planned.narrative,
+    mediaLines: [
+      ...(planned.narrative.mediaLines ?? []).filter(
+        (l) => !l.startsWith(roleLabel(role)),
+      ),
+      line,
+    ],
+  };
+  return {
+    ...planned,
+    media: withRoleMedia(planned.media, role, media),
+    narrative,
+    derivedExplanation: explainSuggestion(planned.plan, narrative),
+  };
+}
+
+/**
+ * `JV-6` eligió qué referencia remixar (la tirada de `remixPercentage` salió).
+ * Sólo cambia la explicación: la referencia viaja a la copy aparte.
+ */
+export function withRemixReference(
+  planned: PlannedBlitzSuggestion,
+  referenceTitle: string,
+): PlannedBlitzSuggestion {
+  if (!planned.plan.isRemix) return planned;
+  const narrative: SuggestionNarrative = {
+    ...planned.narrative,
+    remixReferenceTitle: referenceTitle.trim() === "" ? "untitled" : referenceTitle,
+  };
+  return {
+    ...planned,
+    narrative,
+    derivedExplanation: explainSuggestion(planned.plan, narrative),
+  };
+}
+
+/** Cómo empieza la línea de cada rol en la explicación. */
+export function roleLabel(role: JudgeableRole): string {
+  return role === "video" ? "Meme:" : "Background:";
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -247,3 +391,9 @@ export function planPromptSuggestion(
 
 // `PU-LATER-004`: el módulo de influencers sale del paquete por acá hasta que
 // `src/index.ts` (que no es de este cambio) lo exporte con su propia línea.
+
+// Sprint 7 (memes desde un prompt): los módulos nuevos salen por acá por la
+// misma razón — `src/index.ts` es compartido.
+export * from "./relevance.js";
+export * from "./meme-search.js";
+export * from "./copy-language.js";

@@ -9,14 +9,26 @@
  *    que falten se resolverían en runtime o en 404 según la configuración. Es
  *    un fallo que no se ve en desarrollo.
  * 2. **Que `custom` —y sólo `custom`— ofrezca subir un archivo**
- *    (`P2-STUDIO-009`, `F-083`). Los otros 21 necesitan el wizard de
- *    `P2-STUDIO-002`, que no está: un `<input type="file">` en `/content/lego`
- *    sería un control que no puede terminar en nada.
+ *    (`P2-STUDIO-009`, `F-083`). Los cuatro base montan el Studio
+ *    (`Create New` / `Remix`, sprint 7) y los generativos el estudio del
+ *    agente G.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+  }),
+  usePathname: () => "/content",
+}));
+
 import ContentFormatPage, { generateMetadata, generateStaticParams } from "./page";
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -67,12 +79,22 @@ describe("qué se dibuja en cada formato", () => {
     expect(screen.getByText("MP4 or MOV, up to 50 MB.")).toBeInTheDocument();
   });
 
-  it("los otros 21 NO ofrecen subir nada: enseñan el placeholder", async () => {
-    await renderFormat("lego");
+  it("un formato base monta el Studio: Create New y Remix, sin subir archivos", async () => {
+    await renderFormat("wall-of-text");
 
     // La negativa primero: es lo que este caso mide.
     expect(screen.queryByLabelText("Video file")).toBeNull();
-    expect(screen.getByText("Lego is not built yet")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Create New" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Remix" })).toBeInTheDocument();
+    // `Save` arranca deshabilitado (F-073).
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("un formato generativo no ofrece subir nada ni el Studio base", async () => {
+    await renderFormat("lego");
+
+    expect(screen.queryByLabelText("Video file")).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Create New" })).toBeNull();
     expect(
       screen.getByText("Stop-motion Lego brick ad with narration and captions"),
     ).toBeInTheDocument();

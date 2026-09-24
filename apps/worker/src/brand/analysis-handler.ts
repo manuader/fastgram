@@ -12,11 +12,11 @@
  *  1. **Recolección** — sí: el `SocialReader` de la plataforma, según el plan
  *     de `acquisitionPlan` (B → C → A → D). Del tier A sólo se **ofrece**: leer
  *     con OAuth exige descifrar el token de la `Connection`, y eso no existe.
- *  2. **Enriquecimiento** — **no**. OCR (`INT-016`) y link-in-bio (`INT-018`,
- *     `P1-BRAND-015`) no están cableados. Para web no cambia nada: el extractor
- *     no devuelve media y ya sigue las páginas de producto/precios/about.
- *  3. **Síntesis** — sí, por el {@link BrandSynthesizer} inyectado. La
- *     confianza queda en `low` hasta que exista `JV-4` (ver `synthesis.ts`).
+ *  2. **Enriquecimiento** — link-in-bio sí (`INT-018`, `P1-BRAND-015`): un
+ *     nivel, cinco destinos, leídos con el lector web ({@link followLinkInBio}).
+ *     OCR de media (`INT-016`) no: el tier D con capturas lo hace la API.
+ *  3. **Síntesis** — sí, por el {@link BrandSynthesizer} inyectado, que con
+ *     verificador mide la confianza de cada campo con `JV-4`.
  *  4. **Conciliación** — sí: `reconcileBrandProfile` de `core` contra el
  *     último snapshot de cada otra fuente del workspace.
  *
@@ -69,6 +69,8 @@ import {
   completeAnalysis,
   currentProfileFields,
   fromStoredDerivedFields,
+  linkDestinationItem,
+  linkInBioTargets,
   materializeField,
   parseBrandSourceAnalysisJob,
   reconcileBrandProfile,
@@ -217,6 +219,31 @@ function storedItem(item: SocialContentItem): Record<string, unknown> {
     engagement: { ...item.engagement },
     ...(item.postedAt === undefined ? {} : { postedAt: item.postedAt.toISOString() }),
   };
+}
+
+/**
+ * Un nivel, sin recursión (`INT-018`): se lee **la página** de cada destino
+ * con el lector web (tier C, con su guarda SSRF por salto) y nada más; los
+ * links de esos destinos no se siguen. Un destino que falla se saltea: el
+ * enriquecimiento degrada, nunca aborta el análisis (`AI-016`).
+ */
+export async function followLinkInBio(
+  reader: SocialReader,
+  targets: readonly string[],
+): Promise<SocialContentItem[]> {
+  const out: SocialContentItem[] = [];
+  for (const url of targets) {
+    try {
+      const read = await reader.readProfile({ handle: url });
+      if (read.status !== "ok") continue;
+      const item = linkDestinationItem(url, read.data);
+      if (item !== null) out.push(item);
+    } catch {
+      // SSRF bloqueado, timeout, 4xx/5xx: el destino no aporta y se sigue.
+      continue;
+    }
+  }
+  return out;
 }
 
 type Collected =
@@ -452,14 +479,34 @@ export function createBrandSourceAnalysisHandler(
       return;
     }
 
+    // ── Etapa 2: enriquecimiento — link-in-bio (`P1-BRAND-015`, `INT-018`) ──
+    let items = collected.items;
+    const linkReader = deps.readers.website;
+    if (
+      job.assisted === undefined &&
+      linkReader !== undefined &&
+      sourceType !== "website" &&
+      sourceType !== "other_url"
+    ) {
+      const extra = await followLinkInBio(
+        linkReader,
+        linkInBioTargets(collected.profile.links, row.canonicalUrl ?? undefined),
+      );
+      if (extra.length > 0) {
+        items = [...items, ...extra];
+        deps.logger.info({ ...base, links: extra.length }, "link-in-bio leído");
+      }
+    }
+
     // ── Etapa 3: síntesis ───────────────────────────────────────────────────
     let synthesis;
     try {
       synthesis = await deps.synthesizer.synthesize({
+        companyId: job.companyId,
         sourceId: row.id,
         sourceType,
         profile: collected.profile,
-        items: collected.items,
+        items,
       });
     } catch (error: unknown) {
       await terminal(classifySynthesisError(error));
@@ -539,7 +586,7 @@ export function createBrandSourceAnalysisHandler(
         tier: collected.tier,
         capturedAt: now,
         profileSignals: collected.profile,
-        contentItems: collected.items.map(storedItem),
+        contentItems: items.map(storedItem),
         derivedFields: toStoredDerivedFields(own),
         conflicts: reconciled.conflicts,
         rawRetentionExpiresAt: new Date(now.getTime() + deps.rawRetentionDays * DAY_MS),
@@ -595,7 +642,7 @@ export function createBrandSourceAnalysisHandler(
         ...base,
         status,
         tier: collected.tier,
-        items: collected.items.length,
+        items: items.length,
         model: synthesis.model,
         rejected: synthesis.rejected,
         fenceEscapeAttempts: synthesis.fenceEscapeAttempts,

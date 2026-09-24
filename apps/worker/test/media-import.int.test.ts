@@ -561,7 +561,7 @@ describe("media-import — PU-MEME-001", () => {
     expect(await filas(companyId)).toHaveLength(1);
   });
 
-  it("audio: queda en el storage de la marca, sin fila", async () => {
+  it("audio: va a la biblioteca de audio de la marca, con fila (sprint 7)", async () => {
     const companyId = await seedCompany(handle);
     const m4a = path.join(clips, "a.m4a");
     execFileSync("ffmpeg", [
@@ -582,12 +582,34 @@ describe("media-import — PU-MEME-001", () => {
 
     await handler()(ctx(j));
 
+    // Nada en `media` (DATA-010 no tiene tipo audio)…
     expect(await filas(companyId)).toHaveLength(0);
     const status = await statusOf(companyId, j.importId);
     expect(status).toMatchObject({ state: "imported" });
+    // …y el objeto bajo `audio/{companyId}/`, el prefijo que el build autoriza.
     expect(decodeURIComponent(String(status["audioUrl"]))).toContain(
-      `media/${companyId}/imports/${j.importId}/audio.m4a`,
+      `audio/${companyId}/imports/${j.importId}.m4a`,
     );
+    const pistas = async () =>
+      (await handle.sql`
+        select origin, url, storage_key, import_id::text, source_url, duration_sec,
+               content_type, auto_use
+          from brand_audio_tracks where company_id = ${companyId}::uuid
+      `) as unknown as Record<string, unknown>[];
+    const [pista] = await pistas();
+    expect(pista).toMatchObject({
+      origin: "import",
+      url: status["audioUrl"],
+      import_id: j.importId,
+      source_url: j.url,
+      content_type: "audio/mp4",
+      auto_use: true,
+    });
+    expect(Number(pista?.["duration_sec"])).toBeGreaterThan(1.5);
+
+    // Un reintento tardío (el estado ya es terminal) no duplica la fila.
+    await handler()(ctx(j, 2));
+    expect(await pistas()).toHaveLength(1);
   });
 });
 

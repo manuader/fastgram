@@ -7,7 +7,13 @@ describe("socialReadersFromEnv — PU-SCRAPE-001/002", () => {
   it("sin variables no monta nada, y dice por qué", () => {
     const m = socialReadersFromEnv({});
     expect(m.readers).toEqual({});
-    expect(m.skipped.map((s) => s.source)).toEqual(["instagram", "tiktok", "x"]);
+    expect(m.skipped.map((s) => s.source)).toEqual([
+      "instagram",
+      "tiktok",
+      "x",
+      "youtube",
+      "linkedin",
+    ]);
   });
 
   it("cada URL monta su extractor", () => {
@@ -19,7 +25,7 @@ describe("socialReadersFromEnv — PU-SCRAPE-001/002", () => {
     });
     expect(Object.keys(m.readers).sort()).toEqual(["instagram", "tiktok", "x"]);
     expect(m.readers.instagram?.capabilities().tiers).toEqual(["C_page_fetch"]);
-    expect(m.skipped).toEqual([]);
+    expect(m.skipped.map((s) => s.source)).toEqual(["youtube", "linkedin"]);
     // Los valores no aparecen en lo que se loguea.
     expect(JSON.stringify(m.mounted)).not.toContain("127.0.0.1");
   });
@@ -49,5 +55,21 @@ describe("socialReadersFromEnv — PU-SCRAPE-001/002", () => {
       /TIKTOK_EXTRACTOR_URL/,
     );
     expect(() => socialReadersFromEnv({ X_EXTRACTOR_URL: "ftp://x" })).toThrow(/http/);
+  });
+
+  it("sprint 7: YouTube (B y/o C) y LinkedIn (C) sólo si se piden", () => {
+    const m = socialReadersFromEnv({
+      YOUTUBE_READER: "on",
+      YOUTUBE_API_KEY: "secreto-yt",
+      LINKEDIN_READER: "on",
+    });
+    expect(m.readers.youtube?.capabilities().tiers).toEqual([
+      "B_public_api",
+      "C_page_fetch",
+    ]);
+    expect(m.readers.linkedin?.capabilities().tiers).toEqual(["C_page_fetch"]);
+    expect(JSON.stringify(m.mounted)).not.toContain("secreto-yt");
+    const keyOnly = socialReadersFromEnv({ YOUTUBE_API_KEY: "k" });
+    expect(keyOnly.readers.youtube?.capabilities().tiers).toEqual(["B_public_api"]);
   });
 });

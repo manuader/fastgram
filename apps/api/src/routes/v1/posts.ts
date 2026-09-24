@@ -51,22 +51,30 @@
  * resuelve desde una ruta porque la alternativa —`UPDATE status='DELETED'`— es un cambio
  * de schema y de semántica que le toca a `packages/db`.
  */
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
   PAGINATION_LIMIT_MAX,
+  POST_NOW_LEAD_MS,
   POSTS_RANGE_MAX_DAYS,
   WARMED_MAX_SCHEDULE_DAYS_AHEAD,
   cancelPostsRequestSchema,
   deletePostsRequestSchema,
+  generateCaptionRequestSchema,
   listPostsQuerySchema,
   markPostedRequestSchema,
   postAnalyticsRequestSchema,
+  retryPostRequestSchema,
   scheduleContentRequestSchema,
+  updatePostRequestSchema,
   type BatchFailureReason,
+  type CaptionFieldName,
   type ListPostsQuery,
   type ScheduleTarget,
 } from "@fastgram/contracts";
 import {
+  companyProfileRepository,
+  companyRepository,
   connectionRepository,
   contentRepository,
   lockPost,
@@ -79,13 +87,31 @@ import {
 import type { JobSpec, Queue } from "@fastgram/ports";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-import { DomainError, JOB_QUEUES } from "@fastgram/core";
+import {
+  DomainError,
+  JOB_QUEUES,
+  PLATFORM_FIELD_LIMITS,
+  assertCanMovePost,
+  buildCaptionAiRequest,
+  captionFieldsFor,
+  codePointLength,
+  isDomainError,
+  parseCaptionAiResponse,
+  type CaptionAiMode,
+  type CopyBrandProfile,
+} from "@fastgram/core";
 
 import { ownerOrFail, runScoped } from "../../auth/scope.js";
 import { ApiRejection } from "../../http/errors.js";
 import { rateLimit } from "../../plugins/rate-limit.js";
 import { toPost } from "../../support/serializers.js";
 import { crossTenant, data, notFound, page } from "./shared.js";
+import {
+  CAPTION_LLM_TIMEOUT_MS,
+  defaultPostRouteDeps,
+  type CaptionLlmSource,
+  type PostRouteDeps,
+} from "./posts-caption.js";
 import type { ZodApp } from "../../server/types.js";
 
 const idParams = z.object({ id: z.string().min(1) });
@@ -384,8 +410,12 @@ type Resolution =
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WARMED_HORIZON_MS = WARMED_MAX_SCHEDULE_DAYS_AHEAD * DAY_MS;
 
-export function registerPostRoutes(app: ZodApp): void {
+export function registerPostRoutes(
+  app: ZodApp,
+  routeDeps: PostRouteDeps = defaultPostRouteDeps(),
+): void {
   const { limiter, clock, queue } = app.deps;
+  const { captionLlm, xAllowLinks } = routeDeps;
 
   // ── GET /posts ──
   app.get(
@@ -455,40 +485,42 @@ export function registerPostRoutes(app: ZodApp): void {
         });
       }
 
-      // AI-006 rellena **sólo** los campos vacíos, lo que exige un modelo. Ese adaptador
-      // no existe (es el mismo hueco que `angleGenerator`). Se rechaza el pedido entero en
-      // vez de ignorar la bandera: ignorarla publicaría captions vacías en silencio, que
-      // es exactamente lo que el usuario pidió que no pasara.
-      if (body.enableCaptionGeneration === true) {
-        return reply.status(503).send({
-          error: {
-            code: "service_unavailable",
-            message: "Caption generation is temporarily unavailable.",
-          },
-        });
-      }
-
       if (!isStorableId(contentId)) throw notFound("content");
 
-      const scheduledAt = new Date(body.scheduledAtUtc);
       const nowMs = clock.nowMs();
 
-      // Una hora pasada se rechaza, y la razón es de contrato, no de gusto: `startAfter`
-      // en el pasado hace que la cola arranque el job **ya**, o sea una "publicar ahora"
-      // por la puerta de atrás. F-157 dice que esa opción existe en el producto pero el
-      // PRD no nombra su campo, así que el contrato deliberadamente no la expone; dejar
-      // que un timestamp viejo —un reintento, un reloj corrido— la dispare publicaría
-      // algo que nadie pidió en ese momento.
-      if (body.scheduledAtUtc <= nowMs) {
+      // «Post now» (F-157) es un flag **explícito** (`postNow`, sprint 7): programa a
+      // `ahora + POST_NOW_LEAD_MS`. Sin él, una hora pasada se sigue rechazando, y la
+      // razón es de contrato: `startAfter` en el pasado arranca el job **ya**, y un
+      // timestamp viejo —un reintento, un reloj corrido— publicaría algo que nadie
+      // pidió en ese momento.
+      let scheduledAtMs: number;
+      if (body.postNow === true) {
+        scheduledAtMs = nowMs + POST_NOW_LEAD_MS;
+      } else if (body.scheduledAtUtc === undefined || body.scheduledAtUtc <= nowMs) {
         return reply.status(400).send({
           error: {
             code: "bad_request",
             message: "scheduledAtUtc must be in the future.",
           },
         });
+      } else {
+        scheduledAtMs = body.scheduledAtUtc;
       }
+      const scheduledAt = new Date(scheduledAtMs);
 
-      const targets = body.targets.map(flattenTarget);
+      let targets = body.targets.map(flattenTarget);
+
+      // AI-006: rellena **sólo** los campos vacíos, con el modelo `text` del registro.
+      // Sin modelo se rechaza el pedido entero (`503`) en vez de ignorar la bandera:
+      // ignorarla programaría con la caption derivada cuando el usuario pidió otra cosa.
+      if (body.enableCaptionGeneration === true) {
+        const context = await request.tx((tx) =>
+          loadCaptionContext(tx, companyId, contentId),
+        );
+        if (context === null) throw crossTenant("content", contentId, companyId);
+        targets = await fillCaptionsWithAi(captionLlm, targets, context, xAllowLinks);
+      }
 
       const outcome = await request.tx((tx) =>
         schedulePostsInTx(tx, {
@@ -498,6 +530,7 @@ export function registerPostRoutes(app: ZodApp): void {
           scheduledAt,
           nowMs,
           queue,
+          xAllowLinks,
         }),
       );
 
@@ -711,6 +744,455 @@ export function registerPostRoutes(app: ZodApp): void {
       return data(toPost(row));
     },
   );
+
+  // ── POST /content/:id/caption ── (sprint 7: Improve / Regenerate del diálogo)
+  //
+  // No escribe nada: devuelve el texto para el campo. El modelo es el `text` del
+  // registro; sin él, `503` con `details.reason` (ver el contrato).
+  app.post(
+    "/content/:id/caption",
+    {
+      schema: { params: idParams, body: generateCaptionRequestSchema },
+      preHandler: rateLimit(limiter, "restPerWorkspace"),
+    },
+    async (request) => {
+      const { id: contentId } = request.params;
+      const companyId = request.auth.companyId;
+      const body = request.body;
+      if (!isStorableId(contentId)) throw notFound("content");
+      if (body.platform === "reddit") {
+        // FR-060 (PRD:1376) / INT-005: Reddit no soporta generación de caption.
+        throw new ApiRejection(
+          400,
+          "bad_request",
+          "Automatic captions aren't supported on Reddit.",
+        );
+      }
+      const field: CaptionFieldName = body.field ?? "caption";
+      if (
+        field === "description" &&
+        PLATFORM_FIELD_LIMITS[body.platform].description === null
+      ) {
+        throw new ApiRejection(
+          400,
+          "bad_request",
+          `${body.platform} posts have no description.`,
+        );
+      }
+      const context = await request.tx((tx) =>
+        loadCaptionContext(tx, companyId, contentId),
+      );
+      if (context === null) throw crossTenant("content", contentId, companyId);
+      const result = await runCaptionAi(captionLlm, {
+        platform: body.platform,
+        field,
+        mode: body.mode,
+        currentText: body.text,
+        context,
+        xAllowLinks,
+      });
+      return data({
+        platform: body.platform,
+        field,
+        text: result.text,
+        model: result.model,
+      });
+    },
+  );
+
+  // ── POST /posts/:id/retry ── (sprint 7)
+  //
+  // Un `FAILED` vuelve a `SCHEDULED` con la **misma fila** y un job nuevo (clave
+  // `publishing:<id>:manual:<ms>`: la primera, `publishing:<id>`, ya se gastó —
+  // trampa 39). Las guardas anti-bot corren igual en el worker al publicar.
+  app.post(
+    "/posts/:id/retry",
+    {
+      schema: { params: idParams, body: retryPostRequestSchema.nullish() },
+      preHandler: rateLimit(limiter, "restPerWorkspace"),
+    },
+    async (request) => {
+      if (queue === undefined) {
+        throw new ApiRejection(
+          503,
+          "service_unavailable",
+          "Retrying is temporarily unavailable.",
+        );
+      }
+      const { id } = request.params;
+      if (!isStorableId(id)) throw notFound("post");
+      const body = request.body ?? {};
+      const brandId = await markPostedBrandOf(app, request, body.brandId);
+      const nowMs = clock.nowMs();
+      const atMs = body.scheduledAtUtc ?? nowMs + POST_NOW_LEAD_MS;
+      if (atMs <= nowMs) {
+        throw new ApiRejection(
+          400,
+          "bad_request",
+          "scheduledAtUtc must be in the future.",
+        );
+      }
+
+      const row = await runScoped(app.deps.db, brandId, app.deps.appRole, async (tx) => {
+        const scope = { companyId: brandId };
+        const post = await lockPost(tx, scope, id);
+        if (post === null) throw crossTenant("post", id, brandId);
+        const refusal = retryRefusalOf(post, body.confirmNotPublished === true);
+        if (refusal !== null) {
+          throw new ApiRejection(409, "conflict", refusal.message, refusal.details);
+        }
+        const content = await contentRepository.findById(tx, scope, post.contentId);
+        if (content === null || content.status === "FAILED") {
+          throw new ApiRejection(
+            409,
+            "unsupported_content_state",
+            "The content of this post is gone or failed to build.",
+          );
+        }
+        const next = await postRepository.update(tx, scope, id, {
+          status: content.status === "CREATED" ? "SCHEDULED" : "BUILDING",
+          scheduledAtUtc: new Date(atMs),
+          errorCode: null,
+          errorMessage: null,
+          cancellationPending: false,
+        });
+        if (next === null)
+          throw new Error(`El post ${id} desapareció con el lock tomado.`);
+        // ADR-005: el job en la misma transacción que la fila.
+        await queue.enqueue(
+          publishJobFor(brandId, id, new Date(atMs), tx, manualRetryKey(id, atMs)),
+        );
+        return next;
+      });
+      return data(toPost(row));
+    },
+  );
+
+  // ── PATCH /posts/:id ── (sprint 7: editar caption/hora desde el calendario o la Library)
+  app.patch(
+    "/posts/:id",
+    {
+      schema: { params: idParams, body: updatePostRequestSchema },
+      preHandler: rateLimit(limiter, "restPerWorkspace"),
+    },
+    async (request) => {
+      const { id } = request.params;
+      if (!isStorableId(id)) throw notFound("post");
+      const body = request.body;
+      const brandId = await markPostedBrandOf(app, request, body.brandId);
+      const now = new Date(clock.nowMs());
+
+      const row = await runScoped(app.deps.db, brandId, app.deps.appRole, async (tx) => {
+        const scope = { companyId: brandId };
+        const post = await lockPost(tx, scope, id);
+        if (post === null) throw crossTenant("post", id, brandId);
+        if (!EDITABLE_POST_STATUSES.has(post.status) || post.cancellationPending) {
+          throw new ApiRejection(
+            409,
+            "conflict",
+            "Only a post that hasn't gone out yet can be edited.",
+            { status: post.status },
+          );
+        }
+        const copy = copyPatchOf(post.platform, body);
+        const moving =
+          body.scheduledAtUtc !== undefined &&
+          body.scheduledAtUtc !== post.scheduledAtUtc.getTime();
+        if (!moving) {
+          if (Object.keys(copy).length === 0) return post;
+          const next = await postRepository.update(tx, scope, id, copy);
+          if (next === null)
+            throw new Error(`El post ${id} desapareció con el lock tomado.`);
+          return next;
+        }
+        if (queue === undefined) {
+          throw new ApiRejection(
+            503,
+            "service_unavailable",
+            "Moving posts is temporarily unavailable.",
+          );
+        }
+        const to = new Date(body.scheduledAtUtc ?? 0);
+        try {
+          assertCanMovePost(
+            {
+              id: post.id,
+              status: post.status,
+              accountType: post.accountType,
+              tiktokProcessingDelayed: post.tiktokProcessingDelayed,
+              cancellationPending: post.cancellationPending,
+              scheduledFor: post.scheduledAtUtc,
+            },
+            to,
+            now,
+          );
+        } catch (error) {
+          if (isDomainError(error)) {
+            throw new ApiRejection(
+              error.code === "out_of_range" ? 400 : 409,
+              error.code === "out_of_range" ? "bad_request" : "conflict",
+              error.message,
+            );
+          }
+          throw error;
+        }
+        return supersedePost(tx, brandId, post, to, queue, copy);
+      });
+      return data(toPost(row));
+    },
+  );
+}
+
+/** Los estados en los que un post todavía se puede editar (no salió ni está saliendo). */
+export const EDITABLE_POST_STATUSES: ReadonlySet<string> = new Set([
+  "BUILDING",
+  "CREATED",
+  "SCHEDULED",
+  "AWAITING_RECONNECT",
+]);
+
+/**
+ * Los `errorCode` con los que la plataforma **pudo** haber publicado igual:
+ * reintentar sin que el usuario lo confirme puede duplicar el post (`NFR-015`).
+ */
+export const UNCERTAIN_FAILURE_CODES: ReadonlySet<string> = new Set([
+  "delivery_unconfirmed",
+  "platform_processing_timeout",
+]);
+
+/** Por qué no se reintenta, o `null`. Pura, para testear sin base. */
+export function retryRefusalOf(
+  post: { readonly status: string; readonly errorCode: string | null },
+  confirmed: boolean,
+): { readonly message: string; readonly details: Record<string, unknown> } | null {
+  if (post.status !== "FAILED") {
+    return {
+      message: "Only a failed post can be retried.",
+      details: { status: post.status },
+    };
+  }
+  if (
+    post.errorCode !== null &&
+    UNCERTAIN_FAILURE_CODES.has(post.errorCode) &&
+    !confirmed
+  ) {
+    return {
+      message:
+        "The platform may have published this post. Check the account and confirm before retrying.",
+      details: { errorCode: post.errorCode, needsConfirmation: true },
+    };
+  }
+  return null;
+}
+
+/** `publishing:<postId>:manual:<ms>` — reintento o reprogramación a mano. */
+export const manualRetryKey = (postId: string, atMs: number): string =>
+  `${PUBLISH_POST_QUEUE}:${postId}:manual:${String(atMs)}`;
+
+/**
+ * Lo que `PATCH /posts/:id` escribe de copy, validado contra la red del post
+ * (por code point, como el pre-flight de los publicadores).
+ */
+export function copyPatchOf(
+  platform: string,
+  body: {
+    readonly caption?: string | undefined;
+    readonly description?: string | undefined;
+  },
+): { caption?: string; description?: string } {
+  const limits = (
+    PLATFORM_FIELD_LIMITS as Readonly<
+      Record<string, { caption: number | null; description: number | null }>
+    >
+  )[platform] ?? { caption: null, description: null };
+  const out: { caption?: string; description?: string } = {};
+  if (body.caption !== undefined) {
+    if (limits.caption !== null && codePointLength(body.caption) > limits.caption) {
+      throw new ApiRejection(
+        400,
+        "bad_request",
+        `The ${platform} caption must be ${String(limits.caption)} characters or fewer.`,
+      );
+    }
+    out.caption = body.caption;
+  }
+  if (body.description !== undefined) {
+    if (limits.description === null) {
+      throw new ApiRejection(
+        400,
+        "bad_request",
+        `${platform} posts have no description.`,
+      );
+    }
+    if (codePointLength(body.description) > limits.description) {
+      throw new ApiRejection(
+        400,
+        "bad_request",
+        `The ${platform} description must be ${String(limits.description)} characters or fewer.`,
+      );
+    }
+    out.description = body.description;
+  }
+  return out;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Caption con IA
+// ───────────────────────────────────────────────────────────────────────────
+
+interface CaptionContext {
+  readonly generatedText: string | null;
+  readonly businessName: string;
+  readonly profile: CopyBrandProfile;
+}
+
+async function loadCaptionContext(
+  tx: Tx,
+  companyId: string,
+  contentId: string,
+): Promise<CaptionContext | null> {
+  const scope = { companyId };
+  const content = await contentRepository.findById(tx, scope, contentId);
+  if (content === null) return null;
+  const company = await companyRepository.load(tx, scope);
+  const profile = (await companyProfileRepository.list(tx, scope, { limit: 1 })).items[0];
+  return {
+    generatedText: content.generatedText,
+    businessName: company?.name ?? "",
+    profile: {
+      coreIdentity: profile?.coreIdentity ?? null,
+      productOffering: profile?.productOffering ?? null,
+      uniqueBenefits: profile?.uniqueBenefits ?? null,
+      toneOfVoice: profile?.toneOfVoice ?? null,
+      targetAudience: profile?.targetAudience ?? null,
+    },
+  };
+}
+
+const randomFence = (): string => `data-${randomBytes(16).toString("hex")}`;
+
+type CaptionPlatform = FlatTarget["platform"];
+
+/**
+ * Una llamada al modelo para un campo. Lanza `ApiRejection`: `400` por una
+ * entrada que la regla de core rechaza, `503` con `details.reason` por el modelo.
+ */
+async function runCaptionAi(
+  source: CaptionLlmSource,
+  input: {
+    readonly platform: CaptionPlatform;
+    readonly field: CaptionFieldName;
+    readonly mode: CaptionAiMode;
+    readonly currentText: string | undefined;
+    readonly context: CaptionContext;
+    readonly xAllowLinks: boolean;
+  },
+): Promise<{ text: string; model: string }> {
+  let aiRequest;
+  try {
+    aiRequest = buildCaptionAiRequest(
+      {
+        platform: input.platform,
+        field: input.field,
+        mode: input.mode,
+        currentText: input.currentText,
+        pieceCopy: input.context.generatedText,
+        businessName: input.context.businessName,
+        profile: input.context.profile,
+        allowXLinks: input.xAllowLinks,
+      },
+      randomFence(),
+    );
+  } catch (error) {
+    if (isDomainError(error)) throw new ApiRejection(400, "bad_request", error.message);
+    throw error;
+  }
+  const resolved = await source.current();
+  if (resolved === null) {
+    throw new ApiRejection(
+      503,
+      "service_unavailable",
+      "No text model is configured. Set one in Settings → Models.",
+      { reason: "llm_not_configured" },
+    );
+  }
+  let completion;
+  try {
+    completion = await resolved.llm.completeJson({
+      messages: aiRequest.messages,
+      untrusted: aiRequest.untrusted,
+      schema: aiRequest.schema,
+      schemaName: aiRequest.schemaName,
+      timeoutMs: CAPTION_LLM_TIMEOUT_MS,
+    });
+  } catch {
+    // Nunca el error crudo del proveedor: un motivo estable y un mensaje nuestro.
+    throw new ApiRejection(
+      503,
+      "service_unavailable",
+      "The text model didn't answer in time. Try again.",
+      { reason: "llm_failed" },
+    );
+  }
+  const parsed =
+    completion.finishReason === "stop"
+      ? parseCaptionAiResponse(completion.value, {
+          platform: input.platform,
+          field: input.field,
+          allowXLinks: input.xAllowLinks,
+        })
+      : ({ ok: false, reason: "incomplete" } as const);
+  if (!parsed.ok) {
+    throw new ApiRejection(
+      503,
+      "service_unavailable",
+      "The model's answer couldn't be used. Try again.",
+      { reason: "caption_rejected" },
+    );
+  }
+  return { text: parsed.text, model: completion.model || resolved.model };
+}
+
+/** `enableCaptionGeneration`: rellena con el modelo **sólo** los campos vacíos (AI-006). */
+async function fillCaptionsWithAi(
+  source: CaptionLlmSource,
+  targets: readonly FlatTarget[],
+  context: CaptionContext,
+  xAllowLinks: boolean,
+): Promise<FlatTarget[]> {
+  const out: FlatTarget[] = [];
+  for (const target of targets) {
+    const blankCaption = target.caption === null || target.caption.trim() === "";
+    const hasDescription = PLATFORM_FIELD_LIMITS[target.platform].description !== null;
+    const blankDescription =
+      hasDescription && (target.description === null || target.description.trim() === "");
+    if (!blankCaption && !blankDescription) {
+      out.push(target);
+      continue;
+    }
+    if (target.platform === "reddit") {
+      throw new ApiRejection(
+        400,
+        "bad_request",
+        "Automatic captions aren't supported on Reddit.",
+      );
+    }
+    const gen = (field: CaptionFieldName) =>
+      runCaptionAi(source, {
+        platform: target.platform,
+        field,
+        mode: "regenerate",
+        currentText: undefined,
+        context,
+        xAllowLinks,
+      });
+    const caption = blankCaption ? (await gen("caption")).text : target.caption;
+    const description = blankDescription
+      ? (await gen("description")).text
+      : target.description;
+    out.push({ ...target, caption, description });
+  }
+  return out;
 }
 
 /**
@@ -830,6 +1312,8 @@ export function publishJobFor(
   postId: string,
   scheduledAt: Date,
   tx: Tx,
+  /** Otra clave para un job que no es el primero del post (trampa 39). */
+  singletonKey: string = `${PUBLISH_POST_QUEUE}:${postId}`,
 ): JobSpec<{ companyId: string; postId: string }> {
   return {
     queue: PUBLISH_POST_QUEUE,
@@ -843,7 +1327,7 @@ export function publishJobFor(
       // Un post por fila. La fila es nueva en cada programación, así que esto no
       // deduplica programaciones distintas: deduplica el reintento del mismo
       // encolado si la transacción se reintenta por un deadlock.
-      singletonKey: `${PUBLISH_POST_QUEUE}:${postId}`,
+      singletonKey,
       // Sin reintentos automáticos. `NFR-015` prohíbe duplicar un post y `NFR-005`
       // prohíbe reintentar solo lo no idempotente: un segundo intento después de un
       // timeout del proveedor puede publicar dos veces. El watcher del carril lento
@@ -851,6 +1335,51 @@ export function publishJobFor(
       retryLimit: 0,
     },
   };
+}
+
+/**
+ * Mover un post = la fila vieja a `CANCELLED` y una nueva con la hora nueva y su
+ * propio job (ver la cabecera de `routes/v1/calendar.ts`). `copy` pisa la caption
+ * y la descripción de la nueva (`PATCH /posts/:id`). Vivía en `calendar.ts`; se
+ * movió acá para que `PATCH /posts/:id` lo use sin un import circular.
+ */
+export async function supersedePost(
+  tx: Tx,
+  companyId: string,
+  post: PostRow,
+  to: Date,
+  queue: Queue,
+  copy: { readonly caption?: string; readonly description?: string } = {},
+): Promise<PostRow> {
+  const scope = { companyId };
+  const cancelled = await postRepository.update(tx, scope, post.id, {
+    status: "CANCELLED",
+  });
+  if (cancelled === null) throw notFound("post");
+
+  const next = await postRepository.create(tx, scope, {
+    contentId: post.contentId,
+    platform: post.platform,
+    accountType: post.accountType,
+    connectionId: post.connectionId,
+    warmedAccountId: post.warmedAccountId,
+    connectionUsername: post.connectionUsername,
+    scheduledAtUtc: to,
+    caption: copy.caption ?? post.caption,
+    description: copy.description ?? post.description,
+    postingMode: post.postingMode,
+    privacyLevel: post.privacyLevel,
+    discloseAsAds: post.discloseAsAds,
+    aiContentDisclaimer: post.aiContentDisclaimer,
+    instagramSlideshowFormat: post.instagramSlideshowFormat,
+    tiktokSoundMode: post.tiktokSoundMode,
+    tiktokSoundId: post.tiktokSoundId,
+    automationSlotId: post.automationSlotId,
+    status: post.status,
+  });
+  // ADR-005: el job nuevo en la misma transacción que la fila nueva.
+  await queue.enqueue(publishJobFor(companyId, next.id, to, tx));
+  return next;
 }
 
 /** Lo que decide `schedulePostsInTx`. `created` trae las filas ya escritas. */
@@ -867,6 +1396,8 @@ export interface ScheduleParams {
   readonly scheduledAt: Date;
   readonly nowMs: number;
   readonly queue: Queue;
+  /** `PUBLISH_X_ALLOW_LINKS`, para la caption derivada de X. Default `false`. */
+  readonly xAllowLinks?: boolean;
 }
 
 /**
@@ -910,6 +1441,16 @@ export async function schedulePostsInTx(
       return { kind: "rejected" as const, rejection: resolution.rejection };
     }
     const account = resolution.account;
+    // Sprint 7: un target sin caption (`null`) recibe la derivada de la copy de la
+    // pieza; un `""` explícito es vacía a propósito y se respeta. Es lo que cierra
+    // «todo post que no sale de Automations se publica con caption vacía»: el
+    // auto-slot y la conversión de slots pasan por acá con `caption: null`.
+    const copy = captionFieldsFor(
+      target.platform,
+      { caption: target.caption, description: target.description },
+      { generatedText: content.generatedText },
+      { allowXLinks: params.xAllowLinks === true },
+    );
     values.push({
       contentId: content.id,
       platform: target.platform,
@@ -922,8 +1463,8 @@ export async function schedulePostsInTx(
       warmedAccountId: account.warmedAccountId,
       connectionUsername: account.connectionUsername,
       scheduledAtUtc: scheduledAt,
-      caption: target.caption,
-      description: target.description,
+      caption: copy.caption,
+      description: copy.description,
       discloseAsAds: target.discloseAsAds,
       aiContentDisclaimer: target.aiContentDisclaimer,
       instagramSlideshowFormat: target.instagramSlideshowFormat,

@@ -113,7 +113,7 @@ export interface ContentAssets {
   readonly video?: MediaDraw;
   readonly hook_video?: MediaDraw;
   readonly demo_video?: MediaDraw;
-  /** Sólo en los formatos con pista (wall-of-text, video-hook). `null` = sin audio. */
+  /** Sólo en los formatos de video (no slideshow). `null` = sin audio. */
   readonly audio?: AudioRef | null;
 }
 
@@ -141,9 +141,12 @@ export type AssetSwapResult<T> =
   | ({ readonly ok: true } & T)
   | { readonly ok: false; readonly code: AssetSwapError; readonly reason: string };
 
-/** Formatos que llevan pista de audio: los dos cuyo payload tiene `audio?` (FR-070). */
-const hasAudioSlot = (payload: AssetBuildPayload): boolean =>
-  !("num_images" in payload) && ("hook_video" in payload || !("image" in payload));
+/**
+ * Formatos que llevan pista de audio: los tres de video. `green-screen` se sumó
+ * en el sprint 7 (su música se mezcla con el audio del clip en el render); el
+ * slideshow se exporta como carrusel de imágenes y no tiene dónde llevarla.
+ */
+const hasAudioSlot = (payload: AssetBuildPayload): boolean => !("num_images" in payload);
 
 const isSlideshow = (
   payload: AssetBuildPayload,

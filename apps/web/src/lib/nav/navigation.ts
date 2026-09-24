@@ -8,7 +8,8 @@
  * sprint 1 que el §3.2 del PRD todavía no refleja: hay que corregirlo allí.
  *
  * Lo que D-15 saca del producto en modo personal (Warmed Accounts, Refer &
- * Earn; Upgrade/Developers/Roadmap/Changelog nunca estuvieron en el sidebar)
+ * Earn, y desde el sprint 7 Guide, Feedback y Discord; Upgrade/Developers/
+ * Roadmap/Changelog nunca estuvieron en el sidebar ni en la paleta)
  * se marca con `hideInPersonal` y **no** se borra: las rutas siguen vivas y en
  * modo `standard` las entradas vuelven.
  *
@@ -150,12 +151,22 @@ export const SECONDARY_NAV: readonly NavItem[] = [
     icon: GiftIcon,
     hideInPersonal: true,
   },
-  { id: "guide", labelKey: "nav.guide", href: ROUTES.guide, icon: MapIcon },
+  // Sprint 7: Guide, Feedback y Discord son del producto para clientes; en el
+  // modo personal no llevan a nada útil (la guía es de Fastlane, el feedback
+  // no tiene endpoint y el Discord es de otro producto).
+  {
+    id: "guide",
+    labelKey: "nav.guide",
+    href: ROUTES.guide,
+    icon: MapIcon,
+    hideInPersonal: true,
+  },
   {
     id: "feedback",
     labelKey: "nav.feedback",
     href: ROUTES.feedback,
     icon: MessageSquareIcon,
+    hideInPersonal: true,
   },
   {
     id: "discord",
@@ -163,6 +174,7 @@ export const SECONDARY_NAV: readonly NavItem[] = [
     href: DISCORD_INVITE_URL,
     icon: DiscordIcon,
     external: true,
+    hideInPersonal: true,
   },
   {
     id: "settings",

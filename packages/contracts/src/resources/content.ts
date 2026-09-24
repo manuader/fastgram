@@ -197,6 +197,9 @@ export const greenScreenBuildPayloadSchema = z
     canvas: canvasSchema,
     image: mediaElementSchema,
     video: mediaElementSchema,
+    // Sprint 7 (audio): música de la biblioteca de la marca, mezclada con el
+    // audio del clip. Ausente = sólo el audio del clip, como siempre.
+    audio: audioElementSchema.optional(),
     text: buildTextSchema,
   })
   .strict();
@@ -324,8 +327,9 @@ export type ListContentQuery = z.infer<typeof listContentQuerySchema>;
  * El bloque `media` de `?include=media` (§9.7) es otra cosa y sigue sin
  * contratarse; por eso este campo se llama distinto.
  *
- * `audio` sólo aparece en los formatos con pista (`wall-of-text`,
- * `video-hook`); `null` = la pieza sale sin audio (`FR-053.1`).
+ * `audio` sólo aparece en los formatos de video (`wall-of-text`,
+ * `video-hook` y, desde el sprint 7, `green-screen`); `null` = sin música
+ * (`FR-053.1`).
  */
 export const contentAssetsSchema = z
   .object({
@@ -470,3 +474,59 @@ export const createCustomVideoContentRequestSchema = z
 export type CreateCustomVideoContentRequest = z.infer<
   typeof createCustomVideoContentRequestSchema
 >;
+
+// --- Content Studio · `F-071`…`F-083`, `P2-STUDIO-002/003/007/008` ----------
+
+/** Los cuatro formatos base que el Studio arma a mano (los de Blitz). */
+export const studioFormatSchema = z.enum([
+  "slideshow",
+  "wall-of-text",
+  "green-screen",
+  "video-hook",
+]);
+export type StudioFormat = z.infer<typeof studioFormatSchema>;
+
+/** Tope del brief para la IA. Mismo que `REGENERATE_PROMPT_MAX` (AI-004). */
+export const STUDIO_AI_PROMPT_MAX = REGENERATE_PROMPT_MAX;
+
+/**
+ * `POST /content/studio` — «Create New» del Content Studio.
+ *
+ * El cliente manda **qué** eligió (ids del Media Bank, textos, estilo) y el
+ * servidor arma el payload de `FR-070` con la misma geometría que Blitz
+ * (`composeBlitzBuildPayload`): el Studio y Blitz producen piezas iguales.
+ *
+ * - `media`: por formato — `slides` (slideshow, 1–20 imágenes), `video`
+ *   (wall-of-text: fondo; green-screen: el clip), `image` (green-screen:
+ *   fondo), `hookVideo` + `demoVideo` (video-hook).
+ * - `texts`: uno por slide en slideshow; uno en el resto.
+ * - `ai`: el texto lo escribe el modelo de la tarea `text` en el worker,
+ *   **antes** de renderizar, con `prompt` como brief. `texts` queda como
+ *   borrador/estructura. Sin modelo la pieza cierra `FAILED` con
+ *   `llm_not_configured` y el save se devuelve.
+ */
+export const studioContentRequestSchema = z
+  .object({
+    format: studioFormatSchema,
+    media: z
+      .object({
+        slides: z.array(z.string().uuid()).min(1).max(SLIDESHOW_MAX_SLIDES).optional(),
+        video: z.string().uuid().optional(),
+        image: z.string().uuid().optional(),
+        hookVideo: z.string().uuid().optional(),
+        demoVideo: z.string().uuid().optional(),
+      })
+      .strict(),
+    texts: z.array(z.string().max(TEXT_BOX_MAX_LENGTH)).min(1).max(SLIDESHOW_MAX_SLIDES),
+    textStylePresetId: z.string().min(1).optional(),
+    aspectRatio: aspectRatioSchema.optional(),
+    ai: z
+      .object({
+        prompt: z.string().trim().min(1).max(STUDIO_AI_PROMPT_MAX),
+        mentionBusiness: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+export type StudioContentRequest = z.infer<typeof studioContentRequestSchema>;

@@ -153,10 +153,11 @@ describe("POST /brand/sources/resolve", () => {
     });
   });
 
-  it("un post de Instagram no lleva el handle del autor: 503, no un handle inventado", async () => {
+  it("un post de Instagram no lleva el handle del autor: 400 con aviso de tier D, no un handle inventado (P1-BRAND-005)", async () => {
     const res = await resolve("https://instagram.com/p/Cabc123/");
-    expect(res.status).toBe(503);
-    expect(errorOf(res).code).toBe("service_unavailable");
+    expect(res.status).toBe(400);
+    expect(errorOf(res).code).toBe("bad_request");
+    expect(errorOf(res).details).toMatchObject({ reason: "post_author_unknown" });
   });
 
   it("el chip Website (`hint: website`) decide website frente a other_url · FR-011.1", async () => {

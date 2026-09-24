@@ -67,10 +67,21 @@ import {
   type ModelRegistry,
   type ModelRegistrySnapshot,
   type Storage,
+  type VideoGen,
 } from "@fastgram/ports";
 
 import type { BuildLogger } from "../content/build-handler.js";
 import type { DownloadedMedia, SpendLedgerStore } from "../genai/handler.js";
+
+/**
+ * Sprint 7: lo que el video («Animate this image», `video-handler.ts`) agrega
+ * al montaje. Vive acá y no allá para que no haya un ciclo de imports.
+ */
+export interface InfluencerVideoMount {
+  readonly videoClientFor: (config: ResolvedGenAiConfig) => VideoGen;
+  /** Baja el video del proveedor (https, con tope de tamaño). */
+  readonly downloadVideo: (url: string) => Promise<DownloadedMedia>;
+}
 
 /** Lo que el trabajo real necesita. Lo arma `mount.ts`; los tests, dobles. */
 export interface InfluencerCharacterMount {
@@ -91,6 +102,8 @@ export interface InfluencerCharacterMount {
   readonly trainPollBudgetMs?: number;
   /** Cuántas veces se espera un tope de concurrencia al enviar. Default 6. */
   readonly submitRateLimitRetries?: number;
+  /** Sprint 7: «Animate this image» (`video-handler.ts`). Sin esto, no hay video. */
+  readonly video?: InfluencerVideoMount;
 }
 
 /** Una entrega que se suelta a propósito para que la cola la retome. */

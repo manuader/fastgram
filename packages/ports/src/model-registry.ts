@@ -33,6 +33,13 @@
 export const MODEL_TASKS = [
   "text",
   "judgment",
+  // `P1-JUDGE-004` (§9.15.2: el adaptador se elige **por punto de decisión**):
+  // overrides opcionales de `judgment`. Sin entrada propia heredan `judgment`
+  // (que a su vez hereda `text`). El piloto necesita un modelo más grande que
+  // el resto; Engagement y la marca pueden quedarse con el barato.
+  "judgment.autopilot",
+  "judgment.brand",
+  "judgment.engagement",
   "vision",
   "image",
   "video",
@@ -40,6 +47,26 @@ export const MODEL_TASKS = [
 ] as const;
 
 export type ModelTask = (typeof MODEL_TASKS)[number];
+
+/**
+ * Los puntos de decisión con modelo propio opcional (`P1-JUDGE-004`). Cada uno
+ * cae a `judgment` si no tiene entrada completa: agregar uno nunca apaga a
+ * quien ya andaba con el modelo de juicio general.
+ */
+export const JUDGMENT_OVERRIDE_TASKS = [
+  "judgment.autopilot",
+  "judgment.brand",
+  "judgment.engagement",
+] as const;
+
+export type JudgmentOverrideTask = (typeof JUDGMENT_OVERRIDE_TASKS)[number];
+
+/** El juicio de un punto de decisión: el general o su override. */
+export type JudgmentTask = "judgment" | JudgmentOverrideTask;
+
+export function isJudgmentOverrideTask(task: string): task is JudgmentOverrideTask {
+  return (JUDGMENT_OVERRIDE_TASKS as readonly string[]).includes(task);
+}
 
 /**
  * Proveedores de texto: **presets de endpoints compatibles con OpenAI**, más

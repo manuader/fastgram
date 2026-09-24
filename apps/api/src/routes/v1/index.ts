@@ -13,6 +13,7 @@ import { registerAiStudioRoutes } from "./ai-studio.js";
 import { registerAnalyticsRoutes } from "./analytics.js";
 import { registerAutopilotRoutes } from "./autopilot.js";
 import { registerAutomationRoutes } from "./automations.js";
+import { registerAudioLibraryRoutes } from "./audio-library.js";
 import { defaultGenAiRouteDeps, registerGenAiRoutes } from "./genai.js";
 import { registerAngleRoutes } from "./angles.js";
 import { registerBlitzRoutes } from "./blitz.js";
@@ -22,9 +23,11 @@ import { registerCatalogRoutes } from "./catalog.js";
 import { registerEngagementRoutes } from "./engagement.js";
 import { registerConnectionRoutes } from "./connections.js";
 import { registerContentRoutes } from "./content.js";
+import { registerContentStudioRoutes } from "./content-studio.js";
 import { registerInfluencerRoutes } from "./influencers.js";
 import { registerInspirationRoutes } from "./inspiration.js";
 import { registerMediaRoutes } from "./media.js";
+import { registerNotificationRoutes } from "./notifications.js";
 import { registerModelRoutes } from "./models.js";
 import { registerOnboardingRoutes } from "./onboarding.js";
 import { registerPostRoutes } from "./posts.js";
@@ -35,6 +38,8 @@ export async function registerV1Routes(app: ZodApp): Promise<void> {
   registerBlitzRoutes(app);
   registerAngleRoutes(app);
   registerContentRoutes(app);
+  // Sprint 7 (F): «Create New» del Content Studio (`POST /content/studio`).
+  registerContentStudioRoutes(app);
   registerMediaRoutes(app);
   registerInfluencerRoutes(app);
   registerCatalogRoutes(app);
@@ -72,5 +77,9 @@ export async function registerV1Routes(app: ZodApp): Promise<void> {
   registerEngagementRoutes(app);
   // `FR-150`, `P3-AUTO-001…013`: Automations (campañas multi-semana).
   registerAutomationRoutes(app);
+  // Sprint 7: biblioteca de audio de la marca (migración 0025).
+  registerAudioLibraryRoutes(app);
+  // Sprint 7 (`P5-NOTIF-001…004`): campana, banner de conexiones, preferencias y push.
+  registerNotificationRoutes(app);
   await Promise.resolve();
 }

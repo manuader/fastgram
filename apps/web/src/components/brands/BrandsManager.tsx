@@ -126,7 +126,12 @@ export function BrandsManager() {
               className="fgw-brand-row"
               data-active={isActive ? "true" : undefined}
             >
-              <BrandAvatar id={workspace.id} name={workspace.name} size="md" />
+              <BrandAvatar
+                id={workspace.id}
+                name={workspace.name}
+                logoUrl={workspace.logoUrl}
+                size="md"
+              />
               {renamingId === workspace.id ? (
                 <RenameForm
                   workspace={workspace}

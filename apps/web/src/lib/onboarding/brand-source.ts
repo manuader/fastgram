@@ -306,6 +306,15 @@ export function presentSourceInputError(error: unknown): ErrorPresentation {
       const key = VALIDATION_LITERALS[error.serverMessage];
       if (key !== undefined) return { titleKey: key, remedy: "none" };
     }
+    // `P1-BRAND-005`: la API ya no responde 503 a un link a un post; si no
+    // puede saber el autor (Instagram `/p/…`), 400 con este motivo y el aviso
+    // de tier D (pegar el perfil o la bio).
+    if (
+      error.code === "bad_request" &&
+      error.details?.["reason"] === "post_author_unknown"
+    ) {
+      return { titleKey: "onboarding.source.postAuthorUnknown", remedy: "none" };
+    }
     if (
       error.code === "service_unavailable" &&
       brandSourceTypeSchema.safeParse(error.details?.["sourceType"]).success

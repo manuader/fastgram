@@ -15,7 +15,11 @@ import {
   type SectionId,
 } from "@/lib/brand/profile";
 import { anyInProgress, useBrandSources } from "@/lib/brand/sources";
+import { AnglesCard } from "./AnglesCard";
 import { BrandSourcesCard } from "./BrandSourcesCard";
+import { LogoCard } from "./LogoCard";
+import { ProfilingCard } from "./ProfilingCard";
+import { ProposalsCard } from "./ProposalsCard";
 import { ProfileSection } from "./ProfileSection";
 
 /**
@@ -32,12 +36,9 @@ import { ProfileSection } from "./ProfileSection";
  * propuesta en el snapshot. En pantalla, el campo editado lleva `Edited by you`
  * y la tarjeta de fuentes dice que re-analizar no lo va a pisar.
  *
- * Lo que **no** está, y no se simula: ver la propuesta y aceptarla (`ERR-B14`,
- * *"This source suggests a different answer — replace?"*). La propuesta vive en
- * `brand_source_snapshots.derived_fields`, y ni `GET /brand/profile` ni
- * `GET /brand/sources/:id` la devuelven; `fieldMeta.conflictsWith` tampoco la
- * trae para un campo editado (sólo se escribe en campos que la fusión sí
- * escribió). Sin eso no hay qué comparar ni qué aceptar.
+ * Sprint 7: la propuesta se ve y se decide en {@link ProposalsCard}
+ * (`GET /brand/profile/proposals`, `ERR-B14`). Debajo del perfil van el
+ * cuestionario (`F-006`), el logo y los content angles; al costado, las fuentes.
  */
 export function BrandProfile() {
   const queryClient = useQueryClient();
@@ -91,6 +92,7 @@ export function BrandProfile() {
         {data.status === "failed" && (
           <p className="fgw-brand__notice">{tw("brand.profile.failed")}</p>
         )}
+        <ProposalsCard poll={inProgress} />
         {quickCheck.length > 0 && (
           <aside className="fgw-brand__quick-check" aria-labelledby="brand-quick-check">
             <h2 id="brand-quick-check" className="fgw-brand-section__title">
@@ -130,6 +132,9 @@ export function BrandProfile() {
           />
         ))}
         <p className="fgw-brand__note">{tw("brand.origin.noExcerpt")}</p>
+        <ProfilingCard key={`profiling-${data.brandRevision}`} profile={data} />
+        <AnglesCard />
+        <LogoCard />
       </>
     );
   }

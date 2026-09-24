@@ -20,6 +20,7 @@ import {
   BLITZ_PROMPT_MAX_CHARS,
   PROMPT_COUNTS,
   isOpenPrompt,
+  isSearchingMeme,
   promptFailureView,
   promptInputError,
   useBlitzPromptStatus,
@@ -44,6 +45,9 @@ const FORMATS: readonly BlitzContentType[] = [
  *
  *  - `done`: se invalida la cola. Las piezas nuevas llegan **primeras** porque
  *    el servidor las ordena así, con el chip «From your prompt».
+ *  - `running` con `phase: searching_meme` (sprint 7): la Library no tenía un
+ *    meme para el tema y el worker lo está buscando e importando. Tarda más
+ *    que la copy, así que se dice en vez de dejar el spinner mudo.
  *  - `failed`: el motivo, con el arreglo al lado (Settings → Models, Library).
  *    Nunca silencioso: el refill puede quedarse callado, esto no, porque hay
  *    alguien esperando.
@@ -234,9 +238,11 @@ function PromptOutcome({
         <Spinner size="sm" aria-hidden />
         {current?.status === "queued"
           ? td("prompt.queued")
-          : requested === 1
-            ? td("prompt.generatingOne")
-            : td("prompt.generating", { count: requested })}
+          : isSearchingMeme(current)
+            ? td("prompt.searchingMeme")
+            : requested === 1
+              ? td("prompt.generatingOne")
+              : td("prompt.generating", { count: requested })}
       </p>
     );
   }

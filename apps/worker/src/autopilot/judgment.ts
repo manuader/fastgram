@@ -3,9 +3,9 @@
  *
  * ## De dónde sale
  *
- * `LlmJudgmentAdapter` sobre el LLM de la tarea `judgment` del registro de
- * modelos (`PU-MODEL-001`), que hereda el de `text` si no tiene entrada propia
- * (`resolveLlmConfig`). Se resuelve **en cada corrida**: un modelo nuevo en
+ * `LlmJudgmentAdapter` sobre el LLM de la tarea `judgment.autopilot` del
+ * registro de modelos (`PU-MODEL-001`, `P1-JUDGE-004`): sin entrada propia usa
+ * la de `judgment`, que a su vez hereda la de `text` (`resolveLlmConfig`). Se resuelve **en cada corrida**: un modelo nuevo en
  * Settings → Models llega a la próxima, sin reiniciar.
  *
  * Envuelto en `RecordingJudgment` con el sink de `judgment_records`
@@ -54,7 +54,9 @@ export function createRegistryJudgment(deps: {
     deps.appRole === undefined ? {} : { role: deps.appRole },
   );
   return async (subject) => {
-    const found = await deps.llmSource.current("judgment");
+    // `P1-JUDGE-004`: el modelo del piloto, si tiene uno propio; si no, el de
+    // `judgment` (que hereda el de `text`). Lo resuelve `resolveLlmConfig`.
+    const found = await deps.llmSource.current("judgment.autopilot");
     if (found === null) return null;
     const inner = new LlmJudgmentAdapter(found.llm, { model: found.config.model });
     return new RecordingJudgment(

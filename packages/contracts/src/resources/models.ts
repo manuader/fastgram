@@ -33,6 +33,11 @@ import { z } from "zod";
 export const modelTaskSchema = z.enum([
   "text",
   "judgment",
+  // `P1-JUDGE-004`: overrides de `judgment` por punto de decisión. Sin entrada
+  // propia heredan `judgment` (`inheritsFrom`). `DELETE /models/{task}` los borra.
+  "judgment.autopilot",
+  "judgment.brand",
+  "judgment.engagement",
   "vision",
   "image",
   "video",

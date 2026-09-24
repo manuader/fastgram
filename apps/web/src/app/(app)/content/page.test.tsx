@@ -126,4 +126,14 @@ describe("la tarjeta es navegable, y no promete media que no hay", () => {
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Content");
   });
+
+  it("dos grupos: los 5 base (Studio + Custom) y los 17 AI formats · sprint 7", () => {
+    renderHub();
+    const base = screen.getByRole("region", { name: "Base formats" });
+    const ai = screen.getByRole("region", { name: "AI formats" });
+    expect(within(base).getAllByRole("link")).toHaveLength(5);
+    expect(within(ai).getAllByRole("link")).toHaveLength(17);
+    expect(within(base).getByText("Green Screen Meme")).toBeInTheDocument();
+    expect(within(ai).getByText("Lego")).toBeInTheDocument();
+  });
 });

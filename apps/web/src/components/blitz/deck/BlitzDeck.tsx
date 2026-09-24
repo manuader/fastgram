@@ -43,6 +43,7 @@ import { autoscheduleResultSchema, type AutoscheduleResult } from "@fastgram/con
 import { apiRequest } from "@/lib/api/client";
 import { autoschedulePath, describeAutoschedule } from "@/lib/calendar/autoschedule";
 import { editorHref } from "@/components/editor/ContentEditor";
+import { ScheduleDialog } from "@/components/schedule/ScheduleDialog";
 import { AcceptDialog } from "./AcceptDialog";
 import { BuildTray } from "./BuildTray";
 import { CardChips, RemixedFromPanel, WhyPanel, WhyToggle } from "./CardDetails";
@@ -101,7 +102,11 @@ export function BlitzDeck() {
    * mandarla al próximo horario libre de la estrategia, o abrir el editor.
    * Las tres pasan por el mismo `POST /blitz` —un solo cobro, una sola key—.
    */
-  const [intent, setIntent] = useState<"library" | "schedule" | "edit">("library");
+  const [intent, setIntent] = useState<"library" | "schedule" | "custom" | "edit">(
+    "library",
+  );
+  /** Sprint 7: "Schedule…" guarda y abre el diálogo de programación a mano. */
+  const [scheduleContentId, setScheduleContentId] = useState<string | null>(null);
   const [editRequested, setEditRequested] = useState(false);
 
   const items = pendingSuggestions(queue.data ?? [], decided);
@@ -153,7 +158,7 @@ export function BlitzDeck() {
   );
 
   const save = useCallback(
-    (next: "library" | "schedule" | "edit" = "library") => {
+    (next: "library" | "schedule" | "custom" | "edit" = "library") => {
       const card = pending;
       if (card === null) return;
       setIntent(next);
@@ -174,6 +179,10 @@ export function BlitzDeck() {
             setPending(null);
             if (next === "edit") {
               router.push(editorHref(content._id));
+              return;
+            }
+            if (next === "custom") {
+              setScheduleContentId(content._id);
               return;
             }
             if (next === "schedule") {
@@ -351,10 +360,23 @@ export function BlitzDeck() {
         onSchedule={() => {
           save("schedule");
         }}
+        onScheduleCustom={() => {
+          save("custom");
+        }}
         onCancel={() => {
           setPending(null);
         }}
       />
+
+      {scheduleContentId !== null && (
+        <ScheduleDialog
+          open
+          contentId={scheduleContentId}
+          onClose={() => {
+            setScheduleContentId(null);
+          }}
+        />
+      )}
     </div>
   );
 }

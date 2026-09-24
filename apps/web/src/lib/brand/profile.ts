@@ -21,17 +21,12 @@
  * `FR-020`: *"Cada guardado incrementa `brandRevision"*. La API lo hace y lo
  * devuelve; la pantalla lo muestra y lo toma de la respuesta del `PATCH`.
  *
- * `expectedBrandRevision` **no se manda**, y no por olvido: el esquema del
- * cuerpo (`updateCompanyProfileRequestSchema`) es `.strict()` y no lo tiene, así
- * que mandarlo es un `400`. El PRD lo pide para *"las operaciones que persisten
- * una sugerencia generada contra el brand"* (ángulos, `AI-005`), no para la
- * edición del perfil. Consecuencia, dicha en voz alta: dos pestañas que editan
- * **el mismo campo** se pisan sin aviso — gana la última. Lo que la pantalla sí
- * puede hacer sin inventar una guarda es (1) mandar sólo lo cambiado, que
- * reduce el choque a "mismo campo", y (2) avisar si la revisión se movió
- * mientras había una sección abierta ({@link revisionMovedDuring}). Una
- * comprobación "leo la revisión y después escribo" desde el cliente **no** es
- * una guarda —la ventana entre las dos peticiones sigue abierta— y no se hace.
+ * `expectedBrandRevision` **se manda** (`P1-BRANDPG-004`, sprint 7): la
+ * revisión con la que se abrió la sección. Si otra pestaña o un análisis
+ * movieron el perfil, la API responde `409` con
+ * `details.reason = "brand_revision_changed"` y la pantalla dice "changed in
+ * another tab" ({@link isRevisionConflict}) en vez de pisar. La guarda es del
+ * servidor (lectura `FOR UPDATE`), no una comparación del cliente.
  */
 import {
   BRAND_FREE_TEXT_ANSWER_MAX,
@@ -50,7 +45,7 @@ import {
 } from "@tanstack/react-query";
 import type { CopyKey } from "../i18n/t";
 import { apiRequest } from "../api/client";
-import type { ApiRequestError } from "../api/errors";
+import { isApiRequestError, type ApiRequestError } from "../api/errors";
 import { useApiQuery } from "../api/hooks";
 import { queryKeys } from "../api/keys";
 import { BRAND_ANALYSIS_POLL_INTERVAL_MS } from "../onboarding/processing";
@@ -325,4 +320,13 @@ export function useSaveBrandProfile(): UseMutationResult<
       queryClient.setQueryData<CompanyProfile>(queryKeys.brandProfile(), saved);
     },
   });
+}
+
+/** `409` de `PATCH /brand/profile` o de una propuesta: el perfil se movió. */
+export function isRevisionConflict(error: unknown): boolean {
+  return (
+    isApiRequestError(error) &&
+    error.status === 409 &&
+    error.details?.["reason"] === "brand_revision_changed"
+  );
 }

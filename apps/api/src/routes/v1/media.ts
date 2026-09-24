@@ -18,11 +18,9 @@
  * salir por la v1. El schema produce `bad_request` con los `issues` de Zod, que sí es
  * del PRD y además es accionable.
  *
- * De ese mismo schema sale gratis una regla que nadie va a recordar: **el Media Bank no
- * acepta subidas de audio** (FR-053). No hay un chequeo que lo diga porque no hace falta
- * —el enum de content types no incluye ninguno—, y ése es el punto: el día que alguien
- * agregue `audio/mpeg` al enum para otra cosa, esta ruta lo aceptaría sin que nada
- * proteste. El catálogo de audio es global y de sólo lectura (`GET /audio`).
+ * **El Media Bank no acepta audio** (FR-053): el enum de content types no incluye
+ * ninguno, y `POST /media` además rechaza (404) las reservas bajo `audio/`, que son de la
+ * biblioteca de audio de la marca (sprint 7, `audio-library.ts`).
  *
  * ## Dos vocabularios para la misma máquina de estados
  *
@@ -39,16 +37,23 @@
  * devuelve `204` siempre — es la única ruta de la v1 donde un id ajeno **no** produce
  * 404, y es deliberado: acá ni el 404 debe distinguirse del éxito.
  *
+ * ## Sprint 7 (`0029`)
+ *
+ * `GET /media` busca (`q`: nombre o etiqueta) y filtra por `category` y `tag`
+ * con `searchMedia` (`packages/db/src/repositories/media-bank.ts`); las
+ * etiquetas se editan con `PATCH` (reemplazo total) y se listan en
+ * `GET /media/tags`. Los Media Sets viven en `media-sets.ts` y el import de
+ * posts propios en `own-posts.ts`; los dos los monta esta función.
+ *
  * ## Lo que falta y por qué no se inventó
  *
  * - **La cuota de storage de §9.11** (`402 payment_required` al excederse) no se
  *   aplica. No hay con qué: `PLANS` no tiene un límite de bytes por plan y
  *   `quota_ledgers` no tiene un contador de storage. Poner un número acá sería
  *   inventar el límite y el comportamiento de facturación a la vez.
- * - **`409 media_in_use`** en el borrado (FR-100: se rechaza si el asset sigue
- *   referenciado) necesita consultar `contents`, `influencer_configs` y
- *   `media_sets` por pertenencia a un array; el filtro declarativo de los
- *   repositorios no tiene un operador de "contiene".
+ *
+ * El `409 media_in_use` de FR-100 y el borrado del objeto del bucket
+ * (`ERR-F05`) llegaron en el sprint 7: ver el `DELETE` al final del archivo.
  */
 import { randomUUID } from "node:crypto";
 import type { FastifyReply } from "fastify";
@@ -74,7 +79,15 @@ import {
   brandKitSingletonKey,
   type BrandBackgroundsJob,
 } from "@fastgram/core";
-import { mediaRepository, uploadReservationRepository, type media } from "@fastgram/db";
+import {
+  findMediaUsage,
+  isMediaInUse,
+  listMediaTags,
+  mediaRepository,
+  searchMedia,
+  uploadReservationRepository,
+  type media,
+} from "@fastgram/db";
 
 import { ApiRejection } from "../../http/errors.js";
 import { rateLimit } from "../../plugins/rate-limit.js";
@@ -86,10 +99,13 @@ import {
 } from "../../support/upload-reservations.js";
 import { toMedia } from "../../support/serializers.js";
 import { registerMediaImportRoutes } from "./media-import.js";
+import { registerMediaSetRoutes } from "./media-sets.js";
+import { registerOwnPostImportRoutes } from "./own-posts.js";
 import { crossTenant, data, idempotencyKeyOf, page, withIdempotency } from "./shared.js";
 import type { ZodApp } from "../../server/types.js";
 
 const mediaParams = z.object({ id: z.string().min(1) });
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 type MediaRow = (typeof media)["$inferSelect"];
 
@@ -144,7 +160,7 @@ const BRAND_KIT_ROUTE = "POST /media/brand-kit";
  * app generó *para* el usuario y que él tiene que poder ver, recategorizar y
  * borrar como si los hubiera subido.
  */
-const LISTED_ORIGINS = ["manual_upload", "brand_kit"] as const;
+const LISTED_ORIGINS = ["manual_upload", "brand_kit", "imported"] as const;
 
 type FinalizeOutcome =
   | { readonly ok: true; readonly row: MediaRow }
@@ -162,6 +178,9 @@ export function registerMediaRoutes(app: ZodApp): void {
 
   // `PU-MEME-001`: importar por link (`POST /media/import`, estado y metadata).
   registerMediaImportRoutes(app);
+  // `P2-MEDIA-005/006`: Media Sets. `P1-ONB-008`: importar posts propios.
+  registerMediaSetRoutes(app);
+  registerOwnPostImportRoutes(app);
 
   // ── POST /media/upload-url ──
   app.post(
@@ -222,6 +241,15 @@ export function registerMediaRoutes(app: ZodApp): void {
         if (!claim.ok) return claim;
 
         const reservation = claim.row;
+        // Sprint 7: las reservas de la biblioteca de audio (`/audio/library/upload-url`)
+        // viven bajo `audio/` y se finalizan en `POST /audio/library`. Acá serían
+        // una fila "video": para esta ruta no existen.
+        if (reservation.storageKey.startsWith("audio/")) {
+          return {
+            ok: false,
+            rejection: { status: 404, code: "not_found", message: "Upload not found." },
+          };
+        }
         const mediaType = reservation.contentType.startsWith("image/")
           ? ("image" as const)
           : ("video" as const);
@@ -322,29 +350,43 @@ export function registerMediaRoutes(app: ZodApp): void {
     async (request, reply) => {
       const q = request.query;
 
+      // `P2-MEDIA-007` (`0029`): búsqueda por nombre o etiqueta y filtros por
+      // categoría y etiqueta. `searchMedia` usa el mismo orden y cursor que
+      // `mediaRepository.list`.
+      //
+      // FR-100: *"Assets generados, de demo e internos **nunca** se listan"*. Es
+      // el listado del Media Bank, no un índice de todo lo que hay en el bucket:
+      // sin este filtro, cada imagen que genera el pipeline aparecería en la grid
+      // del usuario como si la hubiera subido él. `brand_kit` e `imported` sí se
+      // listan: ver `LISTED_ORIGINS`.
       const result = await request.tx((tx) =>
-        mediaRepository.list(
+        searchMedia(
           tx,
           { companyId: request.auth.companyId },
           {
             limit: q.limit,
-            ...(q.cursor === undefined ? {} : { cursor: q.cursor }),
-            filter: {
-              mediaType: q.type === undefined ? undefined : { eq: q.type },
-              // FR-100: *"Assets generados, de demo e internos **nunca** se listan"*. Es
-              // el listado del Media Bank, no un índice de todo lo que hay en el bucket:
-              // sin este filtro, cada imagen que genera el pipeline aparecería en la grid
-              // del usuario como si la hubiera subido él.
-              //
-              // `brand_kit` sí se lista: ver `LISTED_ORIGINS`.
-              origin: { in: [...LISTED_ORIGINS] },
-            },
+            cursor: q.cursor,
+            mediaType: q.type,
+            origins: [...LISTED_ORIGINS],
+            q: q.q,
+            category: q.category,
+            tag: q.tag,
           },
         ),
       );
       return reply.send(page(result, toMedia));
     },
   );
+
+  // ── GET /media/tags ──
+  // Las etiquetas en uso (las del usuario y las automáticas de los clips), con
+  // su cuenta: los chips de filtro del Media Bank.
+  app.get("/media/tags", async (request) => {
+    const tags = await request.tx((tx) =>
+      listMediaTags(tx, { companyId: request.auth.companyId }, [...LISTED_ORIGINS]),
+    );
+    return data(tags);
+  });
 
   // ── POST /media/brand-kit ──
   //
@@ -459,15 +501,23 @@ export function registerMediaRoutes(app: ZodApp): void {
         // El contrato tiene tres schemas para este cuerpo y no es redundancia: cuál
         // aplica depende del tipo del asset, que sólo se sabe leyendo la fila. El
         // schema de la ruta acepta la unión; el estrecho se aplica acá.
-        const narrowed = CATEGORY_SCHEMA[current.mediaType].safeParse(body);
-        if (!narrowed.success) {
-          return { kind: "invalid_categories", mediaType: current.mediaType };
+        let categories: string[] | undefined;
+        if (body.categories !== undefined) {
+          const narrowed = CATEGORY_SCHEMA[current.mediaType].safeParse({
+            categories: body.categories,
+          });
+          if (!narrowed.success) {
+            return { kind: "invalid_categories", mediaType: current.mediaType };
+          }
+          categories = [...narrowed.data.categories];
         }
 
         // FR-100: *"Cambiar categorías es un **reemplazo total**"*. Por eso se escribe
-        // el array entero y no hay operación de añadir ni de quitar.
+        // el array entero y no hay operación de añadir ni de quitar. Las etiquetas
+        // (`0029`) siguen la misma regla.
         const updated = await mediaRepository.update(tx, { companyId }, id, {
-          categories: [...narrowed.data.categories],
+          ...(categories === undefined ? {} : { categories }),
+          ...(body.tags === undefined ? {} : { tags: [...body.tags] }),
         });
         // `null` acá sólo puede ser una carrera con un borrado entre la lectura y la
         // escritura. Misma respuesta que si nunca hubiera existido.
@@ -508,13 +558,46 @@ export function registerMediaRoutes(app: ZodApp): void {
       const { id } = request.params;
       const companyId = request.auth.companyId;
 
-      // `softDelete` ya está scopeado y devuelve `false` para ajeno, inexistente o ya
-      // borrado. Los tres responden 204: ver la cabecera del archivo. El booleano va
-      // al log —donde sí queremos saberlo— y nunca al cuerpo.
-      const deleted = await request.tx((tx) =>
-        mediaRepository.softDelete(tx, { companyId }, id),
-      );
-      request.log.info({ mediaId: id, deleted }, "media delete (idempotent no-op)");
+      // `P2-MEDIA-004` / `P1-STORAGE-006` (sprint 7). Un id ajeno, inexistente,
+      // ya borrado o que ni es uuid sigue siendo 204 (ver la cabecera): el 409
+      // sólo sale para una media **propia y viva** que está en uso, así que no
+      // revela nada ajeno. "En uso" está definido en
+      // `packages/db/src/repositories/media-usage.ts`.
+      if (!UUID_RE.test(id)) return reply.status(204).send();
+      const outcome = await request.tx(async (tx) => {
+        const usage = await findMediaUsage(tx, { companyId }, id);
+        if (usage.media === null) return { kind: "noop" as const };
+        if (isMediaInUse(usage)) return { kind: "in_use" as const, usage };
+        await mediaRepository.softDelete(tx, { companyId }, id);
+        return { kind: "deleted" as const, storageKey: usage.media.storageKey };
+      });
+      if (outcome.kind === "in_use") {
+        throw new ApiRejection(
+          409,
+          "media_in_use",
+          // PRD:3256, literal.
+          "The asset is still referenced. Remove the dependency or delete the content before retrying.",
+          {
+            contents: outcome.usage.contents,
+            influencers: outcome.usage.influencers,
+            mediaSets: outcome.usage.mediaSets,
+          },
+        );
+      }
+      if (outcome.kind === "deleted") {
+        // El objeto del bucket, **después** del commit y best-effort (`ERR-F05`):
+        // un fallo se loguea y no deshace el borrado de la fila. Si fallara
+        // antes del commit, una fila viva apuntaría a un objeto que ya no existe.
+        try {
+          await storage.delete(outcome.storageKey);
+        } catch (error: unknown) {
+          request.log.warn(
+            { mediaId: id, err: error instanceof Error ? error.name : "unknown" },
+            "media delete: no se pudo borrar el objeto del bucket (queda huérfano, ERR-F05)",
+          );
+        }
+      }
+      request.log.info({ mediaId: id, outcome: outcome.kind }, "media delete");
 
       return reply.status(204).send();
     },

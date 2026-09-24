@@ -41,6 +41,10 @@ import type { Clock, ConnectionTokens, SocialPublisher, Storage } from "@fastgra
 
 import { createStorageFingerprinter, type ContentFingerprinter } from "./fingerprint.js";
 import type { MediaResolverDeps } from "./media.js";
+import {
+  createFfmpegSlideshowReelComposer,
+  type SlideshowReelComposer,
+} from "./slideshow-reel.js";
 
 export type PublishingEnv = Readonly<Record<string, string | undefined>>;
 
@@ -103,6 +107,10 @@ export interface PublishingMount {
   /** `null` = las URLs de `contents.files` se pasan tal cual. */
   readonly media: MediaResolverDeps | null;
   readonly fingerprinter: ContentFingerprinter | null;
+  /** `PUBLISH_X_ALLOW_LINKS` (sprint 7): la caption derivada de X conserva las URLs. */
+  readonly allowXLinks?: boolean;
+  /** Sprint 7: Reel de Instagram desde un slideshow (`FFMPEG_PATH` o `ffmpeg`). */
+  readonly slideshowReels?: SlideshowReelComposer | null;
 }
 
 /**
@@ -138,5 +146,10 @@ export function mountPublishing(deps: {
     tokens,
     media: { storage: deps.storage, publicMedia: publicMediaUrlsFromEnv(deps.env) },
     fingerprinter: createStorageFingerprinter(deps.storage),
+    allowXLinks: nonEmpty(deps.env["PUBLISH_X_ALLOW_LINKS"])?.toLowerCase() === "true",
+    slideshowReels: createFfmpegSlideshowReelComposer({
+      storage: deps.storage,
+      ffmpeg: nonEmpty(deps.env["FFMPEG_PATH"]) ?? "ffmpeg",
+    }),
   };
 }

@@ -17,6 +17,8 @@ export const workspaceSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
   profileStatus: z.enum(PROFILE_STATUSES),
+  /** `P1-ONB-003`: el logo de Brand (`data:` URL) o `null`. Opcional por compatibilidad. */
+  logoUrl: z.string().nullable().optional(),
   createdAt: z.string(),
 });
 export type Workspace = z.infer<typeof workspaceSchema>;

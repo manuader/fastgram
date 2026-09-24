@@ -8,6 +8,8 @@ import { z } from "zod";
 import {
   accountTypeSchema,
   captionAdjustmentReasonSchema,
+  contentStatusSchema,
+  contentTypeSchema,
   instagramSlideshowFormatSchema,
   postPlatformSchema,
   postStatusSchema,
@@ -375,22 +377,174 @@ export const scheduleTargetSchema = z.union([
 export type ScheduleTarget = z.infer<typeof scheduleTargetSchema>;
 
 /**
+ * Margen de «Post now» (F-157): el post se programa a `ahora + esto`. No es
+ * `ahora` a secas porque el job entra a la cola dentro de la transacción y el
+ * publicador saltea un post cuya hora todavía no llegó; unos segundos dejan
+ * además un instante para cancelar. Número nuestro (sprint 7), no del PRD.
+ */
+export const POST_NOW_LEAD_MS = 30_000;
+
+/**
  * `POST /content/:id/schedule`.
  *
  * `enableCaptionGeneration` rellena **sólo** campos vacíos u omitidos; los
  * valores explícitos no vacíos siempre ganan (AI-006, PRD:2625).
  *
- * El PRD documenta además una opción de "publicar ahora" (F-157, PRD:625) pero
- * no nombra su campo: no se contrata. Ver el reporte.
+ * **Caption omitida ≠ caption vacía** (sprint 7): un target sin `caption` (o
+ * sin `title`/`description` en TikTok/YouTube) recibe la derivada de la copy
+ * de la pieza (`deriveCaption` de `@fastgram/core`); un `""` explícito es
+ * «vacía a propósito» y se respeta.
+ *
+ * `postNow` (F-157, "publicar ahora": el PRD no nombra el campo; el nombre es
+ * nuestro, sprint 7): programa a `ahora + POST_NOW_LEAD_MS` e ignora
+ * `scheduledAtUtc`, que pasa a ser opcional. Sin `postNow`, `scheduledAtUtc`
+ * es obligatorio y tiene que ser futuro: una hora pasada nunca se lee como
+ * «ahora» por accidente.
  */
 export const scheduleContentRequestSchema = z
   .object({
-    scheduledAtUtc: msEpochSchema,
+    scheduledAtUtc: msEpochSchema.optional(),
+    postNow: z.boolean().optional(),
     targets: z.array(scheduleTargetSchema).min(1),
     enableCaptionGeneration: z.boolean().optional(),
   })
-  .strict();
+  .strict()
+  .refine((v) => v.postNow === true || v.scheduledAtUtc !== undefined, {
+    message: "scheduledAtUtc is required unless postNow is true",
+    path: ["scheduledAtUtc"],
+  });
 export type ScheduleContentRequest = z.infer<typeof scheduleContentRequestSchema>;
+
+// --- Caption · sprint 7 (publish-flow) ---------------------------------------
+
+export const captionFieldSchema = z.enum(["caption", "description"]);
+export type CaptionFieldName = z.infer<typeof captionFieldSchema>;
+
+export const captionAiModeSchema = z.enum(["improve", "regenerate"]);
+export type CaptionAiModeName = z.infer<typeof captionAiModeSchema>;
+
+/** Tope del texto que se manda a mejorar (el mayor de las redes, YouTube). */
+export const CAPTION_IMPROVE_INPUT_MAX = 5000;
+
+/**
+ * `POST /content/:id/caption` — genera (`regenerate`) o mejora (`improve`) el
+ * campo `field` de la red `platform` con el modelo `text` del registro. No
+ * escribe nada: devuelve el texto para que el usuario lo vea en el diálogo.
+ * `field` omitido = `caption`. `text` es obligatorio en `improve`.
+ *
+ * Errores: `503 service_unavailable` con `details.reason` =
+ * `llm_not_configured` | `llm_failed` | `caption_rejected` (códigos de
+ * `errorCodeSchema`: uno nuevo sería `invalid_response` en el cliente web), y
+ * `400 bad_request` (Reddit, campo que la red no tiene, `improve` sin texto).
+ */
+export const generateCaptionRequestSchema = z
+  .object({
+    platform: postPlatformSchema,
+    field: captionFieldSchema.optional(),
+    mode: captionAiModeSchema,
+    text: z.string().max(CAPTION_IMPROVE_INPUT_MAX).optional(),
+  })
+  .strict();
+export type GenerateCaptionRequest = z.infer<typeof generateCaptionRequestSchema>;
+
+export const generatedCaptionSchema = z
+  .object({
+    platform: postPlatformSchema,
+    field: captionFieldSchema,
+    text: z.string(),
+    /** El modelo que respondió (del registro). */
+    model: z.string(),
+  })
+  .strict();
+export type GeneratedCaption = z.infer<typeof generatedCaptionSchema>;
+
+/**
+ * `GET /content/:id/schedule-options` — todo lo que el diálogo de Schedule
+ * necesita en una sola vuelta: la caption por defecto de cada red (derivada de
+ * la pieza), las conexiones activas por red, qué redes están en la estrategia
+ * y el próximo horario libre de cada una (el mismo cálculo del auto-slot, sin
+ * escribir nada), y la zona horaria de la marca.
+ */
+export const scheduleOptionsSchema = z
+  .object({
+    contentId: contentIdSchema,
+    contentType: contentTypeSchema,
+    contentStatus: contentStatusSchema,
+    timezone: z.string(),
+    /** El más temprano de `networks[].suggestedAtUtc`, o `null`. */
+    suggestedAtUtc: msEpochSchema.nullable(),
+    /** `PUBLISH_X_ALLOW_LINKS`: si X conserva las URLs. */
+    xAllowLinks: z.boolean(),
+    networks: z.array(
+      z
+        .object({
+          network: postPlatformSchema,
+          inStrategy: z.boolean(),
+          /** Próximo horario libre de la estrategia; `null` si no está o no hay. */
+          suggestedAtUtc: msEpochSchema.nullable(),
+          /** Si esta pieza ya tiene un post vivo o un slot en esta red. */
+          alreadyScheduled: z.boolean(),
+          connections: z.array(
+            z.object({ connectionId: connectionIdSchema, username: z.string() }).strict(),
+          ),
+          caption: z.string().nullable(),
+          description: z.string().nullable(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export type ScheduleOptions = z.infer<typeof scheduleOptionsSchema>;
+
+// --- Acciones sobre un post · sprint 7 ---------------------------------------
+
+/**
+ * `POST /posts/:id/retry` — vuelve a encolar un post `FAILED` con la misma
+ * pieza. Sin `scheduledAtUtc`, a `ahora + POST_NOW_LEAD_MS`; con él (futuro),
+ * a esa hora (es el «Reschedule» de un fallido). Las guardas anti-bot corren
+ * igual al publicar.
+ *
+ * `confirmNotPublished` es obligatorio cuando el fallo fue
+ * `delivery_unconfirmed` o `platform_processing_timeout`: la plataforma pudo
+ * haberlo publicado, y reintentar a ciegas lo duplicaría (`NFR-015`). Sin la
+ * confirmación: `409 conflict`.
+ *
+ * `brandId`, como en `mark-posted`: la marca del post, para actuar desde una
+ * vista de todas las marcas.
+ */
+export const retryPostRequestSchema = z
+  .object({
+    scheduledAtUtc: msEpochSchema.optional(),
+    confirmNotPublished: z.boolean().optional(),
+    brandId: z.string().uuid().optional(),
+  })
+  .strict();
+export type RetryPostRequest = z.infer<typeof retryPostRequestSchema>;
+
+/**
+ * `PATCH /posts/:id` — editar la caption (y la descripción donde la red la
+ * tiene) y/o la hora de un post que todavía no salió (`SCHEDULED`,
+ * `BUILDING`, `AWAITING_RECONNECT`). Cambiar la hora es lo mismo que mover el
+ * post en el calendario: la fila vieja pasa a `CANCELLED` y se crea otra con su
+ * job (ver `routes/v1/calendar.ts`), así que la respuesta puede traer **otro
+ * `_id`**. Los topes por red se validan en la ruta (la red es la del post).
+ */
+export const updatePostRequestSchema = z
+  .object({
+    caption: z.string().max(CAPTION_IMPROVE_INPUT_MAX).optional(),
+    description: z.string().max(CAPTION_IMPROVE_INPUT_MAX).optional(),
+    scheduledAtUtc: msEpochSchema.optional(),
+    brandId: z.string().uuid().optional(),
+  })
+  .strict()
+  .refine(
+    (v) =>
+      v.caption !== undefined ||
+      v.description !== undefined ||
+      v.scheduledAtUtc !== undefined,
+    { message: "Nothing to update" },
+  );
+export type UpdatePostRequest = z.infer<typeof updatePostRequestSchema>;
 
 // --- Lotes · NFR-012 ---------------------------------------------------------
 

@@ -38,6 +38,9 @@ const PROVIDER_TIMEOUT_MS = 30_000;
 const DOWNLOAD_TIMEOUT_MS = 60_000;
 /** Ninguna imagen razonable se acerca; es para no llenar la memoria. */
 const DOWNLOAD_MAX_BYTES = 50 * 1024 * 1024;
+/** Bajar un video de 5–15 s (mismos números que AI Studio). */
+const VIDEO_DOWNLOAD_TIMEOUT_MS = 180_000;
+const VIDEO_DOWNLOAD_MAX_BYTES = 500 * 1024 * 1024;
 
 export function createInfluencerCharacterMount(deps: {
   readonly storage: Storage;
@@ -60,5 +63,18 @@ export function createInfluencerCharacterMount(deps: {
         timeoutMs: PROVIDER_TIMEOUT_MS,
       }),
     download,
+    // Sprint 7 (agente G): image-to-video de Higgsfield para «Animate this image».
+    video: {
+      videoClientFor: (config) =>
+        new HiggsfieldClient({
+          baseUrl: config.baseUrl,
+          apiKey: config.apiKey,
+          timeoutMs: PROVIDER_TIMEOUT_MS,
+        }),
+      downloadVideo: httpDownloader({
+        timeoutMs: VIDEO_DOWNLOAD_TIMEOUT_MS,
+        maxBytes: VIDEO_DOWNLOAD_MAX_BYTES,
+      }),
+    },
   };
 }

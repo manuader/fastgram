@@ -79,6 +79,8 @@ export const deckEn = {
     "That suggestion can't be built anymore, so it was skipped and nothing was charged.", // paráfrasis del 422 de la API
   "deck.skipFailed": "Couldn't skip that suggestion. It's back in the deck.", // nuevo
   "deck.fromPrompt": "From your prompt", // nuevo · PU-BLITZ-003, chip de la tarjeta
+  "deck.autoFoundMeme": "Auto-found meme", // nuevo · sprint 7, chip de la tarjeta
+  "deck.autoFoundMemeSource": "Where this meme came from", // nuevo · sprint 7, link del chip
 
   // Create from prompt · PU-BLITZ-003 (EXT-009). Todo `nuevo`: el PRD no lo dibuja.
   "prompt.title": "Create from prompt", // nuevo
@@ -113,6 +115,12 @@ export const deckEn = {
   "prompt.failed.copyRejected":
     "The AI's text didn't pass our checks. Try rewording your prompt.", // nuevo
   "prompt.failed.generic": "Couldn't create pieces from that prompt.", // nuevo
+  // Sprint 7 · memes desde un prompt. Todo `nuevo`.
+  "prompt.searchingMeme":
+    "Searching for a meme… Your Library had none for this topic, so we're finding one. This can take a minute.", // nuevo
+  "prompt.failed.memeNotFound":
+    "Couldn't find a green-screen meme for that topic. Import a clip from a link and try again.", // nuevo
+  "prompt.failed.importLink": "Import a clip from a link", // nuevo
 } as const;
 
 export type DeckMessageKey = keyof typeof deckEn;

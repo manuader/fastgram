@@ -415,3 +415,13 @@ export {
 export * from "./engagement.js";
 // `FR-150`, `P3-AUTO-001…013`: campañas multi-semana.
 export * from "./automations.js";
+// `0025`: biblioteca de audio de cada marca (sprint 7, audio).
+export * from "./brand-audio.js";
+// `0029`: búsqueda del Media Bank e importación de posts propios (sprint 7, F).
+export * from "./media-bank.js";
+// `0028` (sprint 7, notify-reliability): notificaciones, apagado de marca y media en uso.
+export * from "./notifications.js";
+export * from "./brand-shutdown.js";
+export * from "./media-usage.js";
+// `0026` (sprint 7, memes desde un prompt): la búsqueda automática del meme.
+export * from "./blitz-prompt-meme.js";

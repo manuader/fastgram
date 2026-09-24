@@ -12,6 +12,7 @@ import {
   type AssistDraftProblem,
 } from "@/lib/brand/assist";
 import { tw, type CopyKey, type MessageVars } from "@/lib/i18n/t";
+import { ScreenshotPicker, useScreenshotReader } from "./ScreenshotPicker";
 
 function problemCopy(problem: AssistDraftProblem): { key: CopyKey; vars?: MessageVars } {
   switch (problem.kind) {
@@ -58,6 +59,11 @@ export function AssistedSourcePanel({ source }: { readonly source: BrandSource }
   const [captions, setCaptions] = useState("");
   const [problem, setProblem] = useState<AssistDraftProblem | null>(null);
   const assist = useAssistSource();
+  const screenshots = useScreenshotReader((text) => {
+    // Lo leído entra al campo de la bio para que el usuario lo revise: es el
+    // mismo camino que el texto pegado (`P1-BRAND-014`).
+    setBio((current) => (current.trim() === "" ? text : `${current.trim()}\n\n${text}`));
+  });
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -111,6 +117,8 @@ export function AssistedSourcePanel({ source }: { readonly source: BrandSource }
           </span>
         </p>
       </div>
+
+      <ScreenshotPicker reader={screenshots} disabled={pending} />
 
       <div className="fgw-brand-field">
         <label htmlFor={captionsId} className="fgw-brand-field__label">

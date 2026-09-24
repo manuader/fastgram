@@ -58,7 +58,6 @@
  */
 
 import {
-  PUBLISH_PLATFORMS,
   PortError,
   isPortError,
   isPublicMediaUnavailable,
@@ -74,12 +73,15 @@ import {
   type SocialPublisher,
 } from "@fastgram/ports";
 import {
+  PUBLISH_GENERIC_ERROR_CODE,
+  captionFieldsFor,
   evaluatePublishGuards,
   nextPublishRetry,
+  stablePublishError,
   parsePublishJob,
   publishGuardPolicyFor,
-  translatePublishFailure,
   PUBLISH_GUARD_HORIZON_DAYS,
+  type Platform,
   SLOW_LANE_POLL_INTERVAL_MS,
   type PublishJob,
   type StoredStrategyForGuards,
@@ -108,6 +110,7 @@ import {
 } from "./jobs.js";
 import { mediaSourceFor, resolveMediaUrls, type MediaResolverDeps } from "./media.js";
 import { loadGuardNeighbors } from "./neighbors.js";
+import { isSlideshowReelError, type SlideshowReelComposer } from "./slideshow-reel.js";
 
 export interface PublishDeps {
   readonly db: Database;
@@ -133,6 +136,17 @@ export interface PublishDeps {
   readonly fingerprinter?: ContentFingerprinter | null | undefined;
   /** Default: encendidas si hay `queue` (reprogramar exige encolar). */
   readonly guards?: boolean | undefined;
+  /**
+   * `PUBLISH_X_ALLOW_LINKS`, para la caption derivada de X (sprint 7). Default
+   * `false`: sin links, igual que el publicador de X.
+   */
+  readonly allowXLinks?: boolean | undefined;
+  /**
+   * Sprint 7: compone el Reel de un slideshow de Instagram con
+   * `instagramSlideshowFormat: "reel"`. Sin esto, esos posts fallan con
+   * `slideshow_reel_unavailable` en vez de salir como carrusel sin avisar.
+   */
+  readonly slideshowReels?: SlideshowReelComposer | null | undefined;
 }
 
 /** Lo que se lee de la fila antes de publicar. */
@@ -146,6 +160,8 @@ interface PublishSubject {
   readonly contentId: string;
   readonly revision: number;
   readonly mediaKind: PublishMediaKind;
+  /** `instagramSlideshowFormat` del post (sólo Instagram con slideshow). */
+  readonly slideshowFormat: "carousel" | "reel" | null;
   readonly files: readonly string[];
   /** Del `canvas` del payload de build (`renderDimensionsOf`). */
   readonly dimensions: { readonly width: number; readonly height: number } | null;
@@ -325,6 +341,16 @@ export function createPublishHandler(deps: PublishDeps): JobHandler<unknown> {
         };
       }
 
+      // Sprint 7: un post sin caption (`null`, nadie la escribió) sale con la
+      // derivada de la pieza — la última red de «nunca caption vacía». Un `""`
+      // es vacía a propósito y se respeta.
+      const copy = captionFieldsFor(
+        post.platform as Platform,
+        { caption: post.caption, description: post.description },
+        { generatedText: content.generatedText },
+        { allowXLinks: deps.allowXLinks === true },
+      );
+
       const strategyRow = guardsOn ? await brandStrategyRepository.find(tx, scope) : null;
       const timezone = guardsOn
         ? await brandStrategyRepository.timezone(tx, scope)
@@ -342,11 +368,12 @@ export function createPublishHandler(deps: PublishDeps): JobHandler<unknown> {
           contentId: content.id,
           revision: content.revision,
           mediaKind: mediaKindOf(content.type),
+          slideshowFormat: post.instagramSlideshowFormat ?? null,
           files: content.files,
           dimensions: renderDimensionsOf(content.buildPayload),
           scheduledAtMs: post.scheduledAtUtc.getTime(),
-          caption: post.caption ?? "",
-          description: post.description ?? undefined,
+          caption: copy.caption ?? "",
+          description: copy.description ?? undefined,
           postingMode: post.postingMode ?? undefined,
           privacyLevel: post.privacyLevel ?? undefined,
           aiGenerated: post.aiContentDisclaimer ?? undefined,
@@ -406,12 +433,11 @@ export function createPublishHandler(deps: PublishDeps): JobHandler<unknown> {
           ? {}
           : { tiktokProcessingDelayed: status.processingDelayed }),
         ...(nuevo === "POSTED" ? { postedAt: now } : {}),
+        // P3-PUB-006: un fallo no mapeado sale con el código genérico y nuestro
+        // mensaje (`stablePublishError`), nunca con el crudo.
         ...(status.failure === undefined
           ? {}
-          : {
-              errorCode: errorCodeFor(post.platform, status.failure),
-              errorMessage: status.failure.message,
-            }),
+          : stablePublishError(post.platform, status.failure)),
       });
       return "escrito";
     });
@@ -643,7 +669,7 @@ export function createPublishHandler(deps: PublishDeps): JobHandler<unknown> {
           deps.logger.warn(base, "el token no sirve: AWAITING_RECONNECT");
           return;
         }
-        const code = isPortError(error) ? error.code : "unknown";
+        const code = isPortError(error) ? error.code : PUBLISH_GENERIC_ERROR_CODE;
         deps.logger.error({ ...base, code }, "no se pudo obtener el token");
         await retryOrFail(
           job,
@@ -656,14 +682,54 @@ export function createPublishHandler(deps: PublishDeps): JobHandler<unknown> {
       }
     }
 
+    // ── Slideshow como Reel de Instagram (F-158, sprint 7) ─────────────────
+    let files: readonly string[] = subject.files;
+    let mediaKind: PublishMediaKind = subject.mediaKind;
+    let dimensions = subject.dimensions;
+    if (
+      subject.platform === "instagram" &&
+      subject.mediaKind === "slideshow" &&
+      subject.slideshowFormat === "reel"
+    ) {
+      const composer = deps.slideshowReels ?? null;
+      if (composer === null) {
+        await fail(
+          job,
+          "slideshow_reel_unavailable",
+          "Publishing a slideshow as a Reel isn't available here. Choose Carousel instead.",
+        );
+        deps.logger.warn(base, "reel de slideshow sin compositor montado");
+        return;
+      }
+      try {
+        files = [
+          await composer.compose({
+            contentId: subject.contentId,
+            revision: subject.revision,
+            files: subject.files,
+          }),
+        ];
+        mediaKind = "video";
+        dimensions = { width: 1080, height: 1920 };
+      } catch (error: unknown) {
+        const code = isSlideshowReelError(error) ? error.code : "slideshow_reel_failed";
+        const message = isSlideshowReelError(error)
+          ? error.message
+          : "We couldn't turn this slideshow into a Reel. Try Carousel instead.";
+        deps.logger.error({ ...base, code }, "no se pudo componer el reel del slideshow");
+        await fail(job, code, message);
+        return;
+      }
+    }
+
     // ── Media (PublicMediaUrls / Storage) ──────────────────────────────────
-    let urls: readonly string[] = subject.files;
+    let urls: readonly string[] = files;
     if (deps.media !== undefined) {
       try {
         urls = await resolveMediaUrls(
           deps.media,
-          subject.files,
-          mediaSourceFor(publisher.capabilities(), subject.mediaKind),
+          files,
+          mediaSourceFor(publisher.capabilities(), mediaKind),
         );
       } catch (error: unknown) {
         if (isPublicMediaUnavailable(error)) {
@@ -671,7 +737,7 @@ export function createPublishHandler(deps: PublishDeps): JobHandler<unknown> {
           await retryOrFail(job, retriesSoFar, error, error.code, error.message);
           return;
         }
-        const code = isPortError(error) ? error.code : "unknown";
+        const code = isPortError(error) ? error.code : PUBLISH_GENERIC_ERROR_CODE;
         deps.logger.error({ ...base, code, error }, "no se pudo preparar la media");
         await retryOrFail(
           job,
@@ -694,9 +760,9 @@ export function createPublishHandler(deps: PublishDeps): JobHandler<unknown> {
           : { platformUserId: subject.platformUserId }),
       },
       media: {
-        kind: subject.mediaKind,
+        kind: mediaKind,
         urls,
-        ...(subject.dimensions === null ? {} : subject.dimensions),
+        ...(dimensions === null ? {} : dimensions),
       },
       caption: subject.caption,
       ...(subject.description === undefined ? {} : { description: subject.description }),
@@ -735,7 +801,7 @@ export function createPublishHandler(deps: PublishDeps): JobHandler<unknown> {
         );
         return;
       }
-      const code = isPortError(error) ? error.code : "unknown";
+      const code = isPortError(error) ? error.code : PUBLISH_GENERIC_ERROR_CODE;
       deps.logger.error({ ...base, code, error }, "la llamada a la plataforma falló");
       await retryOrFail(
         job,
@@ -779,17 +845,13 @@ export function createPublishHandler(deps: PublishDeps): JobHandler<unknown> {
 
 /**
  * `errorCode` de un fallo que devolvió la plataforma — `P3-PUB-006`, DP-006.
- * La tabla de `@fastgram/core` es la primera línea; en `uncoded`/`escalate` se
- * deja el motivo neutral del puerto.
+ * La tabla de `@fastgram/core` es la primera línea; `uncoded` deja el motivo
+ * neutral del puerto; lo no mapeado (`escalate`, una plataforma desconocida)
+ * sale con el genérico `publish_failed` (sprint 7), nunca con el motivo crudo.
  */
 export function errorCodeFor(
   platform: string,
   failure: NonNullable<PublishStatus["failure"]>,
 ): string {
-  if (!(PUBLISH_PLATFORMS as readonly string[]).includes(platform)) return failure.reason;
-  const t = translatePublishFailure({
-    platform: platform as (typeof PUBLISH_PLATFORMS)[number],
-    failure,
-  });
-  return t.kind === "coded" ? t.errorCode : failure.reason;
+  return stablePublishError(platform, failure).errorCode;
 }

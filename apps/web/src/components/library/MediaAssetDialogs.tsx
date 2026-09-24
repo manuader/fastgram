@@ -8,6 +8,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Input,
 } from "@fastgram/ui";
 import type { Media, MediaCategory } from "@fastgram/contracts";
 import { useState } from "react";
@@ -16,6 +17,7 @@ import { presentError } from "@/lib/api/error-presentation";
 import { tw } from "@/lib/i18n/t";
 import { toggleCategory } from "@/lib/media/categories";
 import { useDeleteMedia, useUpdateMediaCategories } from "@/lib/media/mutations";
+import { parseTagInput, useUpdateMediaTags } from "@/lib/media/tags";
 
 function errorText(error: unknown): string {
   const presentation = presentError(error);
@@ -53,7 +55,13 @@ function EditCategoriesBody({
   readonly onClose: () => void;
 }) {
   const [draft, setDraft] = useState<readonly MediaCategory[]>(item.categories);
+  const initialTags = (item.tags ?? []).join(", ");
+  const [tagText, setTagText] = useState(initialTags);
   const mutation = useUpdateMediaCategories();
+  // Sprint 7 (`P2-MEDIA-007`): las etiquetas van en su propio PATCH, y sólo si
+  // cambiaron — el de categorías queda exactamente como era.
+  const tagMutation = useUpdateMediaTags();
+  const pending = mutation.isPending || tagMutation.isPending;
 
   return (
     <>
@@ -79,23 +87,44 @@ function EditCategoriesBody({
               {tw("mediaUpload.categories.noneHint")}
             </p>
           )}
-          {mutation.isError && (
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium">{tw("mediaBank.tags.label")}</span>
+            <Input
+              value={tagText}
+              disabled={pending}
+              placeholder={tw("mediaBank.tags.placeholder")}
+              onChange={(e) => setTagText(e.target.value)}
+            />
+          </label>
+          {(mutation.isError || tagMutation.isError) && (
             <p role="alert" className="text-sm text-danger">
-              {errorText(mutation.error)}
+              {errorText(mutation.isError ? mutation.error : tagMutation.error)}
             </p>
           )}
         </div>
       </DialogBody>
       <DialogFooter>
-        <Button variant="secondary" onClick={onClose} disabled={mutation.isPending}>
+        <Button variant="secondary" onClick={onClose} disabled={pending}>
           {tw("common.cancel")}
         </Button>
         <Button
-          loading={mutation.isPending}
+          loading={pending}
           onClick={() => {
+            const tagsChanged = tagText.trim() !== initialTags.trim();
             mutation.mutate(
               { mediaId: item.mediaId, categories: draft },
-              { onSuccess: onClose },
+              {
+                onSuccess: () => {
+                  if (!tagsChanged) {
+                    onClose();
+                    return;
+                  }
+                  tagMutation.mutate(
+                    { mediaId: item.mediaId, tags: parseTagInput(tagText) },
+                    { onSuccess: onClose },
+                  );
+                },
+              },
             );
           }}
         >

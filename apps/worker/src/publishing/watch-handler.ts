@@ -27,6 +27,7 @@
 import {
   SLOW_LANE_WATCH_WINDOW_MS,
   slowLaneWatchDecision,
+  stablePublishError,
   type WatchStatus,
 } from "@fastgram/core";
 import {
@@ -49,7 +50,7 @@ import {
 } from "@fastgram/ports";
 
 import type { BuildLogger } from "../content/build-handler.js";
-import { errorCodeFor } from "./publish-handler.js";
+
 import { parseWatchJob, watchJob, type WatchJobPayload } from "./jobs.js";
 
 export interface WatchDeps {
@@ -173,10 +174,8 @@ export function createWatchHandler(deps: WatchDeps): JobHandler<unknown> {
           ...(next === "POSTED" ? { postedAt: now, tiktokProcessingDelayed: false } : {}),
           ...(status.failure === undefined
             ? {}
-            : {
-                errorCode: errorCodeFor(post.platform, status.failure),
-                errorMessage: status.failure.message,
-              }),
+            : // P3-PUB-006: código y mensaje estables, nunca el crudo.
+              stablePublishError(post.platform, status.failure)),
         });
       });
       deps.logger.info({ ...base, kind: status.kind }, "watcher: estado nuevo");

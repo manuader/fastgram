@@ -6,6 +6,7 @@ import { ApiErrorState } from "@/components/library/ApiErrorState";
 import { useModelsOverview } from "@/lib/models/api";
 import { MODELS_COPY } from "@/lib/models/copy";
 import { BudgetCard } from "./BudgetCard";
+import { isJudgmentOverride, JudgmentOverrides } from "./JudgmentOverrides";
 import { TaskModelCard } from "./TaskModelCard";
 
 /** `text` y `judgment`: las que algo del código usa hoy. */
@@ -60,9 +61,12 @@ export function ModelsSettings() {
   }
 
   const { tasks, providers } = query.data;
-  const active = tasks.filter(isActive);
-  const reserved = tasks.filter((t) => !isActive(t));
-  const nothingConfigured = tasks.every((t) => t.status === "unset");
+  // `P1-JUDGE-004`: los overrides de juicio van en su sección, no como tarjetas sueltas.
+  const overrides = tasks.filter((t) => isJudgmentOverride(t.task));
+  const base = tasks.filter((t) => !isJudgmentOverride(t.task));
+  const active = base.filter(isActive);
+  const reserved = base.filter((t) => !isActive(t));
+  const nothingConfigured = base.every((t) => t.status === "unset");
 
   return (
     <div className="flex flex-col gap-8">
@@ -84,6 +88,8 @@ export function ModelsSettings() {
           ))}
         </div>
       </section>
+
+      <JudgmentOverrides overrides={overrides} presets={providers} />
 
       {/* `PU-MODEL-005`: gasto del mes contra el tope de imagen y video. */}
       <section

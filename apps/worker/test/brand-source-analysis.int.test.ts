@@ -715,3 +715,72 @@ describe("idempotencia y aislamiento", () => {
     ]);
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+// P1-BRAND-015 — link-in-bio (sprint 7, agente D)
+// ───────────────────────────────────────────────────────────────────────────
+
+describe("P1-BRAND-015 — link-in-bio: un nivel, lector web, entra a la síntesis", () => {
+  /** Un extractor social mínimo: perfil con links, sin posts. */
+  function instagramWithLinks(links: readonly string[]): SocialReader {
+    return {
+      capabilities: () => ({
+        source: "instagram",
+        tiers: ["C_page_fetch"],
+        profileSignals: ["bio", "links"],
+        contentSignals: ["caption"],
+        maxContentItems: 24,
+        requiresConnection: false,
+        renderedFetchEnabled: true,
+      }),
+      readProfile: () =>
+        Promise.resolve({
+          status: "ok",
+          tier: "C_page_fetch",
+          data: { handle: "taller", bio: "Taller de cerámica", links: [...links] },
+        }),
+      readRecentContent: () =>
+        Promise.resolve({ status: "ok", tier: "C_page_fetch", data: [] }),
+    } as unknown as SocialReader;
+  }
+
+  it("el texto del destino llega al modelo como dato y queda en el snapshot", async () => {
+    const companyId = await seedCompany(handle);
+    const destino = pagina(`/linktree-${randomUUID().slice(0, 8)}`, {
+      description: "Tienda online de tazas artesanales",
+    });
+    const id = await fuente(companyId, {
+      sourceType: "instagram",
+      handle: `taller-${randomUUID().slice(0, 8)}`,
+      canonicalUrl: "https://instagram.com/taller",
+    });
+    await handler({
+      website: websiteReader,
+      instagram: instagramWithLinks([destino, "javascript:alert(1)"]),
+    })(ctx({ companyId, brandSourceId: id }));
+
+    expect(llmCalls).toHaveLength(1);
+    const user = (llmCalls[0]?.messages ?? []).filter((m) => m.role === "user");
+    expect(user[0]?.content ?? "").toContain("Tienda online de tazas artesanales");
+    const snap = (await snapshotsDe(id))[0];
+    const items = (snap?.contentItems ?? []) as { permalink?: string }[];
+    expect(items.map((i) => i.permalink)).toEqual([destino]);
+  });
+
+  it("un destino que la guarda SSRF corta no aborta el análisis", async () => {
+    const companyId = await seedCompany(handle);
+    const id = await fuente(companyId, {
+      sourceType: "instagram",
+      handle: `taller-${randomUUID().slice(0, 8)}`,
+      canonicalUrl: "https://instagram.com/taller2",
+    });
+    await handler({
+      website: websiteReader,
+      instagram: instagramWithLinks([`http://interna.test:${String(PORT)}/x`]),
+    })(ctx({ companyId, brandSourceId: id }));
+    expect(llmCalls).toHaveLength(1);
+    const row = await leerFuente(id);
+    expect(["ready", "partial"]).toContain(row.status);
+    expect(((await snapshotsDe(id))[0]?.contentItems ?? []) as unknown[]).toEqual([]);
+  });
+});

@@ -19,6 +19,9 @@ import {
   PUBLISH_ERROR_CODES,
   PUBLISH_ERROR_TABLE,
   PUBLISH_FAILURE_REASONS,
+  PUBLISH_GENERIC_ERROR_CODE,
+  PUBLISH_GENERIC_ERROR_MESSAGE,
+  stablePublishError,
   translatePublishFailure,
   type PublishErrorTranslation,
 } from "./error-code.js";
@@ -233,5 +236,39 @@ describe("pureza", () => {
     expect(traducir("post_limit_exceeded", "tiktok")).toEqual(
       expect.objectContaining({ errorCode: "tiktok_post_limit_exceeded" }),
     );
+  });
+});
+
+describe("stablePublishError · P3-PUB-006", () => {
+  it("un motivo no mapeado sale con el código genérico y nuestro mensaje, nunca el crudo", () => {
+    const out = stablePublishError("instagram", {
+      reason: "unknown",
+      message: "RAW (#100) provider stack trace",
+    });
+    expect(out).toEqual({
+      errorCode: PUBLISH_GENERIC_ERROR_CODE,
+      errorMessage: PUBLISH_GENERIC_ERROR_MESSAGE,
+    });
+    const nuevo = stablePublishError("x", {
+      reason: "motivo_de_un_adaptador_nuevo",
+      message: "raw",
+    });
+    expect(nuevo.errorCode).toBe(PUBLISH_GENERIC_ERROR_CODE);
+    expect(nuevo.errorMessage).not.toContain("raw");
+    const plataforma = stablePublishError("myspace", {
+      reason: "post_limit_exceeded",
+      message: "m",
+    });
+    expect(plataforma.errorCode).toBe(PUBLISH_GENERIC_ERROR_CODE);
+  });
+
+  it("coded y uncoded conservan su código estable", () => {
+    expect(
+      stablePublishError("instagram", { reason: "post_limit_exceeded", message: "m" })
+        .errorCode,
+    ).toBe("instagram_post_limit_exceeded");
+    expect(
+      stablePublishError("x", { reason: "permissions_missing", message: "m" }).errorCode,
+    ).toBe("permissions_missing");
   });
 });

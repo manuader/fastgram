@@ -27,6 +27,9 @@ import {
   drizzleTransactionToExecutor,
   FileModelRegistry,
   modelRegistryPath,
+  notificationSettingsFile,
+  sendNtfy,
+  sendTelegram,
   S3Storage,
   systemClock,
   systemRng,
@@ -48,6 +51,11 @@ import { createAiStudioMount } from "./genai/mount.js";
 import { createMetricsAdapters } from "./metrics/mount.js";
 import { createAutopilotHandler } from "./autopilot/handler.js";
 import { createRegistryJudgment } from "./autopilot/judgment.js";
+import { createJv6Judgment } from "./discovery/jv6.js";
+import {
+  createFieldVerifier,
+  createRegistryFieldJudgment,
+} from "./brand/field-verifier.js";
 import { createAutomationCampaignHandler } from "./automations/generation-handler.js";
 import { createAutomationBuildScheduleHandler } from "./automations/build-schedule-handler.js";
 import { createAutoBrandKitTrigger } from "./brand-kit/mount.js";
@@ -64,6 +72,11 @@ import { mountMediaImport } from "./media-import/mount.js";
 import { mountInspiration } from "./inspiration/mount.js";
 import { mountPublishing } from "./publishing/mount.js";
 import { mountEngagement } from "./engagement/mount.js";
+import {
+  configureNotifications,
+  createNotifier,
+  startNotificationMonitor,
+} from "./notifications/index.js";
 import { socialReadersFromEnv } from "./brand/social-readers.js";
 import {
   createRenderServiceRenderers,
@@ -226,6 +239,16 @@ function brandAnalysisHandlerDeps() {
     },
     synthesizer: createLlmBrandSynthesizer({
       llm: createResolvingLlm(llmSource, "text"),
+      // JV-4 (P2-JV-004): confianza por campo con el modelo `judgment.brand`.
+      verifier: createFieldVerifier({
+        judgment: createRegistryFieldJudgment({
+          llmSource,
+          db: handle.db,
+          appRole,
+          logger,
+        }),
+        logger,
+      }),
     }),
     rawRetentionDays: brandReader.rawRetentionDays,
   };
@@ -290,6 +313,8 @@ const { handlers: HANDLERS, unmounted } = createHandlers({
   // `PU-MEDIA-002`: para que el refill encole el kit de fondos de una marca sin media.
   queue,
   mediaImport,
+  // Sprint 7 (`JV-6`): el juicio que elige meme, fondo, influencer y remix.
+  jv6Judgment: createJv6Judgment({ llmSource, db: handle.db, appRole, logger }),
   // Inspiration: lectura sin login de referencias, sobre la misma cola y el mismo yt-dlp.
   ...(mediaImport.kind === "mounted"
     ? {
@@ -315,6 +340,8 @@ const { handlers: HANDLERS, unmounted } = createHandlers({
     appRole,
     logger,
     env: process.env,
+    // Sprint 7 (G): los formatos generativos arman su pieza al terminar el clip.
+    queue,
   }).handler,
   // `PU-AUTO-001/002`: cola de cada marca al objetivo de su estrategia y piloto
   // con pre-chequeo `JV-3`. El juicio sale de la tarea `judgment` del registro
@@ -384,6 +411,32 @@ const sinHandler = Object.values(JOB_CATALOG)
   .filter((name) => !(name in HANDLERS));
 
 await queue.start();
+
+/**
+ * Sprint 7 (`P5-NOTIF-001…004`, `P1-OBS-005`): avisos en la campana, push por
+ * ntfy/Telegram y salud de la cola. Timers del proceso, no colas: ver
+ * `notifications/monitor.ts`. Nunca loguea un destino ni un token.
+ */
+const notifier = createNotifier({
+  db: handle.db,
+  appRole,
+  logger,
+  settings: notificationSettingsFile(process.env),
+});
+configureNotifications(notifier, logger);
+const notificationMonitor = startNotificationMonitor({
+  db: handle.db,
+  appRole,
+  logger,
+  clock,
+  notifier,
+  queueSchema: env.QUEUE_SCHEMA,
+  sendNtfy,
+  sendTelegram,
+  webBaseUrl: /^https?:\/\//u.test(process.env["FASTGRAM_WEB_URL"] ?? "")
+    ? (process.env["FASTGRAM_WEB_URL"] ?? "").replace(/\/+$/u, "")
+    : "http://localhost:3000",
+});
 
 /**
  * `brand-source-analysis` montado **tarde** — `PU-MODEL-001`. Si al arrancar
@@ -550,6 +603,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
         // apagarse, no cuando termina.
         queueRunning = false;
         if (brandAnalysisPoll !== null) clearInterval(brandAnalysisPoll);
+        notificationMonitor.stop();
         healthServer?.close();
         await queue.stop();
         await handle.close();

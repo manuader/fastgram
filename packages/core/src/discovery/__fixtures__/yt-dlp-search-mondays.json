@@ -1,0 +1,63 @@
+{
+  "id": "mondays green screen meme",
+  "title": "mondays green screen meme",
+  "_type": "playlist",
+  "extractor": "youtube:search",
+  "entries": [
+    {
+      "id": "J3bvkPStwB8",
+      "title": "Monday left me broken cat meme (green screen)",
+      "duration": 16,
+      "url": "https://www.youtube.com/watch?v=J3bvkPStwB8",
+      "ie_key": "Youtube",
+      "_type": "url",
+      "live_status": null,
+      "channel": "Random memes",
+      "view_count": 5303
+    },
+    {
+      "id": "mkVz1D6EBL8",
+      "title": "Mondays Meme & GIF",
+      "duration": 5,
+      "url": "https://www.youtube.com/watch?v=mkVz1D6EBL8",
+      "ie_key": "Youtube",
+      "_type": "url",
+      "live_status": null,
+      "channel": "RPW Gaming",
+      "view_count": 85
+    },
+    {
+      "id": "iiljcLsNH3I",
+      "title": "MrBeast Rizz Dance Meme - Speed 999x",
+      "duration": 31,
+      "url": "https://www.youtube.com/watch?v=iiljcLsNH3I",
+      "ie_key": "Youtube",
+      "_type": "url",
+      "live_status": null,
+      "channel": "Blue Watermelon",
+      "view_count": 1473357
+    },
+    {
+      "id": "CwfzORvGwag",
+      "title": "Meme monday green screen edition",
+      "duration": 122,
+      "url": "https://www.youtube.com/watch?v=CwfzORvGwag",
+      "ie_key": "Youtube",
+      "_type": "url",
+      "live_status": null,
+      "channel": "Perez account",
+      "view_count": 106
+    },
+    {
+      "id": "CpKfiY0LkIo",
+      "title": "Monday Left Me Broken meme, everytime with more bits",
+      "duration": 60,
+      "url": "https://www.youtube.com/watch?v=CpKfiY0LkIo",
+      "ie_key": "Youtube",
+      "_type": "url",
+      "live_status": null,
+      "channel": "Blue Watermelon",
+      "view_count": 4340
+    }
+  ]
+}

@@ -25,6 +25,8 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
           // `PU-PUB-002`: credenciales de las apps (instalación) y cuentas de la marca.
           { href: "/settings/connections", label: tw("settings.nav.connections") },
           { href: "/settings/integrations", label: tw("settings.nav.integrations") },
+          // Sprint 7 (P5-NOTIF-002): campana, canales ntfy/Telegram y categorías.
+          { href: "/settings/notifications", label: tw("settings.nav.notifications") },
         ]}
       />
       {children}

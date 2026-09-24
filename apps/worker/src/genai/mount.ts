@@ -11,9 +11,12 @@
  *  - `FASTGRAM_HOME`: dónde viven `models.json`, `spend.json` y `ai-studio/`.
  *  - `FASTGRAM_GENAI_CONCURRENCY`: pedidos a la vez **por proveedor** (default 2).
  */
+import { join } from "node:path";
+
 import {
   FileModelRegistry,
   JsonFileCollection,
+  resolveFastgramHome,
   JsonFileDocument,
   aiStudioDir,
   createGenClient,
@@ -21,11 +24,12 @@ import {
   modelRegistryPath,
   spendLedgerPath,
 } from "@fastgram/adapters";
-import type { SecretEnv } from "@fastgram/core";
+import { FORMAT_RUNS_DIR_NAME, type SecretEnv } from "@fastgram/core";
 import type { Database } from "@fastgram/db";
-import { PortError, type JobHandler, type Storage } from "@fastgram/ports";
+import { PortError, type JobHandler, type Queue, type Storage } from "@fastgram/ports";
 
 import type { BuildLogger } from "../content/build-handler.js";
+import { createFormatRunFinisher } from "../formats/finish.js";
 import { createAiStudioGenerationHandler, httpDownloader } from "./handler.js";
 import { Semaphore, genAiConcurrencyFromEnv } from "./semaphore.js";
 
@@ -43,6 +47,11 @@ export interface AiStudioMountDeps {
   readonly logger: BuildLogger;
   /** `process.env`: `FASTGRAM_HOME`, la concurrencia y los `apiKeyEnv`. */
   readonly env: SecretEnv;
+  /**
+   * Sprint 7 (agente G): con la cola, una generación que es el clip de un
+   * formato generativo arma su pieza al quedar lista. Sin cola, no.
+   */
+  readonly queue?: Queue | undefined;
 }
 
 export function createAiStudioMount(deps: AiStudioMountDeps): {
@@ -55,7 +64,20 @@ export function createAiStudioMount(deps: AiStudioMountDeps): {
     timeoutMs: DOWNLOAD_TIMEOUT_MS,
     maxBytes: DOWNLOAD_MAX_BYTES,
   });
+  const afterReady =
+    deps.queue === undefined
+      ? undefined
+      : createFormatRunFinisher({
+          db: deps.db,
+          appRole: deps.appRole,
+          queue: deps.queue,
+          runs: new JsonFileCollection(
+            join(resolveFastgramHome(deps.env), FORMAT_RUNS_DIR_NAME),
+          ),
+          logger: deps.logger,
+        });
   const handler = createAiStudioGenerationHandler({
+    ...(afterReady === undefined ? {} : { afterReady }),
     db: deps.db,
     storage: deps.storage,
     appRole: deps.appRole,

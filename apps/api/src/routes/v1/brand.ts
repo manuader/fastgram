@@ -82,6 +82,15 @@ import {
   resolveBrandSourceRequestSchema,
   updateBrandSourceRequestSchema,
   updateCompanyProfileRequestSchema,
+  resolveBrandProfileProposalRequestSchema,
+  updateBrandLogoRequestSchema,
+  brandOcrRequestSchema,
+  BRAND_LOGO_MAX_BYTES,
+  BRAND_OCR_IMAGE_MAX_BYTES,
+  type BrandLogo,
+  type BrandOcrResult,
+  type BrandProfileProposal,
+  type BrandProfileProposals,
   type BrandSource as BrandSourceResource,
   type FieldMeta,
   type ResolveBrandSourceResponse,
@@ -100,16 +109,34 @@ import {
   startAnalysis,
   startAssistedAnalysis,
   assertCanRemoveSource,
+  acceptedProposalWrite,
+  brandRevisionMatches,
+  computeProfileProposals,
+  linkedInPostAuthor,
+  onScreenTextOf,
+  screenshotTextFromLines,
+  SCREENSHOT_VISION_SYSTEM_PROMPT,
+  SCREENSHOT_VISION_USER_PROMPT,
+  withDismissedProposal,
+  youtubeAuthorUrlFromOEmbed,
+  youtubeOEmbedUrl,
+  type BrandProfileField,
+  type NeedsLookupInput,
+  type ProfileProposal,
+  type ProposalSnapshot,
   type BrandSource as DomainBrandSource,
   type BrandSourceDetection,
   type CoreBrandSourceType,
   type ResolvedInput,
   type SocialSourceType,
 } from "@fastgram/core";
-import type { AcquisitionTier } from "@fastgram/ports";
+import { isPortError, type AcquisitionTier } from "@fastgram/ports";
 import {
+  brandAnalysisStore,
   brandSourceRepository,
+  brandSourceSnapshotRepository,
   companyProfileRepository,
+  companyRepository,
   connectionRepository,
   lockBrandSource,
   workspaceMembershipRepository,
@@ -126,6 +153,7 @@ import {
   toBrandSource,
   toCompanyProfile,
 } from "../../support/serializers.js";
+import { registryBrandModels, type BrandModels } from "./brand-llm.js";
 import { crossTenant, data, idempotencyKeyOf, page, withIdempotency } from "./shared.js";
 import type { ZodApp } from "../../server/types.js";
 
@@ -343,13 +371,10 @@ function isSocialType(t: CoreBrandSourceType): t is SocialSourceType {
  *    preseleccionada, que es lo que `FR-011.12` pide para que el desambiguador
  *    no arranque vacío.
  *  - **`unrecognized`** (`ERR-B02`): copy literal de §19.5.1.
- *  - **`needs_lookup`**: un enlace a un post de Instagram, YouTube o LinkedIn
- *    **no contiene el handle del autor**. Resolverlo exige preguntárselo a la
- *    plataforma y no hay ningún `SocialReader` montado en `ApiDeps`. Se
- *    responde `503 service_unavailable` —código del PRD— con el mismo criterio
- *    que `POST /blitz/angles/generate` sin adaptador de LLM: decir que no está
- *    es mejor que inventar un handle. En TikTok y X el handle **sí** está en la
- *    URL y el detector los resuelve sin preguntar a nadie.
+ *  - **`needs_lookup`**: un enlace a un post sin el autor en la URL. Las
+ *    rutas lo resuelven **antes** con {@link authorInputFor} (`P1-BRAND-005`:
+ *    LinkedIn por parseo, YouTube por oEmbed; Instagram → 400 con aviso de
+ *    tier D). Si igual llega acá es un camino sin resolver: `503`.
  */
 export function requireResolved(detection: BrandSourceDetection): ResolvedInput {
   switch (detection.kind) {
@@ -575,8 +600,17 @@ async function actorRole(
 // Rutas
 // ───────────────────────────────────────────────────────────────────────────
 
-export function registerBrandRoutes(app: ZodApp): void {
+export interface BrandRoutesExtras {
+  /** Modelos del registro y OCR (`brand-llm.ts`). Inyectable para tests. */
+  readonly models?: BrandModels;
+  /** El `fetch` del oEmbed de YouTube (`P1-BRAND-005`). Inyectable para tests. */
+  readonly fetch?: typeof fetch;
+}
+
+export function registerBrandRoutes(app: ZodApp, extras: BrandRoutesExtras = {}): void {
   const { clock, idempotency, limiter } = app.deps;
+  const models = extras.models ?? registryBrandModels();
+  const fetchImpl = extras.fetch ?? ((url, init) => fetch(url, init));
 
   // ── POST /brand/sources/resolve ──
   //
@@ -589,6 +623,13 @@ export function registerBrandRoutes(app: ZodApp): void {
     },
     async (request, reply) => {
       const companyId = request.auth.companyId;
+      // `P1-BRAND-005`: un link a un post sin autor en la URL se resuelve
+      // **antes** de la transacción (puede tocar la red: oEmbed de YouTube).
+      const input = await authorInputFor(
+        request.body.input,
+        request.body.hint,
+        fetchImpl,
+      );
 
       const result = await request.tx(async (tx): Promise<ResolveBrandSourceResponse> => {
         // `hint` sólo puede ser `website` (el chip de `FR-011.2`), y
@@ -596,7 +637,7 @@ export function registerBrandRoutes(app: ZodApp): void {
         // red social: no convierte una URL de Instagram en web ni resuelve un
         // `@handle` suelto. Ver `brandSourceResolveHintSchema` en contracts.
         const resolved = requireResolved(
-          detect(request.body.input, {
+          detect(input.input, {
             hint: request.body.hint,
             connectedPlatforms: await connectedPlatforms(tx, companyId),
           }),
@@ -634,7 +675,9 @@ export function registerBrandRoutes(app: ZodApp): void {
           // `ERR-B12`: *"We'll analyse the whole @{handle} profile, not just
           // that post."* Es un aviso, no un error, y éste es el único momento
           // en que se puede dar.
-          ...(resolved.resolvedFromPost ? { resolvedFromPost: true } : {}),
+          ...(resolved.resolvedFromPost || input.fromPost
+            ? { resolvedFromPost: true }
+            : {}),
         };
       });
 
@@ -707,6 +750,13 @@ export function registerBrandRoutes(app: ZodApp): void {
         );
       }
 
+      // `P1-BRAND-005`: link a un post → URL del perfil del autor, fuera de la
+      // transacción. Si no se puede, 400 con el aviso de tier D.
+      const input =
+        body.canonicalUrl === undefined
+          ? null
+          : await authorInputFor(body.canonicalUrl, body.sourceType, fetchImpl);
+
       return withIdempotency(
         idempotency,
         request,
@@ -721,7 +771,7 @@ export function registerBrandRoutes(app: ZodApp): void {
             // con una URL manda el host, que es lo que `FR-011.1` decide. El
             // tipo que quedó viaja en el 202, así que nunca es invisible.
             const resolved = requireResolved(
-              detect(detectionInputOf(body.sourceType, body), {
+              detect(input?.input ?? detectionInputOf(body.sourceType, body), {
                 hint: body.sourceType,
                 connectedPlatforms: await connectedPlatforms(tx, companyId),
               }),
@@ -1244,17 +1294,31 @@ export function registerBrandRoutes(app: ZodApp): void {
       const companyId = request.auth.companyId;
       const body = request.body;
 
+      const { expectedBrandRevision, ...edits } = body;
+
       const row = await request.tx(async (tx): Promise<CompanyProfileRow> => {
         const scope = { companyId };
-        const current = await loadProfile(tx, companyId);
+        // `P1-BRANDPG-004`: con `expectedBrandRevision`, la lectura es `FOR
+        // UPDATE` (`lockCompanyProfile`, que además crea la fila si falta): dos
+        // pestañas que guardan a la vez no pasan las dos la comparación.
+        const current =
+          expectedBrandRevision === undefined
+            ? await loadProfile(tx, companyId)
+            : await brandAnalysisStore.lockCompanyProfile(tx, scope);
+        if (
+          current !== null &&
+          !brandRevisionMatches(current.brandRevision, expectedBrandRevision)
+        ) {
+          throw revisionChanged(current.brandRevision);
+        }
 
         const fieldMeta = markEditedByUser(
           (current?.fieldMeta ?? {}) as Record<string, FieldMeta>,
-          Object.keys(body),
+          Object.keys(edits),
         );
 
         const values = {
-          ...body,
+          ...edits,
           fieldMeta,
           // DATA-004: *"Incrementa en cada guardado"*. Es lo que `AI-005` usa
           // como `expectedBrandRevision` al crear un ángulo: si no se moviera,
@@ -1284,6 +1348,384 @@ export function registerBrandRoutes(app: ZodApp): void {
       return reply.status(200).send(data(toCompanyProfile(row)));
     },
   );
+
+  // ── GET /brand/profile/proposals ──
+  //
+  // `P1-BRANDPG-005` / `ERR-B14`: lo que las fuentes proponen para campos que
+  // la fusión no escribió (editados a mano o sin procedencia). Se calcula en
+  // cada lectura desde el último snapshot de cada fuente (`core/brand/proposals`).
+  app.get("/brand/profile/proposals", async (request) => {
+    const companyId = request.auth.companyId;
+    const result = await request.tx(async (tx): Promise<BrandProfileProposals> => {
+      const profile = await loadProfile(tx, companyId);
+      if (profile === null) return { brandRevision: 0, proposals: [] };
+      const proposals = computeProfileProposals({
+        snapshots: await latestSourceSnapshots(tx, companyId),
+        values: profileValues(profile),
+        fieldMeta: profile.fieldMeta,
+      });
+      return {
+        brandRevision: profile.brandRevision,
+        proposals: proposals.map(toProposal),
+      };
+    });
+    return data(result);
+  });
+
+  // ── POST /brand/profile/proposals/:field ──
+  app.post(
+    "/brand/profile/proposals/:field",
+    {
+      schema: {
+        params: proposalParams,
+        body: resolveBrandProfileProposalRequestSchema,
+      },
+      preHandler: rateLimit(limiter, "restPerWorkspace"),
+    },
+    async (request, reply) => {
+      const companyId = request.auth.companyId;
+      const field = request.params.field;
+      if (!isBrandProfileField(field)) {
+        throw new ApiRejection(404, "not_found", "profile field not found");
+      }
+      const body = request.body;
+      const row = await request.tx(async (tx): Promise<CompanyProfileRow> => {
+        const scope = { companyId };
+        const current = await brandAnalysisStore.lockCompanyProfile(tx, scope);
+        if (!brandRevisionMatches(current.brandRevision, body.expectedBrandRevision)) {
+          throw revisionChanged(current.brandRevision);
+        }
+        const proposal = computeProfileProposals({
+          snapshots: await latestSourceSnapshots(tx, companyId),
+          values: profileValues(current),
+          fieldMeta: current.fieldMeta,
+        }).find((p) => p.field === field);
+        if (proposal === undefined || proposal.excerptRef !== body.excerptRef) {
+          throw new ApiRejection(
+            409,
+            "conflict",
+            "This suggestion changed since you loaded it. Reload to see the current one.",
+            { reason: "proposal_changed" },
+          );
+        }
+        if (body.action === "dismiss") {
+          // «Keep mine»: el valor no cambia, así que la revisión tampoco — los
+          // ángulos generados contra este perfil siguen vigentes (AI-005).
+          const updated = await companyProfileRepository.update(tx, scope, current.id, {
+            fieldMeta: withDismissedProposal(
+              current.fieldMeta,
+              field,
+              proposal.excerptRef,
+            ),
+          });
+          if (updated === null)
+            throw new Error("el perfil bloqueado no se pudo actualizar");
+          return updated;
+        }
+        const write = acceptedProposalWrite(proposal);
+        const fieldMeta = {
+          ...((current.fieldMeta ?? {}) as Record<string, unknown>),
+          [field]: write.meta,
+        };
+        const updated = await companyProfileRepository.update(tx, scope, current.id, {
+          [field]: field === "businessCategories" ? [...write.value] : write.value,
+          fieldMeta,
+          brandRevision: current.brandRevision + 1,
+        });
+        if (updated === null)
+          throw new Error("el perfil bloqueado no se pudo actualizar");
+        return updated;
+      });
+      request.log.info({ field, action: body.action }, "brand profile proposal resolved");
+      return reply.status(200).send(data(toCompanyProfile(row)));
+    },
+  );
+
+  // ── GET|PUT|DELETE /brand/logo ──
+  //
+  // `P1-ONB-003`: `companies.logo_url` nunca se escribía. Se guarda el logo
+  // como `data:` URL chica (≤ 256 KB, la web lo reduce): así viaja en
+  // `GET /workspaces` para el selector de marca sin URLs firmadas que vencen
+  // ni un storage que el navegador tenga que alcanzar. Decisión de uso personal.
+  app.get("/brand/logo", async (request) => {
+    const company = await request.tx((tx) =>
+      companyRepository.load(tx, { companyId: request.auth.companyId }),
+    );
+    const logo: BrandLogo = { logoUrl: company?.logoUrl ?? null };
+    return data(logo);
+  });
+
+  app.put(
+    "/brand/logo",
+    {
+      schema: { body: updateBrandLogoRequestSchema },
+      preHandler: rateLimit(limiter, "restPerWorkspace"),
+    },
+    async (request) => {
+      const companyId = request.auth.companyId;
+      const dataUrl = request.body.dataUrl;
+      const match = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(dataUrl);
+      const bytes = match === null ? null : Buffer.from(match[2] ?? "", "base64");
+      if (
+        match === null ||
+        bytes === null ||
+        bytes.byteLength === 0 ||
+        bytes.byteLength > BRAND_LOGO_MAX_BYTES ||
+        sniffImage(bytes) !== match[1]
+      ) {
+        throw new ApiRejection(
+          400,
+          "bad_request",
+          "Upload a PNG, JPEG or WebP logo up to 256 KB.",
+          { field: "dataUrl" },
+        );
+      }
+      const ok = await request.tx((tx) =>
+        companyRepository.setLogoUrl(tx, { companyId }, dataUrl),
+      );
+      if (!ok) throw crossTenant("company", companyId, companyId);
+      const logo: BrandLogo = { logoUrl: dataUrl };
+      return data(logo);
+    },
+  );
+
+  app.delete("/brand/logo", async (request) => {
+    const companyId = request.auth.companyId;
+    const ok = await request.tx((tx) =>
+      companyRepository.setLogoUrl(tx, { companyId }, null),
+    );
+    if (!ok) throw crossTenant("company", companyId, companyId);
+    const logo: BrandLogo = { logoUrl: null };
+    return data(logo);
+  });
+
+  // ── POST /brand/ocr ──
+  //
+  // `P1-BRAND-014`, `P1-VISION-002`: el texto de **una** captura (el cuerpo de
+  // la API topa en 1 MiB; la web manda de a una, hasta cinco). Vuelve a la
+  // pantalla para que el usuario lo revise y lo mande por `/assist`: el mismo
+  // camino que el texto pegado. No se persiste ni la imagen ni el texto.
+  app.post(
+    "/brand/ocr",
+    {
+      schema: { body: brandOcrRequestSchema },
+      preHandler: rateLimit(limiter, "restPerWorkspace"),
+    },
+    async (request, reply) => {
+      const { contentType, data: base64 } = request.body;
+      const bytes = new Uint8Array(Buffer.from(base64, "base64"));
+      if (
+        bytes.byteLength === 0 ||
+        bytes.byteLength > BRAND_OCR_IMAGE_MAX_BYTES ||
+        sniffImage(Buffer.from(bytes)) !== contentType
+      ) {
+        throw new ApiRejection(
+          400,
+          "bad_request",
+          "Upload a PNG, JPEG or WebP screenshot up to 700 KB.",
+          { field: "data" },
+        );
+      }
+
+      const ocr = models.ocr();
+      if (ocr !== null) {
+        try {
+          const result = await ocr.recognizeImage({ bytes, contentType });
+          const out: BrandOcrResult = {
+            text: screenshotTextFromLines(result.text.split(/\r?\n/)),
+            engine: "ocr",
+          };
+          return reply.status(200).send(data(out));
+        } catch (error: unknown) {
+          // Cae al modelo de visión si hay; si no, al 503 de abajo.
+          request.log.warn(
+            { code: isPortError(error) ? error.code : "unexpected" },
+            "vision service OCR failed, trying the vision model",
+          );
+        }
+      }
+      const tagger = await models.visionTagger({
+        systemPrompt: SCREENSHOT_VISION_SYSTEM_PROMPT,
+        userPrompt: SCREENSHOT_VISION_USER_PROMPT,
+      });
+      if (tagger === null) {
+        return reply.status(503).send({
+          error: {
+            code: "service_unavailable",
+            message:
+              "Reading screenshots needs the vision service or a vision model (Settings → Models). You can still paste the text.",
+          },
+        });
+      }
+      const tags = await tagger.tag([bytes]);
+      const out: BrandOcrResult = {
+        text: screenshotTextFromLines(onScreenTextOf(tags)),
+        engine: "vision_model",
+      };
+      return reply.status(200).send(data(out));
+    },
+  );
+}
+
+const proposalParams = z.object({ field: z.string().min(1) });
+
+function isBrandProfileField(value: string): value is BrandProfileField {
+  return (BRAND_PROFILE_FIELDS as readonly string[]).includes(value);
+}
+
+/** `409` de `F-022`: el perfil se movió desde que el cliente lo leyó. */
+function revisionChanged(current: number): ApiRejection {
+  return new ApiRejection(
+    409,
+    "conflict",
+    "Your brand profile changed in another tab. Reload to see the latest version.",
+    { reason: "brand_revision_changed", brandRevision: current },
+  );
+}
+
+/** Los ocho campos derivables de la fila, para la fusión. */
+function profileValues(
+  row: CompanyProfileRow,
+): Record<BrandProfileField, string | readonly string[] | null> {
+  return {
+    coreIdentity: row.coreIdentity,
+    productOffering: row.productOffering,
+    uniqueBenefits: row.uniqueBenefits,
+    problemSolution: row.problemSolution,
+    marketAndCompetition: row.marketAndCompetition,
+    toneOfVoice: row.toneOfVoice,
+    targetAudience: row.targetAudience,
+    businessCategories: row.businessCategories,
+  };
+}
+
+/** Cuántos snapshots se leen para quedarse con el último de cada fuente. */
+const PROPOSAL_SNAPSHOTS_SCAN = 25;
+
+/**
+ * El último snapshot de cada fuente viva y analizada (mismo filtro que la
+ * fusión del worker: `ready`, `partial`, `stale`).
+ */
+async function latestSourceSnapshots(
+  tx: Transaction,
+  companyId: string,
+): Promise<ProposalSnapshot[]> {
+  const sources = await listAllSources(tx, companyId);
+  const usable = new Map(
+    sources
+      .filter(
+        (s) => s.status === "ready" || s.status === "partial" || s.status === "stale",
+      )
+      .map((s) => [s.id, s]),
+  );
+  const rows = await brandSourceSnapshotRepository.list(
+    tx,
+    { companyId },
+    { limit: PROPOSAL_SNAPSHOTS_SCAN },
+  );
+  const out: ProposalSnapshot[] = [];
+  const seen = new Set<string>();
+  for (const row of rows.items) {
+    if (seen.has(row.brandSourceId)) continue;
+    const source = usable.get(row.brandSourceId);
+    if (source === undefined) continue;
+    seen.add(row.brandSourceId);
+    out.push({
+      snapshotId: row.id,
+      sourceId: source.id,
+      sourceType: source.sourceType,
+      isPrimary: source.isPrimary,
+      derivedFields: row.derivedFields,
+    });
+  }
+  return out;
+}
+
+function toProposal(p: ProfileProposal): BrandProfileProposal {
+  return {
+    field: p.field,
+    value: p.value,
+    currentValue: p.currentValue,
+    confidence: p.confidence,
+    sourceId: p.sourceId as BrandProfileProposal["sourceId"],
+    sourceType: p.sourceType as BrandProfileProposal["sourceType"],
+    excerpt: p.excerpt,
+    excerptRef: p.excerptRef,
+    reason: p.reason,
+  };
+}
+
+/** El tipo real de una imagen por sus primeros bytes, o `null`. */
+export function sniffImage(bytes: Buffer): string | null {
+  if (bytes.length >= 8 && bytes.subarray(0, 8).equals(PNG_MAGIC)) return "image/png";
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (
+    bytes.length >= 12 &&
+    bytes.subarray(0, 4).toString("ascii") === "RIFF" &&
+    bytes.subarray(8, 12).toString("ascii") === "WEBP"
+  ) {
+    return "image/webp";
+  }
+  return null;
+}
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+// ───────────────────────────────────────────────────────────────────────────
+// Links a posts — `P1-BRAND-005`
+// ───────────────────────────────────────────────────────────────────────────
+
+/** Presupuesto del oEmbed de YouTube. Por debajo del corte del proxy web (10 s). */
+const OEMBED_TIMEOUT_MS = 5_000;
+
+/**
+ * El texto a detectar: el mismo que vino, o —si es un link a un post sin el
+ * autor en la URL— la URL del perfil del autor. Si el autor no se puede
+ * saber, `400` con el aviso de tier D: pegar el link del perfil o la bio.
+ *
+ * Reemplaza el `503` de antes (`requireResolved` con `needs_lookup`).
+ */
+export async function authorInputFor(
+  input: string,
+  hint: CoreBrandSourceType | undefined,
+  fetchImpl: typeof fetch,
+): Promise<{ readonly input: string; readonly fromPost: boolean }> {
+  const detection = detect(input, { hint });
+  if (detection.kind !== "needs_lookup") return { input, fromPost: false };
+  const author = await lookupPostAuthor(detection, fetchImpl);
+  if (author === null) {
+    throw new ApiRejection(
+      400,
+      "bad_request",
+      "We can't tell who posted this link. Paste the profile link instead, or paste your bio.",
+      { reason: "post_author_unknown", sourceType: detection.sourceType },
+    );
+  }
+  return { input: author, fromPost: true };
+}
+
+/** La URL del perfil del autor de un post, o `null` si no hay forma de saberla. */
+export async function lookupPostAuthor(
+  detection: NeedsLookupInput,
+  fetchImpl: typeof fetch,
+): Promise<string | null> {
+  if (detection.sourceType === "linkedin") {
+    const slug = linkedInPostAuthor(detection.postRef);
+    return slug === null ? null : `https://linkedin.com/company/${slug}`;
+  }
+  const oembed = youtubeOEmbedUrl(detection);
+  if (oembed === null) return null; // Instagram: su oEmbed exige token.
+  try {
+    const response = await fetchImpl(oembed, {
+      signal: AbortSignal.timeout(OEMBED_TIMEOUT_MS),
+      redirect: "error",
+    });
+    if (!response.ok) return null;
+    return youtubeAuthorUrlFromOEmbed(await response.json());
+  } catch {
+    return null;
+  }
 }
 
 /**

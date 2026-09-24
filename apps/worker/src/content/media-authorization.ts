@@ -26,20 +26,23 @@
  * el reparto viviera en un solo lugar que las dos apps importen; está
  * reportado y no se hace acá porque `apps/api` es de otro agente ahora mismo.
  *
- * ## Lo que NO está, y hace fallar un build con audio
+ * ## La librería de audio es la de la marca (sprint 7)
  *
- * `sharedPrefixes` va **vacío**. `FR-070` dice que el audio sólo puede venir de
- * la librería compartida, y **en todo el repo no hay una sola pista de dónde
- * vive esa librería**: ni una clave, ni una variable de entorno, ni un
- * endpoint. Inventar un prefijo acá sería peor que dejarlo vacío: autorizaría
- * un origen que nadie eligió.
+ * `FR-070` dice que el audio sólo puede venir de "la librería", y el render lo
+ * hace cumplir: para el rol `audio` sólo mira `sharedPrefixes`. Hasta el
+ * sprint 7 esa lista iba vacía —no existía ninguna librería— y todo build con
+ * música se rechazaba con `audio_fuera_de_libreria`.
  *
- * Consecuencia concreta, para que no sorprenda: con el adaptador HTTP montado,
- * un `wall-of-text` o un `video-hook` **con** pista de audio va a ser rechazado
- * por el servicio con `audio_fuera_de_libreria`. Sin audio funcionan (por eso
- * `P2-RENDER-014` hizo el bloque opcional). Está reportado.
+ * Ahora la librería existe y es **por marca**: `brand_audio_tracks`, con los
+ * objetos bajo `audio/{companyId}/` (`brandAudioKeyPrefix` de
+ * `@fastgram/contracts`, el mismo que usan la subida y el import por link).
+ * Ese prefijo —y sólo ése— va en `sharedPrefixes`. No abre nada nuevo: es un
+ * prefijo del propio workspace, y además la URL exacta tiene que estar en
+ * `urls` (ver {@link mediaUrlsOf}). El audio viejo de `media/{id}/imports/`
+ * (antes de la tabla) no entra: no tiene fila y no se puede elegir.
  */
 import { canonicalObjectUrl } from "@fastgram/adapters";
+import { brandAudioKeyPrefix } from "@fastgram/contracts";
 import type { MediaAuthorization, RenderJob, Storage } from "@fastgram/ports";
 
 /**
@@ -89,12 +92,17 @@ export async function workspaceMediaAuthorization(
       canonicalObjectUrl(storage, key),
     ),
   );
+  // Ver el encabezado: la biblioteca de audio de **esta** marca, con la barra
+  // final para que `audio/ws-1/` no matchee `audio/ws-10/`.
+  const audioLibrary = await canonicalObjectUrl(
+    storage,
+    `${brandAudioKeyPrefix(input.companyId)}/`,
+  );
 
   return {
     companyId: input.companyId,
     mediaPrefixes,
-    // Ver el encabezado: vacío a propósito, no por olvido.
-    sharedPrefixes: [],
+    sharedPrefixes: [audioLibrary],
     ...(input.urls.length === 0 ? {} : { urls: input.urls }),
   };
 }
@@ -116,7 +124,11 @@ export function mediaUrlsOf(job: RenderJob): readonly string[] {
     case "wall-of-text":
       return [job.video.url, ...(job.audio === undefined ? [] : [job.audio.url])];
     case "green-screen":
-      return [job.image.url, job.video.url];
+      return [
+        job.image.url,
+        job.video.url,
+        ...(job.audio === undefined ? [] : [job.audio.url]),
+      ];
     case "video-hook":
       return [
         job.hook_video.url,

@@ -100,6 +100,12 @@ export const blitzSuggestionSchema = z
      * que lo traen van primeras en la cola.
      */
     promptRequestId: z.string().min(1).optional(),
+    /**
+     * Sprint 7: el meme lo encontró solo «crear desde prompt» (YouTube) porque
+     * el Media Bank no tenía uno para el tema. Dibuja el chip «Auto-found
+     * meme»; `sourceUrl` es de dónde salió (D-12: el dueño decide).
+     */
+    autoFoundMeme: z.object({ sourceUrl: z.string().url() }).strict().optional(),
   })
   .strict();
 export type BlitzSuggestion = z.infer<typeof blitzSuggestionSchema>;
@@ -167,6 +173,8 @@ export const generateBlitzAcceptedSchema = z
 export type GenerateBlitzAccepted = z.infer<typeof generateBlitzAcceptedSchema>;
 
 export const BLITZ_PROMPT_STATUSES = ["queued", "running", "done", "failed"] as const;
+/** Sprint 7: las fases de un pedido `running` (`PROMPT_PHASES` de `core`). */
+export const BLITZ_PROMPT_PHASES = ["searching_meme"] as const;
 export const blitzPromptStatusSchema = z.enum(BLITZ_PROMPT_STATUSES);
 export type BlitzPromptStatus = z.infer<typeof blitzPromptStatusSchema>;
 
@@ -182,6 +190,8 @@ export const BLITZ_PROMPT_FAILURE_REASONS = [
   "copy_rejected",
   "llm_failed",
   "invalid_state",
+  /** Sprint 7: era green-screen, no había meme para el tema y la búsqueda no encontró uno. */
+  "meme_not_found",
 ] as const;
 export const blitzPromptFailureReasonSchema = z.enum(BLITZ_PROMPT_FAILURE_REASONS);
 export type BlitzPromptFailureReason = z.infer<typeof blitzPromptFailureReasonSchema>;
@@ -198,6 +208,11 @@ export const blitzPromptRequestSchema = z
     /** El formato forzado, si hubo. */
     contentType: blitzContentTypeSchema.optional(),
     count: z.number().int().min(1).max(BLITZ_PROMPT_MAX_COUNT),
+    /**
+     * Sprint 7: en qué anda un pedido `running`. `searching_meme` = buscando e
+     * importando un meme (tarda más que escribir la copy). Ausente = lo de siempre.
+     */
+    phase: z.enum(BLITZ_PROMPT_PHASES).optional(),
   })
   .strict();
 export type BlitzPromptRequest = z.infer<typeof blitzPromptRequestSchema>;

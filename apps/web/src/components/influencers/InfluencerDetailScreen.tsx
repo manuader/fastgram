@@ -1,12 +1,27 @@
 "use client";
 
-import { Badge, EmptyState, Skeleton, buttonVariants, cn } from "@fastgram/ui";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Skeleton,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  buttonVariants,
+  cn,
+} from "@fastgram/ui";
 import Link from "next/link";
 import { ApiErrorState } from "@/components/library/ApiErrorState";
 import { ChevronLeftIcon, UserIcon, WandIcon } from "@/icons";
 import { isApiRequestError } from "@/lib/api/errors";
 import { tw } from "@/lib/i18n/t";
-import { useInfluencer, useInfluencerGenerations } from "@/lib/influencers/api";
+import {
+  useInfluencer,
+  useInfluencerGenerations,
+  useInfluencerSetup,
+} from "@/lib/influencers/api";
 import {
   FAILURE_COPY,
   STATUS_COPY,
@@ -15,9 +30,21 @@ import {
   type InfluencerView,
 } from "@/lib/influencers/form";
 import { ROUTES } from "@/lib/nav/routes";
+import { useState } from "react";
+import { AnimateDialog } from "./AnimateDialog";
+import { ConfigurationPanel } from "./ConfigurationPanel";
 import { ImageComposer } from "./ImageComposer";
+import { NewInfluencerWizard } from "./NewInfluencerWizard";
 
-function Gallery({ influencer }: { readonly influencer: InfluencerView }) {
+function Gallery({
+  influencer,
+  kind,
+  onAnimate,
+}: {
+  readonly influencer: InfluencerView;
+  readonly kind: "image" | "video";
+  readonly onAnimate?: ((m: { mediaId: string; url: string }) => void) | undefined;
+}) {
   const generations = useInfluencerGenerations(influencer._id, true);
   if (generations.isError) {
     return (
@@ -41,10 +68,15 @@ function Gallery({ influencer }: { readonly influencer: InfluencerView }) {
       </div>
     );
   }
-  const items = generations.data;
+  const items = generations.data.filter((g) => g.kind === kind);
   if (items.length === 0) {
     return (
-      <EmptyState icon={<WandIcon size={20} />} title={tw("influencers.images.empty")} />
+      <EmptyState
+        icon={<WandIcon size={20} />}
+        title={tw(
+          kind === "image" ? "influencers.images.empty" : "influencers.videos.empty",
+        )}
+      />
     );
   }
   return (
@@ -56,7 +88,11 @@ function Gallery({ influencer }: { readonly influencer: InfluencerView }) {
               key={g.id}
               className="flex aspect-[9/16] items-center justify-center rounded-xl border border-dashed border-border-strong p-3 text-center text-xs text-text-muted"
             >
-              {tw("influencers.images.pending")}
+              {tw(
+                kind === "image"
+                  ? "influencers.images.pending"
+                  : "influencers.videos.pending",
+              )}
             </li>,
           ];
         }
@@ -72,13 +108,39 @@ function Gallery({ influencer }: { readonly influencer: InfluencerView }) {
           ];
         }
         return g.media.map((m) => (
-          <li key={m.mediaId} className="overflow-hidden rounded-xl bg-surface-sunken">
-            <img
-              src={m.url}
-              alt={g.prompt}
-              loading="lazy"
-              className="aspect-[9/16] h-full w-full object-cover"
-            />
+          <li
+            key={m.mediaId}
+            className="group relative overflow-hidden rounded-xl bg-surface-sunken"
+          >
+            {m.mediaType === "video" ? (
+              <video
+                src={m.url}
+                className="aspect-[9/16] h-full w-full object-cover"
+                controls
+                muted
+                playsInline
+                preload="metadata"
+              />
+            ) : (
+              <img
+                src={m.url}
+                alt={g.prompt}
+                loading="lazy"
+                className="aspect-[9/16] h-full w-full object-cover"
+              />
+            )}
+            {m.mediaType === "image" && onAnimate !== undefined && (
+              <Button
+                size="sm"
+                variant="secondary"
+                className="absolute bottom-2 left-1/2 -translate-x-1/2 opacity-90 group-hover:opacity-100"
+                onClick={() => {
+                  onAnimate({ mediaId: m.mediaId, url: m.url });
+                }}
+              >
+                {tw("influencers.animate.action")}
+              </Button>
+            )}
           </li>
         ));
       })}
@@ -89,8 +151,10 @@ function Gallery({ influencer }: { readonly influencer: InfluencerView }) {
 /**
  * `/influencers/:id` — FR-081 adaptado (`PU-LATER-004`): cabecera con estado,
  * avance del entrenamiento o motivo del fallo; con el personaje activo, la
- * barra para generar imágenes y la galería. Video y Talking Head no están: la
- * API de Higgsfield no documenta video con personaje.
+ * barra para generar imágenes y la galería. Sprint 7: tabs `Images` ·
+ * `Videos` · `Configuration` (FR-081…FR-083), «Animate» sobre cada imagen
+ * (image-to-video de Higgsfield) y «Regenerate» = persona nueva (F-093).
+ * Talking Head no está: ningún proveedor documenta lip-sync por API.
  */
 export function InfluencerDetailScreen({
   influencerId,
@@ -98,6 +162,12 @@ export function InfluencerDetailScreen({
   readonly influencerId: string;
 }) {
   const query = useInfluencer(influencerId);
+  const setup = useInfluencerSetup();
+  const [animating, setAnimating] = useState<{ mediaId: string; url: string } | null>(
+    null,
+  );
+  const [regenerating, setRegenerating] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const back = (
     <Link
@@ -170,12 +240,25 @@ export function InfluencerDetailScreen({
           </div>
           {traits !== "" && <span className="text-sm text-text-muted">{traits}</span>}
         </div>
-        <Link
-          href={ROUTES.blitzSettings}
-          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "ml-auto")}
-        >
-          {tw("influencers.detail.blitz")}
-        </Link>
+        <div className="ml-auto flex items-center gap-2">
+          {setup.data !== undefined && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setRegenerating(true);
+              }}
+            >
+              {tw("influencers.regenerate.action")}
+            </Button>
+          )}
+          <Link
+            href={ROUTES.blitzSettings}
+            className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
+          >
+            {tw("influencers.detail.blitz")}
+          </Link>
+        </div>
       </header>
 
       {isInFlight(inf) && (
@@ -210,18 +293,79 @@ export function InfluencerDetailScreen({
       )}
 
       {inf.status === "ready" && (
-        <div className="flex flex-col gap-6">
-          <ImageComposer influencerId={inf._id} gender={inf.gender} />
-          <section aria-labelledby="influencer-images" className="flex flex-col gap-3">
-            <h2 id="influencer-images" className="m-0 text-lg font-semibold text-text">
-              {tw("influencers.images.title")}
-            </h2>
-            <p className="m-0 text-xs text-text-subtle">
-              {tw("influencers.detail.blitzHint")}
-            </p>
-            <Gallery influencer={inf} />
-          </section>
-        </div>
+        <Tabs defaultValue="images">
+          <TabsList>
+            <TabsTrigger value="images">{tw("influencers.tabs.images")}</TabsTrigger>
+            <TabsTrigger value="videos">{tw("influencers.tabs.videos")}</TabsTrigger>
+            <TabsTrigger value="configuration">
+              {tw("influencers.tabs.configuration")}
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="images">
+            <div className="mt-4 flex flex-col gap-6">
+              <ImageComposer influencerId={inf._id} gender={inf.gender} />
+              <section
+                aria-labelledby="influencer-images"
+                className="flex flex-col gap-3"
+              >
+                <h2
+                  id="influencer-images"
+                  className="m-0 text-lg font-semibold text-text"
+                >
+                  {tw("influencers.images.title")}
+                </h2>
+                <p className="m-0 text-xs text-text-subtle">
+                  {tw("influencers.detail.blitzHint")}
+                </p>
+                <Gallery influencer={inf} kind="image" onAnimate={setAnimating} />
+              </section>
+            </div>
+          </TabsContent>
+          <TabsContent value="videos">
+            <section className="mt-4 flex flex-col gap-3">
+              <p className="m-0 text-xs text-text-subtle">
+                {tw("influencers.videos.hint")}
+              </p>
+              {notice !== null && <p className="m-0 text-sm text-success">{notice}</p>}
+              <Gallery influencer={inf} kind="video" />
+            </section>
+          </TabsContent>
+          <TabsContent value="configuration">
+            <div className="mt-4">
+              <ConfigurationPanel influencerId={inf._id} />
+            </div>
+          </TabsContent>
+        </Tabs>
+      )}
+      <AnimateDialog
+        influencerId={inf._id}
+        source={animating}
+        models={setup.data?.videoModels ?? []}
+        onClose={() => {
+          setAnimating(null);
+        }}
+        onStarted={() => {
+          setNotice(tw("influencers.animate.started"));
+        }}
+      />
+      {setup.data !== undefined && (
+        <NewInfluencerWizard
+          open={regenerating}
+          onClose={() => {
+            setRegenerating(false);
+          }}
+          setup={setup.data}
+          regeneratedFromId={inf._id}
+          initial={{
+            name: inf.name,
+            gender:
+              inf.gender === "female" || inf.gender === "male" || inf.gender === "other"
+                ? inf.gender
+                : "",
+            age: inf.age ?? null,
+            ethnicity: inf.ethnicity ?? "",
+          }}
+        />
       )}
     </div>
   );

@@ -11,6 +11,7 @@
  * La aserción es sobre la petición y no sobre el DOM a propósito: "el panel
  * está en el árbol" no es lo que cuesta dinero, la petición sí.
  */
+import { ToastProvider } from "@fastgram/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -38,7 +39,12 @@ function renderTabs() {
     defaultOptions: { queries: { retry: false } },
   });
   function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    return (
+      <QueryClientProvider client={client}>
+        {/* Sprint 7: My Posts avisa con toasts (retry, cancel, refresh). */}
+        <ToastProvider>{children}</ToastProvider>
+      </QueryClientProvider>
+    );
   }
   return render(<LibraryTabs />, { wrapper: Wrapper });
 }

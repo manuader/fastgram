@@ -82,6 +82,9 @@ export function toMedia(row: Row<typeof media>): Media {
     origin: row.origin,
     uploadedAt: ms(row.uploadedAt),
     ...opt("deletedAt", row.deletedAt === null ? null : ms(row.deletedAt)),
+    // `0029` (sprint 7, F): etiquetas y qué hizo la normalización.
+    ...(row.tags.length === 0 ? {} : { tags: [...row.tags] }),
+    ...opt("normalization", row.normalization),
   } as Media;
 }
 

@@ -1,10 +1,18 @@
 "use client";
 
-import type { AiStudioOptions, GenKind } from "@fastgram/contracts";
+import {
+  AI_STUDIO_PROMPT_MAX_CHARS,
+  type AiStudioOptions,
+  type GenKind,
+  type GenModelSpec,
+  type GenerationRequest,
+} from "@fastgram/contracts";
 import { Badge, Button, Input, Select, Textarea, buttonVariants, cn } from "@fastgram/ui";
 import Link from "next/link";
 import { useEffect, useId, useMemo, useState } from "react";
+import { MediaPickerDialog } from "@/components/editor/MediaPickerDialog";
 import { ExternalLinkIcon, WandIcon } from "@/icons";
+import { flattenItems, useMediaPicker } from "@/lib/editor/api";
 import { useCreateGeneration, useEstimate } from "@/lib/ai-studio/api";
 import {
   formErrors,
@@ -39,6 +47,35 @@ function useDebounced<T>(value: T, ms: number): T {
   return debounced;
 }
 
+/** Una imagen del Media Bank elegida como entrada (sprint 7, `P4-AISTUDIO-001`). */
+interface PickedImage {
+  readonly mediaId: string;
+  readonly url: string;
+}
+
+/**
+ * El pedido con la imagen del Media Bank en vez de una URL. La validación del
+ * formulario (`toRequest`) exige una URL `https`; con una imagen elegida se le
+ * pasa una de relleno y después se cambia por `imageMediaId`: la API resuelve
+ * la URL que el proveedor puede leer (nuestro storage no es público).
+ */
+export function requestWithPicked(
+  form: StudioForm,
+  spec: GenModelSpec | undefined,
+  picked: PickedImage | null,
+): GenerationRequest | null {
+  if (picked === null || spec === undefined || spec.imageInput === "none") {
+    return toRequest(form, spec);
+  }
+  const base = toRequest(
+    { ...form, imageUrl: "https://media-bank.invalid/picked" },
+    spec,
+  );
+  if (base === null) return null;
+  const { imageUrl: _placeholder, ...rest } = base;
+  return { ...rest, imageMediaId: picked.mediaId };
+}
+
 export interface ComposerProps {
   readonly options: AiStudioOptions;
 }
@@ -57,14 +94,21 @@ export function Composer({ options }: ComposerProps) {
     options.image.configured || !options.video.configured ? "image" : "video";
   const [form, setForm] = useState<StudioForm>(() => initialForm(options, firstKind));
   const [notice, setNotice] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [picked, setPicked] = useState<PickedImage | null>(null);
+  // La misma consulta (y el mismo cache) que el diálogo: de la URL elegida al id.
+  const pickerMedia = useMediaPicker("image", pickerOpen);
 
   const task = taskFor(options, form.kind);
   const spec = specFor(options, form);
-  const errors = formErrors(form, spec);
+  const errors = formErrors(
+    picked === null ? form : { ...form, imageUrl: "https://media-bank.invalid/picked" },
+    spec,
+  );
   const debouncedPrompt = useDebounced(form.prompt, ESTIMATE_DEBOUNCE_MS);
   const request = useMemo(
-    () => toRequest({ ...form, prompt: debouncedPrompt }, spec),
-    [form, debouncedPrompt, spec],
+    () => requestWithPicked({ ...form, prompt: debouncedPrompt }, spec, picked),
+    [form, debouncedPrompt, spec, picked],
   );
   const estimate = useEstimate(request);
   const create = useCreateGeneration();
@@ -74,16 +118,20 @@ export function Composer({ options }: ComposerProps) {
   const overBudget = cost !== undefined && cost.usd > remaining + 1e-9;
   const typing = form.prompt !== debouncedPrompt;
   const canGenerate =
-    task.configured && toRequest(form, spec) !== null && !overBudget && !create.isPending;
+    task.configured &&
+    requestWithPicked(form, spec, picked) !== null &&
+    !overBudget &&
+    !create.isPending;
 
   const setKind = (kind: GenKind) => {
     if (kind === form.kind) return;
     setForm(initialForm(options, kind, form));
+    setPicked(null);
     setNotice(null);
   };
 
   const onGenerate = () => {
-    const body = toRequest(form, spec);
+    const body = requestWithPicked(form, spec, picked);
     if (body === null) return;
     setNotice(null);
     create.mutate(body, {
@@ -148,13 +196,29 @@ export function Composer({ options }: ComposerProps) {
       ) : (
         <>
           <div className="flex flex-col gap-2">
-            <label htmlFor={ids.prompt} className="text-sm font-medium text-text">
-              {tw("aiStudio.prompt.label")}
-            </label>
+            <div className="flex items-baseline justify-between gap-3">
+              <label htmlFor={ids.prompt} className="text-sm font-medium text-text">
+                {tw("aiStudio.prompt.label")}
+              </label>
+              <span
+                className={cn(
+                  "text-xs tabular-nums",
+                  form.prompt.length >= AI_STUDIO_PROMPT_MAX_CHARS
+                    ? "text-danger"
+                    : "text-text-subtle",
+                )}
+                data-testid="ai-studio-prompt-counter"
+              >
+                {tw("formats.counter", {
+                  count: form.prompt.length,
+                  max: AI_STUDIO_PROMPT_MAX_CHARS,
+                })}
+              </span>
+            </div>
             <Textarea
               id={ids.prompt}
               rows={4}
-              maxLength={2000}
+              maxLength={AI_STUDIO_PROMPT_MAX_CHARS}
               placeholder={tw("aiStudio.prompt.placeholder")}
               value={form.prompt}
               onChange={(e) => {
@@ -238,22 +302,76 @@ export function Composer({ options }: ComposerProps) {
               <label htmlFor={ids.image} className="text-sm font-medium text-text">
                 {tw("aiStudio.image.label")}
               </label>
-              <Input
-                id={ids.image}
-                type="url"
-                inputMode="url"
-                spellCheck={false}
-                autoComplete="off"
-                placeholder="https://"
-                aria-describedby={`${ids.image}-hint`}
-                value={form.imageUrl}
-                onChange={(e) => {
-                  setForm({ ...form, imageUrl: e.target.value });
+              {picked === null ? (
+                <>
+                  <Input
+                    id={ids.image}
+                    type="url"
+                    inputMode="url"
+                    spellCheck={false}
+                    autoComplete="off"
+                    placeholder="https://"
+                    aria-describedby={`${ids.image}-hint`}
+                    value={form.imageUrl}
+                    onChange={(e) => {
+                      setForm({ ...form, imageUrl: e.target.value });
+                    }}
+                  />
+                  <p id={`${ids.image}-hint`} className="m-0 text-xs text-text-subtle">
+                    {tw("aiStudio.image.hint")}
+                  </p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="self-start"
+                    onClick={() => {
+                      setPickerOpen(true);
+                    }}
+                  >
+                    {tw("aiStudio.image.pick")}
+                  </Button>
+                </>
+              ) : (
+                <div className="flex items-center gap-3" data-testid="ai-studio-picked">
+                  <img
+                    src={picked.url}
+                    alt={tw("aiStudio.image.picked")}
+                    className="h-20 w-14 rounded-lg object-cover"
+                  />
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-text-muted">
+                      {tw("aiStudio.image.picked")}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setPicked(null);
+                      }}
+                    >
+                      {tw("aiStudio.image.remove")}
+                    </Button>
+                  </div>
+                </div>
+              )}
+              <MediaPickerDialog
+                open={pickerOpen}
+                type="image"
+                title={tw("aiStudio.image.pickTitle")}
+                onCancel={() => {
+                  setPickerOpen(false);
+                }}
+                onPick={(url) => {
+                  const media = flattenItems(pickerMedia.data).find(
+                    (m) => m.r2Url === url,
+                  );
+                  if (media !== undefined) {
+                    setPicked({ mediaId: media.mediaId, url });
+                    setForm({ ...form, imageUrl: "" });
+                  }
+                  setPickerOpen(false);
                 }}
               />
-              <p id={`${ids.image}-hint`} className="m-0 text-xs text-text-subtle">
-                {tw("aiStudio.image.hint")}
-              </p>
             </div>
           )}
 

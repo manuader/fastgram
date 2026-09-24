@@ -19,6 +19,20 @@ export const TASK_COPY: Readonly<
     title: "Judgment",
     description: "Scoring and yes/no checks with structured output.",
   },
+  // `P1-JUDGE-004`: overrides por punto de decisión (sección Judgment).
+  "judgment.autopilot": {
+    title: "Autopilot pre-check",
+    description:
+      "Decides whether a piece is approved on its own. A bigger model here pays off.",
+  },
+  "judgment.brand": {
+    title: "Brand field check",
+    description: "Checks that each brand profile field is backed by its source excerpt.",
+  },
+  "judgment.engagement": {
+    title: "Engagement scoring",
+    description: "Scores Reddit leads and the tone of replies.",
+  },
   vision: {
     title: "Vision",
     description: "Tagging images and clips. Saved now, used once meme tagging lands.",
@@ -101,6 +115,14 @@ export const MODELS_COPY = {
   usingEnvIncomplete:
     "This entry is incomplete, so the worker keeps using the LLM_* environment variables.",
   inherits: "Not set — uses the Text model.",
+  inheritsJudgment: "Not set — uses the Judgment model.",
+  judgmentSection: "Judgment by decision point",
+  judgmentSectionHint:
+    "Every decision uses the Judgment model unless you pick a different one here.",
+  useDifferentModel: "Use a different model for…",
+  clearOverride: "Use the Judgment model again",
+  clearingOverride: "Switching back…",
+  clearOverrideFailed: "Couldn't switch back. Try again.",
   missing: {
     apiKey: "API key",
     contextWindowTokens: "context window",

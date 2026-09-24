@@ -46,3 +46,19 @@ export {
   type XFxTwitterReaderConfig,
 } from "./x-fxtwitter-reader.js";
 export { LadderSocialReader } from "./ladder-reader.js";
+// Sprint 7 (agente G): YouTube (Data API o yt-dlp) y LinkedIn (página pública, tier C).
+export {
+  YouTubeReader,
+  parseYouTubeChannel,
+  parseYouTubePlaylistItems,
+  parseYouTubeStatistics,
+  parseYtDlpChannel,
+  youtubeChannelFrom,
+  type YouTubeReaderConfig,
+} from "./youtube-reader.js";
+export {
+  LinkedInCompanyReader,
+  linkedinPageFrom,
+  parseLinkedInCompanyPage,
+  type LinkedInReaderConfig,
+} from "./linkedin-reader.js";

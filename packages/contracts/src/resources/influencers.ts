@@ -16,6 +16,7 @@ import {
   costEstimateSchema,
   generationErrorCodeSchema,
   generationMediaSchema,
+  genModelSpecSchema,
 } from "./genai.js";
 
 // --- Números del PRD ---------------------------------------------------------
@@ -107,6 +108,8 @@ export const influencerSchema = z
       .object({ code: influencerFailureCodeSchema, message: z.string() })
       .strict()
       .optional(),
+    /** Sprint 7 (`F-093`): de qué personaje salió éste al regenerar. */
+    regeneratedFromId: z.string().uuid().optional(),
     createdAt: msEpochSchema,
     updatedAt: msEpochSchema,
   })
@@ -143,12 +146,27 @@ export const createInfluencerRequestSchema = z
         message: "referenceMediaIds must be unique",
       })
       .optional(),
+    /**
+     * Sprint 7 (`P4-INFL-003`, `F-091`): la imagen base **generada por texto**
+     * (una generación de AI Studio ya en el Media Bank). El personaje se crea
+     * en Higgsfield desde esa sola foto (Soul ID acepta 1–100). Excluyente
+     * con `referenceMediaIds` y `baseImageUploadId`.
+     */
+    generatedBaseMediaId: z.string().uuid().optional(),
+    /** Sprint 7 (`F-093`): regenerar = persona nueva; el viejo se conserva. */
+    regeneratedFromId: z.string().uuid().optional(),
   })
   .strict()
-  .refine((b) => b.referenceMediaIds === undefined || b.baseImageUploadId === undefined, {
-    path: ["referenceMediaIds"],
-    message: "Use reference photos or a base image, not both",
-  });
+  .refine(
+    (b) =>
+      [b.referenceMediaIds, b.baseImageUploadId, b.generatedBaseMediaId].filter(
+        (x) => x !== undefined,
+      ).length <= 1,
+    {
+      path: ["referenceMediaIds"],
+      message: "Use reference photos, a generated base image or an upload — only one",
+    },
+  );
 export type CreateInfluencerRequest = z.infer<typeof createInfluencerRequestSchema>;
 
 // --- Setup, imágenes del personaje — `PU-LATER-004`, `FR-081` ------------------
@@ -166,6 +184,13 @@ export const influencerSetupSchema = z.object({
   trainingCost: costEstimateSchema.nullable(),
   canCreate: z.boolean(),
   budget: budgetSummarySchema,
+  /**
+   * Sprint 7 (`FR-082`, `F-099`): los modelos de Higgsfield que animan una
+   * imagen (image-to-video). Vacío si Higgsfield no está configurado.
+   */
+  videoModels: z.array(genModelSpecSchema).default([]),
+  /** Sprint 7 (`P4-INFL-003`): hay un modelo de imagen para la base por texto. */
+  canGenerateBase: z.boolean().default(false),
 });
 export type InfluencerSetup = z.infer<typeof influencerSetupSchema>;
 
@@ -195,6 +220,11 @@ export type InfluencerImageEstimate = z.infer<typeof influencerImageEstimateSche
 export const influencerGenerationSchema = z.object({
   id: z.string().uuid(),
   influencerId: z.string().uuid(),
+  /** Sprint 7: `video` = una imagen animada (`F-099`). */
+  kind: z.enum(["image", "video"]).default("image"),
+  durationSeconds: z.number().int().positive().nullable().default(null),
+  /** La imagen que se animó. */
+  sourceMediaId: z.string().uuid().nullable().default(null),
   status: z.enum(["queued", "generating", "ready", "failed", "nsfw"]),
   model: z.string(),
   prompt: z.string(),
@@ -209,3 +239,115 @@ export const influencerGenerationSchema = z.object({
 });
 export type InfluencerGeneration = z.infer<typeof influencerGenerationSchema>;
 export const influencerGenerationListSchema = z.array(influencerGenerationSchema);
+
+// --- Sprint 7 (agente G): Configuration, templates, base por texto y video ---
+
+/** `blitz.ts`: el cap de ángulos es del lado del influencer. */
+export const INFLUENCER_MAX_ANGLES = 10;
+
+export const influencerPublishingAccountSchema = z
+  .object({
+    platform: z.string().min(1).max(40),
+    connectionId: z.string().uuid(),
+    enabled: z.boolean(),
+  })
+  .strict();
+
+/** `FR-083` / `DATA-015`. */
+export const influencerConfigSchema = z.object({
+  angleIds: z.array(z.string().uuid()).max(INFLUENCER_MAX_ANGLES),
+  publishingAccounts: z.array(influencerPublishingAccountSchema).max(100),
+  slideshowSetIds: z.array(z.string().uuid()).max(100),
+  videoSetIds: z.array(z.string().uuid()).max(100),
+});
+export type InfluencerConfig = z.infer<typeof influencerConfigSchema>;
+
+/** `PUT /influencers/{id}/config`: lo que se manda se reemplaza; lo demás queda. */
+export const updateInfluencerConfigRequestSchema = influencerConfigSchema
+  .partial()
+  .strict();
+export type UpdateInfluencerConfigRequest = z.infer<
+  typeof updateInfluencerConfigRequestSchema
+>;
+
+/** `GET /influencers/{id}/config`: la config y entre qué se elige. */
+export const influencerConfigViewSchema = z.object({
+  config: influencerConfigSchema,
+  options: z.object({
+    angles: z.array(z.object({ id: z.string().uuid(), title: z.string() })),
+    accounts: z.array(
+      z.object({
+        connectionId: z.string().uuid(),
+        platform: z.string(),
+        username: z.string().nullable(),
+        displayName: z.string().nullable(),
+      }),
+    ),
+    sets: z.array(
+      z.object({
+        id: z.string().uuid(),
+        name: z.string(),
+        kind: z.enum(["SLIDESHOW", "VIDEO", "CURATED"]),
+        mediaCount: z.number().int().nonnegative(),
+      }),
+    ),
+  }),
+  updatedAt: z.string().nullable(),
+});
+export type InfluencerConfigView = z.infer<typeof influencerConfigViewSchema>;
+
+export const INFLUENCER_TEMPLATES_MAX = 30;
+export const influencerTemplateSchema = z
+  .object({
+    id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/),
+    label: z.string().trim().min(1).max(40),
+    /** `{subject}` = her / him / them. */
+    prompt: z.string().trim().min(1).max(500),
+  })
+  .strict();
+export type InfluencerTemplate = z.infer<typeof influencerTemplateSchema>;
+
+export const influencerTemplatesViewSchema = z.object({
+  templates: z.array(influencerTemplateSchema),
+  /** `false` = la lista de fábrica. */
+  customized: z.boolean(),
+});
+export type InfluencerTemplatesView = z.infer<typeof influencerTemplatesViewSchema>;
+
+/** `PUT /influencers/templates`. `null` = volver a la lista de fábrica. */
+export const updateInfluencerTemplatesRequestSchema = z
+  .object({
+    templates: z.array(influencerTemplateSchema).max(INFLUENCER_TEMPLATES_MAX).nullable(),
+  })
+  .strict();
+export type UpdateInfluencerTemplatesRequest = z.infer<
+  typeof updateInfluencerTemplatesRequestSchema
+>;
+
+/** `POST /influencers/base-image` (+ `/estimate`): imagen base por texto. */
+export const influencerBaseImageRequestSchema = z
+  .object({
+    gender: z.string().trim().max(40).optional(),
+    age: z.number().int().min(INFLUENCER_AGE_MIN).max(INFLUENCER_AGE_MAX).optional(),
+    ethnicity: z.string().trim().max(60).optional(),
+    details: z.string().max(500).optional(),
+    /** «Regeneration instructions» (`FR-080` paso 2). */
+    instructions: z.string().max(500).optional(),
+  })
+  .strict();
+export type InfluencerBaseImageRequest = z.infer<typeof influencerBaseImageRequestSchema>;
+
+export const INFLUENCER_VIDEO_PROMPT_MAX = 1000;
+
+/** `POST /influencers/{id}/videos` (+ `/estimate`): «Animate this image». */
+export const influencerVideoRequestSchema = z
+  .object({
+    /** Una imagen del Media Bank (de la galería del influencer). */
+    sourceMediaId: z.string().uuid(),
+    /** «describe the motion (optional…)» (`FR-082`). */
+    prompt: z.string().max(INFLUENCER_VIDEO_PROMPT_MAX).default(""),
+    model: z.string().trim().min(1).max(256),
+    durationSeconds: z.number().int().positive().max(60),
+  })
+  .strict();
+export type InfluencerVideoRequest = z.input<typeof influencerVideoRequestSchema>;

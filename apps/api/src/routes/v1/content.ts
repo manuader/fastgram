@@ -79,6 +79,7 @@ import {
 } from "@fastgram/contracts";
 import {
   audioTrackRepository,
+  brandAudioRepository,
   contentBuildStore,
   contentRepository,
   contentTextBoxRepository,
@@ -160,7 +161,7 @@ function sendRejection(reply: FastifyReply, e: unknown): FastifyReply | null {
 }
 
 /** §9.6 — "Builds de contenido: 10/min". No hay cola que no esté disponible. */
-function queueUnavailable(reply: FastifyReply): FastifyReply {
+export function queueUnavailable(reply: FastifyReply): FastifyReply {
   return reply.status(503).send({
     error: {
       code: "service_unavailable",
@@ -317,7 +318,7 @@ type BuildReason = "create" | "edit" | "regenerate" | "custom-video";
  * ({@link enqueueRebuild}), que §9.5 #4 lista como trabajo propio y cuyo
  * handler cierra un fallo **sin reembolsar** y sin matar la pieza.
  */
-interface ContentBuildRequest {
+export interface ContentBuildRequest {
   readonly companyId: string;
   readonly contentId: string;
   readonly contentType: string;
@@ -336,7 +337,7 @@ interface ContentBuildRequest {
  * misma pieza se rehace muchas veces, y con la clave sin revisión el segundo
  * rebuild se deduplicaría contra el primero y la edición no se aplicaría nunca.
  */
-async function enqueueBuild(
+export async function enqueueBuild(
   queue: Queue,
   tx: Transaction,
   job: ContentBuildRequest,
@@ -493,6 +494,14 @@ async function ownsAsset(
   asset: IncomingAsset,
 ): Promise<boolean> {
   if (asset.kind === "audio") {
+    // Sprint 7: la biblioteca de audio **de la marca** es lo que el editor
+    // ofrece y lo único que el render autoriza (`audio/{companyId}/`). Vale en
+    // los tres formatos de video; el catálogo global sigue abajo, por si algún
+    // día se siembra.
+    if (contentType === "slideshow") return false;
+    if ((await brandAudioRepository.findByUrl(tx, { companyId }, asset.url)) !== null) {
+      return true;
+    }
     if (contentType !== "wall-of-text" && contentType !== "video-hook") return false;
     let cursor: string | undefined;
     for (;;) {
@@ -1274,6 +1283,19 @@ export function registerContentRoutes(app: ZodApp): void {
               // PRD:1463): la pieza nace en `BUILDING` aunque el archivo ya esté
               // subido, porque todavía no hay nada publicable.
               status: "BUILDING",
+              // `P2-STUDIO-009` (sprint 7): **dónde está el archivo**. Sin esto el
+              // worker no tenía de dónde leerlo y cada video propio terminaba
+              // `FAILED` (`custom_not_renderable`). Va en `buildPayload` porque
+              // es lo que el worker lee y nunca sale por la API (DATA-008): la
+              // clave de storage no se expone (NFR-007). La forma la parsea
+              // `parseCustomVideoPayload` del worker.
+              buildPayload: {
+                customVideo: {
+                  storageKey: row.storageKey,
+                  contentType: row.contentType,
+                  filename: row.filename,
+                },
+              },
             },
           );
 

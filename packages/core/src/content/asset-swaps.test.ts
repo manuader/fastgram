@@ -66,11 +66,15 @@ describe("assetsOf", () => {
     expect(assetsOf(sinAudio).audio).toBeNull();
   });
 
-  it("green-screen: imagen y video, sin clave de audio", () => {
+  it("green-screen: imagen, video y slot de música (sprint 7), vacío = null", () => {
     const assets = assetsOf(greenScreen);
     expect(assets.image?.url).toBe("https://cdn.test/bg.jpg");
     expect(assets.video?.url).toBe("https://cdn.test/meme.mp4");
-    expect("audio" in assets).toBe(false);
+    expect(assets.audio).toBeNull();
+  });
+
+  it("slideshow: sin clave de audio (sale como carrusel de imágenes)", () => {
+    expect("audio" in assetsOf(slideshow)).toBe(false);
   });
 
   it("slideshow: una imagen por slide", () => {
@@ -104,6 +108,14 @@ describe("applyAssetSwaps", () => {
     expect(r.payload.video).toEqual(wallOfText.video);
   });
 
+  it("green-screen acepta música de la biblioteca (sprint 7)", () => {
+    const r = applyAssetSwaps(greenScreen, { audio: { url: "https://cdn.test/m.mp3" } });
+    if (!r.ok) throw new Error(r.reason);
+    expect((r.payload as { audio?: { url: string } }).audio).toEqual({
+      url: "https://cdn.test/m.mp3",
+    });
+  });
+
   it("no muta el original", () => {
     const copia = JSON.parse(JSON.stringify(greenScreen)) as typeof greenScreen;
     applyAssetSwaps(greenScreen, { video: draw("https://cdn.test/otro.mp4") });
@@ -111,7 +123,7 @@ describe("applyAssetSwaps", () => {
   });
 
   it("rechaza un slot que el formato no tiene", () => {
-    const r = applyAssetSwaps(greenScreen, { audio: null });
+    const r = applyAssetSwaps(slideshow, { audio: null });
     expect(r.ok ? null : r.code).toBe("asset_slot_not_in_format");
     const r2 = applyAssetSwaps(wallOfText, { image: draw("https://cdn.test/x.jpg") });
     expect(r2.ok ? null : r2.code).toBe("asset_slot_not_in_format");

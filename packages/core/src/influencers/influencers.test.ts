@@ -16,6 +16,7 @@ import {
   isTerminalInfluencerGeneration,
   parseInfluencerQueueJob,
 } from "./jobs.js";
+import * as t from "./templates.js";
 
 const C = "7f0c7d2e-7a52-4a38-9d0f-2d4a3b6f1c11";
 const I = "0b7f3c1a-2c4e-4f5a-8b6d-9e0f1a2b3c4d";
@@ -136,5 +137,56 @@ describe("el payload de la cola", () => {
         ext: "png",
       }),
     ).toBe(`media/${C}/influencers/${I}/${G}-1.png`);
+  });
+});
+
+describe("templates, imagen base y video (sprint 7)", () => {
+  it("{subject} según el género", () => {
+    const tpl = { prompt: "{subject} at the beach" };
+    expect(t.applyTemplate(tpl, "female")).toBe("her at the beach");
+    expect(t.applyTemplate(tpl, "male")).toBe("him at the beach");
+    expect(t.applyTemplate(tpl, undefined)).toBe("them at the beach");
+  });
+
+  it("la lista guardada se valida entera", () => {
+    expect(t.checkTemplateList(t.DEFAULT_INFLUENCER_TEMPLATES).ok).toBe(true);
+    expect(
+      t.checkTemplateList([
+        { id: "a", label: "A", prompt: "p" },
+        { id: "a", label: "B", prompt: "q" },
+      ]).ok,
+    ).toBe(false);
+    expect(t.checkTemplateList([{ id: "Bad Id", label: "A", prompt: "p" }]).ok).toBe(
+      false,
+    );
+    expect(t.parseStoredTemplates({ version: 1, templates: [] })).toEqual([]);
+    expect(t.parseStoredTemplates({ version: 2, templates: [] })).toBeNull();
+  });
+
+  it("el prompt de la imagen base describe a una persona", () => {
+    expect(t.composeBaseCharacterPrompt({})).toBeNull();
+    const p = t.composeBaseCharacterPrompt({
+      gender: "female",
+      age: 27,
+      ethnicity: "Latina",
+      details: "curly red hair",
+      instructions: "in a coffee shop",
+    });
+    expect(p).toContain("single 27-year-old Latina female");
+    expect(p).toContain("curly red hair, in a coffee shop");
+  });
+
+  it("el job de video se parsea", () => {
+    expect(
+      parseInfluencerQueueJob({
+        op: "video",
+        companyId: C,
+        influencerId: I,
+        generationId: G,
+      }),
+    ).toEqual({
+      ok: true,
+      payload: { op: "video", companyId: C, influencerId: I, generationId: G },
+    });
   });
 });

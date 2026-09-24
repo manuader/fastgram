@@ -281,3 +281,66 @@ describe("grant firmado", () => {
     ).toThrowError(RenderError);
   });
 });
+
+/**
+ * Sprint 7: la librería de audio es la **de la marca**. El worker firma
+ * `…/audio/{companyId}/` en `sharedPrefixes` (y la URL exacta en `urls`), y la
+ * política —que no cambió— la acepta para el rol `audio`. Es el despliegue de
+ * `pnpm start`: sin prefijos por configuración, sólo el grant.
+ */
+describe("biblioteca de audio de la marca (sprint 7)", () => {
+  const BUCKET = "http://localhost:9000/fastgram";
+  const mine = `${BUCKET}/audio/ws-1/a.mp3`;
+  const body = {
+    companyId: "ws-1",
+    issuedAt: NOW - 1000,
+    expiresAt: NOW + 60_000,
+    mediaPrefixes: [`${BUCKET}/media/ws-1/`],
+    sharedPrefixes: [`${BUCKET}/audio/ws-1/`],
+    urls: [mine, `${BUCKET}/media/ws-1/old.mp3`, `${BUCKET}/audio/ws-10/b.mp3`],
+  };
+  const onlyGrant = config({ mediaPrefixes: [], sharedPrefixes: [], requireGrant: true });
+  const grant = verifyGrant({ body, signature: signGrantBody(body, SECRET) }, onlyGrant);
+
+  it("una pista de la biblioteca propia entra como audio", () => {
+    expect(() =>
+      assertMediaReferenceAllowed(ref(mine, "audio"), onlyGrant, grant),
+    ).not.toThrow();
+  });
+
+  it("audio del Media Bank (el import viejo sin fila) sigue afuera", () => {
+    expectRejected(
+      () =>
+        assertMediaReferenceAllowed(
+          ref(`${BUCKET}/media/ws-1/old.mp3`, "audio"),
+          onlyGrant,
+          grant,
+        ),
+      "audio_fuera_de_libreria",
+    );
+  });
+
+  it("la biblioteca de otra marca no entra, ni con prefijo parecido", () => {
+    expectRejected(
+      () =>
+        assertMediaReferenceAllowed(
+          ref(`${BUCKET}/audio/ws-10/b.mp3`, "audio"),
+          onlyGrant,
+          grant,
+        ),
+      "audio_fuera_de_libreria",
+    );
+  });
+
+  it("una pista propia que no está en la lista exacta del build no entra", () => {
+    expectRejected(
+      () =>
+        assertMediaReferenceAllowed(
+          ref(`${BUCKET}/audio/ws-1/otra.mp3`, "audio"),
+          onlyGrant,
+          grant,
+        ),
+      "url_no_listada_en_grant",
+    );
+  });
+});

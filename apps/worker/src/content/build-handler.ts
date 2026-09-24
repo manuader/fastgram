@@ -51,14 +51,24 @@
  *
  * ## Lo que este handler NO hace todavía
  *
- * - **`custom`** — las piezas de `POST /content/custom/video` no tienen
- *   `buildPayload` (el archivo ya está subido) y **tampoco tienen forma de
- *   encontrar su archivo**: la reserva de subida no deja la `storageKey` en la
- *   fila del contenido. Su build es normalización + thumbnail (§9.5 #7), no un
- *   render. Se marcan `FAILED` con un motivo explícito en vez de dejarlas en
- *   `BUILDING`: no cobran save, así que no hay nada que devolver.
- * - **`prompt` / `mentionBusiness` fuera de `regenerate`** — sólo `AI-004` los
- *   usa. Un job de otro `reason` que los traiga los ignora.
+ * - **`prompt` / `mentionBusiness` fuera de `regenerate` y `create`** — un
+ *   job de otro `reason` que los traiga los ignora.
+ *
+ * ## `custom`: normalización, no render (sprint 7)
+ *
+ * Las piezas de `POST /content/custom/video` guardan la clave del archivo en
+ * `buildPayload.customVideo`. Su build es normalización + thumbnail (§9.5 #7)
+ * con el renderer **de normalización** (`deps.normalizer`), no un render: ver
+ * `custom-video.ts`. Una fila vieja sin esa clave cierra `FAILED` con
+ * `custom_not_renderable`, como antes (no cobran save: nada que devolver).
+ *
+ * ## `create` con `prompt`: el texto lo escribe la IA (Content Studio)
+ *
+ * `POST /content/studio` con `ai` encola `reason: "create"` + `prompt`. Pasa
+ * por el mismo camino que `regenerate` —el LLM reescribe las cajas derivadas
+ * del payload **antes** de renderizar, y las cajas se guardan con el
+ * render—, pero cierra como **build**: si el modelo falta o falla, `FAILED` +
+ * reembolso, nunca una pieza con el borrador como si fuera el texto de la IA.
  *
  * ## `regenerate` (`AI-004`): el copy se reescribe acá
  *
@@ -115,6 +125,7 @@ import {
   type SaveBucket,
 } from "@fastgram/core";
 import {
+  brandStrategyRepository,
   companyProfileRepository,
   companyRepository,
   contentBuildStore,
@@ -144,6 +155,12 @@ import {
   type CopyLlmProvider,
 } from "./regenerate.js";
 import { toEditedRenderJob, toRenderJob } from "./render-job.js";
+import {
+  buildCustomVideo,
+  parseCustomVideoPayload,
+  type CustomVideoBuild,
+  type CustomVideoSource,
+} from "./custom-video.js";
 
 /** Lo mínimo que el handler necesita loguear. `pino` lo cumple. */
 export interface BuildLogger {
@@ -175,6 +192,12 @@ export interface ContentBuildDeps {
   readonly copyLlm?: CopyLlmProvider | undefined;
   /** Sólo tests: la marca del contenedor de `containUntrusted`. */
   readonly fence?: (() => string) | undefined;
+  /**
+   * Sprint 7: el renderer de **normalización** para las piezas `custom`
+   * (`custom-video.ts`). `null`/ausente = sin servicio de render: la pieza
+   * queda con el original y la marca `not_normalized`.
+   */
+  readonly normalizer?: MediaRenderer | null | undefined;
 }
 
 /**
@@ -287,11 +310,19 @@ interface BuildSubject {
     readonly boxes: readonly ContentTextBox[];
     readonly businessName: string;
     readonly profile: CopyBrandProfile;
+    /** Sprint 7: el idioma de la estrategia guardada (`null` = el de los textos). */
+    readonly language?: string | null;
   };
 }
 
 type ReadOutcome =
   | { readonly kind: "build"; readonly subject: BuildSubject }
+  /** Una pieza `custom` con su archivo localizado: normalización, no render. */
+  | {
+      readonly kind: "custom";
+      readonly source: CustomVideoSource;
+      readonly buildPayload: Record<string, unknown>;
+    }
   /** No hay nada que hacer y no es un error: la pieza se borró, ya está lista, o el job es viejo. */
   | { readonly kind: "skip"; readonly why: string }
   | { readonly kind: "fail"; readonly failure: BuildFailure };
@@ -415,15 +446,56 @@ export function createContentRenderHandler(
       if (row.status !== "BUILDING")
         return { kind: "skip", why: `la pieza ya está en ${row.status}` };
 
-      if (row.type === "custom")
+      if (row.type === "custom") {
+        const source = parseCustomVideoPayload(row.buildPayload, job.companyId);
+        if (source === null)
+          return {
+            kind: "fail",
+            failure: permanent(
+              "la pieza `custom` no guarda la clave del objeto subido (fila " +
+                "anterior al sprint 7): no hay de dónde leerlo",
+              "custom_not_renderable",
+            ),
+          };
         return {
-          kind: "fail",
-          failure: permanent(
-            "las piezas `custom` necesitan normalización, no render, y la fila no " +
-              "guarda la clave del objeto subido: no hay de dónde leerlo",
-            "custom_not_renderable",
-          ),
+          kind: "custom",
+          source,
+          buildPayload: row.buildPayload as Record<string, unknown>,
         };
+      }
+
+      // Content Studio (`POST /content/studio` con `ai`): el copy lo escribe
+      // el modelo antes del primer render. Mismo armado que `regenerate`.
+      if (mode === "build" && job.reason === "create" && job.prompt !== undefined) {
+        const current = regenerationBoxesOf([], row.buildPayload);
+        if (current.length === 0 || !isBlitzContentType(row.type))
+          return {
+            kind: "fail",
+            failure: permanent(
+              "una pieza del Studio con IA sin texto que escribir",
+              "edit_not_renderable",
+            ),
+          };
+        const scope = { companyId: job.companyId };
+        const company = await companyRepository.load(tx, scope);
+        const profile = (await companyProfileRepository.list(tx, scope, { limit: 1 }))
+          .items[0];
+        return {
+          kind: "build",
+          subject: {
+            buildPayload: row.buildPayload,
+            contentType: row.type,
+            revision: row.revision,
+            textBoxes: current,
+            regenerate: {
+              contentType: row.type,
+              boxes: current,
+              businessName: company?.name ?? "",
+              profile: profile ?? {},
+            },
+          },
+        };
+      }
 
       if (mode === "rebuild") {
         const boxes = await listAllTextBoxes(tx, job.companyId, job.contentId);
@@ -462,6 +534,9 @@ export function createContentRenderHandler(
                 boxes: current,
                 businessName: company?.name ?? "",
                 profile: profile ?? {},
+                // Sprint 7: el copy sale en el idioma de la estrategia guardada.
+                language:
+                  (await brandStrategyRepository.find(tx, scope))?.language ?? null,
               },
             },
           };
@@ -502,6 +577,12 @@ export function createContentRenderHandler(
     files: readonly string[],
     thumbnailUrl: string | undefined,
     regenerated: readonly ContentTextBox[] | null,
+    extra: {
+      /** `false` en un `create` con IA: no es una edición, no hay `lastEdit`. */
+      readonly lastEdit: boolean;
+      /** Sólo `custom`: el payload con la marca de normalización. */
+      readonly buildPayload?: Record<string, unknown>;
+    } = { lastEdit: true },
   ): Promise<boolean> {
     return inCompany(job.companyId, async (tx) => {
       const scope = { companyId: job.companyId };
@@ -537,9 +618,10 @@ export function createContentRenderHandler(
         status: "CREATED",
         files: [...files],
         ...(thumbnailUrl === undefined ? {} : { thumbnailUrl }),
+        ...(extra.buildPayload === undefined ? {} : { buildPayload: extra.buildPayload }),
         // La API ya lo dejó `applied` al encolar; se reescribe con la hora del
         // cierre para que diga cuándo llegó el copy nuevo.
-        ...(regenerated === null
+        ...(regenerated === null || !extra.lastEdit
           ? {}
           : {
               lastEdit: {
@@ -687,6 +769,73 @@ export function createContentRenderHandler(
     }
   }
 
+  /**
+   * La rama `custom` (ver la cabecera y `custom-video.ts`). Cierra igual que
+   * un build: reintento si el fallo es transitorio y no es el último intento;
+   * si no, `FAILED` (sin reembolso: `custom` no cobra save).
+   */
+  async function handleCustom(
+    ctx: JobContext<unknown>,
+    job: ContentBuildJob,
+    base: Record<string, unknown>,
+    outcome: Extract<ReadOutcome, { kind: "custom" }>,
+  ): Promise<void> {
+    let built: CustomVideoBuild | null = null;
+    let failure: BuildFailure | null = null;
+    try {
+      built = await buildCustomVideo(
+        {
+          normalizer: deps.normalizer ?? null,
+          storage: deps.storage,
+          logger: deps.logger,
+        },
+        {
+          companyId: job.companyId,
+          contentId: job.contentId,
+          revision: job.revision,
+          objectPrefix: prefix,
+          source: outcome.source,
+        },
+      );
+    } catch (error: unknown) {
+      failure = classify(error);
+    }
+
+    if (built !== null) {
+      const committed = await commit(job, built.files, built.thumbnailUrl, null, {
+        lastEdit: false,
+        buildPayload: {
+          ...outcome.buildPayload,
+          customVideo: { ...outcome.source, normalization: built.normalization },
+        },
+      });
+      if (committed) {
+        deps.logger.info(
+          { ...base, normalization: built.normalization },
+          "video propio listo",
+        );
+        return;
+      }
+      await discard(built.uploaded);
+      deps.logger.info(base, "resultado descartado: la pieza cambió durante el build");
+      return;
+    }
+
+    const f = failure ?? permanent("video propio sin resultado", "internal_error");
+    if (f.retryable && ctx.attempt < ctx.maxAttempts) {
+      deps.logger.warn(
+        { ...base, attempt: ctx.attempt, reason: f.reason },
+        "video propio fallido, se reintenta",
+      );
+      throw f.cause instanceof Error ? f.cause : new Error(f.reason);
+    }
+    const resultado = await failBuild(job, f.code);
+    deps.logger.error(
+      { ...base, attempt: ctx.attempt, reason: f.reason, resultado },
+      "video propio fallido definitivamente",
+    );
+  }
+
   return async function handle(ctx: JobContext<unknown>): Promise<void> {
     const parsed = parseContentBuildJob(ctx.payload);
     if (!parsed.ok) {
@@ -719,6 +868,11 @@ export function createContentRenderHandler(
       return;
     }
 
+    if (outcome.kind === "custom") {
+      await handleCustom(ctx, job, base, outcome);
+      return;
+    }
+
     let failure: BuildFailure | null = outcome.kind === "fail" ? outcome.failure : null;
     const uploaded: StorageKey[] = [];
     const files: string[] = [];
@@ -746,6 +900,7 @@ export function createContentRenderHandler(
               profile: regen.profile,
               mentionBusiness: job.mentionBusiness,
               userPrompt: job.prompt,
+              language: regen.language,
             },
             deps.fence,
           );
@@ -865,7 +1020,9 @@ export function createContentRenderHandler(
     }
 
     if (failure === null) {
-      const committed = await commit(job, files, thumbnailUrl, regenerated);
+      const committed = await commit(job, files, thumbnailUrl, regenerated, {
+        lastEdit: mode === "rebuild",
+      });
       if (committed) {
         deps.logger.info({ ...base, files: files.length }, "build completado");
         return;

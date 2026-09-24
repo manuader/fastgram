@@ -21,6 +21,7 @@ export * from "./strategy.js";
 export * from "./autopilot.js";
 export * from "./metrics.js";
 export * from "./engagement.js";
+export * from "./notifications.js";
 
 export { tsColumn, timestamps, createdAtOnly, softDelete } from "./_shared.js";
 
@@ -46,7 +47,8 @@ import { brandStrategies, plannedSlots } from "./strategy.js";
 import { autopilotDecisions, autopilotRuns } from "./autopilot.js";
 import { contentMixAutotune, formatMixAdjustments } from "./metrics.js";
 import { engagementReplies, engagementSettings, redditAccounts } from "./engagement.js";
-import { media, mediaSets } from "./media.js";
+import { notifications } from "./notifications.js";
+import { brandAudioTracks, media, mediaSets, ownPostImports } from "./media.js";
 import {
   apiKeys,
   idempotencyRecords,
@@ -108,6 +110,9 @@ export const COMPANY_SCOPED_TABLES = [
   engagementSettings,
   redditAccounts,
   engagementReplies,
+  notifications,
+  brandAudioTracks,
+  ownPostImports,
 ] as const;
 
 /** La raíz de la tenencia. Su política compara `id`, no `company_id`. */

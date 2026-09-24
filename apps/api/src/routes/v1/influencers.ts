@@ -84,6 +84,15 @@ import { z } from "zod";
 import {
   MAX_ACTIVE_INFLUENCERS_PER_WORKSPACE,
   createInfluencerRequestSchema,
+  influencerBaseImageRequestSchema,
+  influencerPublishingAccountSchema,
+  influencerVideoRequestSchema,
+  updateInfluencerConfigRequestSchema,
+  updateInfluencerTemplatesRequestSchema,
+  type Generation,
+  type GenerationEstimate,
+  type InfluencerConfigView,
+  type InfluencerTemplatesView,
   cursorQuerySchema,
   idempotencyHeaderSchema,
   imageUploadReservationRequestSchema,
@@ -94,18 +103,38 @@ import {
   type InfluencerSetup,
 } from "@fastgram/contracts";
 import {
+  connectionAccountRepository,
+  contentAngleRepository,
+  influencerConfigRepository,
   influencerGenerationRepository,
   influencerRepository,
   mediaRepository,
+  mediaSetRepository,
   uploadReservationRepository,
   type Transaction,
 } from "@fastgram/db";
-import { HiggsfieldClient } from "@fastgram/adapters";
-import { isPortError, type GenCostEstimate } from "@fastgram/ports";
+import { HiggsfieldClient, type GenClient } from "@fastgram/adapters";
+import {
+  isPortError,
+  type GenAspectRatio,
+  type GenCostEstimate,
+  type GenModelSpec,
+} from "@fastgram/ports";
 
 import { ApiRejection } from "../../http/errors.js";
 import {
+  BASE_IMAGE_ASPECT_RATIO,
+  DEFAULT_INFLUENCER_TEMPLATES,
   INFLUENCER_CHARACTER_PROVIDER,
+  aiStudioSingletonKey,
+  checkGenerationInput,
+  checkTemplateList,
+  composeBaseCharacterPrompt,
+  influencerVideoSingletonKey,
+  markFailed,
+  newGenerationRecord,
+  parseStoredTemplates,
+  type AiStudioGenerationJob,
   INFLUENCER_IMAGE_MODEL,
   INFLUENCER_REFERENCE_LIMITS,
   JOB_QUEUES,
@@ -122,9 +151,12 @@ import {
   type ReserveResult,
   type ResolvedGenAiConfig,
 } from "@fastgram/core";
+import { specView } from "./ai-studio.js";
 import {
   GENAI_API_TIMEOUT_MS,
+  createProviderImageResolver,
   defaultGenAiRouteDeps,
+  genAiConfigFor,
   ledgerOrFail,
   toBudgetView,
   type GenAiRouteDeps,
@@ -300,6 +332,7 @@ export function influencerView(row: InfluencerRow): InfluencerResource {
     if (row[k] === null) delete out[k];
   }
   out["referenceMediaIds"] = [...row.referenceMediaIds];
+  if (row.regeneratedFromId !== null) out["regeneratedFromId"] = row.regeneratedFromId;
   if (row.status === "failed" && row.failureCode !== null) {
     out["failure"] = {
       code: row.failureCode,
@@ -332,6 +365,9 @@ async function generationViews(
   return rows.map((r) => ({
     id: r.id,
     influencerId: r.influencerId,
+    kind: r.kind === "video" ? ("video" as const) : ("image" as const),
+    durationSeconds: r.durationSeconds,
+    sourceMediaId: r.sourceMediaId,
     status: r.status as InfluencerGeneration["status"],
     model: r.model,
     prompt: r.prompt,
@@ -346,7 +382,15 @@ async function generationViews(
     // Una imagen borrada del Media Bank deja de mostrarse acá.
     media: r.mediaIds.flatMap((mediaId) => {
       const url = byId.get(mediaId);
-      return url === undefined ? [] : [{ mediaId, mediaType: "image" as const, url }];
+      return url === undefined
+        ? []
+        : [
+            {
+              mediaId,
+              mediaType: r.kind === "video" ? ("video" as const) : ("image" as const),
+              url,
+            },
+          ];
     }),
     error:
       r.errorCode === null
@@ -430,6 +474,8 @@ export function registerInfluencerRoutes(
       trainingCost: null,
       canCreate: config !== null && canStartCharacter(summary),
       budget: toBudgetView(summary),
+      videoModels: config === null ? [] : animateModels(genai, config).map(specView),
+      canGenerateBase: (await genAiConfigFor(genai, "image")) !== null,
     };
     return data(view);
   });
@@ -533,7 +579,14 @@ export function registerInfluencerRoutes(
           // Higgsfield. Se chequea **antes** de la transacción (lee archivos
           // locales) y dentro de `withIdempotency`: un replay no vuelve a
           // preguntar, devuelve lo de la primera vez.
-          const references = body.referenceMediaIds;
+          // Sprint 7 (`P4-INFL-003`): la base generada por texto es una sola
+          // foto de referencia (Soul ID acepta 1–100; el mínimo de 4 es para
+          // fotos propias, que pueden ser de ángulos malos).
+          const references =
+            body.referenceMediaIds ??
+            (body.generatedBaseMediaId === undefined
+              ? undefined
+              : [body.generatedBaseMediaId]);
           if (references !== undefined) {
             if ((await higgsfieldConfigFor(genai)) === null) throw notConfigured();
             const ledger = ledgerOrFail(await genai.ledger.read());
@@ -653,7 +706,28 @@ export function registerInfluencerRoutes(
               refundedAtMs: null,
             };
 
+            // `F-093`: regenerar crea otro personaje; el viejo queda. Tiene que
+            // ser de esta marca (uno ajeno no existe acá).
+            if (body.regeneratedFromId !== undefined) {
+              const previous = await influencerRepository.findById(
+                tx,
+                scope,
+                body.regeneratedFromId,
+              );
+              if (previous === null) {
+                throw new ApiRejection(
+                  400,
+                  "bad_request",
+                  "The influencer you are regenerating doesn't exist.",
+                  { field: "regeneratedFromId" },
+                );
+              }
+            }
+
             const created = await influencerRepository.create(tx, scope, {
+              ...(body.regeneratedFromId === undefined
+                ? {}
+                : { regeneratedFromId: body.regeneratedFromId }),
               name: body.name,
               gender: body.gender ?? null,
               age: body.age ?? null,
@@ -883,6 +957,688 @@ export function registerInfluencerRoutes(
         return generationViews(tx, companyId, rows.items);
       });
       return data(views);
+    },
+  );
+
+  // Sprint 7 (agente G): Configuration, templates, base por texto y video.
+  registerInfluencerStudioRoutes(app, deps);
+}
+
+/* ------------------------------------------------------------------------ *
+ * Sprint 7 (agente G) — `P4-INFL-003`, `-006`, `-009`, `-010`, `-012`
+ *
+ *   GET  /influencers/templates              templates de prompt de la marca
+ *   PUT  /influencers/templates              reemplazarlos (null = de fábrica)
+ *   POST /influencers/base-image/estimate    costo de la imagen base por texto
+ *   POST /influencers/base-image             generarla (una generación de AI Studio)
+ *   GET  /influencers/:id/config             Configuration (FR-083) + opciones
+ *   PUT  /influencers/:id/config             auto-guardado
+ *   POST /influencers/:id/videos/estimate    costo de animar una imagen
+ *   POST /influencers/:id/videos             animarla (202)
+ *
+ * ## Decisiones que el PRD no cubre
+ *
+ * - **Templates en un archivo por marca** (`~/.fastgram/influencer-templates/
+ *   <marca>/templates.json`), como AI Studio: uso personal, sin migración.
+ *   La lista guardada reemplaza a la de fábrica entera.
+ * - **La imagen base por texto es una generación de AI Studio** con el
+ *   modelo de imagen de Settings → Models (Higgsfield, fal o ComfyUI): mismo
+ *   tope, mismo worker, y queda en el Media Bank. La web la sigue por
+ *   `GET /ai-studio/generations/:id` y, al continuar, crea el personaje con
+ *   `generatedBaseMediaId`. «Regenerate» es otra generación: persona nueva.
+ * - **Video = image-to-video de Higgsfield** (Kling 2.6, Seedance 2.0), el
+ *   único camino documentado (`docs.higgsfield.ai`, 2026-09-24): no hay
+ *   video «con personaje» (Soul ID es sólo imagen) ni lip-sync. La imagen se
+ *   sube al storage de Higgsfield al encolar y su URL pública queda en la fila.
+ * ------------------------------------------------------------------------ */
+
+const TEMPLATES_DOC = "templates";
+const VIDEO_RETRY_LIMIT = 1;
+/** Un video tarda minutos: igual que AI Studio. */
+const VIDEO_EXPIRE_SECONDS = 30 * 60;
+const CONFIG_OPTIONS_LIMIT = 100;
+
+function animateModels(
+  genai: GenAiRouteDeps,
+  config: ResolvedGenAiConfig,
+): GenModelSpec[] {
+  try {
+    return genai
+      .clientFor(config)
+      .models()
+      .filter((m) => m.kind === "video" && m.imageInput !== "none");
+  } catch {
+    return [];
+  }
+}
+
+function registerInfluencerStudioRoutes(app: ZodApp, deps: InfluencerRouteDeps): void {
+  const { genai } = deps;
+  const now = (): Date => app.deps.clock.now();
+  const providerImage = createProviderImageResolver(genai);
+
+  // ── Templates ──
+
+  async function readTemplates(companyId: string): Promise<InfluencerTemplatesView> {
+    const stored =
+      genai.templates === undefined
+        ? null
+        : parseStoredTemplates(await genai.templates.get(companyId, TEMPLATES_DOC));
+    return stored === null
+      ? {
+          templates: DEFAULT_INFLUENCER_TEMPLATES.map((t) => ({ ...t })),
+          customized: false,
+        }
+      : { templates: stored, customized: true };
+  }
+
+  app.get("/influencers/templates", async (request) =>
+    data(await readTemplates(request.auth.companyId)),
+  );
+
+  app.put(
+    "/influencers/templates",
+    { schema: { body: updateInfluencerTemplatesRequestSchema } },
+    async (request) => {
+      const companyId = request.auth.companyId;
+      const store = genai.templates;
+      if (store === undefined) {
+        throw new ApiRejection(
+          503,
+          "service_unavailable",
+          "Templates are not available.",
+        );
+      }
+      const list = request.body.templates;
+      if (list === null) {
+        await store.update(companyId, TEMPLATES_DOC, () => ({
+          next: { version: 1, reset: true, templates: null },
+          result: null,
+        }));
+        return data(await readTemplates(companyId));
+      }
+      const checked = checkTemplateList(list);
+      if (!checked.ok) {
+        throw new ApiRejection(400, "bad_request", checked.message, {
+          field: "templates",
+        });
+      }
+      await store.update(companyId, TEMPLATES_DOC, () => ({
+        next: {
+          version: 1,
+          templates: checked.templates,
+          updatedAt: now().toISOString(),
+        },
+        result: null,
+      }));
+      return data(await readTemplates(companyId));
+    },
+  );
+
+  // ── Imagen base por texto ──
+
+  interface PreparedBase {
+    readonly config: ResolvedGenAiConfig;
+    readonly client: GenClient;
+    readonly model: string;
+    readonly prompt: string;
+    readonly aspectRatio: GenAspectRatio;
+  }
+
+  async function prepareBase(
+    body: z.infer<typeof influencerBaseImageRequestSchema>,
+  ): Promise<PreparedBase> {
+    const prompt = composeBaseCharacterPrompt(body);
+    if (prompt === null) {
+      throw new ApiRejection(400, "bad_request", "Describe the character first.", {
+        field: "details",
+      });
+    }
+    const config = await genAiConfigFor(genai, "image");
+    if (config === null) {
+      throw new ApiRejection(
+        409,
+        "conflict",
+        "Set up an image model in Settings → Models first.",
+        { reason: "not_configured" },
+      );
+    }
+    let client: GenClient;
+    try {
+      client = genai.clientFor(config);
+    } catch (error) {
+      throw providerRejection(error);
+    }
+    const spec = client.models().find((m) => m.id === config.model);
+    const aspectRatio: GenAspectRatio =
+      spec === undefined || spec.aspectRatios.includes(BASE_IMAGE_ASPECT_RATIO)
+        ? BASE_IMAGE_ASPECT_RATIO
+        : (spec.aspectRatios[0] ?? BASE_IMAGE_ASPECT_RATIO);
+    const check = checkGenerationInput(spec, {
+      kind: "image",
+      model: config.model,
+      prompt,
+      aspectRatio,
+      count: 1,
+    });
+    if (!check.ok) {
+      throw new ApiRejection(400, "bad_request", check.message, { field: check.field });
+    }
+    return { config, client, model: config.model, prompt, aspectRatio };
+  }
+
+  async function estimateBase(p: PreparedBase): Promise<GenCostEstimate> {
+    try {
+      return await p.client.estimateImage({
+        model: p.model,
+        prompt: p.prompt,
+        aspectRatio: p.aspectRatio,
+        n: 1,
+      });
+    } catch (error) {
+      throw providerRejection(error);
+    }
+  }
+
+  app.post(
+    "/influencers/base-image/estimate",
+    { schema: { body: influencerBaseImageRequestSchema } },
+    async (request) => {
+      const p = await prepareBase(request.body);
+      const cost = await estimateBase(p);
+      const summary = budgetSummary(
+        ledgerOrFail(await genai.ledger.read()),
+        monthKey(now()),
+        genai.env,
+      );
+      const view: GenerationEstimate = {
+        provider: p.config.provider,
+        model: p.model,
+        estimate: estimateView(cost),
+        budget: toBudgetView(summary),
+        fits: fitsBudget(summary, cost.usd),
+      };
+      return data(view);
+    },
+  );
+
+  app.post(
+    "/influencers/base-image",
+    { schema: { body: influencerBaseImageRequestSchema } },
+    async (request, reply) => {
+      const queue = app.deps.queue;
+      if (queue === undefined) {
+        return reply.status(503).send({
+          error: {
+            code: "service_unavailable",
+            message: "Base image generation is temporarily unavailable.",
+          },
+        });
+      }
+      const companyId = request.auth.companyId;
+      const p = await prepareBase(request.body);
+      const cost = await estimateBase(p);
+      const at = now();
+      const month = monthKey(at);
+      const id = randomUUID();
+      const reserved = await genai.ledger.update<ReserveResult>((raw) => {
+        const r = reserveSpend(
+          ledgerOrFail(raw),
+          {
+            month,
+            generationId: id,
+            usd: cost.usd,
+            provider: p.config.provider,
+            model: p.model,
+            kind: "image",
+            companyId,
+            at: at.toISOString(),
+          },
+          genai.env,
+        );
+        return r.ok ? { next: r.next, result: r } : { result: r };
+      });
+      if (!reserved.ok) throw budgetRejection(cost.usd, reserved.summary);
+      const record = newGenerationRecord({
+        id,
+        companyId,
+        kind: "image",
+        provider: p.config.provider,
+        model: p.model,
+        prompt: p.prompt,
+        aspectRatio: p.aspectRatio,
+        count: 1,
+        durationSeconds: null,
+        imageUrl: null,
+        estimate: {
+          usd: cost.usd,
+          source: cost.source,
+          basis: cost.basis,
+          sourceUrl: cost.sourceUrl ?? null,
+        },
+        spendMonth: month,
+        now: at.toISOString(),
+      });
+      const job: AiStudioGenerationJob = { companyId, generationId: id };
+      try {
+        await genai.generations.create(companyId, id, record);
+        await queue.enqueue<AiStudioGenerationJob>({
+          queue: JOB_QUEUES.aiStudioGeneration,
+          payload: job,
+          options: {
+            singletonKey: aiStudioSingletonKey(job),
+            retryLimit: IMAGE_RETRY_LIMIT,
+            retryBackoff: true,
+            expireInSeconds: IMAGE_EXPIRE_SECONDS,
+          },
+        });
+      } catch (error) {
+        await genai.ledger
+          .update((raw) => {
+            const next = releaseSpend(ledgerOrFail(raw), month, id);
+            return next === null ? { result: null } : { next, result: null };
+          })
+          .catch(() => undefined);
+        await genai.generations
+          .update(companyId, id, () => ({
+            next: markFailed(
+              record,
+              { code: "provider_unavailable", message: "The job could not be queued." },
+              now().toISOString(),
+            ),
+            result: null,
+          }))
+          .catch(() => undefined);
+        throw error;
+      }
+      request.log.info(
+        { generationId: id, estimateUsd: cost.usd },
+        "influencer base image queued",
+      );
+      const view: Generation = {
+        id: record.id,
+        kind: record.kind,
+        provider: record.provider,
+        model: record.model,
+        prompt: record.prompt,
+        aspectRatio: record.aspectRatio,
+        count: record.count,
+        durationSeconds: record.durationSeconds,
+        imageUrl: record.imageUrl,
+        status: record.status,
+        estimate: estimateView(cost),
+        media: [],
+        error: record.error,
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+      };
+      return reply.status(202).send(data(view));
+    },
+  );
+
+  // ── Configuration (FR-083) ──
+
+  async function configView(
+    tx: Transaction,
+    companyId: string,
+    influencerId: string,
+  ): Promise<InfluencerConfigView> {
+    const scope = { companyId };
+    const row = await influencerConfigRepository.findById(tx, scope, influencerId);
+    const angles = await contentAngleRepository.list(tx, scope, {
+      limit: CONFIG_OPTIONS_LIMIT,
+    });
+    const accounts = await connectionAccountRepository.list(tx, scope);
+    const sets = await mediaSetRepository.list(tx, scope, {
+      limit: CONFIG_OPTIONS_LIMIT,
+    });
+    const accountsRaw = Array.isArray(row?.publishingAccounts)
+      ? row.publishingAccounts
+      : [];
+    return {
+      config: {
+        angleIds: [...(row?.angleIds ?? [])],
+        publishingAccounts: accountsRaw.flatMap((a: unknown) => {
+          const parsed = influencerPublishingAccountSchema.safeParse(a);
+          return parsed.success ? [parsed.data] : [];
+        }),
+        slideshowSetIds: [...(row?.slideshowSetIds ?? [])],
+        videoSetIds: [...(row?.videoSetIds ?? [])],
+      },
+      options: {
+        angles: angles.items.map((a) => ({ id: a.id, title: a.title })),
+        accounts: accounts.map((c) => ({
+          connectionId: c.id,
+          platform: c.platform,
+          username: c.platformUsername,
+          displayName: c.displayName,
+        })),
+        sets: sets.items.map((m) => ({
+          id: m.id,
+          name: m.name,
+          kind: m.kind,
+          mediaCount: m.mediaIds.length,
+        })),
+      },
+      updatedAt: row === null ? null : row.updatedAt.toISOString(),
+    };
+  }
+
+  app.get(
+    "/influencers/:id/config",
+    { schema: { params: influencerParams } },
+    async (request) => {
+      const companyId = request.auth.companyId;
+      const { id } = request.params;
+      const view = await request.tx(async (tx) => {
+        const inf = await influencerRepository.findById(tx, { companyId }, id);
+        if (inf === null) throw crossTenant("influencer", id, companyId);
+        return configView(tx, companyId, id);
+      });
+      return data(view);
+    },
+  );
+
+  app.put(
+    "/influencers/:id/config",
+    { schema: { params: influencerParams, body: updateInfluencerConfigRequestSchema } },
+    async (request) => {
+      const companyId = request.auth.companyId;
+      const { id } = request.params;
+      const body = request.body;
+      const view = await request.tx(async (tx) => {
+        const scope = { companyId };
+        const inf = await influencerRepository.findById(tx, scope, id);
+        if (inf === null) throw crossTenant("influencer", id, companyId);
+        const current = await configView(tx, companyId, id);
+        const { options } = current;
+        // Un id que no es de esta marca no se guarda: 400 con el campo.
+        const known = {
+          angleIds: new Set(options.angles.map((a) => a.id)),
+          connections: new Map(options.accounts.map((a) => [a.connectionId, a.platform])),
+          slideshowSetIds: new Set(
+            options.sets.filter((s) => s.kind !== "VIDEO").map((s) => s.id),
+          ),
+          videoSetIds: new Set(
+            options.sets.filter((s) => s.kind !== "SLIDESHOW").map((s) => s.id),
+          ),
+        };
+        const unknown = (field: string): never => {
+          throw new ApiRejection(
+            400,
+            "bad_request",
+            "Some of the picked items don't exist.",
+            {
+              field,
+            },
+          );
+        };
+        const uniq = <T>(xs: readonly T[]): T[] => [...new Set(xs)];
+        if (body.angleIds?.some((a) => !known.angleIds.has(a))) unknown("angleIds");
+        if (body.slideshowSetIds?.some((a) => !known.slideshowSetIds.has(a)))
+          unknown("slideshowSetIds");
+        if (body.videoSetIds?.some((a) => !known.videoSetIds.has(a)))
+          unknown("videoSetIds");
+        if (
+          body.publishingAccounts?.some(
+            (a) => known.connections.get(a.connectionId) !== a.platform,
+          )
+        )
+          unknown("publishingAccounts");
+        const next = {
+          angleIds: uniq(body.angleIds ?? current.config.angleIds),
+          publishingAccounts: [
+            ...new Map(
+              (body.publishingAccounts ?? current.config.publishingAccounts).map((a) => [
+                a.connectionId,
+                a,
+              ]),
+            ).values(),
+          ],
+          slideshowSetIds: uniq(body.slideshowSetIds ?? current.config.slideshowSetIds),
+          videoSetIds: uniq(body.videoSetIds ?? current.config.videoSetIds),
+        };
+        await influencerConfigRepository.upsert(tx, scope, { influencerId: id, ...next });
+        return configView(tx, companyId, id);
+      });
+      return data(view);
+    },
+  );
+
+  // ── Video del personaje («Animate this image», FR-082, F-099) ──
+
+  interface PreparedVideo {
+    readonly config: ResolvedGenAiConfig;
+    readonly client: GenClient;
+    readonly spec: GenModelSpec;
+    readonly imageUrl: string;
+    readonly aspectRatio: GenAspectRatio;
+    readonly prompt: string;
+    readonly durationSeconds: number;
+    readonly sourceMediaId: string;
+  }
+
+  async function prepareVideo(
+    run: <T>(fn: (tx: Transaction) => Promise<T>) => Promise<T>,
+    companyId: string,
+    influencerId: string,
+    body: z.infer<typeof influencerVideoRequestSchema>,
+  ): Promise<PreparedVideo> {
+    const media = await run(async (tx) => {
+      const inf = await influencerRepository.findById(tx, { companyId }, influencerId);
+      if (inf === null) throw crossTenant("influencer", influencerId, companyId);
+      return (
+        await mediaRepository.list(
+          tx,
+          { companyId },
+          { limit: 1, filter: { mediaId: { eq: body.sourceMediaId } } },
+        )
+      ).items[0];
+    });
+    if (media === undefined || media.mediaType !== "image" || media.status !== "ready") {
+      throw new ApiRejection(
+        400,
+        "bad_request",
+        "We couldn't find that image. Pick another one and try again.",
+        { field: "sourceMediaId" },
+      );
+    }
+    const config = await higgsfieldConfigFor(genai);
+    if (config === null) throw notConfigured();
+    let client: GenClient;
+    try {
+      client = genai.clientFor(config);
+    } catch (error) {
+      throw providerRejection(error);
+    }
+    const spec = animateModels(genai, config).find((m) => m.id === body.model);
+    if (spec === undefined) {
+      throw new ApiRejection(400, "bad_request", "That model can't animate an image.", {
+        field: "model",
+      });
+    }
+    const aspectRatio: GenAspectRatio =
+      spec.aspectFromImage || spec.aspectRatios.includes("9:16")
+        ? "9:16"
+        : (spec.aspectRatios[0] ?? "9:16");
+    const prompt = body.prompt.trim();
+    // La URL real se pide después de validar lo barato: subir cuesta una
+    // llamada al proveedor.
+    const pre = checkGenerationInput(spec, {
+      kind: "video",
+      model: spec.id,
+      prompt,
+      aspectRatio,
+      count: 1,
+      durationSeconds: body.durationSeconds,
+      imageUrl: "https://placeholder.invalid/x.jpg",
+    });
+    if (!pre.ok) {
+      throw new ApiRejection(400, "bad_request", pre.message, {
+        field: pre.field === "imageUrl" ? "sourceMediaId" : pre.field,
+      });
+    }
+    const imageUrl = await providerImage(config, app.deps.storage, companyId, media);
+    return {
+      config,
+      client,
+      spec,
+      imageUrl,
+      aspectRatio,
+      prompt,
+      durationSeconds: body.durationSeconds,
+      sourceMediaId: media.mediaId,
+    };
+  }
+
+  async function estimateVideo(p: PreparedVideo): Promise<GenCostEstimate> {
+    try {
+      return await p.client.estimateVideo({
+        model: p.spec.id,
+        prompt: p.prompt,
+        imageUrl: p.imageUrl,
+        aspectRatio: p.aspectRatio,
+        durationSeconds: p.durationSeconds,
+      });
+    } catch (error) {
+      throw providerRejection(error);
+    }
+  }
+
+  app.post(
+    "/influencers/:id/videos/estimate",
+    { schema: { params: influencerParams, body: influencerVideoRequestSchema } },
+    async (request) => {
+      const p = await prepareVideo(
+        request.tx,
+        request.auth.companyId,
+        request.params.id,
+        request.body,
+      );
+      const cost = await estimateVideo(p);
+      const summary = budgetSummary(
+        ledgerOrFail(await genai.ledger.read()),
+        monthKey(now()),
+        genai.env,
+      );
+      const view: InfluencerImageEstimate = {
+        model: p.spec.id,
+        estimate: estimateView(cost),
+        budget: toBudgetView(summary),
+        fits: fitsBudget(summary, cost.usd),
+      };
+      return data(view);
+    },
+  );
+
+  app.post(
+    "/influencers/:id/videos",
+    { schema: { params: influencerParams, body: influencerVideoRequestSchema } },
+    async (request, reply) => {
+      const queue = app.deps.queue;
+      if (queue === undefined) {
+        return reply.status(503).send({
+          error: {
+            code: "service_unavailable",
+            message: "Influencer videos are temporarily unavailable.",
+          },
+        });
+      }
+      const companyId = request.auth.companyId;
+      const influencerId = request.params.id;
+      const p = await prepareVideo(request.tx, companyId, influencerId, request.body);
+      const cost = await estimateVideo(p);
+      const at = now();
+      const month = monthKey(at);
+      const id = randomUUID();
+      const reserved = await genai.ledger.update<ReserveResult>((raw) => {
+        const r = reserveSpend(
+          ledgerOrFail(raw),
+          {
+            month,
+            generationId: id,
+            usd: cost.usd,
+            provider: p.config.provider,
+            model: p.spec.id,
+            kind: "video",
+            companyId,
+            at: at.toISOString(),
+          },
+          genai.env,
+        );
+        return r.ok ? { next: r.next, result: r } : { result: r };
+      });
+      if (!reserved.ok) throw budgetRejection(cost.usd, reserved.summary);
+
+      let row: GenerationRow;
+      try {
+        row = await request.tx(async (tx) => {
+          const created = await influencerGenerationRepository.create(
+            tx,
+            { companyId },
+            {
+              id,
+              influencerId,
+              kind: "video",
+              status: "queued",
+              provider: p.config.provider,
+              model: p.spec.id,
+              prompt: p.prompt,
+              aspectRatio: p.aspectRatio,
+              count: 1,
+              durationSeconds: p.durationSeconds,
+              sourceMediaId: p.sourceMediaId,
+              sourceImageUrl: p.imageUrl,
+              estimateUsd: cost.usd,
+              estimateBasis: cost.basis,
+              spendMonth: month,
+            },
+          );
+          await queue.enqueue({
+            queue: JOB_QUEUES.influencerPipeline,
+            payload: { op: "video", companyId, influencerId, generationId: id },
+            options: {
+              transaction: tx,
+              singletonKey: influencerVideoSingletonKey(id),
+              retryLimit: VIDEO_RETRY_LIMIT,
+              retryBackoff: true,
+              expireInSeconds: VIDEO_EXPIRE_SECONDS,
+            },
+          });
+          return created;
+        });
+      } catch (error) {
+        await genai.ledger
+          .update((raw) => {
+            const next = releaseSpend(ledgerOrFail(raw), month, id);
+            return next === null ? { result: null } : { next, result: null };
+          })
+          .catch(() => undefined);
+        throw error;
+      }
+      request.log.info(
+        { generationId: id, influencerId, model: p.spec.id, estimateUsd: cost.usd },
+        "influencer video queued",
+      );
+      const [view] = await request.tx((tx) => generationViews(tx, companyId, [row]));
+      return reply.status(202).send(data(view));
+    },
+  );
+}
+
+function budgetRejection(
+  estimateUsd: number,
+  summary: { readonly remainingUsd: number; readonly budgetUsd: number },
+): ApiRejection {
+  return new ApiRejection(
+    402,
+    "payment_required",
+    "This generation would go over this month's AI budget.",
+    {
+      reason: "budget_exceeded",
+      estimateUsd,
+      remainingUsd: summary.remainingUsd,
+      budgetUsd: summary.budgetUsd,
     },
   );
 }

@@ -104,9 +104,19 @@ export const generationRequestSchema = z
     count: z.number().int().min(1).max(8).default(1),
     durationSeconds: z.number().int().positive().max(60).optional(),
     imageUrl: z.string().max(2048).optional(),
+    /**
+     * Sprint 7 (`P4-AISTUDIO-001`): la imagen de entrada desde el Media Bank.
+     * Excluyente con `imageUrl` (400 si vienen las dos). Nuestro storage no
+     * es público: la API la sube al proveedor (Higgsfield) o, con ComfyUI
+     * local, pasa la URL tal cual.
+     */
+    imageMediaId: z.string().uuid().optional(),
   })
   .strict();
 export type GenerationRequest = z.input<typeof generationRequestSchema>;
+
+/** El tope del prompt de AI Studio, para el contador de la UI. */
+export const AI_STUDIO_PROMPT_MAX_CHARS = 2000;
 
 export const costEstimateSchema = z.object({
   usd: z.number().nonnegative(),
@@ -187,3 +197,109 @@ export const generationListQuerySchema = z
 export type GenerationListQuery = z.infer<typeof generationListQuerySchema>;
 
 export const generationListSchema = z.array(generationSchema);
+
+// --- Formatos generativos — sprint 7, `P4-FORMAT-001`/`002`, `F-084` ---------
+//
+//   GET  /ai-studio/formats                       catálogo + modelo de video + tope
+//   POST /ai-studio/formats/{format}/estimate     costo del clip
+//   POST /ai-studio/formats/{format}/runs         reservar y encolar (202)
+//   GET  /ai-studio/format-runs                   corridas de la marca
+//   GET  /ai-studio/format-runs/{id}              una corrida
+//
+// El parámetro se llama `format` y no `formatId`: la API reescribe cualquier
+// `:…Id` que no sea uuid (trampa 56) y los ids de formato son slugs.
+
+export const FORMAT_RUN_OVERLAY_MAX_CHARS = 300;
+export const FORMAT_RUN_TOPIC_MAX_CHARS = 300;
+
+export const generativeFormatSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  description: z.string(),
+  status: z.enum(["available", "blocked"]),
+  /** Sólo `blocked`. */
+  reason: z.enum(["needs_voice", "needs_video_to_video"]).nullable(),
+  /** Sólo `blocked`: por qué, en inglés. */
+  why: z.string().nullable(),
+  /** El PRD lo describe con narración y acá sale sin (no hay voz). */
+  narrationMissing: z.boolean(),
+  preferredDurationSeconds: z.number().int().positive().nullable(),
+});
+export type GenerativeFormat = z.infer<typeof generativeFormatSchema>;
+
+export const generativeFormatsViewSchema = z.object({
+  formats: z.array(generativeFormatSchema),
+  /** Sólo los modelos de **texto a video** del proveedor configurado. */
+  video: aiStudioTaskOptionsSchema,
+  budget: budgetSummarySchema,
+});
+export type GenerativeFormatsView = z.infer<typeof generativeFormatsViewSchema>;
+
+export const formatRunRequestSchema = z
+  .object({
+    /** Detalle opcional de la escena. */
+    topic: z.string().max(FORMAT_RUN_TOPIC_MAX_CHARS).optional(),
+    /** El texto que va encima del clip. */
+    overlayText: z.string().trim().min(1).max(FORMAT_RUN_OVERLAY_MAX_CHARS),
+    /** Default `true`: lo que ofrece la marca puede entrar a la escena. */
+    includeBrand: z.boolean().optional(),
+    model: z.string().trim().min(1).max(256).optional(),
+    durationSeconds: z.number().int().positive().max(60).optional(),
+  })
+  .strict();
+export type FormatRunRequest = z.input<typeof formatRunRequestSchema>;
+
+export const formatRunEstimateSchema = z.object({
+  provider: modelProviderSchema,
+  model: z.string(),
+  durationSeconds: z.number().int().positive(),
+  videoPrompt: z.string(),
+  estimate: costEstimateSchema,
+  budget: budgetSummarySchema,
+  fits: z.boolean(),
+});
+export type FormatRunEstimate = z.infer<typeof formatRunEstimateSchema>;
+
+export const formatRunStatusSchema = z.enum([
+  "queued",
+  "generating",
+  "building",
+  "ready",
+  "failed",
+  "nsfw",
+]);
+export type FormatRunStatus = z.infer<typeof formatRunStatusSchema>;
+
+export const formatRunErrorCodeSchema = z.enum([
+  ...generationErrorCodeSchema.options,
+  /** El clip se borró del Media Bank antes de armar la pieza. */
+  "clip_missing",
+  /** No se pudo crear la pieza o encolar su build. */
+  "content_failed",
+  /** El render de la pieza falló. */
+  "build_failed",
+  /** El registro del clip no está (archivo borrado). */
+  "generation_missing",
+]);
+export type FormatRunErrorCode = z.infer<typeof formatRunErrorCodeSchema>;
+
+export const formatRunSchema = z.object({
+  id: z.string().uuid(),
+  formatId: z.string(),
+  status: formatRunStatusSchema,
+  topic: z.string().nullable(),
+  overlayText: z.string(),
+  videoPrompt: z.string(),
+  model: z.string().nullable(),
+  durationSeconds: z.number().nullable(),
+  estimate: costEstimateSchema.nullable(),
+  /** La pieza (`wall-of-text`) que se abre en el editor. */
+  contentId: z.string().uuid().nullable(),
+  /** El clip ya copiado al Media Bank. */
+  clip: generationMediaSchema.nullable(),
+  error: z.object({ code: formatRunErrorCodeSchema, message: z.string() }).nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type FormatRun = z.infer<typeof formatRunSchema>;
+export const formatRunListSchema = z.array(formatRunSchema);

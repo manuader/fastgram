@@ -21,7 +21,7 @@ import {
   SeededRng,
   canonicalObjectUrl,
 } from "@fastgram/adapters";
-import { parseSuggestionBuildPlan } from "@fastgram/core";
+import { autoFoundMemeOf, mediaMetaKey, parseSuggestionBuildPlan } from "@fastgram/core";
 import {
   APP_ROLE,
   createPromptRequest,
@@ -47,7 +47,9 @@ import {
   createLlmCopywriter,
   type SuggestionCopywriter,
 } from "../src/discovery/copywriter.js";
+import type { MemeFinder } from "../src/discovery/meme-finder.js";
 import {
+  MemeNotReadyYet,
   createBlitzPromptHandler,
   createDiscoveryDispatcher,
 } from "../src/discovery/prompt-handler.js";
@@ -405,5 +407,194 @@ describe("la cola discovery-refill reparte por payload", () => {
     await dispatch(ctx({ companyId }));
     await dispatch(ctx({ companyId, promptRequestId: randomUUID() }));
     expect(vistos).toEqual(["refill", "prompt"]);
+  });
+});
+
+/* ------------------------------------------------------------------------ *
+ * Sprint 7 — buscar el meme si no hay
+ * ------------------------------------------------------------------------ */
+
+const YT = "https://www.youtube.com/watch?v=J3bvkPStwB8";
+
+/**
+ * Un buscador falso que hace lo que el real deja hecho: una fila en el Media
+ * Bank (como el import) y la metadata con la URL de origen en el storage.
+ */
+function fakeFinder(opts: {
+  readonly found: boolean;
+  readonly status?: "ready" | "processing";
+}): MemeFinder & { calls: number } {
+  const finder = {
+    calls: 0,
+    async find({ companyId }: { companyId: string }) {
+      finder.calls += 1;
+      if (!opts.found) return { found: null, rejectedMediaIds: [], results: 3 };
+      const mediaId = randomUUID();
+      const storageKey = `media/${companyId}/imports/${mediaId}/clip.mp4`;
+      await withoutCompany(handle.db, async (tx) => {
+        await tx.insert(media).values({
+          mediaId,
+          companyId,
+          mediaType: "video",
+          filename: "Monday left me broken cat meme green screen.mp4",
+          r2Url: await canonicalObjectUrl(storage, storageKey),
+          storageKey,
+          status: opts.status ?? "ready",
+          sizeMb: 1,
+          categories: ["green-screen-video"],
+          origin: "manual_upload",
+        });
+      });
+      await storage.put({
+        key: mediaMetaKey(companyId, mediaId),
+        body: new TextEncoder().encode(JSON.stringify({ mediaId, sourceUrl: YT })),
+        contentType: "application/json",
+      });
+      return {
+        found: { mediaId, sourceUrl: YT, title: "Monday cat" },
+        rejectedMediaIds: [],
+        results: 3,
+      };
+    },
+  };
+  return finder;
+}
+
+const memeHandler = (finder: MemeFinder, llm: Llm = new FakeLlm()) =>
+  createBlitzPromptHandler({
+    db: handle.db,
+    rng: new SeededRng(4242),
+    copywriter: copywriterDe(llm),
+    appRole: APP_ROLE,
+    logger: silencioso,
+    storage,
+    memeFinder: finder,
+    memeReadyWaitMs: 0,
+    sleep: () => Promise.resolve(),
+  });
+
+async function soloFondo(): Promise<string> {
+  const companyId = await seedCompany(handle);
+  await seedMedia(companyId, "image", ["green-screen-background"]);
+  return companyId;
+}
+
+async function tagsDe(companyId: string, mediaId: string): Promise<readonly string[]> {
+  const rows = (await handle.sql`
+    select tags from media where media_id = ${mediaId}::uuid and company_id = ${companyId}::uuid
+  `) as unknown as { tags: string[] }[];
+  return rows[0]?.tags ?? [];
+}
+
+describe("sprint 7 — crear desde prompt busca el meme si no hay", () => {
+  it("sin clip para el tema: lo busca, lo usa, lo etiqueta auto-found y anota la sugerencia", async () => {
+    const companyId = await soloFondo();
+    const requestId = await pedido(companyId, { contentType: "green-screen", count: 1 });
+    const finder = fakeFinder({ found: true });
+
+    await memeHandler(finder)(ctx({ companyId, promptRequestId: requestId }));
+
+    const req = await estado(companyId, requestId);
+    expect(req?.status).toBe("done");
+    expect(req?.memeSearches).toBe(1);
+    expect(req?.phase).toBeNull();
+    expect(req?.autoMediaId).not.toBeNull();
+    expect(finder.calls).toBe(1);
+
+    const [view] = await cola(companyId);
+    const s = view!.suggestion;
+    const plan = parseSuggestionBuildPlan(s.buildPlan, s.contentType);
+    expect(
+      plan.ok &&
+        plan.plan.media.format === "green-screen" &&
+        plan.plan.media.video.mediaId,
+    ).toBe(req?.autoMediaId);
+    expect(autoFoundMemeOf(s.buildPlan)).toEqual({
+      mediaId: req?.autoMediaId,
+      sourceUrl: YT,
+    });
+    expect(s.aiExplanation).toContain("one was found on YouTube and imported");
+    expect(await tagsDe(companyId, req!.autoMediaId!)).toContain("auto-found");
+  });
+
+  it("con un clip que matchea el tema no busca nada", async () => {
+    const companyId = await soloFondo();
+    await withoutCompany(handle.db, async (tx) => {
+      const mediaId = randomUUID();
+      await tx.insert(media).values({
+        mediaId,
+        companyId,
+        mediaType: "video",
+        filename: "lunes de oficina.mp4",
+        r2Url: await canonicalObjectUrl(storage, `media/${companyId}/${mediaId}.mp4`),
+        storageKey: `media/${companyId}/${mediaId}.mp4`,
+        status: "ready",
+        sizeMb: 1,
+        categories: ["green-screen-video"],
+        origin: "manual_upload",
+      });
+    });
+    const requestId = await pedido(companyId, { contentType: "green-screen", count: 1 });
+    const finder = fakeFinder({ found: true });
+    await memeHandler(finder)(ctx({ companyId, promptRequestId: requestId }));
+    expect(finder.calls).toBe(0);
+    expect((await estado(companyId, requestId))?.status).toBe("done");
+  });
+
+  it("no encuentra ninguno y no hay otro clip → failed meme_not_found", async () => {
+    const companyId = await soloFondo();
+    const requestId = await pedido(companyId, { contentType: "green-screen", count: 1 });
+    const llm = new FakeLlm();
+    await memeHandler(
+      fakeFinder({ found: false }),
+      llm,
+    )(ctx({ companyId, promptRequestId: requestId }));
+    const req = await estado(companyId, requestId);
+    expect(req?.status).toBe("failed");
+    expect(req?.failureReason).toBe("meme_not_found");
+    expect(req?.phase).toBeNull();
+    expect(llm.requests).toHaveLength(0);
+  });
+
+  it("no encuentra ninguno pero hay clips (que no matchean): sigue con ellos, como antes", async () => {
+    const companyId = await workspace(); // un clip verde con nombre uuid
+    const requestId = await pedido(companyId, { contentType: "green-screen", count: 1 });
+    await memeHandler(fakeFinder({ found: false }))(
+      ctx({ companyId, promptRequestId: requestId }),
+    );
+    expect((await estado(companyId, requestId))?.status).toBe("done");
+  });
+
+  it("el tope de búsquedas por pedido lo lleva la base: con 2 hechas no busca más", async () => {
+    const companyId = await soloFondo();
+    const requestId = await pedido(companyId, { contentType: "green-screen", count: 1 });
+    await handle.sql`update blitz_prompt_requests set meme_searches = 2 where id = ${requestId}::uuid`;
+    const finder = fakeFinder({ found: true });
+    await memeHandler(finder)(ctx({ companyId, promptRequestId: requestId }));
+    expect(finder.calls).toBe(0);
+    expect((await estado(companyId, requestId))?.failureReason).toBe("meme_not_found");
+  });
+
+  it("clip todavía processing: relanza para reintentar, y el reintento lo retoma sin buscar otro", async () => {
+    const companyId = await soloFondo();
+    const requestId = await pedido(companyId, { contentType: "green-screen", count: 1 });
+    const finder = fakeFinder({ found: true, status: "processing" });
+    const h = memeHandler(finder);
+
+    await expect(
+      h(ctx({ companyId, promptRequestId: requestId }, 1)),
+    ).rejects.toBeInstanceOf(MemeNotReadyYet);
+    const mid = await estado(companyId, requestId);
+    expect(mid?.status).toBe("running");
+    expect(mid?.phase).toBe("searching_meme");
+    expect(mid?.autoMediaId).not.toBeNull();
+
+    // La normalización terminó entre intentos.
+    await handle.sql`update media set status = 'ready' where media_id = ${mid!.autoMediaId!}::uuid`;
+    await h(ctx({ companyId, promptRequestId: requestId }, 2));
+    const fin = await estado(companyId, requestId);
+    expect(fin?.status).toBe("done");
+    expect(fin?.memeSearches).toBe(1);
+    expect(finder.calls).toBe(1);
   });
 });

@@ -11,6 +11,7 @@ import {
   FIELD_LABEL,
   isTooLong,
   PROFILE_FIELD_MAX,
+  isRevisionConflict,
   revisionMovedDuring,
   toDraft,
   useSaveBrandProfile,
@@ -73,8 +74,15 @@ function SectionEditor({
       onClose();
       return;
     }
-    save.mutate(patch, { onSuccess: onSaved });
+    // `P1-BRANDPG-004`: la revisión con la que se abrió la sección. Si otra
+    // pestaña guardó antes, la API responde 409 en vez de pisar.
+    save.mutate(
+      { ...patch, expectedBrandRevision: startRevision },
+      { onSuccess: onSaved },
+    );
   }
+
+  const conflict = save.isError && isRevisionConflict(save.error);
 
   const errorRemedy = save.isError ? presentError(save.error).remedy : null;
 
@@ -126,7 +134,25 @@ function SectionEditor({
         );
       })}
 
-      {save.isError && (
+      {conflict && (
+        <div className="fgw-brand__notice" role="alert">
+          <p>{tw("brand.revisionConflict")}</p>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              // Se cierra la sección: reabrirla parte de la revisión nueva.
+              save.reset();
+              onReload();
+              onClose();
+            }}
+          >
+            {tw("brand.reload")}
+          </Button>
+        </div>
+      )}
+      {save.isError && !conflict && (
         <ApiErrorState
           error={save.error}
           // `Reload` (un `409`) relee el perfil; `Try again` vuelve a mandar el

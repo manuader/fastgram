@@ -10,11 +10,23 @@
  * (`fastgram` → `fastgram_worker`), que el `globalSetup` crea si falta.
  * `singleFork`: los archivos comparten base y se pisarían entre sí.
  */
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
 import { defineConfig } from "vitest/config";
+
+/**
+ * `~/.fastgram` de mentira para toda la suite (sprint 7): sin esto, una ruta que
+ * lee el registro de modelos o las integraciones leía el archivo **real** del
+ * dueño —y llamaba a su Ollama—. Un test que necesita otro lo pisa igual.
+ */
+const FASTGRAM_HOME = mkdtempSync(path.join(tmpdir(), "fastgram-test-home-"));
 
 export default defineConfig({
   test: {
     environment: "node",
+    env: { FASTGRAM_HOME },
     include: ["test/**/*.int.test.ts"],
     /**
      * Crea y migra la base del worker antes de todo. Ver `setup-db.ts`: es lo

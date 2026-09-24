@@ -53,7 +53,9 @@ export const mediaRefSchema = z
 export type MediaRef = z.infer<typeof mediaRefSchema>;
 
 /**
- * `FR-070`: "El audio sólo puede venir de la librería compartida".
+ * `FR-070`: "El audio sólo puede venir de la librería compartida". Desde el
+ * sprint 7 esa librería es la de cada marca (`audio/{companyId}/`), que el
+ * worker firma en `grant.sharedPrefixes`; la política no cambió.
  *
  * Es OPCIONAL en `wall-of-text` y `video-hook`: `FR-053.1` (PRD:1234) dice que
  * la primera opción del modal `Select Audio` es `No audio` y que elegirla
@@ -168,6 +170,12 @@ export const greenScreenPayloadSchema = z
       similarity: 0.18,
       blend: 0.1,
     }),
+    /**
+     * Sprint 7: música de la biblioteca de la marca. Se **mezcla** con el audio
+     * del clip de croma (ver `planGreenScreenBase`); ausente = sólo el clip,
+     * como siempre.
+     */
+    audio: audioRefSchema.optional(),
     texts: textObjectListSchema,
   })
   .strict();
@@ -249,6 +257,7 @@ export function collectMediaReferences(payload: BuildPayload): readonly MediaRef
       return [
         { url: payload.image.url, role: "image", path: ["image"] },
         { url: payload.video.url, role: "video", path: ["video"] },
+        ...audioReference(payload.audio),
       ];
     case "video-hook":
       return [

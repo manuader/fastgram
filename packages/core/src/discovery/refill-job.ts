@@ -91,6 +91,10 @@ export const BLITZ_PROMPT_LIMITS = {
  * - `llm_failed`: el proveedor falló y se agotaron los reintentos.
  * - `invalid_state`: el workspace no permite planificar (p. ej. pesos de ángulo
  *   rotos). No mejora reintentando.
+ * - `meme_not_found` (sprint 7): el pedido era green-screen, el Media Bank no
+ *   tenía un clip para el tema y la búsqueda automática no encontró uno que
+ *   sirva (sin resultados, ninguno verde, o el import falló) → importar uno
+ *   por link en la Library.
  */
 export const PROMPT_FAILURE_REASONS = [
   "llm_not_configured",
@@ -99,8 +103,18 @@ export const PROMPT_FAILURE_REASONS = [
   "copy_rejected",
   "llm_failed",
   "invalid_state",
+  "meme_not_found",
 ] as const;
 export type PromptFailureReason = (typeof PROMPT_FAILURE_REASONS)[number];
+
+/**
+ * Sprint 7: en qué anda un pedido `running`, para que la web diga algo más
+ * que «generando». `searching_meme` = buscando e importando un meme porque el
+ * Media Bank no tenía uno para el tema (tarda: una búsqueda y una bajada).
+ * `null` = el camino de siempre (planificar y escribir la copy).
+ */
+export const PROMPT_PHASES = ["searching_meme"] as const;
+export type PromptPhase = (typeof PROMPT_PHASES)[number];
 
 /**
  * La misma forma que `withCompany` exige antes de abrir la transacción.
@@ -211,6 +225,22 @@ export interface SuggestionNarrative {
    * ángulo— y agrega una que dice cuál fue el pedido.
    */
   readonly prompt?: PromptNarrative | undefined;
+  /**
+   * Sprint 7 (`JV-6`): el influencer lo eligió el juicio entre
+   * {@link pickedAmong} candidatos, no el azar.
+   */
+  readonly influencerJudged?: boolean | undefined;
+  /**
+   * Sprint 7: líneas sobre la media elegida por tema («Meme: picked for your
+   * topic…», «Meme: found on YouTube…»). Nuestras, nunca texto de terceros.
+   */
+  readonly mediaLines?: readonly string[] | undefined;
+  /**
+   * Sprint 7 (`JV-6`): la tirada pidió remix y se eligió una de las
+   * referencias guardadas del dueño (Inspiration). El título es texto de
+   * terceros: se acota antes de guardar.
+   */
+  readonly remixReferenceTitle?: string | undefined;
 }
 
 export interface PromptNarrative {
@@ -272,8 +302,11 @@ export function explainSuggestion(
   // va a elegir.
   parts.push(
     plan.isRemix
-      ? "Source: original content. Your remix ratio drew a remix, but picking " +
-          "a trending source isn't available yet."
+      ? narrative.remixReferenceTitle !== undefined
+        ? `Source: a remix of your saved reference "${oneLine(narrative.remixReferenceTitle, MAX_ANGLE_TITLE_CHARS)}", ` +
+          "picked as the best fit for this piece."
+        : "Source: original content. Your remix ratio drew a remix, but you have " +
+          "no saved references to remix yet (Inspiration)."
       : "Source: original content, not a remix.",
   );
 
@@ -292,6 +325,8 @@ export function explainSuggestion(
         "no media categorized for it.",
     );
   }
+
+  for (const line of narrative.mediaLines ?? []) parts.push(line);
 
   parts.push(influencerLine(plan, narrative));
 
@@ -359,7 +394,9 @@ function influencerLine(plan: SuggestionPlan, narrative: SuggestionNarrative): s
     return (
       `Influencer: ${oneLine(narrative.influencerName, MAX_ANGLE_TITLE_CHARS)} — ` +
       (among > 1
-        ? `picked at random among ${String(among)} characters with media for this format.`
+        ? narrative.influencerJudged === true
+          ? `picked by AI as the best fit among ${String(among)} characters with media for this format.`
+          : `picked at random among ${String(among)} characters with media for this format.`
         : "the only eligible character for this format.")
     );
   }

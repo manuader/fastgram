@@ -171,12 +171,42 @@ function colorSource(canvas: Canvas, label: string): string {
 const AUDIO_BITRATE = "128k";
 
 /**
- * Cola de argumentos de audio de la salida: mapear la pista del input `index`,
- * o `-an`. `null` = sin pista, la decisión de arriba.
+ * Cola de argumentos de audio de la salida: mapear la pista del input `index`
+ * (o una etiqueta del filtergraph, `[aout]`), o `-an`. `null` = sin pista, la
+ * decisión de arriba.
  */
-function audioOutputArgs(audioInputIndex: number | null): string[] {
-  if (audioInputIndex === null) return ["-an"];
-  return ["-map", `${audioInputIndex}:a`, "-c:a", "aac", "-b:a", AUDIO_BITRATE];
+function audioOutputArgs(audioInput: number | string | null): string[] {
+  if (audioInput === null) return ["-an"];
+  const map = typeof audioInput === "number" ? `${audioInput}:a` : audioInput;
+  return ["-map", map, "-c:a", "aac", "-b:a", AUDIO_BITRATE];
+}
+
+/**
+ * ── La música (sprint 7) ─────────────────────────────────────────────────────
+ *
+ * **La música se repite hasta que termina el video** (`-stream_loop -1` sobre
+ * su input). Antes entraba tal cual con `-shortest`, y una pista más corta que
+ * el video **cortaba el video** a la duración de la pista: un sonido de 12 s
+ * importado de TikTok dejaba un wall-of-text de 30 s en 12. La salida sigue
+ * terminando con el video (`-shortest`: el input en loop es infinito). No hay
+ * recorte de inicio: la pista arranca en 0 (el contrato no transporta un
+ * `start`; queda abierto).
+ *
+ * **En `green-screen` se mezcla con el audio del clip**: el clip al 100 % y la
+ * música al {@link MUSIC_UNDER_CLIP_VOLUME} (30 %). Un meme vive de su audio
+ * (la frase, la risa); la música va de cama, no encima. Si el clip no trae
+ * audio, la música va sola a volumen completo. `amix` con `normalize=0` para
+ * que no baje el clip a la mitad (el default divide por la cantidad de
+ * entradas), y `duration=first` para que la mezcla dure lo que el clip.
+ *
+ * En `wall-of-text` y `video-hook` la música **reemplaza** el audio de los
+ * videos, igual que antes: son fondos, no clips con voz.
+ */
+export const MUSIC_UNDER_CLIP_VOLUME = 0.3;
+
+/** `-stream_loop -1 -i <música>`: el loop es opción del input, va antes del `-i`. */
+function musicInputArgs(audioPath: string): string[] {
+  return ["-stream_loop", "-1", "-i", audioPath];
 }
 
 // ── wall-of-text (`P2-RENDER-005`) ───────────────────────────────────────────
@@ -204,9 +234,9 @@ export function planWallOfTextBase(
     `[bg][src]overlay=${placement.draw.x}:${placement.draw.y}:shortest=1[v]`,
   ].join(";");
 
-  // `[0:v]` es el video; el audio, cuando viene, entra como input 1.
+  // `[0:v]` es el video; el audio, cuando viene, entra como input 1 (en loop).
   const args = [...baseArgs(), "-i", inputs.videoPath];
-  if (inputs.audioPath !== null) args.push("-i", inputs.audioPath);
+  if (inputs.audioPath !== null) args.push(...musicInputArgs(inputs.audioPath));
   args.push("-filter_complex", graph, "-map", "[v]");
   args.push(...audioOutputArgs(inputs.audioPath === null ? null : 1));
   args.push("-shortest", ...encodeArgs(), inputs.outputPath);
@@ -225,6 +255,8 @@ export function planWallOfTextBase(
 export interface GreenScreenInputs {
   readonly backgroundPath: string;
   readonly videoPath: string;
+  /** Sprint 7: música de la marca; `null` o ausente = sólo el audio del clip. */
+  readonly audioPath?: string | null;
   readonly outputPath: string;
   readonly background: Size;
   readonly video: SourceGeometry;
@@ -258,13 +290,25 @@ export function planGreenScreenBase(
     fgChain = `[1:v]${chroma}=${keyColor}:${key.similarity}:${key.blend},${placementFilter(fgPlacement)}[fg]`;
   }
 
-  const graph = [
+  const musicPath = inputs.audioPath ?? null;
+  // La mezcla sólo existe con música **y** clip con audio. Sin música, el grafo
+  // es exactamente el de antes (los goldens lo fijan).
+  const mixes = musicPath !== null && inputs.video.hasAudio;
+  if (mixes) requireFilters(caps, ["amix", "volume"]);
+  const graphParts = [
     colorSource(canvas, "canvas"),
     `[0:v]${placementFilter(bgPlacement)}[bg]`,
     `[canvas][bg]overlay=${bgPlacement.draw.x}:${bgPlacement.draw.y}[base]`,
     fgChain,
     `[base][fg]overlay=${fgPlacement.draw.x}:${fgPlacement.draw.y}:shortest=1[v]`,
-  ].join(";");
+  ];
+  if (mixes) {
+    graphParts.push(
+      `[2:a]volume=${MUSIC_UNDER_CLIP_VOLUME}[music]`,
+      "[1:a][music]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]",
+    );
+  }
+  const graph = graphParts.join(";");
 
   // El decoder va **antes** del `-i` al que se aplica: con el `vp9` nativo el
   // alfa de un webm no llega al filtergraph (ver `alphaOf` en `probe.ts`).
@@ -280,22 +324,32 @@ export function planGreenScreenBase(
     ...(alphaDecoder === null ? [] : ["-c:v", alphaDecoder]),
     "-i",
     inputs.videoPath,
+    // La música, cuando viene, es el input 2 (en loop; ver arriba).
+    ...(musicPath === null ? [] : musicInputArgs(musicPath)),
     "-filter_complex",
     graph,
     "-map",
     "[v]",
   ];
-  // `green-screen` no tiene bloque `audio` en `FR-070`: el sonido, si hay, sale
-  // del propio video de croma (input 1). Es la rama que fijó la decisión de
-  // `No audio` para los otros dos formatos: acá el `-an` ya existía.
-  args.push(...audioOutputArgs(inputs.video.hasAudio ? 1 : null));
+  // `FR-070` no le da bloque `audio` a `green-screen`: el sonido sale del propio
+  // clip de croma (input 1) y sin audio en el clip la salida va `-an` — la rama
+  // que fijó la decisión de `No audio` para los otros dos formatos. Desde el
+  // sprint 7, la música de la marca se mezcla (o va sola si el clip es mudo).
+  const audioSource: number | string | null = mixes
+    ? "[aout]"
+    : musicPath !== null
+      ? 2
+      : inputs.video.hasAudio
+        ? 1
+        : null;
+  args.push(...audioOutputArgs(audioSource));
   args.push("-shortest", ...encodeArgs(), inputs.outputPath);
 
   return {
     args,
     filterGraph: graph,
     placements: { background: bgPlacement, video: fgPlacement },
-    hasAudio: inputs.video.hasAudio,
+    hasAudio: audioSource !== null,
   };
 }
 
@@ -348,10 +402,10 @@ export function planVideoHookBase(
     `[withHook][demo]overlay=${demoPlacement.draw.x}:${demoPlacement.draw.y}:shortest=1[v]`,
   ].join(";");
 
-  // `[0:v]` hook y `[1:v]` demo son fijos; el audio, cuando viene, es input 2.
-  // El grafo no cambia por el audio, así que los índices del video no se mueven.
+  // `[0:v]` hook y `[1:v]` demo son fijos; el audio, cuando viene, es input 2
+  // (en loop). El grafo no cambia por el audio: los índices no se mueven.
   const args = [...baseArgs(), "-i", inputs.hookPath, "-i", inputs.demoPath];
-  if (inputs.audioPath !== null) args.push("-i", inputs.audioPath);
+  if (inputs.audioPath !== null) args.push(...musicInputArgs(inputs.audioPath));
   args.push("-filter_complex", graph, "-map", "[v]");
   args.push(...audioOutputArgs(inputs.audioPath === null ? null : 2));
   args.push("-shortest", ...encodeArgs(), inputs.outputPath);

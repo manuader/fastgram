@@ -31,6 +31,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
+  type GeneratedContentAngle,
   createContentAngleRequestSchema,
   cursorQuerySchema,
   // §9.10, paginación **numerada**. Vivía escrito a mano acá con una nota que
@@ -46,7 +47,11 @@ import {
   assertAngleIsActiveForLinking,
   assertCanLinkInfluencer,
   assertValidInfluencerLinks,
+  buildAngleGenerationRequest,
   createContentAngle,
+  parseGeneratedAngle,
+  topPerformingTexts,
+  type AngleGenerationContext,
   deactivateAngle,
   editAngleText,
   type AngleWeights,
@@ -55,13 +60,17 @@ import {
   type InfluencerRef,
 } from "@fastgram/core";
 import {
+  brandSourceSnapshotRepository,
   companyProfileRepository,
+  companyRepository,
   contentAngleRepository,
+  metricsStore,
   influencerRepository,
   type Transaction,
 } from "@fastgram/db";
 
 import { consumeOnSuccess } from "../../plugins/rate-limit.js";
+import { registryBrandModels, type BrandModels } from "./brand-llm.js";
 import { toContentAngle } from "../../support/serializers.js";
 import {
   activeAngleIdsOf,
@@ -220,8 +229,11 @@ async function loadBrandRevision(tx: Transaction, companyId: string): Promise<nu
   return profiles.items[0]?.brandRevision ?? 0;
 }
 
-export function registerAngleRoutes(app: ZodApp): void {
-  const { limiter, angleGenerator } = app.deps;
+export function registerAngleRoutes(
+  app: ZodApp,
+  models: BrandModels = registryBrandModels(),
+): void {
+  const { limiter, angleGenerator, clock } = app.deps;
 
   // ── GET /blitz/angles ──
   app.get(
@@ -513,22 +525,64 @@ export function registerAngleRoutes(app: ZodApp): void {
   );
 
   // ── POST /blitz/angles/generate ──
+  //
+  // `P2-ANGLE-005`: sin `angleGenerator` inyectado (el caso de `main.ts`), se
+  // genera con el modelo `text` del registro. Sin modelo, `503` como antes, con
+  // un mensaje que dice dónde configurarlo. La semilla de `P1-BRAND-023` va
+  // adentro: si hay engagement (snapshots de las fuentes o métricas de los
+  // posts propios), los textos que mejor rindieron anclan el ángulo.
   app.post("/blitz/angles/generate", async (request, reply) => {
-    if (angleGenerator === undefined) {
-      // Sin adaptador de LLM no hay sugerencia que dar. `service_unavailable` es un
-      // código del PRD (§19, ERR-R06); inventar un ángulo de relleno sería peor que
-      // decir que el servicio no está.
-      return reply.status(503).send({
-        error: {
-          code: "service_unavailable",
-          message: "Angle generation is temporarily unavailable.",
-        },
+    const companyId = request.auth.companyId;
+    let generated: GeneratedContentAngle;
+    if (angleGenerator !== undefined) {
+      generated = await angleGenerator.generate({ companyId });
+    } else {
+      const found = await models.llm("text");
+      if (found === null) {
+        // Sin LLM no hay sugerencia que dar. `service_unavailable` es un código
+        // del PRD (§19, ERR-R06); inventar un ángulo sería peor.
+        return reply.status(503).send({
+          error: {
+            code: "service_unavailable",
+            message: "Angle generation needs a text model. Set one in Settings → Models.",
+          },
+        });
+      }
+      const context = await request.tx((tx) => loadAngleContext(tx, companyId, clock));
+      const built = buildAngleGenerationRequest(
+        context.context,
+        `angle-${randomUUID().replace(/-/g, "")}`,
+      );
+      const completion = await found.llm.completeJson({
+        messages: built.messages,
+        untrusted: built.untrusted,
+        schema: built.schema,
+        schemaName: built.schemaName,
       });
+      const parsed =
+        completion.finishReason === "stop"
+          ? parseGeneratedAngle(completion.value, context.context.existingTitles)
+          : ({ ok: false, reason: `finishReason=${completion.finishReason}` } as const);
+      if (!parsed.ok) {
+        request.log.warn(
+          { reason: parsed.reason, model: completion.model },
+          "angle generation returned nothing usable",
+        );
+        // AI-005: la reserva se libera si la generación falla — no se cobra el
+        // límite de 5/min (se cobra abajo, sólo en el éxito).
+        return reply.status(503).send({
+          error: {
+            code: "service_unavailable",
+            message: "The model did not return a usable angle. Try again.",
+          },
+        });
+      }
+      request.log.info(
+        { seeded: built.seeded, model: completion.model },
+        "content angle generated",
+      );
+      generated = { ...parsed.angle, brandRevision: context.brandRevision };
     }
-
-    const generated = await angleGenerator.generate({
-      companyId: request.auth.companyId,
-    });
 
     // §9.6: "5 sugerencias **exitosas** por minuto". Se cobra acá, después del éxito,
     // no en un preHandler. Ver la nota en `plugins/rate-limit.ts`.
@@ -539,4 +593,65 @@ export function registerAngleRoutes(app: ZodApp): void {
     // que la reenvíe como `expectedBrandRevision` al crear.
     return reply.status(200).send(data(generated));
   });
+}
+
+/** Cuántos snapshots se miran para la semilla (el cap de fuentes es 5, `+` historia). */
+const SEED_SNAPSHOTS = 10;
+/** Ventana de métricas de los posts propios. No es un número del PRD. */
+const SEED_METRICS_DAYS = 90;
+const SEED_METRICS_POSTS = 100;
+
+/**
+ * El contexto del generador: perfil, nombre, títulos existentes y lo que mejor
+ * rindió (`P1-BRAND-023`). Todo con scope del workspace, en la transacción.
+ */
+export async function loadAngleContext(
+  tx: Transaction,
+  companyId: string,
+  clock: { nowMs(): number },
+): Promise<{ readonly context: AngleGenerationContext; readonly brandRevision: number }> {
+  const scope = { companyId };
+  const profiles = await companyProfileRepository.list(tx, scope, { limit: 1 });
+  const profile = profiles.items[0];
+  const company = await companyRepository.load(tx, scope);
+  const angles = await listAllAngles(tx, companyId);
+  const snapshots = await brandSourceSnapshotRepository.list(tx, scope, {
+    limit: SEED_SNAPSHOTS,
+  });
+  const now = clock.nowMs();
+  const own = await metricsStore.listForAnalytics(tx, scope, {
+    from: new Date(now - SEED_METRICS_DAYS * 86_400_000),
+    to: new Date(now + 60_000),
+    limit: SEED_METRICS_POSTS,
+  });
+  const items: unknown[] = [
+    ...own.map((p) => ({
+      caption: p.caption ?? undefined,
+      engagement: {
+        likes: p.likes,
+        comments: p.comments,
+        views: p.views,
+        shares: p.shares,
+      },
+    })),
+    ...snapshots.items.flatMap((s) =>
+      Array.isArray(s.contentItems) ? (s.contentItems as unknown[]) : [],
+    ),
+  ];
+  return {
+    brandRevision: profile?.brandRevision ?? 0,
+    context: {
+      businessName: company?.name,
+      profile: {
+        coreIdentity: profile?.coreIdentity,
+        productOffering: profile?.productOffering,
+        uniqueBenefits: profile?.uniqueBenefits,
+        problemSolution: profile?.problemSolution,
+        targetAudience: profile?.targetAudience,
+        toneOfVoice: profile?.toneOfVoice,
+      },
+      existingTitles: angles.map((a) => a.title),
+      topPerforming: topPerformingTexts(items),
+    },
+  };
 }

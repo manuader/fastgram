@@ -32,6 +32,8 @@ import {
 import {
   APP_ROLE,
   blitzPreferences,
+  brandStrategies,
+  createOwnerReference,
   companyProfiles,
   contentAngles,
   discoveryQueueStore,
@@ -839,9 +841,10 @@ describe("la fila guardada", () => {
     expect(cola.every((s) => s.text_style_preset_id === "bold-impact")).toBe(true);
   });
 
-  it("no inventa fuente de remix: la pieza sale original y se dice", async () => {
-    // *Qué* remixar es `DP-005`/`JV-6`, sin implementación. Rellenar la URL con
-    // cualquier tendencia se le mostraría al usuario como `Remixed From`.
+  it("no inventa fuente de remix: sin referencias guardadas, sale original y se dice", async () => {
+    // Sprint 7 (`JV-6`): el remix sale de las referencias **del dueño**
+    // (Inspiration). Sin ninguna, rellenar la URL con cualquier cosa se le
+    // mostraría como `Remixed From`.
     const companyId = await workspaceConMedia();
     await seedPreferences(companyId, { remixPercentage: 100 });
 
@@ -850,8 +853,67 @@ describe("la fila guardada", () => {
     const cola = await readQueue(companyId);
     expect(cola.every((s) => s.remix_source_url === null)).toBe(true);
     expect(cola.every((s) => s.source_trending_item_id === null)).toBe(true);
+    expect(cola[0]?.ai_explanation).toContain("no saved references to remix yet");
+  });
+
+  it("sprint 7 (JV-6): con una referencia guardada, la copy la remixa y la explicación la nombra", async () => {
+    const companyId = await workspaceConMedia();
+    await seedPreferences(companyId, { remixPercentage: 100 });
+    await withCompany(
+      handle.db,
+      companyId,
+      (tx) =>
+        createOwnerReference(
+          tx,
+          { companyId },
+          {
+            platform: "tiktok",
+            permalink: "https://www.tiktok.com/@alguien/video/7300000000000000000",
+            niches: [],
+            ingestState: "ready",
+            format: "video",
+            title: "POV: el lunes te gana",
+          },
+        ),
+      { role: APP_ROLE },
+    );
+    const llm = new FakeLlm();
+
+    await handler({ llm, target: 1 })(ctx({ companyId }));
+
+    const cola = await readQueue(companyId);
     expect(cola[0]?.ai_explanation).toContain(
-      "picking a trending source isn't available yet",
+      'a remix of your saved reference "POV: el lunes te gana"',
+    );
+    // La referencia viaja a la copy como dato (bloque untrusted), no en el sistema.
+    const req = llm.requests[0];
+    expect(req?.untrusted?.[0]?.content).toContain("POV: el lunes te gana");
+    expect(req?.messages[0]?.content).not.toContain("POV: el lunes te gana");
+  });
+
+  it("sprint 7: la copy sale en el idioma de la estrategia guardada; sin estrategia, el del perfil", async () => {
+    const conEstrategia = await workspaceConMedia();
+    await seedPreferences(conEstrategia);
+    await withoutCompany(handle.db, async (tx) => {
+      await tx.insert(brandStrategies).values({
+        companyId: conEstrategia,
+        language: "en",
+        jitterMinutes: 0,
+        brandGapMinutes: 0,
+      });
+    });
+    const llm = new FakeLlm();
+    await handler({ llm, target: 1 })(ctx({ companyId: conEstrategia }));
+    expect(llm.requests[0]?.messages[0]?.content).toContain(
+      "Write every text in English (en)",
+    );
+
+    const sinEstrategia = await workspaceConMedia();
+    await seedPreferences(sinEstrategia);
+    const llm2 = new FakeLlm();
+    await handler({ llm: llm2, target: 1 })(ctx({ companyId: sinEstrategia }));
+    expect(llm2.requests[0]?.messages[0]?.content).toContain(
+      "1. Write in the language and the tone of voice of the brand profile.",
     );
   });
 

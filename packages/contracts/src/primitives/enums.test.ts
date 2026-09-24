@@ -165,6 +165,7 @@ describe("enums literales del PRD", () => {
       "internal",
       // PU-MEDIA-002, migración 0013.
       "brand_kit",
+      "imported",
     ]);
   });
 

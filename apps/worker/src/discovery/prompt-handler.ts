@@ -36,6 +36,29 @@
  * transitorio también cierra: si no, el pedido quedaría `running` para siempre
  * y la web haciendo polling contra nada.
  *
+ * ## Buscar el meme si no hay (sprint 7)
+ *
+ * Con el formato forzado a green-screen, fondo de marca en el Media Bank y
+ * **ningún** clip que matchee el tema, el handler busca uno en YouTube y lo
+ * importa con el pipeline de siempre (`meme-finder.ts`). El pedido pasa a
+ * `phase = searching_meme` (la web lo muestra), cuenta la búsqueda (tope 2 por
+ * pedido, en la base) y anota el clip (`auto_media_id`): si la normalización
+ * no lo dejó `ready` a tiempo, el job se relanza y el reintento lo retoma en
+ * vez de bajar otro. El clip queda en el Media Bank con la etiqueta
+ * `auto-found`, y la sugerencia con la anotación que dibuja el chip.
+ *
+ * Si no aparece ninguno verde: con otros clips (que no matchean) se sigue con
+ * ellos, como antes; sin ninguno, `meme_not_found` («importá uno por link»).
+ *
+ * Sólo con formato forzado: con el mix, buscar un meme cada vez que salga
+ * green-screen sesgaría el mix hacia el formato más lento (decisión que el
+ * PRD no cubre).
+ *
+ * ## `JV-6`
+ *
+ * Entre varios candidatos (influencer, meme, fondo) elige el juicio
+ * (`jv6.ts`); sin modelo, el ranking por tema.
+ *
  * ## Lo que no hace
  *
  * - **No respeta el objetivo de 5**: el usuario pidió N y entran N.
@@ -44,10 +67,18 @@
 import {
   BlitzPromptError,
   DomainError,
+  GREEN_SCREEN_CATEGORY,
+  MEME_SEARCH_LIMITS,
+  buildMediaBank,
   isBlitzPromptPayload,
+  mediaMetaKey,
   parseBlitzPromptJob,
   planPromptSuggestion,
+  relevantCandidates,
   toCopyRemixReference,
+  withAutoFoundMeme,
+  withJudgedMedia,
+  type PlanningMedia,
   type BlitzContentType,
   type CopyRemixReference,
   type BlitzPromptJob,
@@ -55,21 +86,36 @@ import {
   type PromptFailureReason,
 } from "@fastgram/core";
 import {
+  addMediaTag,
+  clearPromptPhase,
   completePromptRequest,
   failPromptRequest,
   findOwnerReference,
   isOpenPromptRequest,
   lockPromptRequest,
   markPromptRequestRunning,
+  mediaRepository,
+  reservePromptMemeSearch,
+  setPromptAutoMedia,
   withCompany,
   type Database,
   type QueuedSuggestionDraft,
   type Transaction,
 } from "@fastgram/db";
-import { PortError, type JobContext, type JobHandler, type Rng } from "@fastgram/ports";
+import {
+  PortError,
+  type JobContext,
+  type JobHandler,
+  type Rng,
+  type Storage,
+} from "@fastgram/ports";
 
 import type { BuildLogger } from "../content/build-handler.js";
 import type { SuggestionCopywriter } from "./copywriter.js";
+import { applyJv6, type Jv6JudgmentProvider } from "./jv6.js";
+import { AUTO_FOUND_TAG } from "./media-descriptors.js";
+import type { MemeFinder } from "./meme-finder.js";
+import { readJsonObject } from "../media-import/status-store.js";
 import {
   readRefillSubject,
   withCopy,
@@ -85,13 +131,50 @@ export interface BlitzPromptDeps {
   readonly copywriter: SuggestionCopywriter | null | CopywriterProvider;
   readonly appRole?: string | undefined;
   readonly logger: BuildLogger;
+  /** Sprint 7: etiquetas de los clips (`JV-6`) y el origen del meme importado. */
+  readonly storage?: Storage | undefined;
+  /** Sprint 7 (`JV-6`): el juicio entre varios candidatos. Ausente = ranking. */
+  readonly judgment?: Jv6JudgmentProvider | undefined;
+  /**
+   * Sprint 7: buscar e importar un meme cuando no hay uno para el tema.
+   * Ausente = el comportamiento de antes (sin `yt-dlp` montado, en tests).
+   */
+  readonly memeFinder?: MemeFinder | undefined;
+  /** Cuánto esperar a que el clip importado quede `ready`. Default 20 s. */
+  readonly memeReadyWaitMs?: number | undefined;
+  /** Sólo tests: la espera entre sondeos. */
+  readonly sleep?: ((ms: number) => Promise<void>) | undefined;
 }
+
+/**
+ * El clip importado todavía no está `ready` (lo normaliza otro job). Se
+ * relanza para que la cola reintente; el reintento retoma el mismo clip.
+ */
+export class MemeNotReadyYet extends Error {
+  override readonly name = "MemeNotReadyYet";
+}
+
+/** Lo que dejó la búsqueda del meme para planificar. */
+type MemePrep =
+  | { readonly kind: "none" }
+  | { readonly kind: "fail" }
+  | { readonly kind: "found"; readonly media: PlanningMedia; readonly sourceUrl: string };
+
+const MEME_POLL_MS = 2_000;
 
 /** Lo que el handler lee del pedido. */
 interface PromptSubject {
   readonly prompt: string;
   readonly contentType: BlitzContentType | null;
   readonly count: number;
+}
+
+/** Lo que la búsqueda del meme necesita del pedido. */
+interface MemeRequest {
+  readonly id: string;
+  readonly prompt: string;
+  readonly contentType: BlitzContentType | null;
+  readonly autoMediaId: string | null;
 }
 
 export function createBlitzPromptHandler(deps: BlitzPromptDeps): JobHandler<unknown> {
@@ -111,6 +194,144 @@ export function createBlitzPromptHandler(deps: BlitzPromptDeps): JobHandler<unkn
     await inCompany(job.companyId, (tx) =>
       failPromptRequest(tx, { companyId: job.companyId }, job.promptRequestId, reason),
     );
+  }
+
+  const sleep =
+    deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+
+  /** La URL de origen del clip (la guarda el import en su metadata). */
+  async function sourceUrlOf(companyId: string, mediaId: string): Promise<string> {
+    if (deps.storage === undefined) return "";
+    try {
+      const raw = await readJsonObject(deps.storage, mediaMetaKey(companyId, mediaId));
+      const url =
+        typeof raw === "object" && raw !== null
+          ? (raw as Record<string, unknown>)["sourceUrl"]
+          : undefined;
+      return typeof url === "string" ? url : "";
+    } catch {
+      return "";
+    }
+  }
+
+  /**
+   * Busca (o retoma) el meme. Ver la cabecera. Lanza {@link MemeNotReadyYet}
+   * para que la cola reintente mientras la normalización termina.
+   */
+  async function prepareMeme(
+    job: BlitzPromptJob,
+    request: MemeRequest,
+    refill: RefillSubject,
+    ctx: JobContext<unknown>,
+    log: Record<string, unknown>,
+  ): Promise<MemePrep> {
+    const finder = deps.memeFinder;
+    if (finder === undefined || request.contentType !== "green-screen") {
+      return { kind: "none" };
+    }
+    const bank = refill.planning.bank;
+    const hasBackground = bank.media.some(
+      (m) => m.mediaType === "image" && m.categories.includes("green-screen-background"),
+    );
+    // Sin fondo, la planificación falla con `no_media_for_format` como antes:
+    // un meme no arregla eso.
+    if (!hasBackground) return { kind: "none" };
+    const anyClip = bank.media.some(
+      (m) => m.mediaType === "video" && m.categories.includes(GREEN_SCREEN_CATEGORY),
+    );
+    const scope = { companyId: job.companyId };
+    let mediaId = request.autoMediaId;
+    if (mediaId === null) {
+      const relevant = relevantCandidates(
+        bank,
+        "green-screen",
+        null,
+        "video",
+        request.prompt,
+        1,
+      );
+      if (relevant.length > 0) return { kind: "none" };
+      const reserved = await inCompany(job.companyId, (tx) =>
+        reservePromptMemeSearch(
+          tx,
+          scope,
+          request.id,
+          MEME_SEARCH_LIMITS.searchesPerRequest,
+        ),
+      );
+      if (!reserved) {
+        deps.logger.info(log, "tope de búsquedas de meme alcanzado");
+        return anyClip ? { kind: "none" } : { kind: "fail" };
+      }
+      const outcome = await finder.find({
+        companyId: job.companyId,
+        topic: request.prompt,
+        requestId: request.id,
+      });
+      const found = outcome.found;
+      await inCompany(job.companyId, async (tx) => {
+        // Los que no resultaron verdes no sirven para nada: afuera (soft delete).
+        for (const id of outcome.rejectedMediaIds) {
+          await mediaRepository.softDelete(tx, scope, id);
+        }
+        if (found !== null) {
+          await setPromptAutoMedia(tx, scope, request.id, found.mediaId);
+          await addMediaTag(tx, scope, found.mediaId, AUTO_FOUND_TAG);
+        } else {
+          await clearPromptPhase(tx, scope, request.id);
+        }
+      });
+      deps.logger.info(
+        { ...log, results: outcome.results, found: found !== null },
+        "búsqueda automática de meme",
+      );
+      if (found === null) return anyClip ? { kind: "none" } : { kind: "fail" };
+      mediaId = found.mediaId;
+    }
+
+    // Esperar a que la normalización lo deje `ready`.
+    const waitMs = deps.memeReadyWaitMs ?? 20_000;
+    const id = mediaId;
+    const load = () =>
+      inCompany(job.companyId, (tx) => mediaRepository.findById(tx, scope, id));
+    let row = await load();
+    for (let waited = 0; row?.status === "processing" && waited < waitMs;) {
+      await sleep(MEME_POLL_MS);
+      waited += MEME_POLL_MS;
+      row = await load();
+    }
+    if (row === null || row.status === "failed") {
+      // Lo borraron o la normalización falló: se olvida y se sigue sin él.
+      await inCompany(job.companyId, async (tx) => {
+        await setPromptAutoMedia(tx, scope, request.id, null);
+        await clearPromptPhase(tx, scope, request.id);
+      });
+      return anyClip ? { kind: "none" } : { kind: "fail" };
+    }
+    if (row.status !== "ready") {
+      if (ctx.attempt < ctx.maxAttempts) {
+        throw new MemeNotReadyYet(`media ${id} todavía ${row.status}`);
+      }
+      // Último intento: se usa igual. Si al aceptar sigue sin estar lista, la
+      // API descarta la tarjeta sin cobrar (`media_unavailable`).
+      deps.logger.warn(
+        { ...log, mediaId: id },
+        "el meme importado sigue sin estar listo",
+      );
+    }
+    await inCompany(job.companyId, (tx) => clearPromptPhase(tx, scope, request.id));
+    return {
+      kind: "found",
+      sourceUrl: await sourceUrlOf(job.companyId, id),
+      media: {
+        id,
+        mediaType: "video",
+        url: row.r2Url,
+        categories: [GREEN_SCREEN_CATEGORY],
+        title: row.filename,
+        autoFound: true,
+      },
+    };
   }
 
   return async function handle(ctx: JobContext<unknown>): Promise<void> {
@@ -168,6 +389,7 @@ export function createBlitzPromptHandler(deps: BlitzPromptDeps): JobHandler<unkn
 
     let refill: RefillSubject;
     let planned: PlannedBlitzSuggestion[];
+    let meme: MemePrep = { kind: "none" };
     // Inspiration «Remix this»: la referencia viaja a la copy como dato
     // (`CopyRemixReference`, bloque `untrusted`). Borrada → prompt común.
     let remix: CopyRemixReference | undefined;
@@ -182,8 +404,53 @@ export function createBlitzPromptHandler(deps: BlitzPromptDeps): JobHandler<unkn
           );
           if (source !== null) remix = toCopyRemixReference(source);
         }
-        return readRefillSubject(tx, job.companyId);
+        return readRefillSubject(tx, job.companyId, deps.storage);
       });
+      meme = await prepareMeme(
+        job,
+        {
+          id: job.promptRequestId,
+          prompt: request.prompt,
+          contentType: request.contentType,
+          autoMediaId: request.autoMediaId,
+        },
+        refill,
+        ctx,
+        base,
+      );
+      if (meme.kind === "fail") {
+        deps.logger.warn({ ...base }, "pedido de prompt sin meme");
+        await fail(job, "meme_not_found");
+        return;
+      }
+      if (meme.kind === "found") {
+        // El meme encontrado es **el** meme de este pedido: los otros clips
+        // verdes no matcheaban el tema (por eso se buscó).
+        const found = meme.media;
+        const bank = refill.planning.bank;
+        refill = {
+          ...refill,
+          planning: {
+            ...refill.planning,
+            bank: {
+              ...buildMediaBank(
+                [
+                  ...bank.media.filter(
+                    (m) =>
+                      !(
+                        m.mediaType === "video" &&
+                        m.categories.includes(GREEN_SCREEN_CATEGORY)
+                      ),
+                  ),
+                  found,
+                ],
+                [],
+              ),
+              influencerPools: bank.influencerPools,
+            },
+          },
+        };
+      }
       planned = Array.from({ length: subject.count }, () =>
         planPromptSuggestion(deps.rng, refill.preferences, refill.planning, {
           topic: subject.prompt,
@@ -205,14 +472,56 @@ export function createBlitzPromptHandler(deps: BlitzPromptDeps): JobHandler<unkn
       return;
     }
 
+    // Sprint 7 (`JV-6`): el juicio elige entre varios candidatos; nunca bloquea.
+    const judgment =
+      deps.judgment === undefined
+        ? null
+        : await deps
+            .judgment({
+              companyId: job.companyId,
+              subjectType: "blitz_prompt_request",
+              subjectId: job.promptRequestId,
+            })
+            .catch(() => null);
+    const autoMeme = meme.kind === "found" ? meme : null;
+
     const drafts: QueuedSuggestionDraft[] = [];
     let lastPortError: PortError | null = null;
     let rejected = 0;
-    for (const p of planned) {
+    for (const planned0 of planned) {
+      let p = await applyJv6(planned0, {
+        judgment,
+        rng: deps.rng,
+        context: refill.planning,
+        brandName: refill.businessName,
+        profile: refill.profile,
+        logger: deps.logger,
+      });
+      const memeId = p.media.format === "green-screen" ? p.media.video.mediaId : null;
+      if (autoMeme !== null && memeId === autoMeme.media.id) {
+        p = withJudgedMedia(
+          p,
+          "video",
+          { mediaId: autoMeme.media.id, url: autoMeme.media.url },
+          "Meme: your Media Bank had none for this topic, so one was found on " +
+            "YouTube and imported (tagged auto-found).",
+        );
+      }
       try {
         const draft = await withCopy(copywriter, refill, p, subject.prompt, remix);
         if (draft.ok) {
-          drafts.push(draft.draft);
+          drafts.push(
+            autoMeme === null
+              ? draft.draft
+              : {
+                  ...draft.draft,
+                  buildPlan: withAutoFoundMeme(
+                    draft.draft.buildPlan as object,
+                    { mediaId: autoMeme.media.id, sourceUrl: autoMeme.sourceUrl },
+                    memeId,
+                  ),
+                },
+          );
         } else {
           rejected += 1;
           deps.logger.warn(

@@ -54,11 +54,14 @@ import {
   type CalendarNetwork,
   type FastgramMode,
   type PlannedSlot,
+  type ScheduleOptions,
 } from "@fastgram/contracts";
 import {
   AUTO_SLOT_HORIZON_DAYS,
   assertCanMovePost,
   assertCanMoveSlot,
+  deriveCaptionsForAll,
+  effectiveDailyQuota,
   isMovablePost,
   planAutoSlots,
   planSlotConversion,
@@ -89,12 +92,13 @@ import { ApiRejection } from "../../http/errors.js";
 import { toPost } from "../../support/serializers.js";
 import {
   isStorableId,
-  publishJobFor,
   schedulePostsInTx,
+  supersedePost,
   type FlatTarget,
 } from "./posts.js";
 import { crossTenant, data, notFound } from "./shared.js";
 import { loadStrategy, toSlotStrategy } from "./strategy.js";
+import { xAllowLinksFromEnv } from "./posts-caption.js";
 import type { ZodApp } from "../../server/types.js";
 
 const DAY_MS = 86_400_000;
@@ -132,9 +136,14 @@ class ScheduleRejected extends Error {
   }
 }
 
-export function registerCalendarRoutes(app: ZodApp): void {
+export function registerCalendarRoutes(
+  app: ZodApp,
+  options: { readonly xAllowLinks?: boolean } = {},
+): void {
   const { db, clock, queue, appRole } = app.deps;
   const mode: FastgramMode = app.deps.mode ?? "standard";
+  // Sprint 7: la caption derivada de X lleva links sólo si la instalación los permite.
+  const xAllowLinks = options.xAllowLinks ?? xAllowLinksFromEnv(process.env);
 
   // ── POST /content/:id/autoschedule ──
   app.post(
@@ -159,6 +168,7 @@ export function registerCalendarRoutes(app: ZodApp): void {
             companyId,
             contentId,
             nowMs,
+            xAllowLinks,
             ...(request.body.networks === undefined
               ? {}
               : { networks: request.body.networks }),
@@ -211,6 +221,38 @@ export function registerCalendarRoutes(app: ZodApp): void {
             }),
           );
       }
+    },
+  );
+
+  // ── GET /content/:id/schedule-options ── (sprint 7: el diálogo de Schedule)
+  //
+  // Lo mismo que calcula el auto-slot, **sin escribir nada**: el próximo horario
+  // libre de cada red de la estrategia (mirando todas las marcas del dueño), más
+  // la caption derivada por red y las conexiones activas. Sin lock de dueño: es
+  // una sugerencia; la hora la confirma el usuario y el `schedule` la valida.
+  app.get(
+    "/content/:id/schedule-options",
+    { schema: { params: idParams } },
+    async (request) => {
+      const { id: contentId } = request.params;
+      const companyId = request.auth.companyId;
+      if (!isStorableId(contentId)) throw notFound("content");
+      const nowMs = clock.nowMs();
+      const context = await brandContext(db, appRole, mode, request, "all");
+      const options = await request.tx((tx) =>
+        scheduleOptions(tx, {
+          db,
+          appRole,
+          queue,
+          context,
+          companyId,
+          contentId,
+          nowMs,
+          xAllowLinks,
+        }),
+      );
+      if (options === null) throw crossTenant("content", contentId, companyId);
+      return data(options);
     },
   );
 
@@ -397,6 +439,7 @@ interface AutoscheduleInput {
   readonly contentId: string;
   readonly nowMs: number;
   readonly networks?: readonly StrategyNetwork[];
+  readonly xAllowLinks?: boolean;
 }
 
 type AutoscheduleOutcome =
@@ -489,6 +532,7 @@ async function autoschedule(
           at,
           nowMs,
           queue: input.queue,
+          xAllowLinks: input.xAllowLinks === true,
         })),
       );
       continue;
@@ -502,6 +546,74 @@ async function autoschedule(
     );
   }
   return { kind: "scheduled", posts, slots, skipped };
+}
+
+async function scheduleOptions(
+  tx: Executor,
+  input: AutoscheduleInput,
+): Promise<ScheduleOptions | null> {
+  const { companyId, contentId, nowMs } = input;
+  const scope = { companyId };
+  const content = await contentRepository.findById(tx, scope, contentId);
+  if (content === null) return null;
+
+  const strategy = await loadStrategy(tx, companyId);
+  const occupied = await occupiedAcrossBrands(tx, input);
+  const already = new Set<string>([
+    ...(await postCalendar.livePlatformsOf(tx, scope, contentId)),
+    ...(await plannedSlotRepository.plannedNetworksOf(tx, scope, contentId)),
+  ]);
+  // Sin `alreadyScheduled`: la sugerencia es "cuándo iría", aunque ya haya uno.
+  const outcomes = planAutoSlots({
+    strategy: toSlotStrategy(strategy),
+    brandId: companyId,
+    contentId,
+    nowMs,
+    occupied,
+  });
+  const suggested = new Map<string, number>();
+  for (const outcome of outcomes) {
+    if (outcome.kind === "slot") suggested.set(outcome.slot.network, outcome.slot.atMs);
+  }
+  const inStrategy = new Set<string>(
+    strategy.networks.filter((n) => effectiveDailyQuota(n) > 0).map((n) => n.network),
+  );
+
+  const connections = await connectionRepository.list(tx, scope, {
+    limit: 100,
+    filter: { status: { eq: "active" } },
+  });
+  const captions = deriveCaptionsForAll(
+    SCHEDULABLE_PLATFORMS,
+    { generatedText: content.generatedText },
+    { allowXLinks: input.xAllowLinks === true },
+  );
+
+  const networks = SCHEDULABLE_PLATFORMS.map((network) => ({
+    network,
+    inStrategy: inStrategy.has(network),
+    suggestedAtUtc: suggested.get(network) ?? null,
+    alreadyScheduled: already.has(network),
+    connections: connections.items
+      .filter((c) => c.platform === network)
+      .map((c) => ({
+        connectionId:
+          c.id as ScheduleOptions["networks"][number]["connections"][number]["connectionId"],
+        username: c.platformUsername,
+      })),
+    caption: captions[network]?.caption ?? null,
+    description: captions[network]?.description ?? null,
+  }));
+  const times = [...suggested.values()];
+  return {
+    contentId: content.id as ScheduleOptions["contentId"],
+    contentType: content.type,
+    contentStatus: content.status,
+    timezone: strategy.timezone,
+    suggestedAtUtc: times.length === 0 ? null : Math.min(...times),
+    xAllowLinks: input.xAllowLinks === true,
+    networks,
+  };
 }
 
 /**
@@ -561,7 +673,10 @@ function isSchedulable(platform: string): platform is SchedulablePlatform {
   return (SCHEDULABLE_PLATFORMS as readonly string[]).includes(platform);
 }
 
-/** Un target de `schedule` sin copy: la caption la pone el editor o el sprint 3. */
+/**
+ * Un target de `schedule` sin copy. `caption: null` no es «vacía»: sprint 7,
+ * `schedulePostsInTx` la deriva de la copy de la pieza (`captionFieldsFor`).
+ */
 function bareTarget(platform: SchedulablePlatform, connectionId: string): FlatTarget {
   return {
     platform,
@@ -589,6 +704,7 @@ async function createPost(
     readonly at: Date;
     readonly nowMs: number;
     readonly queue: Queue;
+    readonly xAllowLinks?: boolean;
   },
 ): Promise<PostRowForCalendar[]> {
   if (!isSchedulable(input.platform)) {
@@ -603,6 +719,7 @@ async function createPost(
     scheduledAt: input.at,
     nowMs: input.nowMs,
     queue: input.queue,
+    xAllowLinks: input.xAllowLinks === true,
   });
   if (result.kind === "created") return result.rows;
   if (result.kind === "rejected") {
@@ -635,6 +752,7 @@ export async function convertPlannedSlot(
     readonly slotId: string;
     readonly nowMs: number;
     readonly queue: Queue;
+    readonly xAllowLinks?: boolean;
   },
 ): Promise<
   | { readonly kind: "converted"; readonly post: PostRowForCalendar }
@@ -665,6 +783,7 @@ export async function convertPlannedSlot(
     at: slot.scheduledAtUtc,
     nowMs: input.nowMs,
     queue: input.queue,
+    xAllowLinks: input.xAllowLinks === true,
   });
   if (post === undefined) throw new Error("schedulePostsInTx no devolvió el post.");
   const closed = await plannedSlotRepository.markConverted(tx, scope, slot.id, post.id);
@@ -688,45 +807,6 @@ function movableOf(post: PostRowForCalendar) {
     cancellationPending: post.cancellationPending,
     scheduledFor: post.scheduledAtUtc,
   };
-}
-
-/** Ver la cabecera: la vieja a `CANCELLED`, una nueva con su job. */
-async function supersedePost(
-  tx: Executor,
-  companyId: string,
-  post: PostRowForCalendar,
-  to: Date,
-  queue: Queue,
-): Promise<PostRowForCalendar> {
-  const scope = { companyId };
-  const cancelled = await postRepository.update(tx, scope, post.id, {
-    status: "CANCELLED",
-  });
-  if (cancelled === null) throw notFound("post");
-
-  const next = await postRepository.create(tx, scope, {
-    contentId: post.contentId,
-    platform: post.platform,
-    accountType: post.accountType,
-    connectionId: post.connectionId,
-    warmedAccountId: post.warmedAccountId,
-    connectionUsername: post.connectionUsername,
-    scheduledAtUtc: to,
-    caption: post.caption,
-    description: post.description,
-    postingMode: post.postingMode,
-    privacyLevel: post.privacyLevel,
-    discloseAsAds: post.discloseAsAds,
-    aiContentDisclaimer: post.aiContentDisclaimer,
-    instagramSlideshowFormat: post.instagramSlideshowFormat,
-    tiktokSoundMode: post.tiktokSoundMode,
-    tiktokSoundId: post.tiktokSoundId,
-    automationSlotId: post.automationSlotId,
-    status: post.status,
-  });
-  // ADR-005: el job nuevo en la misma transacción que la fila nueva.
-  await queue.enqueue(publishJobFor(companyId, next.id, to, tx));
-  return next;
 }
 
 // ───────────────────────────────────────────────────────────────────────────

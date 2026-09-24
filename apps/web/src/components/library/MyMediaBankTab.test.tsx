@@ -20,7 +20,7 @@
  */
 import { mediaSchema, type Media } from "@fastgram/contracts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -207,7 +207,9 @@ describe("lo que dice cada tarjeta (PRD:1626)", () => {
     // `2.5312 MB` es ruido. La fecha va en UTC para que dos personas del mismo
     // workspace vean lo mismo.
     expect(screen.getByText("2.5 MB · 22/09/26")).toBeInTheDocument();
-    expect(screen.getByText("slide")).toBeInTheDocument();
+    // En la tarjeta: el `<select>` de categorías (sprint 7) también dice «slide».
+    const card = screen.getByText("beach.jpg").closest("li") as HTMLElement;
+    expect(within(card).getByText("slide")).toBeInTheDocument();
   });
 
   it("un asset sin categorías se dice `Uncategorized`, no se deja en blanco", async () => {

@@ -229,7 +229,7 @@ export const webEn = {
   "mediaImport.foregroundHint":
     "Green screen video = a clip to overlay on your brand backgrounds. If it isn't green, its background is removed with fal (Settings → Models → Background removal).", // nuevo
   "mediaImport.audioHint":
-    "Audio is saved to your brand's storage. It doesn't show up in the Media Bank yet.", // nuevo · DATA-010 no tiene tipo audio
+    "Audio goes to your brand's audio library (Library → Audio), ready to pick in the editor.", // nuevo · sprint 7, migración 0025
   "mediaImport.rights":
     "You're responsible for having the rights to publish what you import.", // nuevo · D-12
   "mediaImport.submit": "Import", // nuevo
@@ -239,7 +239,7 @@ export const webEn = {
   "mediaImport.state.downloading": "Downloading…", // nuevo
   "mediaImport.state.processing": "Imported. Preparing the video…", // nuevo
   "mediaImport.state.done": "Imported to your Media Bank.", // nuevo
-  "mediaImport.state.audioDone": "Audio imported.", // nuevo
+  "mediaImport.state.audioDone": "Audio imported to your audio library.", // nuevo
   "mediaImport.background.pending": "Removing the background…", // nuevo
   "mediaImport.background.greenScreen":
     "Green screen detected: it's keyed out when the video is rendered.", // nuevo
@@ -737,6 +737,85 @@ export const webEn = {
   "brand.assist.bioTooLong": "Keep the bio under {max} characters.", // nuevo
   "brand.assist.captionTooLong": "Caption {index} is longer than {max} characters.", // nuevo
   "brand.assist.tooManyCaptions": "That's {count} captions. Paste up to {max}.", // nuevo
+  /* ---------------- brand · sprint 7 (agente D): inteligencia de marca */
+  // Todo `nuevo` salvo lo marcado: el PRD no trae copy para estas tarjetas.
+  "brand.reload": "Reload", // nuevo
+  "brand.revisionConflict":
+    "Your brand profile changed in another tab. Reload to see the latest version.", // nuevo · P1-BRANDPG-004
+  "brand.proposals.title": "Suggested updates", // nuevo · P1-BRANDPG-005
+  "brand.proposals.body":
+    "A source found a different answer for fields you edited. Nothing changes until you decide.", // nuevo
+  "brand.proposals.suggests": "This source suggests a different answer — replace?", // literal ERR-B14
+  "brand.proposals.yours": "Yours", // nuevo
+  "brand.proposals.fromSource": "From your {platform} source", // nuevo
+  "brand.proposals.emptyValue": "(empty)", // nuevo
+  "brand.proposals.accept": "Replace", // nuevo
+  "brand.proposals.dismiss": "Keep mine", // nuevo
+  "brand.profiling.title": "About your business", // nuevo · F-006
+  "brand.profiling.body": "Six quick answers that shape what we write for you.", // nuevo
+  "brand.profiling.ownerRole": "Select your role", // literal PRD:766
+  "brand.profiling.teamSize": "How big is your current team?", // literal PRD:766
+  "brand.profiling.businessModel": "Business model", // literal PRD:766
+  "brand.profiling.businessCategories": "Business category (select all that apply)", // literal PRD:766
+  "brand.profiling.monthlyRevenueBand": "What is your current monthly revenue?", // literal PRD:766
+  "brand.profiling.expectations":
+    "What do you expect from the platform? Select all that apply", // literal PRD:766
+  "brand.profiling.selectOne": "Select one", // literal PRD:766
+  "brand.profiling.other": "Other", // nuevo
+  "brand.profiling.otherPlaceholder": "Tell us", // nuevo
+  "brand.profiling.otherPlaceholderMany": "Other (comma-separated)", // nuevo
+  "brand.profiling.missing.ownerRole": "Please select your role", // literal PRD:789
+  "brand.profiling.missing.teamSize": "Please select your team size", // literal PRD:789
+  "brand.profiling.missing.businessModel": "Please select your business model", // literal PRD:789
+  "brand.profiling.missing.businessCategories":
+    "Please select at least one business category", // literal PRD:789
+  "brand.profiling.missing.monthlyRevenueBand": "Please select your monthly revenue", // literal PRD:789
+  "brand.profiling.saved": "Saved", // nuevo
+  "brand.logo.title": "Logo", // nuevo · P1-ONB-003 (`Company Logo (optional)`)
+  "brand.logo.none": "No logo yet — the brand switcher shows your initials.", // nuevo
+  "brand.logo.shown": "Shown in the brand switcher.", // nuevo
+  "brand.logo.placeholder": "Logo", // nuevo
+  "brand.logo.alt": "Brand logo", // nuevo
+  "brand.logo.upload": "Upload logo", // nuevo
+  "brand.logo.replace": "Replace", // nuevo
+  "brand.logo.remove": "Remove", // nuevo
+  "brand.logo.saved": "Logo updated", // nuevo
+  "brand.logo.badType": "Use a PNG, JPEG or WebP image.", // nuevo
+  "brand.logo.tooBig": "That image is too large even after resizing. Try a simpler logo.", // nuevo
+  "brand.logo.unreadable": "We couldn't read that image.", // nuevo
+  "brand.screenshots.hint":
+    "Or upload up to {max} screenshots of your profile: we'll read the text into the bio field so you can check it.", // nuevo · P1-BRAND-014
+  "brand.screenshots.upload": "Upload screenshots", // nuevo
+  "brand.screenshots.reading": "Reading {done} of {total}…", // nuevo
+  "brand.screenshots.tooMany": "Only the first {max} screenshots were read.", // nuevo
+  "brand.screenshots.badType": "Screenshot {n} isn't a PNG, JPEG or WebP image.", // nuevo
+  "brand.screenshots.tooBig": "Screenshot {n} is too large to read.", // nuevo
+  "brand.screenshots.noText": "We found no text in screenshot {n}.", // nuevo
+  "brand.screenshots.failed": "Screenshot {n} couldn't be read.", // nuevo
+  "brand.angles.title": "Content angles", // nuevo · FR-056
+  "brand.angles.body":
+    "Themes your content keeps coming back to. Weights decide how often each one shows up in Blitz.", // nuevo
+  "brand.angles.generate": "Suggest an angle", // nuevo · AI-005
+  "brand.angles.generating": "Thinking…", // nuevo
+  "brand.angles.suggestion": "Suggested angle — edit it before saving if you like", // nuevo
+  "brand.angles.saveSuggestion": "Save angle", // nuevo
+  "brand.angles.discard": "Discard", // nuevo
+  "brand.angles.cancel": "Cancel", // nuevo
+  "brand.angles.fieldTitle": "Title", // nuevo
+  "brand.angles.fieldDescription": "Description", // nuevo
+  "brand.angles.fieldAudience": "Target audience", // nuevo
+  "brand.angles.audience": "For: {audience}", // nuevo
+  "brand.angles.inactive": "Inactive", // nuevo
+  "brand.angles.delete": "Delete", // nuevo
+  "brand.angles.restore": "Restore", // nuevo
+  "brand.angles.weight": "Weight", // nuevo
+  "brand.angles.weightsSum": "Weights must add up to 100 (now {sum}).", // nuevo · FR-055
+  "brand.angles.saveWeights": "Save weights", // nuevo
+  "brand.angles.emptyTitle": "No content angles yet", // nuevo
+  "brand.angles.emptyBody":
+    "Suggest one from your brand profile — or from your best-performing posts once there are metrics.", // nuevo
+  "onboarding.source.postAuthorUnknown":
+    "We can't tell who posted this link. Paste the profile link instead, or paste your bio.", // nuevo · P1-BRAND-005
 
   /* --------------------------- Onboarding · paso 4 · FR-010 (PRD:748, 760) */
   "onboarding.processing.done": "Brand analysis finished", // nuevo · ver `ProcessingStep`
@@ -749,6 +828,360 @@ export const webEn = {
   "onboarding.step.profiling": "Profiling", // literal PRD:747
   "onboarding.step.processing": "Processing", // literal PRD:748
   "onboarding.step.ready": "Path hint", // literal PRD:749
+
+  /* ------------- Audio de la marca · sprint 7 (FR-053, migración 0025) */
+  "audio.picker.search": "Search your audio", // nuevo
+  "audio.picker.empty":
+    "Your brand's audio library is empty. Upload a track here or import one from a link.", // nuevo
+  "audio.picker.noMatches": "No tracks match “{q}”.", // nuevo
+  "audio.picker.error": "Couldn't load your audio library.", // nuevo
+  "audio.picker.hint": "The track plays from the start and loops until the video ends.", // nuevo · ver `formats.ts` del render
+  "audio.picker.hintGreenScreen":
+    "The clip keeps its own sound at full volume; the track plays underneath at 30%.", // nuevo
+  "audio.preview.play": "Play {title}", // nuevo
+  "audio.preview.pause": "Pause {title}", // nuevo
+  "audio.preview.failed": "This track can't be played in the browser.", // nuevo
+  "audio.upload": "Upload audio", // nuevo
+  "audio.uploading": "Uploading…", // nuevo
+  "audio.upload.formats": "MP3, M4A, AAC or WAV · up to {max} MB", // nuevo
+  "audio.upload.error.too_large": "That file is over {max} MB.", // nuevo
+  "audio.upload.error.unsupported_type": "Use an MP3, M4A, AAC or WAV file.", // nuevo
+  "audio.upload.error.empty": "That file is empty.", // nuevo
+  "audio.upload.error.failed": "The upload failed. Try again.", // nuevo
+  "audio.panel.title": "Audio", // nuevo
+  "audio.panel.description":
+    "Music for your videos. Pick a track in the editor, or let Blitz add one to new video pieces.", // nuevo
+  "audio.panel.emptyTitle": "No audio yet", // nuevo
+  "audio.panel.emptyBody":
+    "Upload a track, or use Import from link → Audio to bring one from TikTok or YouTube.", // nuevo
+  "audio.panel.retry": "Retry", // nuevo
+  "audio.panel.loadMore": "Load more", // nuevo
+  "audio.panel.rename": "Rename", // nuevo
+  "audio.panel.renameLabel": "Track name", // nuevo
+  "audio.panel.save": "Save", // nuevo
+  "audio.panel.cancel": "Cancel", // nuevo
+  "audio.panel.delete": "Delete", // nuevo
+  "audio.panel.confirmDelete":
+    "Delete “{title}”? Pieces that already use it keep their sound.", // nuevo
+  "audio.panel.autoUse": "Use in Blitz", // nuevo
+  "audio.panel.autoUseHint":
+    "New video pieces from Blitz get one of the tracks marked “Use in Blitz”, at random.", // nuevo
+  "audio.panel.origin.upload": "Uploaded", // nuevo
+  "audio.panel.origin.import": "Imported", // nuevo
+  "audio.panel.actionFailed": "That didn't work. Try again.", // nuevo
+
+  // ── Sprint 7 (F): Content Studio, Media Bank y posts propios ──
+  "studio.hub.description":
+    "Build a piece by hand from your Media Bank, or let AI write it.", // nuevo
+  "studio.hub.base": "Base formats", // nuevo
+  "studio.hub.ai": "AI formats", // nuevo
+  "studio.hub.aiDescription": "Generated with image and video models.", // nuevo
+  "studio.modes": "Studio mode", // nuevo
+  "studio.mode.create": "Create New", // literal F-072
+  "studio.mode.remix": "Remix", // literal F-071
+  "studio.steps": "Steps", // nuevo
+  "studio.step.media": "Media", // nuevo
+  "studio.step.text": "Text", // nuevo
+  "studio.step.style": "Style", // nuevo
+  "studio.step.done": "done", // nuevo · lectores de pantalla
+  "studio.step.pending": "to do", // nuevo · lectores de pantalla
+  "studio.slot.slides": "Slide images", // nuevo
+  "studio.slot.video": "Video", // nuevo
+  "studio.slot.backgroundVideo": "Background video", // nuevo
+  "studio.slot.greenScreenVideo": "Meme clip (green screen)", // nuevo
+  "studio.slot.image": "Background image", // nuevo
+  "studio.slot.hookVideo": "Hook video", // nuevo
+  "studio.slot.demoVideo": "Demo video", // literal F-079
+  "studio.slot.choose": "Choose", // nuevo
+  "studio.slot.change": "Change", // nuevo
+  "studio.slot.empty": "Nothing picked yet.", // nuevo
+  "studio.demoGuide":
+    "Record your app demo vertically (9:16), 5–15 seconds, showing one feature end to end.", // nuevo · F-079 sin URL de guía
+  "studio.text.mode": "How to write the text", // nuevo
+  "studio.text.write": "Write it", // nuevo
+  "studio.text.ai": "Generate with AI", // nuevo
+  "studio.text.aiPrompt": "What should it say?", // nuevo
+  "studio.text.aiPlaceholder": "e.g. 3 mistakes people make when they start running", // nuevo
+  "studio.text.mentionBusiness": "Mention my business", // nuevo
+  "studio.text.aiHint":
+    "Your text model (Settings → Models) writes it right before the video is built.", // nuevo
+  "studio.text.slide": "Slide {n}", // nuevo
+  "studio.text.caption": "Text", // nuevo
+  "studio.text.slideHint": "One text per slide, up to {max} slides.", // nuevo
+  "studio.style.preset": "Text style", // nuevo
+  "studio.style.aspectRatio": "Aspect ratio", // nuevo
+  "studio.preview": "Preview", // nuevo
+  "studio.preview.aiText": "AI will write this text", // nuevo
+  "studio.preview.placeholder": "Your text", // nuevo
+  "studio.preview.slides": "{count} slides", // nuevo
+  "studio.preview.note": "A rough preview. The editor shows the real piece.", // nuevo
+  "studio.save": "Save", // literal F-081
+  "studio.clear": "Clear", // literal F-082
+  "studio.cancel": "Cancel", // nuevo
+  "studio.retry": "Retry", // nuevo
+  "studio.saveDisabledHint": "Complete the three steps to save.", // nuevo · F-073
+  "studio.picker.search": "Search your media", // literal PRD («Search your images»)
+  "studio.picker.error": "We couldn't load your media.", // nuevo
+  "studio.picker.empty": "No ready media of this type yet.", // nuevo
+  "studio.picker.filteredEmpty": "Nothing matches.", // nuevo
+  "studio.picker.clearFilters": "Clear filters", // nuevo
+  "studio.picker.goToLibrary": "Upload in the Library", // nuevo
+  "studio.picker.selectedCount": "{count} of {max} selected", // nuevo
+  "studio.picker.use": "Use", // nuevo
+  "studio.remix.intro":
+    "Pick a reference from Inspiration. Remixes land in Blitz, adapted to this brand.", // nuevo
+  "studio.remix.search": "Search Inspiration", // nuevo
+  "studio.remix.error": "We couldn't load Inspiration.", // nuevo
+  "studio.remix.empty": "No references saved yet.", // nuevo
+  "studio.remix.goToInspiration": "Save one in Inspiration", // nuevo
+  "studio.remix.untitled": "Untitled", // nuevo
+  "studio.remix.action": "Remix this", // nuevo
+  "studio.remix.prev": "Previous", // nuevo
+  "studio.remix.next": "Next", // nuevo
+  "mediaBank.back": "← Back", // nuevo · FR-100.1
+  "mediaBank.search.placeholder": "Search by name or tag", // nuevo
+  "mediaBank.filter.categoryLabel": "Category", // nuevo
+  "mediaBank.filter.allCategories": "All categories", // literal PRD:1623
+  "mediaBank.tags.label": "Tags (comma separated)", // nuevo
+  "mediaBank.tags.placeholder": "e.g. office, pov, summer", // nuevo
+  "mediaBank.tags.filterLabel": "Filter by tag", // nuevo
+  "mediaBank.hdrKept": "HDR · original kept", // nuevo
+  "mediaBank.hdrKept.hint":
+    "This HDR video couldn't be converted to SDR on this machine. Colors may look washed out.", // nuevo
+  "mediaBank.sets.title": "Your sets", // literal PRD:1620
+  "mediaBank.sets.new": "+ New set", // literal PRD:1620
+  "mediaBank.sets.count": "{count} items", // nuevo
+  "mediaBank.sets.kind.slideshow": "SLIDESHOW", // literal PRD:1620
+  "mediaBank.sets.kind.video": "VIDEO", // literal PRD:1620
+  "mediaBank.sets.kind.curated": "CURATED", // literal PRD:1620
+  "mediaBank.sets.kindLabel": "Set type", // nuevo
+  "mediaBank.sets.deleteAria": "Delete set {name}", // nuevo
+  "mediaBank.sets.deleteConfirm": "Delete the set “{name}”? Its media stay in the bank.", // nuevo
+  "mediaBank.sets.loadError": "We couldn't load your sets.", // nuevo
+  "mediaBank.sets.creating": "CREATING SET", // literal PRD:1651
+  "mediaBank.sets.selected": "{count} selected", // literal PRD:1651 (forma)
+  "mediaBank.sets.selectedNeed": "{count} selected (need {missing} more)", // literal PRD:1651
+  "mediaBank.sets.nameLabel": "Set name", // literal PRD:1652
+  "mediaBank.sets.namePlaceholder": "Set name (e.g. 'Bedroom shots')", // literal PRD:1652
+  "mediaBank.sets.cancel": "✕ Cancel", // literal PRD:1653
+  "mediaBank.sets.save": "✓ Save", // literal PRD:1653
+  "mediaBank.sets.selectAria": "Select {name}", // nuevo
+  "ownPosts.open": "Import my posts", // nuevo · FR-011.5.1
+  "ownPosts.title": "Import your own posts", // nuevo
+  "ownPosts.description":
+    "Bring your latest posts into the Media Bank so Blitz can use real brand media. Nothing is imported unless you confirm.", // nuevo
+  "ownPosts.source": "From", // nuevo
+  "ownPosts.source.connection": "A connected account (Instagram, YouTube)", // nuevo
+  "ownPosts.source.profile": "A public profile link (TikTok, YouTube)", // nuevo
+  "ownPosts.account": "Account", // nuevo
+  "ownPosts.accountsError": "We couldn't load your connected accounts.", // nuevo
+  "ownPosts.noAccounts":
+    "No connected Instagram or YouTube account. Connect one in Settings → Connections, or use a profile link.", // nuevo
+  "ownPosts.profileUrl": "Profile link", // nuevo
+  "ownPosts.profileHint":
+    "Read without logging in. Some sites block this; if so, connect the account.", // nuevo
+  "ownPosts.limit": "How many posts", // nuevo
+  "ownPosts.consent": "Yes, import my posts into the Media Bank", // nuevo · opt-in, desmarcado
+  "ownPosts.start": "Import", // nuevo
+  "ownPosts.running": "Importing… you can close this, it keeps going.", // nuevo
+  "ownPosts.done":
+    "Imported {imported}, skipped {skipped} already here, {failed} failed.", // nuevo
+  "ownPosts.close": "Close", // nuevo
+  "ownPosts.error.unsupportedPlatform":
+    "That network isn't supported for importing posts.", // nuevo
+  "ownPosts.error.unsupportedUrl": "That link can't be read.", // nuevo
+  "ownPosts.error.connectionUnavailable": "Reconnect the account and try again.", // nuevo
+  "ownPosts.error.listingFailed": "We couldn't read the posts from that profile.", // nuevo
+  "ownPosts.error.nothingFound": "No posts found.", // nuevo
+  "ownPosts.error.generic": "The import failed.", // nuevo
+  /* ------------------------------ Schedule · sprint 7 (publish-flow) · FR-060 */
+  "schedule.title": "Schedule post", // nuevo
+  "schedule.description":
+    "Pick the networks, check each caption and choose when it goes out.", // nuevo
+  "schedule.networks": "Networks", // nuevo
+  "schedule.noNetworks":
+    "This brand has no connected networks and none in its strategy. Connect an account in Settings → Connections.", // nuevo
+  "schedule.unconnectedHint":
+    "In the strategy but not connected: {networks}. Auto-slot plans them, and they go out once you connect them.", // nuevo
+  "schedule.notConnected": "Not connected", // nuevo
+  "schedule.alreadyScheduled": "Already scheduled", // nuevo
+  "schedule.account": "{network} account", // nuevo
+  "schedule.captionField": "Caption", // nuevo
+  "schedule.titleField": "Title", // nuevo
+  "schedule.descriptionField": "Description", // nuevo
+  "schedule.counter": "{count}/{max}", // nuevo · el `Caption 0/2200` de F-153
+  "schedule.emptyCaption": "Empty caption: the post goes out with no text.", // nuevo
+  "schedule.improve": "Improve", // nuevo
+  "schedule.regenerate": "Regenerate", // nuevo
+  "schedule.ai.notConfigured":
+    "No text model is set up. Choose one in Settings → Models.", // nuevo
+  "schedule.ai.failed": "The text model didn't answer. Try again.", // nuevo
+  "schedule.ai.rejected": "The model's answer couldn't be used. Try again.", // nuevo
+  "schedule.igFormat": "Post this slideshow as", // nuevo · F-158
+  "schedule.igFormat.carousel": "Carousel", // literal F-158
+  "schedule.igFormat.reel": "Reel (video)", // nuevo · F-158 `reel`
+  "schedule.aiLabel": "Label as AI-generated content", // nuevo · NFR-024
+  "schedule.tiktokInbox":
+    "Goes to your TikTok inbox as a draft. Pick privacy and sound when you finish it in the app.", // nuevo · D-10
+  "schedule.xNoLinks": "Links are removed on X (a post with a link costs much more).", // nuevo
+  "schedule.when": "When · {timezone}", // nuevo
+  "schedule.date": "Date", // nuevo
+  "schedule.time": "Time", // nuevo
+  "schedule.useSuggested": "Next free slot", // nuevo
+  "schedule.inPast": "Pick a time in the future, or use Post now.", // nuevo
+  "schedule.problem.noneSelected": "Select at least one network.", // nuevo
+  "schedule.problem.noConnection": "{network} has no connected account.", // nuevo
+  "schedule.problem.tooLong": "The {network} text is over the limit.", // nuevo
+  "schedule.cancel": "Cancel", // nuevo
+  "schedule.postNow": "Post now", // nuevo · F-157
+  "schedule.submit": "Schedule", // nuevo
+  "schedule.toast.postingNow": "Publishing now on {count} network(s)", // nuevo
+  "schedule.toast.scheduled": "Scheduled on {count} network(s) · {when}", // nuevo
+  "schedule.acceptCustom": "Schedule…", // nuevo
+  "schedule.acceptCustomDescription": "Choose networks, captions and time yourself.", // nuevo
+  "postEdit.title": "Post", // nuevo
+  "postEdit.description": "Edit the caption or time, or retry a failed post.", // nuevo
+  "postEdit.otherBrand":
+    "This post belongs to another brand. Switch to it to edit the post.", // nuevo
+  "postEdit.save": "Save changes", // nuevo
+  "postEdit.cancelPost": "Cancel post", // nuevo
+  "postEdit.retryNow": "Retry now", // nuevo
+  "postEdit.reschedule": "Reschedule", // nuevo
+  "postEdit.confirmNotPublished": "I checked the account: it wasn't published", // nuevo · NFR-015
+  "postEdit.confirmNotPublishedHint":
+    "The platform may have published it anyway. Retrying without checking can post it twice.", // nuevo
+  "postEdit.needsConfirmation": "Confirm you checked the account before retrying.", // nuevo
+  "postEdit.toast.saved": "Post updated", // nuevo
+  "postEdit.toast.retried": "Post queued again", // nuevo
+  "postEdit.toast.cancelled": "Post cancelled", // nuevo
+  "library.detail.schedule": "Schedule", // nuevo
+  "library.detail.autoslot": "Auto-slot", // nuevo · PU-CAL-001
+  "library.detail.autoslotNothing":
+    "Nothing to schedule: it's already on every network of the strategy.", // nuevo
+  "today.failed.retry": "Retry", // nuevo
+  "today.failed.reschedule": "Reschedule", // nuevo
+  "posts.actions.retry": "Retry", // nuevo · PRD:1611
+  "posts.actions.reschedule": "Reschedule", // literal PRD:1611
+  "posts.actions.edit": "Edit", // nuevo
+  "posts.actions.cancel": "Cancel", // literal PRD:1611
+  "posts.refreshMetrics": "Refresh Metrics", // literal PRD:1605
+  "posts.refreshQueued": "Refreshing metrics… they'll update in a moment.", // nuevo
+  "posts.select.start": "Select", // literal PRD:1605
+  "posts.select.done": "Done", // nuevo
+  "posts.select.one": "Select this post", // nuevo
+  "posts.select.toolbar": "Selected posts", // nuevo
+  "posts.select.count": "{count} selected", // nuevo
+  "posts.select.all": "Select all", // nuevo
+  "posts.select.cancel": "Cancel selected", // nuevo
+  "posts.select.delete": "Delete", // nuevo
+  "posts.select.deleteTitle": "Delete {count} post(s)?", // nuevo
+  "posts.select.deleteBody":
+    "They're removed from FastGram. A post already published stays on the platform.", // nuevo
+  "posts.select.cancelled": "{count} post(s) cancelled", // nuevo
+  "posts.select.deleted": "{count} post(s) deleted", // nuevo
+  "posts.select.batchFailed":
+    "Nothing changed: {count} of the selected posts can't be changed in their current state.", // nuevo · ERR-F01
+  /* ------ Sprint 7 (agente G): formatos generativos, influencers, AI Studio */
+  // Copy nuevo; nada literal del PRD salvo donde dice «literal».
+  "formats.counter": "{count}/{max}", // nuevo
+  "formats.notGenerative": "This isn't a generative format.", // nuevo
+  "formats.blocked.title": "Not available yet", // nuevo
+  "formats.setup.title": "Set up a video model first", // nuevo
+  "formats.setup.body":
+    "Generative formats need a text-to-video model (Higgsfield, fal or ComfyUI) in Settings → Models.", // nuevo
+  "formats.narrationMissing":
+    "This format normally has a voice-over. FastGram has no voice model yet, so the on-screen text carries the message.", // nuevo
+  "formats.overlay.label": "Text on the video", // nuevo
+  "formats.overlay.placeholder": "e.g. POV: you finally fixed your morning routine", // nuevo
+  "formats.topic.label": "Scene details (optional)", // nuevo
+  "formats.topic.placeholder": "e.g. a jar of protein powder on the counter", // nuevo
+  "formats.brand.label": "Let what the brand offers shape the scene", // nuevo
+  "formats.estimate.idle": "Write the text to see the cost.", // nuevo
+  "formats.run.queued": "Queued", // nuevo
+  "formats.run.generating": "Generating the clip", // nuevo
+  "formats.run.building": "Putting your text on it", // nuevo
+  "formats.run.ready": "Ready", // nuevo
+  "formats.run.failed": "It didn't work", // nuevo
+  "formats.run.nsfw": "Blocked by the provider's content filter", // nuevo
+  "formats.run.wait":
+    "Clips take a few minutes. You can leave this page: it keeps going in the background.", // nuevo
+  "formats.run.openEditor": "Open in editor", // nuevo
+  "formats.run.again": "Make another", // nuevo
+  "aiStudio.image.pick": "Pick from Media Bank", // nuevo
+  "aiStudio.image.pickTitle": "Pick a start image", // nuevo
+  "aiStudio.image.picked": "From your Media Bank", // nuevo
+  "aiStudio.image.remove": "Remove", // nuevo
+  "influencers.tabs.images": "Images", // literal FR-081
+  "influencers.tabs.videos": "Videos", // literal FR-081
+  "influencers.tabs.configuration": "Configuration", // literal FR-081
+  "influencers.images.animateHint":
+    "Animate any image from its tile. Talking Head isn't available: no provider offers lip-sync by API.", // nuevo
+  "influencers.videos.empty": "No videos yet. Animate an image from the Images tab.", // nuevo
+  "influencers.videos.pending": "Animating…", // nuevo
+  "influencers.videos.hint":
+    "Videos join this influencer's video set, which Blitz uses as a source.", // nuevo
+  "influencers.animate.action": "Animate", // literal FR-081
+  "influencers.animate.title": "Animate this image", // literal FR-081
+  "influencers.animate.prompt": "Motion", // nuevo
+  "influencers.animate.placeholder":
+    "describe the motion (optional, e.g. slow zoom on the face)", // literal FR-082
+  "influencers.animate.generate": "Generate video", // literal FR-082
+  "influencers.animate.noModels":
+    "Animating needs Higgsfield as the image or video provider in Settings → Models.", // nuevo
+  "influencers.animate.started": "Video generating. It shows up here when it's ready.", // nuevo
+  "influencers.templates.label": "Template", // literal FR-081
+  "influencers.templates.placeholder": "Pick a template…", // nuevo
+  "influencers.templates.error": "Templates couldn't load", // nuevo
+  "influencers.templates.edit": "Edit templates", // nuevo
+  "influencers.templates.title": "Prompt templates", // nuevo
+  "influencers.templates.hint":
+    "Picking a template replaces the prompt. {subject} becomes her, him or them.", // nuevo
+  "influencers.templates.name": "Template name", // nuevo
+  "influencers.templates.prompt": "Template prompt", // nuevo
+  "influencers.templates.remove": "Remove template", // nuevo
+  "influencers.templates.add": "Add template", // nuevo
+  "influencers.templates.new": "New template", // nuevo
+  "influencers.templates.save": "Save", // nuevo
+  "influencers.templates.reset": "Restore defaults", // nuevo
+  "influencers.templates.saveError": "The templates couldn't be saved.", // nuevo
+  "influencers.config.saved": "All changes saved", // literal FR-083
+  "influencers.config.saving": "Saving…", // nuevo
+  "influencers.config.saveError": "That change couldn't be saved.", // nuevo
+  "influencers.config.angles": "Content angles", // literal FR-083
+  "influencers.config.anglesHint":
+    "Blitz copy with this influencer sticks to these angles (up to {max}).", // nuevo
+  "influencers.config.anglesEmpty":
+    "No content angles yet. Create them in Blitz settings.", // nuevo
+  "influencers.config.accounts": "Publishing accounts", // literal FR-083
+  "influencers.config.accountsHint":
+    "Platform accounts this influencer publishes through.", // literal FR-083
+  "influencers.config.accountsEmpty":
+    "No connected accounts. Connect one in Settings → Connections.", // nuevo
+  "influencers.config.slideshowSets": "Slideshow sets", // literal FR-083
+  "influencers.config.slideshowSetsHint":
+    "Image sources for influencer-flavoured slideshows", // literal FR-083
+  "influencers.config.videoSets": "Video sets", // literal FR-083
+  "influencers.config.videoSetsHint":
+    "Background / hook video source for wall of text and video hook", // literal FR-083
+  "influencers.config.setsEmpty": "No sets yet. Generating images or videos creates one.", // nuevo
+  "influencers.config.set": "{name} · {count}", // nuevo
+  "influencers.regenerate.action": "Regenerate", // literal FR-080
+  "influencers.base.modeLabel": "How to make the character", // nuevo
+  "influencers.base.modePhotos": "Use my photos", // nuevo
+  "influencers.base.modeDescribe": "Generate base image", // literal FR-080
+  "influencers.base.describeFirst":
+    "Go back and describe the character (gender, age, ethnicity or details) to generate a base image.", // nuevo
+  "influencers.base.intro":
+    "We'll generate a base character from your description. The character is created from this image.", // nuevo
+  "influencers.base.alt": "Generated base character", // nuevo
+  "influencers.base.generate": "Generate base image", // nuevo
+  "influencers.base.regenerate": "Regenerate", // literal FR-080
+  "influencers.base.instructions": "Regeneration instructions (optional)", // literal FR-080
+  "influencers.base.instructionsPlaceholder":
+    "e.g. curlier hair, softer features, in a coffee shop", // literal FR-080
+  "influencers.base.newPerson":
+    "Regenerations produce a brand-new person, not edits to this one.", // literal FR-080
+  "influencers.base.cost": "About {cost} per image", // nuevo
 } as const;
 
 export type WebMessageKey = keyof typeof webEn;

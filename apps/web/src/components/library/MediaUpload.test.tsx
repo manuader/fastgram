@@ -296,7 +296,12 @@ describe("selección múltiple", () => {
     expect(
       within(row("notes.txt")).getByText("Only JPG, PNG, WebP, MP4 and MOV files."),
     ).toBeInTheDocument();
-    expect(requestMock).not.toHaveBeenCalled();
+    // Ninguna reserva ni finalización. (El panel pide también sets y etiquetas
+    // —sprint 7—, que no son subidas.)
+    const uploads = requestMock.mock.calls.filter(([path]) =>
+      /^\/media(\/upload-url)?$/.test(String(path)),
+    );
+    expect(uploads).toHaveLength(0);
   });
 });
 

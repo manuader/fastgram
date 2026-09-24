@@ -27,6 +27,19 @@ export function CardChips({ suggestion }: { suggestion: DeckSuggestion }) {
           <Badge tone="success">{td("deck.fromPrompt")}</Badge>
         </li>
       )}
+      {suggestion.autoFoundMeme != null && (
+        <li>
+          <a
+            href={suggestion.autoFoundMeme.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={td("deck.autoFoundMemeSource")}
+            className="fg-focusable rounded-full"
+          >
+            <Badge tone="warning">{td("deck.autoFoundMeme")}</Badge>
+          </a>
+        </li>
+      )}
       <li>
         <Badge tone="accent">{tw(BLITZ_TYPE_COPY[suggestion.contentType])}</Badge>
       </li>

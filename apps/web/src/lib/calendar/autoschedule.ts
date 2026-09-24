@@ -6,8 +6,8 @@
  * `useAutoschedule(contentId)` llama a `POST /content/:id/autoschedule`: la API
  * busca el próximo horario libre de cada red activa de la estrategia de la
  * marca y crea un post (si la marca tiene la conexión) o un slot planificado
- * (si no). **Todavía no lo usa ninguna pantalla**: el botón "Schedule Post" del
- * diálogo de aceptar en Blitz y el del editor los cablea el coordinador.
+ * (si no). Lo usan el detalle de la pieza (`Auto-slot`, sprint 7) y, con su
+ * propia llamada, el "Schedule Post" del diálogo de aceptar en Blitz.
  *
  * Uso esperado:
  *

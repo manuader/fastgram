@@ -143,6 +143,8 @@ function installServer(initial: Partial<Server> = {}): void {
   };
 
   listMock.mockImplementation(async (path, options = {}) => {
+    if (path === "/blitz/angles")
+      return Promise.resolve({ items: [], cursor: null, hasMore: false });
     if (path !== "/brand/sources") throw new Error(`lista no esperada: ${path}`);
     const items = server.sources.map((s) =>
       options.itemSchema === undefined ? s : options.itemSchema.parse(s),
@@ -171,7 +173,18 @@ function installServer(initial: Partial<Server> = {}): void {
     }
     if (path === "/brand/profile" && method === "PATCH") {
       if (server.patchFails !== null) throw server.patchFails;
-      const body = options.body as Record<string, unknown>;
+      // `P1-BRANDPG-004`: como la API, 409 si la revisión esperada no es la actual.
+      const { expectedBrandRevision, ...body } = options.body as Record<string, unknown>;
+      if (
+        expectedBrandRevision !== undefined &&
+        expectedBrandRevision !== server.profile.brandRevision
+      ) {
+        throw new ApiRequestError({
+          code: "conflict",
+          status: 409,
+          details: { reason: "brand_revision_changed" },
+        });
+      }
       const fieldMeta = { ...server.profile.fieldMeta };
       // Como `markEditedByUser`: TODA clave del cuerpo queda marcada.
       for (const key of Object.keys(body)) {
@@ -204,6 +217,14 @@ function installServer(initial: Partial<Server> = {}): void {
         source({ ...s, isPrimary: s._id === one[1] }),
       );
       return parse(server.sources.find((s) => s._id === one[1]));
+    }
+    // Sprint 7: las tarjetas nuevas de `/brand` (propuestas, logo, ángulos).
+    if (path === "/brand/profile/proposals") {
+      return parse({ brandRevision: server.profile.brandRevision, proposals: [] });
+    }
+    if (path === "/brand/logo" && method === "GET") return parse({ logoUrl: null });
+    if (path === "/blitz/preferences" && method === "GET") {
+      throw new ApiRequestError({ code: "not_found", status: 404 });
     }
     if (path === "/brand/sources/resolve") {
       return parse({
@@ -263,6 +284,13 @@ async function mount() {
   await tick(0);
   await tick(0);
   return rendered;
+}
+
+/** El «Save» de la sección abierta: el perfil va antes que el cuestionario (F-006). */
+function sectionSave(): HTMLElement {
+  const [first] = screen.getAllByRole("button", { name: "Save" });
+  if (first === undefined) throw new Error("no hay botón Save");
+  return first;
 }
 
 function section(name: string): HTMLElement {
@@ -416,12 +444,15 @@ describe("editar una sección", () => {
     fireEvent.change(screen.getByLabelText("PRODUCT OFFERING"), {
       target: { value: "Trail shoes" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(sectionSave());
     await tick(0);
 
     const patches = requests("PATCH", /^\/brand\/profile$/);
     expect(patches).toHaveLength(1);
-    expect(patches[0]?.[1]?.body).toEqual({ productOffering: "Trail shoes" });
+    expect(patches[0]?.[1]?.body).toEqual({
+      productOffering: "Trail shoes",
+      expectedBrandRevision: 3,
+    });
     // Los otros tres siguen sin marcar en el servidor: el análisis los puede tocar.
     expect(server.profile.fieldMeta["coreIdentity"]?.editedByUser).toBe(false);
 
@@ -439,7 +470,7 @@ describe("editar una sección", () => {
     installServer();
     await mount();
     await openEditor("Market & Competition");
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(sectionSave());
     await tick(0);
     expect(requests("PATCH", /^\/brand\/profile$/)).toHaveLength(0);
     expect(
@@ -462,13 +493,11 @@ describe("editar una sección", () => {
     fireEvent.change(screen.getByLabelText("CORE IDENTITY"), {
       target: { value: "a".repeat(4001) },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(sectionSave());
     await tick(0);
     expect(requests("PATCH", /^\/brand\/profile$/)).toHaveLength(0);
     expect(screen.getByText("Keep this under 4000 characters.")).toBeTruthy();
-    expect(
-      (screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    expect((sectionSave() as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("un fallo deja el formulario abierto con lo escrito, y no dice `Saved`", async () => {
@@ -480,7 +509,7 @@ describe("editar una sección", () => {
     fireEvent.change(screen.getByLabelText("CORE IDENTITY"), {
       target: { value: "Shoes, Inc." },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(sectionSave());
     await tick(0);
     // Neutral primero (trampa 38): el botón ya no está ocupado.
     expect(container.querySelector('button[aria-busy="true"]')).toBeNull();
@@ -494,7 +523,7 @@ describe("editar una sección", () => {
     );
   });
 
-  it("si la revisión se mueve con la sección abierta, avisa — y guarda igual sólo lo tocado", async () => {
+  it("si la revisión se mueve con la sección abierta, avisa — y el guardado da 409 sin pisar (P1-BRANDPG-004)", async () => {
     installServer({ sources: [source({ status: "analyzing" })] });
     await mount();
     await openEditor("Market & Competition");
@@ -513,12 +542,15 @@ describe("editar una sección", () => {
     fireEvent.change(screen.getByLabelText("MARKET & COMPETITION"), {
       target: { value: "Niche" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(sectionSave());
     await tick(0);
     expect(requests("PATCH", /^\/brand\/profile$/)[0]?.[1]?.body).toEqual({
       marketAndCompetition: "Niche",
+      expectedBrandRevision: 3,
     });
     expect(server.profile.problemSolution).toBe("Blisters");
+    expect(server.profile.marketAndCompetition).toBe("Crowded");
+    expect(screen.getByText(/changed in another tab/)).toBeTruthy();
   });
 });
 

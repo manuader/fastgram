@@ -500,3 +500,64 @@ describe("contrato ↔ core", () => {
     expect([...BLITZ_PROMPT_FAILURE_REASONS]).toEqual([...PROMPT_FAILURE_REASONS]);
   });
 });
+
+describe("sprint 7 — buscar el meme si no hay", () => {
+  it("running con phase searching_meme: el estado la dice; cerrado, no", async () => {
+    const ws = await nuevoWorkspace();
+    const requestId = requestIdDe(
+      await generar(ws, { prompt: "lunes", contentType: "green-screen" }),
+    );
+    await handle.sql`
+      update blitz_prompt_requests set status = 'running', phase = 'searching_meme',
+             meme_searches = 1
+       where id = ${requestId}::uuid
+    `;
+    const running = blitzPromptRequestSchema.parse(
+      (await estado(ws, requestId)).body.data,
+    );
+    expect(running.phase).toBe("searching_meme");
+
+    await handle.sql`
+      update blitz_prompt_requests set status = 'failed', failure_reason = 'meme_not_found'
+       where id = ${requestId}::uuid
+    `;
+    const failed = blitzPromptRequestSchema.parse(
+      (await estado(ws, requestId)).body.data,
+    );
+    expect(failed.phase).toBeUndefined();
+    expect(failed.failureReason).toBe("meme_not_found");
+  });
+
+  it("la base hace cumplir el tope de 2 búsquedas por pedido", async () => {
+    const ws = await nuevoWorkspace();
+    const requestId = requestIdDe(await generar(ws, { prompt: "lunes" }));
+    await expect(
+      handle.sql`update blitz_prompt_requests set meme_searches = 3 where id = ${requestId}::uuid`,
+    ).rejects.toThrow(/meme_searches_range/);
+  });
+
+  it("GET /blitz/queue: la anotación del build_plan sale como autoFoundMeme", async () => {
+    const ws = await nuevoWorkspace();
+    const requestId = requestIdDe(await generar(ws, { prompt: "lunes", count: 1 }));
+    const [id] = await simularWorker(ws, requestId, 1);
+    await handle.sql`
+      update suggestions
+         set build_plan = build_plan || ${JSON.stringify({
+           autoFoundMeme: {
+             mediaId: "x",
+             sourceUrl: "https://www.youtube.com/watch?v=J3bvkPStwB8",
+           },
+         })}::jsonb
+       where id = ${id!}::uuid
+    `;
+    const cola = blitzQueueSchema.parse(
+      (await pedir(ws, "GET", "/blitz/queue")).body.data,
+    );
+    expect(cola.find((s) => s.id === id)?.autoFoundMeme).toEqual({
+      sourceUrl: "https://www.youtube.com/watch?v=J3bvkPStwB8",
+    });
+    expect(
+      cola.filter((s) => s.id !== id).every((s) => s.autoFoundMeme === undefined),
+    ).toBe(true);
+  });
+});

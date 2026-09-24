@@ -65,6 +65,12 @@ type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
  */
 const BODIES: Readonly<Record<string, () => unknown>> = {
   "PATCH /blitz/angles/{id}": () => ({ title: "nuevo título" }),
+  // `P1-BRANDPG-005`: el parámetro es un campo, no un id; con basura es 404.
+  "POST /brand/profile/proposals/{field}": () => ({
+    action: "dismiss",
+    excerptRef: "x#y",
+    expectedBrandRevision: 0,
+  }),
   // `PU-LATER-004`: imágenes del personaje.
   "POST /influencers/{id}/images/estimate": () => ({ prompt: "at the gym" }),
   "POST /influencers/{id}/images": () => ({ prompt: "at the gym" }),
@@ -96,6 +102,9 @@ const BODIES: Readonly<Record<string, () => unknown>> = {
   "PUT /models/{task}": () => ({ provider: "ollama", model: "cualquiera" }),
   // `PU-CAL-001` / `PU-CAL-002`. `{kind}` también recibe el id: un kind basura es 404.
   "POST /content/{id}/autoschedule": () => ({}),
+  // Sprint 7 (publish-flow): editar un post y la caption con IA.
+  "PATCH /posts/{id}": () => ({ caption: "nueva" }),
+  "POST /content/{id}/caption": () => ({ platform: "instagram", mode: "regenerate" }),
   "PATCH /calendar/items/{kind}/{id}": () => ({
     scheduledAtUtc: new Date("2026-10-01T15:00:00.000Z").getTime(),
   }),
@@ -104,11 +113,27 @@ const BODIES: Readonly<Record<string, () => unknown>> = {
   "POST /connections/{platform}/callback": () => ({ state: "v1.x.y" }),
   // Inspiration (FR-040 adaptado): etiquetas de una referencia.
   "PATCH /inspiration/{itemId}": () => ({ tags: ["hooks"] }),
+  // Sprint 7: biblioteca de audio de la marca.
+  "PATCH /audio/library/{audioId}": () => ({ title: "otro nombre" }),
   // `FR-140`, `P4-ENGAGE-006…012`: Engagement (Reddit).
   "POST /engagement/leads/{leadId}/reply/generate": () => ({ regenerate: false }),
   "PUT /engagement/leads/{leadId}/reply": () => ({ text: "borrador" }),
   "POST /engagement/leads/{leadId}/send": () => ({ text: "respuesta", confirm: true }),
   "POST /engagement/leads/{leadId}/mark-sent": () => ({ text: "respuesta" }),
+  // Sprint 7 (agente G): formatos generativos e influencers.
+  "POST /ai-studio/formats/{format}/estimate": () => ({ overlayText: "texto" }),
+  "POST /ai-studio/formats/{format}/runs": () => ({ overlayText: "texto" }),
+  "PUT /influencers/{id}/config": () => ({ angleIds: [] }),
+  "POST /influencers/{id}/videos/estimate": () => ({
+    sourceMediaId: randomUUID(),
+    model: "kling-video/v2.6/pro/image-to-video",
+    durationSeconds: 5,
+  }),
+  "POST /influencers/{id}/videos": () => ({
+    sourceMediaId: randomUUID(),
+    model: "kling-video/v2.6/pro/image-to-video",
+    durationSeconds: 5,
+  }),
   // `FR-150`, `P3-AUTO-001…013`: Automations.
   "PATCH /automations/{automationId}": () => ({ name: "Otro nombre" }),
   "PATCH /automations/{automationId}/slots/{slotId}": () => ({

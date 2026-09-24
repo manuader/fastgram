@@ -111,6 +111,14 @@ export const influencers = pgTable(
     /** Una línea apta para la UI. Nunca el cuerpo crudo del proveedor. */
     failureMessage: text(),
 
+    /**
+     * Migración `0030`: de qué personaje salió éste al regenerar
+     * (`F-093`, `FR-080` (2)). Regenerar crea uno **nuevo**; el viejo queda.
+     * La FK (`ON DELETE SET NULL`) está en la migración: una referencia a la
+     * propia tabla acá obligaría a anotar el tipo de `influencers` a mano.
+     */
+    regeneratedFromId: uuid(),
+
     ...timestamps(),
   },
   (t) => [
@@ -251,6 +259,15 @@ export const influencerGenerations = pgTable(
       .default(sql`'{}'::uuid[]`),
     errorCode: text(),
     errorMessage: text(),
+    // ── Migración `0030`: video del personaje («Animate this image», FR-082) ──
+    /** `image` | `video` (CHECK en la migración). */
+    kind: text().notNull().default("image"),
+    /** Sólo video. */
+    durationSeconds: integer(),
+    /** Sólo video: la imagen del Media Bank que se anima. Sin FK a propósito. */
+    sourceMediaId: uuid(),
+    /** Sólo video: la URL pública del proveedor a la que se subió esa imagen. */
+    sourceImageUrl: text(),
     ...timestamps(),
   },
   (t) => [
@@ -265,6 +282,11 @@ export const influencerGenerations = pgTable(
     ),
     check("influencer_generations_count_check", sql`${t.count} between 1 and 4`),
     check("influencer_generations_estimate_check", sql`${t.estimateUsd} >= 0`),
+    check("influencer_generations_kind_check", sql`${t.kind} in ('image', 'video')`),
+    check(
+      "influencer_generations_video_shape_check",
+      sql`${t.kind} <> 'video' or (${t.count} = 1 and ${t.durationSeconds} > 0 and ${t.sourceMediaId} is not null and ${t.sourceImageUrl} is not null)`,
+    ),
     check(
       "influencer_generations_request_pair_check",
       sql`(${t.providerRequestId} is null) = (${t.providerStatusUrl} is null)`,

@@ -413,11 +413,14 @@ async function buildBase(
         "la imagen de fondo no declara dimensiones",
       );
     }
+    // Sprint 7: la música de la marca, si la hay, se mezcla con el clip.
+    const audioPath = await resolveAudio(payload.audio, config);
     const plan = planGreenScreenBase(
       payload,
       {
         backgroundPath,
         videoPath,
+        audioPath,
         outputPath,
         background: { width: backgroundInfo.width, height: backgroundInfo.height },
         video: await geometryOf(videoPath),

@@ -43,6 +43,11 @@ export const ROUTES = {
   settingsBrands: "/settings/brands",
   /** `PU-MODELS-*` — proveedor por tarea (la página la construye otro agente). */
   settingsModels: "/settings/models",
+  /** Sprint 7: las demás secciones de Settings, para el hub y la paleta. */
+  settingsStrategy: "/settings/strategy",
+  settingsConnections: "/settings/connections",
+  settingsIntegrations: "/settings/integrations",
+  settingsNotifications: "/settings/notifications",
   developers: "/developers",
   developer: "/developer",
   status: "/status",

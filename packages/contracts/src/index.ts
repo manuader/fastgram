@@ -45,6 +45,7 @@ export * from "./resources/autopilot.js";
 export * from "./resources/inspiration.js";
 export * from "./resources/engagement.js";
 export * from "./resources/automations.js";
+export * from "./resources/notifications.js";
 
 // OpenAPI
 export * from "./openapi.js";

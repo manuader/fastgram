@@ -36,9 +36,11 @@
  */
 import {
   POSTABLE_NETWORKS,
+  captionFieldsFor,
   planSlotConversion,
   resumeAfterReconnect,
   AWAITING_RECONNECT_GRACE_MS,
+  type Platform,
   type StrategyNetwork,
 } from "@fastgram/core";
 import {
@@ -80,6 +82,8 @@ export interface SweepDeps {
    * reporte (se amplía cuando `0015` esté aplicada en todos lados).
    */
   readonly postableNetworks?: readonly StrategyNetwork[];
+  /** `PUBLISH_X_ALLOW_LINKS`, para la caption derivada de X (sprint 7). */
+  readonly allowXLinks?: boolean | undefined;
 }
 
 export interface SweepResult {
@@ -268,7 +272,15 @@ export function createPublishingSweepHandler(deps: SweepDeps): JobHandler<unknow
             connectionUsername: connection?.platformUsername ?? null,
             scheduledAtUtc: slot.scheduledAtUtc,
             status: "SCHEDULED",
-            ...(campaign ?? {}),
+            // Sprint 7: un slot plano (auto-slot, piloto) ya no sale sin caption:
+            // la derivada de la pieza. Los de campaña traen la suya.
+            ...(campaign ??
+              captionFieldsFor(
+                plan.platform as Platform,
+                { caption: null, description: null },
+                { generatedText: content.generatedText },
+                { allowXLinks: deps.allowXLinks === true },
+              )),
           });
           const closed = await plannedSlotRepository.markConverted(
             tx,

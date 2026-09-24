@@ -25,8 +25,12 @@ import { CalendarIcon, LibraryIcon } from "./icons";
  * lectura del PRD que hace de `Cancel` algo que cancela.
  *
  * `Schedule Post` (F-065) guarda y manda la pieza al próximo horario libre de
- * la estrategia de la marca (`POST /content/:id/autoschedule`, PU-CAL-001). El
- * paso a paso de FR-060 (elegir redes y hora a mano) vive en el calendario.
+ * la estrategia de la marca (`POST /content/:id/autoschedule`, PU-CAL-001).
+ *
+ * `Schedule…` (sprint 7, opcional): guarda y abre el diálogo de programar a
+ * mano (`components/schedule/ScheduleDialog`: redes, caption por red, hora).
+ * Sólo se muestra si quien monta el diálogo pasa `onScheduleCustom`, porque
+ * abrir el diálogo necesita el `contentId` que devuelve el guardado.
  */
 export interface AcceptDialogProps {
   readonly open: boolean;
@@ -37,6 +41,8 @@ export interface AcceptDialogProps {
   /** Guardar y mandar al próximo horario libre de la estrategia (PU-CAL-001). */
   readonly onSchedule: () => void;
   readonly scheduling?: boolean;
+  /** Guardar y abrir el diálogo de programar a mano. Sin esto, la opción no se muestra. */
+  readonly onScheduleCustom?: () => void;
   readonly onCancel: () => void;
 }
 
@@ -47,6 +53,7 @@ export function AcceptDialog({
   onSave,
   onSchedule,
   scheduling = false,
+  onScheduleCustom,
   onCancel,
 }: AcceptDialogProps) {
   const failure = error === null || error === undefined ? null : presentError(error);
@@ -114,6 +121,27 @@ export function AcceptDialog({
               </span>
             </span>
           </button>
+
+          {onScheduleCustom !== undefined && (
+            <button
+              type="button"
+              className="fg-focusable flex items-start gap-3 rounded-xl border border-border bg-surface p-4 text-left hover:border-border-strong disabled:opacity-60"
+              onClick={onScheduleCustom}
+              disabled={saving}
+            >
+              <span className="mt-0.5 text-accent">
+                <CalendarIcon size={20} />
+              </span>
+              <span>
+                <span className="block font-semibold text-text">
+                  {tw("schedule.acceptCustom")}
+                </span>
+                <span className="block text-sm text-text-muted">
+                  {tw("schedule.acceptCustomDescription")}
+                </span>
+              </span>
+            </button>
+          )}
 
           {failure !== null && (
             <p role="alert" className="text-sm text-danger">

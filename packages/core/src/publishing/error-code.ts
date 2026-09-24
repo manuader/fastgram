@@ -301,3 +301,48 @@ export function translatePublishFailure(
 }
 
 export * from "./guards.js";
+
+/* ------------------------------------------------------------------------ *
+ * Fallback estable — `P3-PUB-006` (sprint 7)
+ * ------------------------------------------------------------------------ */
+
+/**
+ * El código **genérico** para un fallo de plataforma que ninguna celda de la
+ * tabla clasifica (`escalate`: `unknown`, o un motivo que el puerto no
+ * declara). No lo enumera el PRD: es nuestro, neutral y estable, como los de
+ * {@link PUBLISH_WORKER_ERROR_CODES}. `DP-006` manda esos casos a `Judgment`;
+ * mientras ese escalado no exista, la fila **no** se queda con el motivo crudo
+ * de un adaptador más nuevo: se queda con esto.
+ */
+export const PUBLISH_GENERIC_ERROR_CODE = "publish_failed";
+
+/** Copy nuestro para el fallo genérico. Nunca el mensaje del proveedor. */
+export const PUBLISH_GENERIC_ERROR_MESSAGE =
+  "The platform couldn't publish this post. Check the account and try again.";
+
+/**
+ * `errorCode` + `errorMessage` de un fallo que devolvió la plataforma, listos
+ * para la fila. `coded` → el código del PRD; `uncoded` → el motivo neutral del
+ * puerto (ya es estable); `escalate` → {@link PUBLISH_GENERIC_ERROR_CODE} con
+ * {@link PUBLISH_GENERIC_ERROR_MESSAGE}: un motivo que nadie clasificó no tiene
+ * garantía de que su mensaje sea «seguro de mostrar».
+ */
+export function stablePublishError(
+  platform: string,
+  failure: { readonly reason: string; readonly message: string },
+): { readonly errorCode: string; readonly errorMessage: string } {
+  const translation = translatePublishFailure({
+    platform: platform as PublishPlatform,
+    failure: failure as PublishFailure,
+  });
+  if (translation.kind === "coded") {
+    return { errorCode: translation.errorCode, errorMessage: failure.message };
+  }
+  if (translation.kind === "uncoded") {
+    return { errorCode: failure.reason, errorMessage: failure.message };
+  }
+  return {
+    errorCode: PUBLISH_GENERIC_ERROR_CODE,
+    errorMessage: PUBLISH_GENERIC_ERROR_MESSAGE,
+  };
+}

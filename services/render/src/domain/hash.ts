@@ -113,6 +113,7 @@ export function mediaFingerprint(payload: BuildPayload): unknown {
         image: payload.image,
         video: payload.video,
         chromaKey: payload.chromaKey,
+        audio: payload.audio,
       };
     case "video-hook":
       return {

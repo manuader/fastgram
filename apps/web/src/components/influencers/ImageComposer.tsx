@@ -14,6 +14,7 @@ import {
   type ImageForm,
 } from "@/lib/influencers/form";
 import { formatUsd } from "@/lib/models/budget";
+import { TemplateSelect } from "./TemplatesDialog";
 
 const ESTIMATE_DEBOUNCE_MS = 600;
 
@@ -98,7 +99,13 @@ export function ImageComposer({ influencerId, gender }: ImageComposerProps) {
           }}
         />
       </div>
-      <div className="flex flex-wrap gap-6">
+      <div className="flex flex-wrap items-end gap-6">
+        <TemplateSelect
+          gender={gender}
+          onApply={(prompt) => {
+            setForm({ ...form, prompt });
+          }}
+        />
         <ChoiceChips
           name="influencer-aspect"
           label={tw("influencers.images.aspect")}
@@ -175,7 +182,9 @@ export function ImageComposer({ influencerId, gender }: ImageComposerProps) {
           <p className="m-0 text-sm text-success">{notice}</p>
         ) : null}
       </div>
-      <p className="m-0 text-xs text-text-subtle">{tw("influencers.images.video")}</p>
+      <p className="m-0 text-xs text-text-subtle">
+        {tw("influencers.images.animateHint")}
+      </p>
     </section>
   );
 }

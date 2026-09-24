@@ -48,7 +48,17 @@ const GOLDEN_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "__go
 const CAPS: FfmpegCapabilities = {
   available: true,
   version: "golden",
-  filters: new Set(["overlay", "scale", "crop", "setsar", "chromakey", "colorkey"]),
+  filters: new Set([
+    "overlay",
+    "scale",
+    "crop",
+    "setsar",
+    "chromakey",
+    "colorkey",
+    // Sprint 7: la mezcla de la música con el clip del green-screen.
+    "amix",
+    "volume",
+  ]),
   encoders: new Set(["libx264", "aac"]),
   hasDrawtext: false,
   hasOverlay: true,
@@ -150,6 +160,32 @@ describe("golden de plan — portable entre máquinas", () => {
           outputPath: "/out/base.mp4",
           background: { width: 1500, height: 1500 },
           video: SOURCE,
+        },
+        CAPS,
+      ),
+      // Sprint 7: música de la marca en green-screen. Con clip con audio se
+      // mezcla (clip 100 %, música 30 %); con clip mudo, la música va sola.
+      "green-screen-music-mix": planGreenScreenBase(
+        greenScreen,
+        {
+          backgroundPath: "/in/bg.jpg",
+          videoPath: "/in/chroma.mp4",
+          audioPath: "/in/music.mp3",
+          outputPath: "/out/base.mp4",
+          background: { width: 1500, height: 1500 },
+          video: SOURCE,
+        },
+        CAPS,
+      ),
+      "green-screen-music-only": planGreenScreenBase(
+        greenScreen,
+        {
+          backgroundPath: "/in/bg.jpg",
+          videoPath: "/in/chroma.mp4",
+          audioPath: "/in/music.mp3",
+          outputPath: "/out/base.mp4",
+          background: { width: 1500, height: 1500 },
+          video: { ...SOURCE, hasAudio: false },
         },
         CAPS,
       ),

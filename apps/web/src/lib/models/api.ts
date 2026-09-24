@@ -63,6 +63,24 @@ export function useSaveModelTask(
   });
 }
 
+/**
+ * `DELETE /models/:task` — `P1-JUDGE-004`: sólo overrides de juicio. Vuelve a
+ * heredar el modelo de `judgment`.
+ */
+export function useClearModelOverride(
+  task: ModelTask,
+): UseMutationResult<ModelTaskConfig, ApiRequestError, void> {
+  const queryClient = useQueryClient();
+  return useMutation<ModelTaskConfig, ApiRequestError, void>({
+    mutationFn: () =>
+      apiRequest<ModelTaskConfig>(`${MODELS_PATH}/${task}`, {
+        method: "DELETE",
+        schema: modelTaskConfigSchema,
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: modelsKeys.overview() }),
+  });
+}
+
 /** `POST /models/test`. Lleva la key escrita (si hay) en el cuerpo, nunca en la URL. */
 export function useTestModelConnection(): UseMutationResult<
   ModelConnectionTest,

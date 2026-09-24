@@ -2,6 +2,7 @@
 
 import { Tooltip } from "@fastgram/ui";
 import { BrandSwitcher } from "@/components/brands/BrandSwitcher";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { ShortcutHint } from "@/components/command/ShortcutHint";
 import { useShellActions } from "@/components/shell/ShellActions";
 import { SidebarBody } from "@/components/shell/SidebarBody";
@@ -83,6 +84,8 @@ export function Sidebar({
       />
 
       <div className="fgw-sidebar__footer">
+        {/* Sprint 7 (`P5-NOTIF-001`): la campana, con el mismo estilo que el colapsar. */}
+        <NotificationBell className="fgw-sidebar__collapse" />
         <ThemeToggle />
         <button
           type="button"

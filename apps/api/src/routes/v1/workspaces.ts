@@ -29,6 +29,14 @@
  * responda 401 (PRD:1867), así que borrar la marca a la que pertenece la key de la
  * web **deja la app entera afuera**, sin forma de volver desde la UI. Se responde
  * `409 conflict`, igual que para la última marca.
+ *
+ * ## Borrar una marca apaga lo que tenía en marcha
+ *
+ * `P1-TENANT-005` (sprint 7): con el borrado, en la misma transacción, los
+ * posts cancelables pasan a `CANCELLED`, los slots planificados se borran, la
+ * estrategia vuelve a `manual` y las campañas vivas se cancelan
+ * (`packages/db/src/repositories/brand-shutdown.ts`). Lo que ya está del lado
+ * de TikTok (`IN_USER_INBOX`, `UPLOADING_TO_TIKTOK`) no se toca.
  */
 import { z } from "zod";
 import {
@@ -38,7 +46,12 @@ import {
   type FastgramMode,
   type Workspace,
 } from "@fastgram/contracts";
-import { withoutCompany, workspaceDirectory, type OwnedWorkspace } from "@fastgram/db";
+import {
+  shutdownBrandActivity,
+  withoutCompany,
+  workspaceDirectory,
+  type OwnedWorkspace,
+} from "@fastgram/db";
 import type { FastifyRequest } from "fastify";
 
 import { ownerOrFail } from "../../auth/scope.js";
@@ -54,6 +67,7 @@ function toWorkspace(row: OwnedWorkspace): Workspace {
     id: row.id,
     name: row.name,
     profileStatus: row.profileStatus ?? "pending",
+    logoUrl: row.logoUrl,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -64,7 +78,7 @@ function homeCompanyOf(request: FastifyRequest): string {
 }
 
 export function registerWorkspaceRoutes(app: ZodApp): void {
-  const { db, idempotency } = app.deps;
+  const { db, idempotency, clock } = app.deps;
   const mode: FastgramMode = app.deps.mode ?? "standard";
 
   /** Ver la cabecera: en `standard` estas rutas no existen para el cliente. */
@@ -164,7 +178,18 @@ export function registerWorkspaceRoutes(app: ZodApp): void {
           if (alive.length <= 1) return { kind: "last_workspace" as const };
           return { kind: "home_workspace" as const };
         }
-        return workspaceDirectory.softDelete(tx, owner, id);
+        const deleted = await workspaceDirectory.softDelete(tx, owner, id);
+        if (deleted.kind !== "deleted") return deleted;
+        // `P1-TENANT-005` (sprint 7): en la misma transacción, apagar lo que la
+        // marca tenía en marcha — posts agendados, slots planificados, piloto
+        // y campañas. Sin esto, el job de un post `SCHEDULED` publicaba igual
+        // en la cuenta de una marca borrada. Ver `brand-shutdown.ts`.
+        const shutdown = await shutdownBrandActivity(tx, id, new Date(clock.nowMs()));
+        request.log.info(
+          { workspaceId: id, ...shutdown },
+          "marca borrada: actividad apagada",
+        );
+        return deleted;
       });
 
       if (result.kind === "not_found") throw notFound("workspace");

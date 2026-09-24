@@ -248,6 +248,12 @@ export const fieldMetaSchema = z
     excerptRef: z.string().nullable(),
     editedByUser: z.boolean(),
     conflictsWith: z.array(brandSourceIdSchema).optional(),
+    /**
+     * `P1-BRANDPG-005` / `ERR-B14`: el `excerptRef` de la propuesta que el
+     * usuario descartó («Keep mine»). Mientras la propuesta vigente sea ésa, no
+     * se vuelve a ofrecer; un re-análisis que proponga otra cosa sí aparece.
+     */
+    dismissedProposal: z.string().optional(),
   })
   .strict();
 export type FieldMeta = z.infer<typeof fieldMetaSchema>;
@@ -296,8 +302,142 @@ export type CompanyProfile = z.infer<typeof companyProfileSchema>;
 export const updateCompanyProfileRequestSchema = companyProfileSchema
   .omit({ brandRevision: true, status: true, fieldMeta: true })
   .partial()
+  .extend({
+    /**
+     * `P1-BRANDPG-004` (`F-022`): la revisión que el cliente tenía cuando
+     * empezó a editar. Si el perfil ya se movió (otra pestaña, un análisis),
+     * `409 conflict` con `details.reason = "brand_revision_changed"` en vez de
+     * pisar en silencio. Opcional: sin él, la escritura es la de siempre.
+     */
+    expectedBrandRevision: z.number().int().nonnegative().optional(),
+  })
   .strict()
-  .refine((b) => Object.keys(b).length > 0, { message: "empty body is not allowed" });
+  .refine((b) => Object.keys(b).some((k) => k !== "expectedBrandRevision"), {
+    message: "empty body is not allowed",
+  });
 export type UpdateCompanyProfileRequest = z.infer<
   typeof updateCompanyProfileRequestSchema
 >;
+
+// --- Propuestas del re-análisis · P1-BRANDPG-005 / ERR-B14 -------------------
+
+/** Los ocho campos que `AI-016` deriva (`BRAND_PROFILE_FIELDS` de core). */
+export const brandProfileFieldSchema = z.enum([
+  "coreIdentity",
+  "productOffering",
+  "uniqueBenefits",
+  "problemSolution",
+  "marketAndCompetition",
+  "toneOfVoice",
+  "targetAudience",
+  "businessCategories",
+]);
+export type BrandProfileField = z.infer<typeof brandProfileFieldSchema>;
+
+/**
+ * Lo que una fuente propone para un campo que la fusión **no escribió**
+ * porque el usuario lo había editado (`FR-011.6`) o porque su valor no tiene
+ * procedencia conocida. `ERR-B14`: *"This source suggests a different answer —
+ * replace?"*. Se calcula en cada lectura desde el último snapshot de cada
+ * fuente: no hay columna nueva.
+ */
+export const brandProfileProposalSchema = z
+  .object({
+    field: brandProfileFieldSchema,
+    value: z.string(),
+    currentValue: z.string(),
+    confidence: fieldConfidenceSchema,
+    sourceId: brandSourceIdSchema,
+    sourceType: brandSourceTypeSchema,
+    /** El extracto que respalda la propuesta, o `null` si el snapshot ya no lo tiene. */
+    excerpt: z.string().nullable(),
+    /** `snapshotId#field`: identifica la propuesta para aceptarla o descartarla. */
+    excerptRef: z.string(),
+    reason: z.enum(["edited_by_user", "unknown_provenance"]),
+  })
+  .strict();
+export type BrandProfileProposal = z.infer<typeof brandProfileProposalSchema>;
+
+/** `GET /brand/profile/proposals`. */
+export const brandProfileProposalsSchema = z
+  .object({
+    brandRevision: z.number().int().nonnegative(),
+    proposals: z.array(brandProfileProposalSchema),
+  })
+  .strict();
+export type BrandProfileProposals = z.infer<typeof brandProfileProposalsSchema>;
+
+/**
+ * `POST /brand/profile/proposals/{field}` — `accept` escribe el valor propuesto
+ * con su procedencia (deja de ser `editedByUser`); `dismiss` conserva el valor
+ * del usuario y no vuelve a ofrecer esa propuesta. `excerptRef` tiene que ser
+ * el de la propuesta vigente (si cambió, `409`), y `expectedBrandRevision` la
+ * revisión que el cliente vio.
+ */
+export const resolveBrandProfileProposalRequestSchema = z
+  .object({
+    action: z.enum(["accept", "dismiss"]),
+    excerptRef: z.string().min(1).max(200),
+    expectedBrandRevision: z.number().int().nonnegative(),
+  })
+  .strict();
+export type ResolveBrandProfileProposalRequest = z.infer<
+  typeof resolveBrandProfileProposalRequestSchema
+>;
+
+// --- Logo · P1-ONB-003 --------------------------------------------------------
+
+/** Techo del logo decodificado. No es del PRD: es para que viaje en `GET /workspaces`. */
+export const BRAND_LOGO_MAX_BYTES = 256 * 1024;
+
+/**
+ * `PUT /brand/logo` — el logo como `data:` URL (`image/png`, `image/jpeg` o
+ * `image/webp`, base64). La web lo reduce antes de subirlo. Se guarda en
+ * `companies.logo_url` y sale en `GET /workspaces` para el selector de marca.
+ */
+export const updateBrandLogoRequestSchema = z
+  .object({
+    dataUrl: z
+      .string()
+      .max(Math.ceil((BRAND_LOGO_MAX_BYTES * 4) / 3) + 64)
+      .regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/),
+  })
+  .strict();
+export type UpdateBrandLogoRequest = z.infer<typeof updateBrandLogoRequestSchema>;
+
+export const brandLogoSchema = z.object({ logoUrl: z.string().nullable() }).strict();
+export type BrandLogo = z.infer<typeof brandLogoSchema>;
+
+// --- Tier D con capturas · P1-BRAND-014 / P1-VISION-002 ------------------------
+
+/** Una captura por pedido: el cuerpo de la API tope en 1 MiB. */
+export const BRAND_OCR_IMAGE_MAX_BYTES = 700 * 1024;
+/** Cuántas capturas ofrece la pantalla (brief del sprint 7: 1–5). */
+export const BRAND_OCR_MAX_IMAGES = 5;
+
+/**
+ * `POST /brand/ocr` — el texto de una captura de perfil, para que el usuario lo
+ * revise y lo mande por `/assist` como texto pegado. **No persiste nada**: ni
+ * la imagen ni el texto.
+ */
+export const brandOcrRequestSchema = z
+  .object({
+    contentType: z.enum(["image/png", "image/jpeg", "image/webp"]),
+    /** Base64 sin prefijo `data:`. */
+    data: z
+      .string()
+      .min(4)
+      .max(Math.ceil((BRAND_OCR_IMAGE_MAX_BYTES * 4) / 3) + 4)
+      .regex(/^[A-Za-z0-9+/]+={0,2}$/),
+  })
+  .strict();
+export type BrandOcrRequest = z.infer<typeof brandOcrRequestSchema>;
+
+export const brandOcrResultSchema = z
+  .object({
+    text: z.string(),
+    /** Qué lo leyó: `services/vision` (OCR) o el modelo `vision` del registro. */
+    engine: z.enum(["ocr", "vision_model"]),
+  })
+  .strict();
+export type BrandOcrResult = z.infer<typeof brandOcrResultSchema>;

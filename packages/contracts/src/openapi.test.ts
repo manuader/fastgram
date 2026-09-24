@@ -179,13 +179,12 @@ describe("documento OpenAPI · ADR-015", () => {
     expect(header?.required).toBe(true);
   });
 
-  it("DELETE /media/{id} ya no documenta un 409 que la ruta nunca devuelve", () => {
-    // La ruta responde 204 siempre (§9.2: el borrado de media no revela
-    // existencia). El `409 media_in_use` de FR-100 no está implementado — hace
-    // falta un operador "contiene" en los filtros de `packages/db`— y un código
-    // documentado que no ocurre hace que alguien escriba una rama muerta.
+  it("DELETE /media/{id} documenta el 409 media_in_use, que la ruta ya devuelve", () => {
+    // P2-MEDIA-004 (sprint 7): el 409 de FR-100 volvió con la ruta. Un id
+    // ajeno o inexistente sigue siendo 204 (§9.2: no revela existencia).
     expect(Object.keys(doc.paths["/media/{id}"]?.delete?.responses ?? {})).toEqual([
       "204",
+      "409",
     ]);
   });
 

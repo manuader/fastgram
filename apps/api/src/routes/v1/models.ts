@@ -1,5 +1,6 @@
 /**
- * Registro de modelos — `GET /models`, `PUT /models/:task`, `POST /models/test`,
+ * Registro de modelos — `GET /models`, `PUT /models/:task`, `DELETE /models/:task`
+ * (sólo overrides de juicio, `P1-JUDGE-004`), `POST /models/test`,
  * `GET /models/providers/:provider/models`. `PU-MODEL-001`, `PU-MODEL-002`,
  * `docs/PLAN-USO-PERSONAL.md` §4, D-14, ADR-009.
  *
@@ -78,6 +79,7 @@ import {
 } from "@fastgram/adapters";
 import {
   MODEL_TASKS,
+  isJudgmentOverrideTask,
   isPortError,
   type ModelCatalog,
   type ModelProvider,
@@ -290,6 +292,24 @@ export function registerModelRoutes(
       return data(taskView(task, saved, env));
     },
   );
+
+  // ── DELETE /models/:task ──
+  //
+  // `P1-JUDGE-004`: sólo los overrides de juicio por punto de decisión
+  // (`judgment.autopilot`, `.brand`, `.engagement`). Borrarlo es «volver a usar
+  // el modelo de juicio general», que es lo que la pantalla ofrece al destildar
+  // «Use a different model for…». Las tareas base no se borran por acá: dejar
+  // `text` sin entrada apagaría la cola de Blitz con un click.
+  app.delete("/models/:task", { schema: { params: taskParams } }, async (request) => {
+    const { task } = request.params;
+    if (!isModelTask(task) || !isJudgmentOverrideTask(task)) {
+      throw new ApiRejection(404, "not_found", "model task not found");
+    }
+    await registry.write(task, null);
+    const snapshot = await registry.read();
+    request.log.info({ task }, "model task override cleared");
+    return data(taskView(task, snapshot, env));
+  });
 
   // ── POST /models/test ──
   app.post(

@@ -20,7 +20,8 @@ import { parseInfluencerPipelineJob } from "../jobs/influencer-pipeline.js";
 export type InfluencerQueueJob =
   | { readonly op: "train"; readonly companyId: string; readonly influencerId: string }
   | {
-      readonly op: "image";
+      /** `video` (sprint 7): animar una imagen del personaje (`F-099`). */
+      readonly op: "image" | "video";
       readonly companyId: string;
       readonly influencerId: string;
       readonly generationId: string;
@@ -35,7 +36,8 @@ export function parseInfluencerQueueJob(
     return { ok: false, reason: "payload is not an object" };
   }
   const source = raw as Record<string, unknown>;
-  if (source["op"] === "image") {
+  if (source["op"] === "image" || source["op"] === "video") {
+    const op = source["op"];
     const { companyId, influencerId, generationId } = source;
     if (typeof companyId !== "string" || !UUID.test(companyId))
       return { ok: false, reason: "companyId is not a uuid" };
@@ -43,7 +45,7 @@ export function parseInfluencerQueueJob(
       return { ok: false, reason: "influencerId is not a uuid" };
     if (typeof generationId !== "string" || !UUID.test(generationId))
       return { ok: false, reason: "generationId is not a uuid" };
-    return { ok: true, payload: { op: "image", companyId, influencerId, generationId } };
+    return { ok: true, payload: { op, companyId, influencerId, generationId } };
   }
   if (source["op"] !== undefined && source["op"] !== "train") {
     return { ok: false, reason: `unknown op ${String(source["op"])}` };
@@ -102,4 +104,9 @@ export function influencerImageStorageKey(input: {
   readonly ext: string;
 }): string {
   return `media/${input.companyId}/influencers/${input.influencerId}/${input.generationId}-${String(input.index + 1)}.${input.ext}`;
+}
+
+/** Un video del personaje se encola una sola vez por fila. */
+export function influencerVideoSingletonKey(generationId: string): string {
+  return `influencer-video:${generationId}`;
 }

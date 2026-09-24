@@ -525,20 +525,9 @@ async function main() {
   });
   log("start", `render listo en :${RENDER_PORT}`);
 
-  // 7b. API — `/health` es readiness: 200 con `ok` o `degraded`, 503 sin Postgres.
-  checkAbort();
-  const api = spawnTracked("api", "pnpm", tsxArgs, {
-    cwd: join(ROOT, "apps/api"),
-    env: { ...env, API_PORT: String(API_PORT), FASTGRAM_MODE: mode },
-  });
-  watchDeath(api);
-  await waitForHttp(api, `http://127.0.0.1:${API_PORT}/health`, {
-    timeoutMs: 90_000,
-    accept: (res) => res.status === 200,
-  });
-  log("start", `api lista en :${API_PORT}`);
-
-  // 7b'. Visión (opcional) — el extractor anónimo de Instagram (PU-SCRAPE-001)
+  // 7b. Visión (opcional) — el extractor anónimo de Instagram (PU-SCRAPE-001)
+  // y el OCR de capturas del tier D (`POST /brand/ocr`, sprint 7). Va ANTES de
+  // la API para que ésta herede `VISION_SERVICE_URL`.
   // vive en `services/vision` (instaloader). Se levanta sólo si su venv existe
   // (`cd services/vision && uv pip install -e ".[dev,social]"`); si no, las
   // fuentes de Instagram caen a tier D (pegar la bio) y se avisa.
@@ -565,6 +554,19 @@ async function main() {
       "sin services/vision/.venv: Instagram cae a pegar la bio a mano (ver docs/GUIA-DE-USO.md)",
     );
   }
+
+  // 7b'. API — `/health` es readiness: 200 con `ok` o `degraded`, 503 sin Postgres.
+  checkAbort();
+  const api = spawnTracked("api", "pnpm", tsxArgs, {
+    cwd: join(ROOT, "apps/api"),
+    env: { ...env, API_PORT: String(API_PORT), FASTGRAM_MODE: mode },
+  });
+  watchDeath(api);
+  await waitForHttp(api, `http://127.0.0.1:${API_PORT}/health`, {
+    timeoutMs: 90_000,
+    accept: (res) => res.status === 200,
+  });
+  log("start", `api lista en :${API_PORT}`);
 
   // 7c. Worker — no abre puerto por defecto; "worker arriba" es su última línea
   // de arranque, después de pedirle `/capabilities` al render.

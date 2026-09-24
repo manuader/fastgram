@@ -48,6 +48,11 @@ export const workspaceSchema = z
     name: z.string(),
     /** `pending` hasta que la marca se analiza (análisis desde la web, EXT-001). */
     profileStatus: workspaceProfileStatusSchema,
+    /**
+     * `P1-ONB-003`: el logo de la marca como `data:` URL (lo sube
+     * `PUT /brand/logo`, ≤ 256 KB). `null` sin logo; opcional por compatibilidad.
+     */
+    logoUrl: z.string().nullable().optional(),
     createdAt: z.string().datetime(),
   })
   .strict();

@@ -144,7 +144,11 @@ export interface RenderVideo extends DrawBox {
 }
 
 export interface RenderAudio {
-  /** `FR-070`: «El audio sólo puede venir de la librería compartida». */
+  /**
+   * `FR-070`: «El audio sólo puede venir de la librería». Desde el sprint 7 la
+   * librería es la de **la marca** (`audio/{companyId}/`), que el grant firma
+   * en `sharedPrefixes`.
+   */
   readonly url: string;
 }
 
@@ -186,6 +190,12 @@ export interface GreenScreenJob {
   /** Fondo. El video con croma se compone **encima** (`FR-070`). */
   readonly image: RenderImage;
   readonly video: RenderVideo;
+  /**
+   * Sprint 7: música de la biblioteca de la marca. El servicio la **mezcla**
+   * con el audio del clip de croma (clip al 100 %, música al 30 %); sin clip
+   * con audio, la música va sola. Ausente = sólo el audio del clip.
+   */
+  readonly audio?: RenderAudio | undefined;
   readonly text: RenderText;
 }
 

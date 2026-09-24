@@ -1,9 +1,13 @@
 "use client";
 
-import { buttonVariants, Skeleton } from "@fastgram/ui";
+import { Button, buttonVariants, Skeleton, useToast } from "@fastgram/ui";
 import type { CalendarItem } from "@fastgram/contracts";
 import Link from "next/link";
+import { useState } from "react";
 import { BrandAvatar } from "@/components/brands/BrandAvatar";
+import { PostEditDialog } from "@/components/schedule/PostEditDialog";
+import { presentError } from "@/lib/api/error-presentation";
+import { UNCERTAIN_FAILURE_CODES, useRetryPost } from "@/lib/posts/schedule";
 import { CloseIcon } from "@/icons";
 import { NETWORK_LABEL } from "@/lib/calendar/board";
 import { tw } from "@/lib/i18n/t";
@@ -23,12 +27,24 @@ export interface FailedCardProps {
  * El motivo sale del `errorCode`/`errorMessage` que el calendario trae para
  * cualquier marca; el orden está en `lib/today/failure.ts`.
  *
- * La acción es **"Open"** y no "Retry": no hay endpoint para reintentar un post
- * fallido (y reprogramar a ciegas uno de TikTok puede duplicarlo, NFR-015). El
- * detalle de la pieza es donde se decide qué hacer.
+ * Acciones (sprint 7): **Retry** re-encola el mismo post ya
+ * (`POST /posts/:id/retry`, con su `brandId`: Today mezcla marcas);
+ * **Reschedule** abre el diálogo del post para elegir la hora; **Open** va a la
+ * pieza. Un fallo de entrega incierta (`delivery_unconfirmed`,
+ * `platform_processing_timeout`) no se reintenta con un click: abre el diálogo,
+ * que pide confirmar que la plataforma no lo publicó (NFR-015).
  */
 export function FailedCard({ failed, timeZone }: FailedCardProps) {
   const ensureBrand = useEnsureBrand();
+  const retry = useRetryPost();
+  const { toast } = useToast();
+  const [editing, setEditing] = useState<CalendarItem | null>(null);
+  const [retrying, setRetrying] = useState<string | null>(null);
+
+  const openEditor = (item: CalendarItem) => {
+    ensureBrand(item.brandId);
+    setEditing(item);
+  };
 
   return (
     <section
@@ -71,6 +87,58 @@ export function FailedCard({ failed, timeZone }: FailedCardProps) {
                   </span>
                   <span className="line-clamp-2 text-xs text-danger">{reason}</span>
                 </div>
+                {item.kind === "post" && (
+                  <>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      loading={retry.isPending && retrying === item.id}
+                      disabled={retry.isPending}
+                      onClick={() => {
+                        if (
+                          item.errorCode !== undefined &&
+                          UNCERTAIN_FAILURE_CODES.has(item.errorCode)
+                        ) {
+                          openEditor(item);
+                          return;
+                        }
+                        setRetrying(item.id);
+                        retry.mutate(
+                          { postId: item.id, brandId: item.brandId },
+                          {
+                            onSuccess: () => {
+                              toast({
+                                title: tw("postEdit.toast.retried"),
+                                tone: "success",
+                              });
+                            },
+                            onError: (error) => {
+                              const p = presentError(error);
+                              toast({
+                                title: tw(p.titleKey, p.titleVars),
+                                tone: "danger",
+                              });
+                            },
+                            onSettled: () => {
+                              setRetrying(null);
+                            },
+                          },
+                        );
+                      }}
+                    >
+                      {tw("today.failed.retry")}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        openEditor(item);
+                      }}
+                    >
+                      {tw("today.failed.reschedule")}
+                    </Button>
+                  </>
+                )}
                 <Link
                   href={libraryHref(item.contentId)}
                   onClick={() => {
@@ -85,6 +153,15 @@ export function FailedCard({ failed, timeZone }: FailedCardProps) {
           })}
         </ul>
       )}
+      <PostEditDialog
+        open={editing !== null}
+        postId={editing?.id ?? null}
+        timeZone={timeZone}
+        onClose={() => {
+          setEditing(null);
+        }}
+        {...(editing === null ? {} : { brandId: editing.brandId })}
+      />
     </section>
   );
 }

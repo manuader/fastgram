@@ -297,6 +297,8 @@ describe("POST /blitz/generate · crear desde prompt (PU-BLITZ-003)", () => {
       "copy_rejected",
       "llm_failed",
       "invalid_state",
+      // Sprint 7: buscar el meme si no hay.
+      "meme_not_found",
     ]);
     expect(
       blitzPromptRequestSchema.parse({

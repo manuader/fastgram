@@ -1,11 +1,15 @@
 "use client";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@fastgram/ui";
-import { useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { MyContentTab } from "./MyContentTab";
 import { MyMediaBankTab } from "./MyMediaBankTab";
 import { MyPostsTab } from "./MyPostsTab";
+import { BrandAudioPanel } from "@/components/library/audio/BrandAudioPanel";
 import { tw } from "@/lib/i18n/t";
+import { readLibraryDeepLink } from "@/lib/media/deep-link";
 
 const DEFAULT_TAB = "content";
 
@@ -28,14 +32,30 @@ const DEFAULT_TAB = "content";
  * entre pestañas en dos peticiones más.
  *
  * Las tabs no están en la URL. El PRD las describe como tabs y no documenta un
- * path por tab (§3.1 lista `/library` a secas), así que meterlas en la ruta
- * sería inventar contrato de navegación — pero FR-100.1 sí documenta
- * parámetros de contexto (`?influencerId=&from=`), que son de Media Bank y
- * quedan para `P2-MEDIA-008`.
+ * path por tab (§3.1 lista `/library` a secas).
+ *
+ * ## Deep links (`FR-100.1`, `P2-MEDIA-008`, sprint 7)
+ *
+ * `?from=<path interno>&focus=<mediaId>` abre directo en el Media Bank, con un
+ * «Back» a `from` y el asset `focus` resaltado. `from` se valida como path
+ * interno (`safeReturnPath`): nada de open redirects. `?tab=` elige la pestaña.
+ * `useSearchParams` exige un `Suspense` por encima para el render estático: lo
+ * pone este mismo componente.
  */
 export function LibraryTabs() {
-  const [active, setActive] = useState(DEFAULT_TAB);
-  const [visited, setVisited] = useState<readonly string[]>([DEFAULT_TAB]);
+  return (
+    <Suspense fallback={null}>
+      <LibraryTabsWithParams />
+    </Suspense>
+  );
+}
+
+function LibraryTabsWithParams() {
+  const params = useSearchParams();
+  const link = readLibraryDeepLink(params ?? new URLSearchParams());
+  const initial = link.tab ?? DEFAULT_TAB;
+  const [active, setActive] = useState<string>(initial);
+  const [visited, setVisited] = useState<readonly string[]>([initial]);
 
   function open(value: string): void {
     setActive(value);
@@ -43,29 +63,45 @@ export function LibraryTabs() {
   }
 
   return (
-    <Tabs
-      value={active}
-      defaultValue={DEFAULT_TAB}
-      onValueChange={open}
-      className="fgw-library-tabs"
-    >
-      <TabsList aria-label={tw("library.title")}>
-        <TabsTrigger value="posts">{tw("library.tab.myPosts")}</TabsTrigger>
-        <TabsTrigger value="content">{tw("library.tab.myContent")}</TabsTrigger>
-        <TabsTrigger value="media">{tw("library.tab.myMediaBank")}</TabsTrigger>
-      </TabsList>
+    <>
+      {link.from !== null && (
+        <Link
+          href={link.from}
+          className="fg-focusable mb-3 inline-block text-sm text-accent underline"
+        >
+          {tw("mediaBank.back")}
+        </Link>
+      )}
+      <Tabs
+        value={active}
+        defaultValue={DEFAULT_TAB}
+        onValueChange={open}
+        className="fgw-library-tabs"
+      >
+        <TabsList aria-label={tw("library.title")}>
+          <TabsTrigger value="posts">{tw("library.tab.myPosts")}</TabsTrigger>
+          <TabsTrigger value="content">{tw("library.tab.myContent")}</TabsTrigger>
+          <TabsTrigger value="media">{tw("library.tab.myMediaBank")}</TabsTrigger>
+          {/* Sprint 7: la biblioteca de audio de la marca (agente B). */}
+          <TabsTrigger value="audio">{tw("audio.panel.title")}</TabsTrigger>
+        </TabsList>
 
-      <TabsContent value="posts">
-        {visited.includes("posts") && <MyPostsTab />}
-      </TabsContent>
+        <TabsContent value="posts">
+          {visited.includes("posts") && <MyPostsTab />}
+        </TabsContent>
 
-      <TabsContent value="content">
-        {visited.includes("content") && <MyContentTab />}
-      </TabsContent>
+        <TabsContent value="content">
+          {visited.includes("content") && <MyContentTab />}
+        </TabsContent>
 
-      <TabsContent value="media">
-        {visited.includes("media") && <MyMediaBankTab />}
-      </TabsContent>
-    </Tabs>
+        <TabsContent value="media">
+          {visited.includes("media") && <MyMediaBankTab focusId={link.focus} />}
+        </TabsContent>
+
+        <TabsContent value="audio">
+          {visited.includes("audio") && <BrandAudioPanel />}
+        </TabsContent>
+      </Tabs>
+    </>
   );
 }

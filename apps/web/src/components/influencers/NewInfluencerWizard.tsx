@@ -15,26 +15,56 @@ import {
   cn,
 } from "@fastgram/ui";
 import { useRouter } from "next/navigation";
-import { useId, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 import { BudgetMeter } from "@/components/ai-studio/BudgetMeter";
 import { isApiRequestError } from "@/lib/api/errors";
 import { tw } from "@/lib/i18n/t";
-import { useCreateInfluencer } from "@/lib/influencers/api";
 import {
   INITIAL_WIZARD,
   canLeaveStep,
   clampAge,
+  toCreateRequest,
   toggleReference,
   type WizardForm,
   type WizardStep,
 } from "@/lib/influencers/form";
 import { ROUTES } from "@/lib/nav/routes";
+import { useCreateInfluencerFrom } from "./api";
+import { BaseImageStep } from "./BaseImageStep";
 import { ReferencePicker } from "./ReferencePicker";
+
+/** Paso 2: fotos propias (Soul ID) o una base generada por texto (sprint 7). */
+export type BaseMode = "photos" | "describe";
+
+/**
+ * El cuerpo de `POST /influencers` según el camino. Con la base generada, el
+ * personaje sale de **esa** foto (`generatedBaseMediaId`); regenerar agrega
+ * de quién sale (`F-093`: el viejo se conserva).
+ */
+export function createBody(
+  form: WizardForm,
+  mode: BaseMode,
+  generatedBaseMediaId: string | null,
+  regeneratedFromId: string | undefined,
+) {
+  const base = toCreateRequest(form);
+  const { referenceMediaIds: _photos, ...rest } = base;
+  return {
+    ...(mode === "describe" && generatedBaseMediaId !== null
+      ? { ...rest, generatedBaseMediaId }
+      : base),
+    ...(regeneratedFromId === undefined ? {} : { regeneratedFromId }),
+  };
+}
 
 export interface NewInfluencerWizardProps {
   readonly open: boolean;
   readonly onClose: () => void;
   readonly setup: InfluencerSetup;
+  /** Sprint 7: arrancar con rasgos (regenerar un personaje existente). */
+  readonly initial?: Partial<WizardForm> | undefined;
+  /** Sprint 7 (`F-093`): el personaje que se regenera como persona nueva. */
+  readonly regeneratedFromId?: string | undefined;
 }
 
 /**
@@ -43,7 +73,13 @@ export interface NewInfluencerWizardProps {
  * Bank, (3) confirmar. El costo de crear el personaje **no se conoce**
  * (Higgsfield no lo publica) y se dice así, junto al presupuesto del mes.
  */
-export function NewInfluencerWizard({ open, onClose, setup }: NewInfluencerWizardProps) {
+export function NewInfluencerWizard({
+  open,
+  onClose,
+  setup,
+  initial,
+  regeneratedFromId,
+}: NewInfluencerWizardProps) {
   const ids = {
     name: useId(),
     gender: useId(),
@@ -52,15 +88,32 @@ export function NewInfluencerWizard({ open, onClose, setup }: NewInfluencerWizar
     det: useId(),
   };
   const [step, setStep] = useState<WizardStep>(1);
-  const [form, setForm] = useState<WizardForm>(INITIAL_WIZARD);
+  const startForm: WizardForm = { ...INITIAL_WIZARD, ...initial };
+  const [form, setForm] = useState<WizardForm>(startForm);
+  const [mode, setMode] = useState<BaseMode>(
+    regeneratedFromId !== undefined && setup.canGenerateBase ? "describe" : "photos",
+  );
+  const [generatedBase, setGeneratedBase] = useState<{
+    readonly mediaId: string;
+    readonly url: string;
+  } | null>(null);
+  const onBase = useCallback(
+    (b: { readonly mediaId: string; readonly url: string } | null) => {
+      setGeneratedBase((prev) => (prev?.mediaId === b?.mediaId ? prev : b));
+    },
+    [],
+  );
   // Una clave por intento de creación: un doble click replica, no duplica.
   const keyRef = useRef<string>(crypto.randomUUID());
-  const create = useCreateInfluencer();
+  const create = useCreateInfluencerFrom();
   const router = useRouter();
+  const canLeave =
+    step === 2 && mode === "describe" ? generatedBase !== null : canLeaveStep(form, step);
 
   const close = () => {
     setStep(1);
-    setForm(INITIAL_WIZARD);
+    setForm(startForm);
+    setGeneratedBase(null);
     create.reset();
     keyRef.current = crypto.randomUUID();
     onClose();
@@ -68,7 +121,10 @@ export function NewInfluencerWizard({ open, onClose, setup }: NewInfluencerWizar
 
   const submit = () => {
     create.mutate(
-      { form, idempotencyKey: keyRef.current },
+      {
+        body: createBody(form, mode, generatedBase?.mediaId ?? null, regeneratedFromId),
+        idempotencyKey: keyRef.current,
+      },
       {
         onSuccess: (created) => {
           close();
@@ -204,7 +260,36 @@ export function NewInfluencerWizard({ open, onClose, setup }: NewInfluencerWizar
             </div>
           </div>
         )}
-        {step === 2 && (
+        {step === 2 && setup.canGenerateBase && (
+          <div
+            className="mb-4 inline-flex rounded-lg border border-border p-0.5"
+            role="radiogroup"
+            aria-label={tw("influencers.base.modeLabel")}
+          >
+            {(["photos", "describe"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={mode === m}
+                className={cn(
+                  "fg-focusable rounded-md px-3 py-1.5 text-sm",
+                  mode === m ? "bg-accent-subtle text-text" : "text-text-muted",
+                )}
+                onClick={() => {
+                  setMode(m);
+                }}
+              >
+                {tw(
+                  m === "photos"
+                    ? "influencers.base.modePhotos"
+                    : "influencers.base.modeDescribe",
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+        {step === 2 && mode === "photos" && (
           <ReferencePicker
             selected={form.referenceMediaIds}
             onToggle={(id) => {
@@ -212,12 +297,15 @@ export function NewInfluencerWizard({ open, onClose, setup }: NewInfluencerWizar
             }}
           />
         )}
+        {step === 2 && mode === "describe" && (
+          <BaseImageStep form={form} onChange={onBase} />
+        )}
         {step === 3 && (
           <div className="flex flex-col gap-4">
             <p className="m-0 text-sm text-text">
               {tw("influencers.wizard.confirm.body", {
                 name: form.name.trim(),
-                count: form.referenceMediaIds.length,
+                count: mode === "describe" ? 1 : form.referenceMediaIds.length,
               })}
             </p>
             <div className="flex flex-col gap-3 rounded-xl bg-surface-sunken p-4">
@@ -261,7 +349,7 @@ export function NewInfluencerWizard({ open, onClose, setup }: NewInfluencerWizar
         )}
         {step < 3 ? (
           <Button
-            disabled={!canLeaveStep(form, step)}
+            disabled={!canLeave}
             onClick={() => {
               setStep((step + 1) as WizardStep);
             }}

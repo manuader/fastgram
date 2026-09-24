@@ -8,7 +8,10 @@
  * ser deliberado, no un efecto lateral.
  */
 import { describe, expect, it } from "vitest";
-import { scheduleTargetSchema } from "@fastgram/contracts";
+import {
+  scheduleContentRequestSchema as scheduleRequestS7,
+  scheduleTargetSchema,
+} from "@fastgram/contracts";
 
 import {
   CANCELLABLE_POST_STATUSES,
@@ -18,6 +21,9 @@ import {
   deleteFailureOf,
   flattenTarget,
   isStorableId,
+  copyPatchOf as copyPatchOfS7,
+  manualRetryKey as manualRetryKeyS7,
+  retryRefusalOf as retryRefusalOfS7,
   type CancellablePost,
 } from "./posts.js";
 
@@ -223,5 +229,56 @@ describe("flattenTarget", () => {
     }
     expect(flat.privacyLevel).toBeNull();
     expect(flat.postingMode).toBeNull();
+  });
+});
+
+// ── Sprint 7 (publish-flow) ─────────────────────────────────────────────────
+
+describe("retryRefusalOf", () => {
+  it("sólo FAILED se reintenta", () => {
+    expect(
+      retryRefusalOfS7({ status: "SCHEDULED", errorCode: null }, false),
+    ).not.toBeNull();
+    expect(
+      retryRefusalOfS7({ status: "FAILED", errorCode: "unknown" }, false),
+    ).toBeNull();
+  });
+
+  it("entrega incierta o carril lento vencido exigen confirmación (NFR-015)", () => {
+    for (const code of ["delivery_unconfirmed", "platform_processing_timeout"]) {
+      expect(
+        retryRefusalOfS7({ status: "FAILED", errorCode: code }, false),
+      ).not.toBeNull();
+      expect(retryRefusalOfS7({ status: "FAILED", errorCode: code }, true)).toBeNull();
+    }
+  });
+
+  it("la clave del job manual no choca con la primera (trampa 39)", () => {
+    expect(manualRetryKeyS7("p1", 5)).toBe("publishing:p1:manual:5");
+  });
+});
+
+describe("copyPatchOf", () => {
+  it("valida por code point contra el tope de la red", () => {
+    expect(copyPatchOfS7("x", { caption: "🔥".repeat(280) })).toEqual({
+      caption: "🔥".repeat(280),
+    });
+    expect(() => copyPatchOfS7("x", { caption: "a".repeat(281) })).toThrow();
+  });
+
+  it("descripción sólo donde la red la tiene", () => {
+    expect(() => copyPatchOfS7("instagram", { description: "d" })).toThrow();
+    expect(copyPatchOfS7("tiktok", { description: "d" })).toEqual({ description: "d" });
+  });
+});
+
+describe("scheduleContentRequestSchema · postNow", () => {
+  const targets = [{ platform: "x", caption: "hola" }];
+  it("sin hora ni postNow no valida; con postNow sí", () => {
+    expect(scheduleRequestS7.safeParse({ targets }).success).toBe(false);
+    expect(scheduleRequestS7.safeParse({ targets, postNow: true }).success).toBe(true);
+    expect(scheduleRequestS7.safeParse({ targets, scheduledAtUtc: 1 }).success).toBe(
+      true,
+    );
   });
 });

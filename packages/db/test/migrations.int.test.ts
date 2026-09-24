@@ -29,7 +29,7 @@ afterAll(async () => {
 });
 
 describe("migraciones", () => {
-  it("crean las 44 tablas del modelo de datos (33 + blitz_prompt_requests, 0012 + brand_strategies y planned_slots, 0014 + autopilot_decisions y autopilot_runs, 0017 + content_mix_autotune y format_mix_adjustments, 0018 + influencer_generations, 0020 + engagement_settings, reddit_accounts y engagement_replies, 0021)", async () => {
+  it("crean las 47 tablas del modelo de datos (33 + blitz_prompt_requests, 0012 + brand_strategies y planned_slots, 0014 + autopilot_decisions y autopilot_runs, 0017 + content_mix_autotune y format_mix_adjustments, 0018 + influencer_generations, 0020 + engagement_settings, reddit_accounts y engagement_replies, 0021 + brand_audio_tracks, 0025 + notifications, 0028 + own_post_imports, 0029)", async () => {
     const rows = await ctx.db.execute<{ table_name: string }>(sql`
       select table_name
         from information_schema.tables
@@ -48,8 +48,8 @@ describe("migraciones", () => {
     for (const name of expected) {
       expect(present.has(name), `falta la tabla ${name}`).toBe(true);
     }
-    expect(expected).toHaveLength(44);
-    expect(present.size).toBe(44);
+    expect(expected).toHaveLength(47);
+    expect(present.size).toBe(47);
   });
 
   it("son idempotentes: volver a correrlas no hace nada", async () => {

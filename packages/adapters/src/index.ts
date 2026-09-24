@@ -166,3 +166,6 @@ export * from "./genai/index.js";
 
 /** `FR-140`, `F-190`: Reddit para Engagement (OAuth propio, lectura, comentario con confirmación). */
 export * from "./reddit/index.js";
+
+/** Sprint 7 (notify-reliability): ntfy, Telegram y el archivo de preferencias. */
+export * from "./notify/index.js";

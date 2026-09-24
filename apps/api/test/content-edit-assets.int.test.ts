@@ -131,6 +131,8 @@ describe("GET /content/:id/editable devuelve la media vigente", () => {
     expect(data["assets"]).toEqual({
       image: draw("https://cdn.example.test/bg.jpg"),
       video: draw("https://cdn.example.test/meme.mp4"),
+      // Sprint 7: green-screen tiene slot de música; sin pista, `null`.
+      audio: null,
     });
   });
 
@@ -222,8 +224,14 @@ describe("PATCH con assets", () => {
   });
 
   it("slot que el formato no tiene: 400", async () => {
-    const id = await pieza(api.data.a.companyId, "green-screen", greenScreen());
-    const res = await patch(id, { assets: { audio: null } });
+    const id = await pieza(api.data.a.companyId, "wall-of-text", {
+      canvas: { width: 1080, height: 1920 },
+      video: draw("https://cdn.example.test/v.mp4"),
+      text: TEXT,
+    });
+    const res = await patch(id, {
+      assets: { image: { url: "https://cdn.example.test/bg.jpg" } },
+    });
     expect(res.status).toBe(400);
     expect(errorOf(res).details).toMatchObject({ reason: "asset_slot_not_in_format" });
   });
@@ -266,5 +274,57 @@ describe("PATCH con assets", () => {
     });
     expect(res.status).toBe(409);
     expect(errorOf(res).code).toBe("stale_revision");
+  });
+});
+
+/**
+ * Sprint 7: la biblioteca de audio de la marca es lo que el editor ofrece en
+ * `Select Audio`, también para green-screen. Una pista viva de **esta** marca
+ * entra; la de otra marca o una borrada, no.
+ */
+describe("PATCH /content/:id · música de la biblioteca de la marca (sprint 7)", () => {
+  async function pista(companyId: string, url: string, borrada = false): Promise<void> {
+    await api.handle.sql`
+      insert into brand_audio_tracks
+        (company_id, title, origin, storage_key, url, content_type, size_mb, deleted_at)
+      values (${companyId}::uuid, 'beat', 'upload', ${`audio/${companyId}/${randomUUID()}`},
+              ${url}, 'audio/mpeg', 1, ${borrada ? new Date().toISOString() : null}::timestamptz)
+    `;
+  }
+
+  it("green-screen con una pista propia: 200, y el payload la lleva", async () => {
+    const url = `https://cdn.example.test/audio/${randomUUID()}.mp3`;
+    await pista(api.data.a.companyId, url);
+    const id = await pieza(api.data.a.companyId, "green-screen", greenScreen());
+    expect((await patch(id, { assets: { audio: { url } } })).status).toBe(200);
+    const data = await editable(id);
+    expect((data["assets"] as Record<string, unknown>)["audio"]).toEqual({ url });
+  });
+
+  it("wall-of-text con una pista propia: 200", async () => {
+    const url = `https://cdn.example.test/audio/${randomUUID()}.mp3`;
+    await pista(api.data.a.companyId, url);
+    const id = await pieza(api.data.a.companyId, "wall-of-text", {
+      canvas: { width: 1080, height: 1920 },
+      video: draw("https://cdn.example.test/v.mp4"),
+      text: TEXT,
+    });
+    expect((await patch(id, { assets: { audio: { url } } })).status).toBe(200);
+  });
+
+  it("la pista de otra marca: 400, como una URL cualquiera", async () => {
+    const url = `https://cdn.example.test/audio/${randomUUID()}.mp3`;
+    await pista(api.data.b.companyId, url);
+    const id = await pieza(api.data.a.companyId, "green-screen", greenScreen());
+    const res = await patch(id, { assets: { audio: { url } } });
+    expect(res.status).toBe(400);
+    expect(errorOf(res).details).toMatchObject({ invalidAssets: ["audio"] });
+  });
+
+  it("una pista borrada ya no se puede elegir", async () => {
+    const url = `https://cdn.example.test/audio/${randomUUID()}.mp3`;
+    await pista(api.data.a.companyId, url, true);
+    const id = await pieza(api.data.a.companyId, "green-screen", greenScreen());
+    expect((await patch(id, { assets: { audio: { url } } })).status).toBe(400);
   });
 });

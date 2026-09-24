@@ -6,7 +6,15 @@
  * aparece acá— es lógica pura sobre el modelo del sidebar.
  */
 import type { ComponentType } from "react";
-import { CpuIcon, LayersIcon, RocketIcon, type IconProps } from "@/icons";
+import {
+  CpuIcon,
+  InboxIcon,
+  LayersIcon,
+  RocketIcon,
+  SettingsIcon,
+  ZapIcon,
+  type IconProps,
+} from "@/icons";
 import { tw } from "@/lib/i18n/t";
 import {
   PRIMARY_NAV,
@@ -27,8 +35,9 @@ export interface PaletteLink {
 
 /**
  * Las pantallas a las que se puede saltar: el sidebar visible (sin enlaces
- * externos: la paleta navega dentro de la app) más tres subpantallas que no
- * tienen entrada propia en el sidebar.
+ * externos: la paleta navega dentro de la app) más las subpantallas que no
+ * tienen entrada propia en el sidebar (Blitz Settings y las secciones de
+ * Settings).
  */
 export function paletteLinks(visibility: NavVisibility): PaletteLink[] {
   const fromNav = [PRIMARY_NAV, TOOLS_NAV, SECONDARY_NAV].flatMap((group) =>
@@ -64,6 +73,35 @@ export function paletteLinks(visibility: NavVisibility): PaletteLink[] {
       href: ROUTES.settingsModels,
       icon: CpuIcon,
       keywords: ["ai", "providers", "models"],
+    },
+    // Sprint 7: el resto de las secciones del hub de Settings.
+    {
+      id: "nav:settings-strategy",
+      label: `${settings} › ${tw("settings.nav.strategy")}`,
+      href: ROUTES.settingsStrategy,
+      icon: ZapIcon,
+      keywords: ["autopilot", "schedule", "frequency"],
+    },
+    {
+      id: "nav:settings-connections",
+      label: `${settings} › ${tw("settings.nav.connections")}`,
+      href: ROUTES.settingsConnections,
+      icon: LayersIcon,
+      keywords: ["accounts", "reconnect", "instagram", "tiktok"],
+    },
+    {
+      id: "nav:settings-integrations",
+      label: `${settings} › ${tw("settings.nav.integrations")}`,
+      href: ROUTES.settingsIntegrations,
+      icon: SettingsIcon,
+      keywords: ["apps", "oauth", "client id"],
+    },
+    {
+      id: "nav:settings-notifications",
+      label: `${settings} › Notifications`,
+      href: ROUTES.settingsNotifications,
+      icon: InboxIcon,
+      keywords: ["alerts", "ntfy", "telegram", "push"],
     },
   ];
   return [...fromNav, ...extras];

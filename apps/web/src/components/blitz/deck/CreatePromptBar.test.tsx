@@ -344,3 +344,71 @@ describe("el chip «From your prompt»", () => {
     expect(await within(chips).findByText("From your prompt")).toBeInTheDocument();
   });
 });
+
+describe("sprint 7: buscar el meme si no hay", () => {
+  it("con phase searching_meme, el progreso dice que está buscando un meme", async () => {
+    installBackend({
+      status: () => ({
+        requestId: REQUEST_ID,
+        status: "running",
+        phase: "searching_meme",
+        suggestionIds: [],
+        count: 1,
+      }),
+    });
+    const { user } = renderDeck();
+    await screen.findByText("Regular card");
+    await type(user, "a meme about Mondays");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+    expect(await screen.findByTestId("prompt-progress")).toHaveTextContent(
+      "Searching for a meme…",
+    );
+  });
+
+  it("meme_not_found manda a importar un clip por link desde la Library", async () => {
+    installBackend({
+      status: () => ({
+        requestId: REQUEST_ID,
+        status: "failed",
+        failureReason: "meme_not_found",
+        suggestionIds: [],
+        count: 1,
+      }),
+    });
+    const { user } = renderDeck();
+    await screen.findByText("Regular card");
+    await type(user, "a meme about Mondays");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+    const alert = await screen.findByTestId("prompt-danger");
+    expect(alert).toHaveTextContent("Couldn't find a green-screen meme for that topic");
+    expect(
+      within(alert).getByRole("link", { name: "Import a clip from a link" }),
+    ).toHaveAttribute("href", "/library");
+  });
+
+  it("el chip «Auto-found meme» enlaza al origen, y sólo aparece si vino anotado", async () => {
+    const autoFound = card({
+      id: "a1",
+      contentType: "green-screen",
+      generatedText: "Mondays, found",
+      promptRequestId: REQUEST_ID,
+      autoFoundMeme: { sourceUrl: "https://www.youtube.com/watch?v=J3bvkPStwB8" },
+    });
+    installBackend({ queue: () => [autoFound, REGULAR] });
+    renderDeck();
+    const chips = await screen.findByRole("list", { name: "Content tags" });
+    const chip = await within(chips).findByText("Auto-found meme");
+    expect(chip.closest("a")).toHaveAttribute(
+      "href",
+      "https://www.youtube.com/watch?v=J3bvkPStwB8",
+    );
+  });
+
+  it("una tarjeta sin anotación no muestra el chip", async () => {
+    installBackend({ queue: () => [FROM_PROMPT, REGULAR] });
+    renderDeck();
+    const chips = await screen.findByRole("list", { name: "Content tags" });
+    await within(chips).findByText("From your prompt");
+    expect(within(chips).queryByText("Auto-found meme")).not.toBeInTheDocument();
+  });
+});

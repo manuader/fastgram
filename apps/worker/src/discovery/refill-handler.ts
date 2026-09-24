@@ -97,8 +97,13 @@ import {
   finalizeBuildPlan,
   generatedTextOf,
   parseDiscoveryRefillJob,
+  pickBuildPlanAudio,
   planBlitzSuggestion,
+  rankByRelevance,
   reconcileAngleWeights,
+  toCopyRemixReference,
+  withRemixReference,
+  type BlitzContentType,
   type BlitzPlanningContext,
   type BlitzPreferences,
   type CopyAngle,
@@ -111,20 +116,33 @@ import {
 } from "@fastgram/core";
 import {
   blitzPreferencesRepository,
+  brandStrategyRepository,
+  brandAudioRepository,
   companyProfileRepository,
   companyRepository,
   contentAngleRepository,
   discoveryQueueStore,
   influencerRepository,
+  listOwnerReferences,
   withCompany,
   type Database,
   type QueuedSuggestionDraft,
   type Transaction,
+  type TrendingItemRow,
 } from "@fastgram/db";
-import { PortError, type JobContext, type JobHandler, type Rng } from "@fastgram/ports";
+import {
+  PortError,
+  type JobContext,
+  type JobHandler,
+  type Judgment,
+  type Rng,
+  type Storage,
+} from "@fastgram/ports";
 
 import type { BuildLogger } from "../content/build-handler.js";
 import type { SuggestionCopywriter } from "./copywriter.js";
+import { applyJv6, judgeBest, type Jv6JudgmentProvider } from "./jv6.js";
+import { describePlanningMedia } from "./media-descriptors.js";
 
 export interface DiscoveryRefillDeps {
   readonly db: Database;
@@ -173,6 +191,18 @@ export interface DiscoveryRefillDeps {
    * `brand-kit/mount.ts`). No lanza: el refill termina igual que antes.
    */
   readonly onMediaBankEmpty?: ((companyId: string) => Promise<void>) | undefined;
+  /**
+   * Sprint 7 (`JV-6`): de dónde leer las etiquetas de los clips
+   * (`media-meta/…` en el storage). Ausente = los clips compiten sólo con su
+   * nombre de archivo.
+   */
+  readonly storage?: Storage | undefined;
+  /**
+   * Sprint 7 (`JV-6`, `DP-005`): el juicio que elige entre varios candidatos
+   * (influencer, meme, fondo, referencia de remix). Ausente = manda el
+   * ranking determinístico.
+   */
+  readonly judgment?: Jv6JudgmentProvider | undefined;
 }
 
 /** La copy resuelta en el momento del job. Ver {@link DiscoveryRefillDeps.copywriter}. */
@@ -199,7 +229,21 @@ export interface RefillSubject {
   readonly businessName: string;
   readonly profile: CopyBrandProfile;
   readonly queued: number;
+  /**
+   * Sprint 7: el idioma de la estrategia **guardada** de la marca, o `null`
+   * (sin estrategia: el idioma del perfil). Ver `core/discovery/copy-language.ts`.
+   */
+  readonly language: string | null;
+  /**
+   * Sprint 7 (`JV-6`): las referencias guardadas del dueño (Inspiration) que
+   * pueden remixarse cuando la tirada de `remixPercentage` sale. Las más
+   * nuevas primero, hasta {@link REMIX_REFERENCES_LIMIT}.
+   */
+  readonly references: readonly TrendingItemRow[];
 }
+
+/** Cuántas referencias se leen para elegir qué remixar. */
+export const REMIX_REFERENCES_LIMIT = 50;
 
 /**
  * `HARD_CAPS.contentAngles` es 100 y `activeInfluencers` 50, así que una página
@@ -231,7 +275,9 @@ export function createDiscoveryRefillHandler(
 
   /** Transacción 1: leer todo lo que la selección y la copy necesitan, y soltar. */
   async function read(job: DiscoveryRefillJob): Promise<RefillSubject> {
-    return inCompany(job.companyId, (tx) => readRefillSubject(tx, job.companyId));
+    return inCompany(job.companyId, (tx) =>
+      readRefillSubject(tx, job.companyId, deps.storage),
+    );
   }
 
   /** Transacción 2: el lock, el conteo que decide y la inserción. */
@@ -330,11 +376,36 @@ export function createDiscoveryRefillHandler(
       throw error;
     }
 
+    // Sprint 7 (`JV-6`): el juicio elige entre varios candidatos. Nunca
+    // bloquea: sin modelo o sin respuesta, queda lo que eligió el ranking.
+    const judgment =
+      deps.judgment === undefined
+        ? null
+        : await deps
+            .judgment({ companyId: job.companyId, subjectType: "blitz_refill" })
+            .catch(() => null);
+
     const drafts: QueuedSuggestionDraft[] = [];
     let lastRetryable: PortError | null = null;
-    for (const p of planned) {
+    for (const planned0 of planned) {
+      const judged = await applyJv6(planned0, {
+        judgment,
+        rng: deps.rng,
+        context: subject.planning,
+        brandName: subject.businessName,
+        profile: subject.profile,
+        logger: deps.logger,
+      });
+      const remix = await pickRemixReference(judged, subject, judgment, deps.logger);
+      const p = remix === null ? judged : withRemixReference(judged, remix.title ?? "");
       try {
-        const draft = await withCopy(copywriter, subject, p);
+        const draft = await withCopy(
+          copywriter,
+          subject,
+          p,
+          undefined,
+          remix === null ? undefined : toCopyRemixReference(remix),
+        );
         if (draft.ok) {
           drafts.push(draft.draft);
         } else {
@@ -363,7 +434,20 @@ export function createDiscoveryRefillHandler(
       return;
     }
 
-    const { queuedBefore, inserted } = await write(job, drafts);
+    const { queuedBefore, inserted } = await write(
+      job,
+      await withBrandAudio(
+        deps.rng,
+        drafts,
+        (fn) => inCompany(job.companyId, fn),
+        { companyId: job.companyId },
+        (error) =>
+          deps.logger.warn(
+            { ...base, error: error instanceof Error ? error.message : String(error) },
+            "no se pudo leer la biblioteca de audio: las sugerencias salen sin música",
+          ),
+      ),
+    );
 
     deps.logger.info(
       {
@@ -389,6 +473,11 @@ export function createDiscoveryRefillHandler(
 export async function readRefillSubject(
   tx: Transaction,
   companyId: string,
+  /**
+   * Sprint 7 (`JV-6`): para leer las etiquetas de los clips. Sin él, los
+   * clips compiten sólo con su nombre de archivo.
+   */
+  storage?: Storage,
 ): Promise<RefillSubject> {
   const scope = { companyId };
   const angleRows = await listAllPages((page) =>
@@ -415,6 +504,14 @@ export async function readRefillSubject(
   }));
 
   const bankRows = await discoveryQueueStore.listPlanningMedia(tx, scope);
+  // Sprint 7 (`JV-6`): título y etiquetas de cada asset, para elegir por tema.
+  const described = await describePlanningMedia(tx, storage, companyId, bankRows.media);
+  // Sprint 7: el idioma sólo si la marca **guardó** su estrategia (el default
+  // de la API, `en`, no es una elección del dueño).
+  const strategy = await brandStrategyRepository.find(tx, scope);
+  const references = (
+    await listOwnerReferences(tx, scope, { page: 1, limit: REMIX_REFERENCES_LIMIT })
+  ).items;
   const company = await companyRepository.load(tx, scope);
   // `company_profiles` tiene un único índice por `companyId`: la primera
   // fila es la fila.
@@ -428,7 +525,7 @@ export async function readRefillSubject(
     planning: {
       activeAngleIds: activeAngles.map((a) => a.id),
       influencers,
-      bank: buildMediaBank(bankRows.media, bankRows.influencerSets),
+      bank: buildMediaBank(described, bankRows.influencerSets),
       angleTitles: new Map(activeAngles.map((a) => [a.id, a.title])),
       influencerNames: new Map(rows.map((row) => [row.id, row.name])),
     },
@@ -445,7 +542,58 @@ export async function readRefillSubject(
     businessName: company?.name ?? "",
     profile: profile ?? {},
     queued: await discoveryQueueStore.countQueued(tx, scope),
+    language: strategy?.language ?? null,
+    references,
   };
+}
+
+/**
+ * `JV-6` para el remix: la tirada pidió remix, ¿cuál de las referencias
+ * guardadas? Primero el ranking contra el tema (el ángulo), después el juicio
+ * entre las mejores (sin juicio, la primera del ranking). Sin referencias,
+ * `null` y la pieza sale original (la explicación lo dice).
+ *
+ * **Lo que no hace** (está en el reporte del sprint 7): la sugerencia no
+ * guarda `sourceTrendingItemId` ni `remixSourceUrl`, porque el borrador del
+ * relleno (`QueuedSuggestionDraft`, `packages/db`) no tiene esos campos. La
+ * referencia informa la copy y la explicación la nombra; la tarjeta no
+ * muestra el «Remixed From».
+ */
+export async function pickRemixReference(
+  planned: PlannedBlitzSuggestion,
+  subject: RefillSubject,
+  judgment: Judgment | null,
+  logger: BuildLogger,
+): Promise<TrendingItemRow | null> {
+  if (!planned.plan.isRemix || subject.references.length === 0) return null;
+  const ranked = rankByRelevance(planned.topic, subject.references, (r) => ({
+    title: [r.title, r.caption].filter((x) => x !== null).join(" "),
+    tags: r.hashtags,
+  }));
+  const positive = ranked.filter((r) => r.score > 0).map((r) => r.item);
+  const pool = (positive.length > 0 ? positive : ranked.map((r) => r.item)).slice(0, 5);
+  const chosen = await judgeBest(
+    judgment,
+    "reference",
+    {
+      topic: planned.topic,
+      brandName: subject.businessName,
+      profile: subject.profile,
+      candidates: pool.map((r) => ({
+        id: r.id,
+        description: [
+          r.format === null ? null : `format: ${r.format}`,
+          r.title === null ? null : `title: ${r.title}`,
+          r.caption === null ? null : `caption: ${r.caption}`,
+          r.hashtags.length === 0 ? null : `hashtags: ${r.hashtags.join(" ")}`,
+        ]
+          .filter((x) => x !== null)
+          .join("; "),
+      })),
+    },
+    logger,
+  );
+  return pool.find((r) => r.id === chosen) ?? pool[0] ?? null;
 }
 
 /**
@@ -473,6 +621,8 @@ export async function withCopy(
     profile: subject.profile,
     angle: p.plan.angleId === null ? null : (subject.angles.get(p.plan.angleId) ?? null),
     maxTexts,
+    // Sprint 7: el idioma de la estrategia guardada (sin ella, el del perfil).
+    language: subject.language,
     ...(topic === undefined ? {} : { topic }),
     ...(remix === undefined ? {} : { remix }),
   });
@@ -571,4 +721,50 @@ async function listAllPages<TRow>(
       "dice 100. Planificar sobre una lista incompleta dejaría candidatos fuera sin " +
       "avisar, así que se corta acá.",
   );
+}
+
+/**
+ * Sprint 7: la música de la marca para cada pieza de video del relleno.
+ *
+ * Si la marca tiene pistas con `autoUse` en su biblioteca, cada sugerencia de
+ * video lleva una elegida al azar (`pickBuildPlanAudio`, mismo `Rng` que el
+ * resto del plan); sin pistas —o todas fuera del sorteo— sale sin música, como
+ * antes. Va en el `build_plan` y el payload la compone al aceptar.
+ *
+ * Una lectura aparte y no dentro de `readRefillSubject`: esa función la
+ * comparte «crear desde prompt», y así esto queda en un solo lugar. Un fallo
+ * al leer la biblioteca **no** tira el relleno: se sigue sin música.
+ */
+export async function withBrandAudio(
+  rng: Rng,
+  drafts: readonly QueuedSuggestionDraft[],
+  inTx: <T>(fn: (tx: Transaction) => Promise<T>) => Promise<T>,
+  scope: { readonly companyId: string },
+  onReadError?: (error: unknown) => void,
+): Promise<QueuedSuggestionDraft[]> {
+  if (!drafts.some((d) => d.contentType !== "slideshow")) return [...drafts];
+  let tracks: { audioId: string; url: string }[];
+  try {
+    const rows = await inTx((tx) => brandAudioRepository.listAutoUse(tx, scope));
+    tracks = rows.map((row) => ({ audioId: row.id, url: row.url }));
+  } catch (error: unknown) {
+    onReadError?.(error);
+    return [...drafts];
+  }
+  if (tracks.length === 0) return [...drafts];
+  return drafts.map((draft) => {
+    const audio = pickBuildPlanAudio(
+      draft.contentType as BlitzContentType,
+      tracks,
+      (items) => rng.weightedPick(items),
+    );
+    if (
+      audio === null ||
+      typeof draft.buildPlan !== "object" ||
+      draft.buildPlan === null
+    ) {
+      return draft;
+    }
+    return { ...draft, buildPlan: { ...draft.buildPlan, audio } };
+  });
 }

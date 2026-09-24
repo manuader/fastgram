@@ -33,18 +33,36 @@
  */
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { JOB_QUEUES } from "@fastgram/core";
 
 import { dataOf, errorOf, startApi, type ApiHarness } from "./helpers/harness.js";
 
 let api: ApiHarness;
+// `P2-ANGLE-005`: sin `angleGenerator`, la API genera con el modelo `text` del
+// registro (`~/.fastgram/models.json`). La suite no puede leer el del dueño —
+// llamaría a su LLM de verdad—: un `FASTGRAM_HOME` vacío y sin `LLM_*`.
+const savedEnv = {
+  home: process.env["FASTGRAM_HOME"],
+  llm: process.env["LLM_BASE_URL"],
+};
+let emptyHome = "";
 
 beforeAll(async () => {
+  emptyHome = await mkdtemp(join(tmpdir(), "fg-uncovered-"));
+  process.env["FASTGRAM_HOME"] = emptyHome;
+  delete process.env["LLM_BASE_URL"];
   api = await startApi();
 }, 180_000);
 
 afterAll(async () => {
   await api?.close();
+  await rm(emptyHome, { recursive: true, force: true });
+  if (savedEnv.home === undefined) delete process.env["FASTGRAM_HOME"];
+  else process.env["FASTGRAM_HOME"] = savedEnv.home;
+  if (savedEnv.llm !== undefined) process.env["LLM_BASE_URL"] = savedEnv.llm;
 });
 
 beforeEach(() => {
@@ -881,10 +899,10 @@ describe("POST /analytics/posts", () => {
  * ══════════════════════════════════════════════════════════════════════════ */
 
 describe("POST /blitz/angles/generate", () => {
-  it("sin `angleGenerator` responde 503, no 500 ni un ángulo inventado", async () => {
-    // Hoy ninguna app monta el adaptador, así que éste es **el** camino de
-    // producción de esta ruta. Un 500 diría "bug nuestro" y un ángulo de relleno
-    // sería peor: AI-005 no persiste la sugerencia, así que nadie la revisaría.
+  it("sin modelo `text` en el registro responde 503, no 500 ni un ángulo inventado", async () => {
+    // Sin `angleGenerator` inyectado la ruta usa el modelo `text` del registro
+    // (`P2-ANGLE-005`); sin ninguno, 503. Un 500 diría "bug nuestro" y un ángulo
+    // de relleno sería peor: AI-005 no persiste la sugerencia.
     const res = await api.request({
       method: "POST",
       path: "/api/v1/blitz/angles/generate",

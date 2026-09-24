@@ -57,6 +57,27 @@ export interface SuggestionBuildPlan {
    * en los otros tres formatos — `FR-070`: `text` en singular.
    */
   readonly texts: readonly string[];
+  /**
+   * Sprint 7 (audio): la pista de la biblioteca de la marca que el refill
+   * sorteó para una pieza de video. Ausente = sin música (`FR-053.1`). Es
+   * opcional y no sube la versión: un plan viejo sin la clave sigue siendo
+   * válido y significa exactamente eso.
+   */
+  readonly audio?: BuildPlanAudio | undefined;
+}
+
+/** Una pista de la biblioteca de la marca, tal como se guarda en el plan. */
+export interface BuildPlanAudio {
+  readonly audioId: string;
+  readonly url: string;
+}
+
+function parseAudio(v: unknown): BuildPlanAudio | null {
+  if (!isObj(v)) return null;
+  const { audioId, url } = v;
+  if (typeof audioId !== "string" || audioId === "") return null;
+  if (typeof url !== "string" || url === "") return null;
+  return { audioId, url };
 }
 
 export type ParsedBuildPlan =
@@ -164,9 +185,20 @@ export function parseSuggestionBuildPlan(
   if (contentType !== "slideshow" && texts.length !== 1) {
     return { ok: false, reason: `${contentType} carries exactly one text` };
   }
+  // La música es un extra: una clave rota no descarta la sugerencia, sale sin
+  // música. Un slideshow nunca la lleva (se exporta como imágenes).
+  const audio =
+    contentType === "slideshow" || raw["audio"] === undefined
+      ? null
+      : parseAudio(raw["audio"]);
   return {
     ok: true,
-    plan: { version: SUGGESTION_BUILD_PLAN_VERSION, media, texts },
+    plan: {
+      version: SUGGESTION_BUILD_PLAN_VERSION,
+      media,
+      texts,
+      ...(audio === null ? {} : { audio }),
+    },
   };
 }
 
@@ -357,18 +389,21 @@ export type BlitzBuildPayload =
   | {
       readonly canvas: { width: number; height: number };
       readonly video: BlitzMediaElement;
+      readonly audio?: { readonly url: string };
       readonly text: BlitzBuildText;
     }
   | {
       readonly canvas: { width: number; height: number };
       readonly image: BlitzMediaElement;
       readonly video: BlitzMediaElement;
+      readonly audio?: { readonly url: string };
       readonly text: BlitzBuildText;
     }
   | {
       readonly canvas: { width: number; height: number };
       readonly hook_video: BlitzMediaElement;
       readonly demo_video: BlitzMediaElement;
+      readonly audio?: { readonly url: string };
       readonly text: BlitzBuildText;
     };
 
@@ -418,8 +453,9 @@ export interface ComposeOptions {
 }
 
 /**
- * El payload de build de una sugerencia. Sin bloque `audio` (`FR-053.1`): la
- * librería compartida, única fuente de audio permitida, no existe todavía.
+ * El payload de build de una sugerencia. Con bloque `audio` sólo si el plan
+ * trae una pista de la biblioteca de la marca (sprint 7); sin ella, `No audio`
+ * (`FR-053.1`).
  */
 export function composeBlitzBuildPayload(
   plan: SuggestionBuildPlan,
@@ -442,12 +478,14 @@ export function composeBlitzBuildPayload(
 
   const canvas = { ...BLITZ_VIDEO_CANVAS };
   const full = { x: 0, y: 0, w: canvas.width, h: canvas.height };
+  const audio = plan.audio === undefined ? {} : { audio: { url: plan.audio.url } };
 
   switch (media.format) {
     case "wall-of-text":
       return {
         canvas,
         video: fill(media.video, full),
+        ...audio,
         text: textFor(first, canvas, "wall-of-text", style),
       };
     case "green-screen":
@@ -458,6 +496,7 @@ export function composeBlitzBuildPayload(
         canvas,
         image: fill(media.image, full),
         video: fill(media.video, full),
+        ...audio,
         text: textFor(first, canvas, "green-screen", style),
       };
     case "video-hook": {
@@ -468,6 +507,7 @@ export function composeBlitzBuildPayload(
         canvas,
         hook_video: fill(media.hookVideo, { x: 0, y: 0, w: canvas.width, h: half }),
         demo_video: fill(media.demoVideo, { x: 0, y: half, w: canvas.width, h: half }),
+        ...audio,
         text: textFor(first, canvas, "video-hook", style),
       };
     }
@@ -527,4 +567,21 @@ export function rebindMediaUrls(
           ? { format: m.format, image: at(m.image), video: at(m.video) }
           : { format: m.format, hookVideo: at(m.hookVideo), demoVideo: at(m.demoVideo) };
   return { ...plan, media };
+}
+
+/**
+ * Sorteo de la música de una pieza nueva (sprint 7, refill de Blitz).
+ *
+ * Cada pista candidata pesa 1 (las que el dueño sacó del sorteo, `autoUse =
+ * false`, ni llegan acá: peso 0). Sin candidatas, o en un slideshow, no hay
+ * música. Recibe `pick` y no el puerto `Rng` para no atar este archivo a él:
+ * quien llama pasa `rng.weightedPick`.
+ */
+export function pickBuildPlanAudio(
+  contentType: BlitzContentType,
+  tracks: readonly BuildPlanAudio[],
+  pick: (items: readonly { value: BuildPlanAudio; weight: number }[]) => BuildPlanAudio,
+): BuildPlanAudio | null {
+  if (contentType === "slideshow" || tracks.length === 0) return null;
+  return pick(tracks.map((value) => ({ value, weight: 1 })));
 }

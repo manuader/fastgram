@@ -46,6 +46,8 @@ export interface OwnedWorkspace {
   readonly status: string;
   /** `null` si la company no tiene fila en `company_profiles` (datos viejos). */
   readonly profileStatus: "pending" | "ready" | "failed" | "partial" | null;
+  /** `P1-ONB-003`: el logo para el selector de marca, o `null`. */
+  readonly logoUrl: string | null;
   readonly createdAt: Date;
 }
 
@@ -66,6 +68,7 @@ const selection = {
   name: companies.name,
   status: companies.status,
   profileStatus: companyProfiles.status,
+  logoUrl: companies.logoUrl,
   createdAt: companies.createdAt,
 };
 

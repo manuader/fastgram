@@ -138,6 +138,8 @@ export interface WireGreenScreenPayload {
   readonly canvas: WireCanvas;
   readonly image: WireMediaRef;
   readonly video: WireMediaRef;
+  /** Sprint 7: música que el servicio mezcla con el audio del clip. */
+  readonly audio?: WireAudioRef;
   readonly texts: readonly WireTextObject[];
 }
 
@@ -266,6 +268,7 @@ export function toWirePayload(
         canvas: wireCanvas(job.canvas, source),
         image: wireMediaRef(job.image, source),
         video: wireMediaRef(job.video, source),
+        ...(job.audio === undefined ? {} : { audio: { url: job.audio.url } }),
         // `chromaKey` no se manda: el puerto no lo transporta y los defaults
         // del servicio (verde puro, tolerancia media) son su decisión
         // declarada. Mandar los nuestros sería fijar acá un número que allá

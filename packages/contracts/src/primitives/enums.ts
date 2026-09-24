@@ -161,6 +161,8 @@ export const mediaOriginSchema = z.enum([
   "demo",
   "internal",
   "brand_kit",
+  // `0029`: posts propios importados (`FR-011.5.1`); se listan.
+  "imported",
 ]);
 export type MediaOrigin = z.infer<typeof mediaOriginSchema>;
 

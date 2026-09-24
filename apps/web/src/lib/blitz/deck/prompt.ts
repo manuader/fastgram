@@ -61,6 +61,11 @@ export const promptStatusSchema = z.object({
   suggestionIds: z.array(z.string()).default([]),
   failureReason: z.string().nullable().optional(),
   count: z.number().int().optional(),
+  /**
+   * Sprint 7: en qué anda un pedido `running`. `searching_meme` = buscando un
+   * meme en YouTube. Tolerante (string): una fase nueva no rompe el polling.
+   */
+  phase: z.string().nullable().optional(),
 });
 export type PromptStatus = z.infer<typeof promptStatusSchema>;
 
@@ -110,6 +115,11 @@ export function isOpenPrompt(status: Pick<PromptStatus, "status">): boolean {
   return status.status === "queued" || status.status === "running";
 }
 
+/** Sprint 7: ¿el pedido está buscando un meme? (tarda más que la copy). */
+export function isSearchingMeme(status: PromptStatus | undefined): boolean {
+  return status?.status === "running" && status.phase === "searching_meme";
+}
+
 /** `GET /blitz/generate/:requestId`, con polling mientras esté abierto. */
 export function useBlitzPromptStatus(
   requestId: string | null,
@@ -157,6 +167,11 @@ export function promptFailureView(reason: string | null | undefined): PromptFail
       };
     case "copy_rejected":
       return { message: "prompt.failed.copyRejected" };
+    case "meme_not_found":
+      return {
+        message: "prompt.failed.memeNotFound",
+        link: { href: ROUTES.library, label: "prompt.failed.importLink" },
+      };
     case "llm_failed":
       return {
         message: "prompt.failed.llmFailed",

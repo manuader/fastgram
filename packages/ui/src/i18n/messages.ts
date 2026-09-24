@@ -232,6 +232,7 @@ export const en = {
   "settings.nav.strategy": "Strategy", // PU-BRAND-002
   "settings.nav.integrations": "Integrations", // PU-PUB-002
   "settings.nav.connections": "Connections", // PU-PUB-002
+  "settings.nav.notifications": "Notifications", // P5-NOTIF-002
 
   /* ------------------------- Marcas (workspaces) · PU-BRAND-001, D-07 (nuevo) */
   "brands.switcherLabel": "Switch brand",

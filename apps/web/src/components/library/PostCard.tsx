@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge } from "@fastgram/ui";
+import { Badge, Button, Checkbox } from "@fastgram/ui";
 import { EyeIcon, HeartIcon, MessageCircleIcon } from "@/icons";
 import { tw } from "@/lib/i18n/t";
 import {
@@ -12,10 +12,22 @@ import {
   POST_STATUS_COPY,
   POST_STATUS_TONE,
 } from "@/lib/library/posts";
+import { CANCELLABLE, EDITABLE } from "@/lib/posts/schedule";
 import type { Post } from "@fastgram/contracts";
 
 export interface PostCardProps {
   readonly item: Post;
+  /** Modo Select de la grid (sprint 7): la casilla reemplaza a las acciones. */
+  readonly selecting?: boolean;
+  readonly selected?: boolean;
+  readonly onToggle?: () => void;
+  /** Editar caption/hora (programado) o reprogramar (fallido): abre el diálogo. */
+  readonly onOpen?: () => void;
+  /** Reintentar ya un fallido. */
+  readonly onRetry?: () => void;
+  readonly onCancel?: () => void;
+  /** Esta tarjeta tiene una acción en vuelo. */
+  readonly busy?: boolean;
 }
 
 /**
@@ -28,10 +40,10 @@ export interface PostCardProps {
  * pieza. Sacarlos costaría una petición por post. El porqué completo —y la
  * tabla de qué pide F-120 contra qué existe— está en `lib/library/posts.ts`.
  *
- * **No hay `Reschedule` ni `Cancel` en hover** (PRD:1611). Son mutaciones y
- * hoy el puente del navegador hacia la API es de **sólo lectura**: el route
- * handler de `app/api/fastgram/v1` no exporta `POST` porque no hay anti-CSRF.
- * Un botón que parece cancelar y no cancela es peor que su ausencia.
+ * **Acciones** (sprint 7, PRD:1611): `Edit`/`Reschedule` abre el diálogo del
+ * post, `Retry` re-encola un fallido y `Cancel` cancela uno que no salió. Se
+ * muestran siempre (no sólo en hover): en táctil no hay hover. Quien monta la
+ * tarjeta decide qué callbacks pasa; sin callback, no hay botón.
  *
  * ## La fecha que se enseña depende del estado, no del campo
  *
@@ -40,12 +52,31 @@ export interface PostCardProps {
  * publicado hace creer que todavía no salió; enseñar los dos es ruido. Así que
  * manda `postedAt` cuando existe.
  */
-export function PostCard({ item }: PostCardProps) {
+export function PostCard({
+  item,
+  selecting = false,
+  selected = false,
+  onToggle,
+  onOpen,
+  onRetry,
+  onCancel,
+  busy = false,
+}: PostCardProps) {
   const noticeKey = postNoticeKey(item);
   const publishedAt = item.postedAt;
+  const failed = item.status === "FAILED";
+  const editable = EDITABLE.has(item.status) && item.cancellationPending !== true;
+  const cancellable = CANCELLABLE.has(item.status) && item.cancellationPending !== true;
 
   return (
-    <li className="fgw-post-card" data-status={item.status}>
+    <li
+      className="fgw-post-card"
+      data-status={item.status}
+      data-selected={selecting && selected ? "true" : undefined}
+    >
+      {selecting && onToggle !== undefined && (
+        <Checkbox label={tw("posts.select.one")} checked={selected} onChange={onToggle} />
+      )}
       <div className="fgw-post-card__head">
         <Badge className="fgw-post-card__platform" tone={item.platform} size="sm">
           {tw(POST_PLATFORM_COPY[item.platform])}
@@ -105,6 +136,26 @@ export function PostCard({ item }: PostCardProps) {
           sólo puede volver a intentarlo a ciegas. */}
       {item.status === "FAILED" && item.errorMessage !== undefined && (
         <p className="fgw-post-card__error">{item.errorMessage}</p>
+      )}
+
+      {!selecting && (failed || editable) && (
+        <div className="flex flex-wrap gap-2">
+          {failed && onRetry !== undefined && (
+            <Button size="sm" variant="secondary" loading={busy} onClick={onRetry}>
+              {tw("posts.actions.retry")}
+            </Button>
+          )}
+          {onOpen !== undefined && (
+            <Button size="sm" variant="ghost" disabled={busy} onClick={onOpen}>
+              {tw(failed ? "posts.actions.reschedule" : "posts.actions.edit")}
+            </Button>
+          )}
+          {cancellable && onCancel !== undefined && (
+            <Button size="sm" variant="ghost" disabled={busy} onClick={onCancel}>
+              {tw("posts.actions.cancel")}
+            </Button>
+          )}
+        </div>
       )}
 
       {item.postUrl !== undefined && (

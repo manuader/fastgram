@@ -2,15 +2,21 @@
 
 import {
   Badge,
+  Button,
   Card,
   EmptyState,
   Skeleton,
   SkeletonText,
   Spinner,
   buttonVariants,
+  useToast,
 } from "@fastgram/ui";
 import { editorHref } from "@/components/editor/ContentEditor";
+import { ScheduleDialog } from "@/components/schedule/ScheduleDialog";
 import Link from "next/link";
+import { useState } from "react";
+import { describeAutoschedule, useAutoschedule } from "@/lib/calendar/autoschedule";
+import { presentError } from "@/lib/api/error-presentation";
 import { ApiErrorState } from "./ApiErrorState";
 import { tw } from "@/lib/i18n/t";
 import { ROUTES } from "@/lib/nav/routes";
@@ -41,6 +47,9 @@ export interface ContentDetailProps {
  */
 export function ContentDetail({ contentId }: ContentDetailProps) {
   const query = useContentItem(contentId);
+  const [scheduling, setScheduling] = useState(false);
+  const autoslot = useAutoschedule(contentId);
+  const { toast } = useToast();
 
   const back = (
     <Link href={ROUTES.library} className="fgw-detail__back fg-focusable">
@@ -82,15 +91,58 @@ export function ContentDetail({ contentId }: ContentDetailProps) {
       <div className="flex items-center justify-between gap-3">
         {back}
         {query.data.status !== "FAILED" && (
-          <Link
-            href={editorHref(contentId)}
-            className={buttonVariants({ variant: "secondary", size: "sm" })}
-          >
-            {tw("library.detail.edit")}
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Sprint 7: programar a mano (diálogo) o al próximo horario libre
+                de la estrategia (`POST /content/:id/autoschedule`). */}
+            <Button
+              size="sm"
+              onClick={() => {
+                setScheduling(true);
+              }}
+            >
+              {tw("library.detail.schedule")}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={autoslot.isPending}
+              onClick={() => {
+                autoslot.mutate(undefined, {
+                  onSuccess: (result) => {
+                    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    toast({
+                      title:
+                        describeAutoschedule(result, tz) ??
+                        tw("library.detail.autoslotNothing"),
+                      tone: "success",
+                    });
+                  },
+                  onError: (error) => {
+                    const p = presentError(error);
+                    toast({ title: tw(p.titleKey, p.titleVars), tone: "danger" });
+                  },
+                });
+              }}
+            >
+              {tw("library.detail.autoslot")}
+            </Button>
+            <Link
+              href={editorHref(contentId)}
+              className={buttonVariants({ variant: "secondary", size: "sm" })}
+            >
+              {tw("library.detail.edit")}
+            </Link>
+          </div>
         )}
       </div>
       <ContentBody item={query.data} />
+      <ScheduleDialog
+        open={scheduling}
+        contentId={contentId}
+        onClose={() => {
+          setScheduling(false);
+        }}
+      />
     </div>
   );
 }

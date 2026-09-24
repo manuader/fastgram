@@ -24,6 +24,7 @@
 import {
   MODEL_PROVIDERS,
   MODEL_TASKS,
+  isJudgmentOverrideTask,
   type ComfyWorkflowConfig,
   type ModelProvider,
   type ModelRegistrySnapshot,
@@ -422,6 +423,11 @@ export function legacyLlmFromEnv(env: SecretEnv): LegacyLlmEnv | null {
   return { baseUrl, apiKey, model, contextWindowTokens };
 }
 
+/** Las tareas que las cuatro `LLM_*` cubrían antes del registro. */
+function usesLegacyEnv(task: ModelTask): boolean {
+  return task === "text" || task === "judgment" || isJudgmentOverrideTask(task);
+}
+
 export interface ResolvedLlmConfig {
   /** De dónde salió: el registro, o las `LLM_*` de siempre. */
   readonly source: "registry" | "env";
@@ -442,6 +448,10 @@ function entryFor(
 ): { readonly entry: ModelTask; readonly config: ModelTaskConfig } | null {
   const own = snapshot.tasks[task];
   if (own !== undefined) return { entry: task, config: own };
+  // `P1-JUDGE-004`: un punto de decisión sin modelo propio usa el de juicio
+  // general (y éste, el de texto). Es lo que hace compatible un `models.json`
+  // escrito antes de que existieran los overrides.
+  if (isJudgmentOverrideTask(task)) return entryFor("judgment", snapshot);
   // `judgment` corre sobre el mismo puerto `Llm` que `text` (`LlmJudgmentAdapter`
   // recibe un `Llm`): sin entrada propia, usa la de texto. Es lo que pasaba
   // antes con las `LLM_*`, que eran una sola configuración para todo.
@@ -467,6 +477,15 @@ export function resolveLlmConfig(
   secrets: SecretEnv,
 ): ResolvedLlmConfig | null {
   if (taskSpec(task).kind !== "llm") return null;
+  if (isJudgmentOverrideTask(task)) {
+    // Un override **incompleto** no tapa al juicio general: lo mismo que la
+    // regla 3 de la cabecera, un paso más abajo. Guardar a medias el modelo
+    // del piloto no puede dejar al piloto sin juicio.
+    const own = snapshot.tasks[task];
+    if (own === undefined || missingFields(task, own, secrets).length > 0) {
+      return resolveLlmConfig("judgment", snapshot, legacy, secrets);
+    }
+  }
   const found = entryFor(task, snapshot);
   if (found !== null && missingFields(found.entry, found.config, secrets).length === 0) {
     const { config } = found;
@@ -483,7 +502,7 @@ export function resolveLlmConfig(
       };
     }
   }
-  if (legacy !== null && (task === "text" || task === "judgment")) {
+  if (legacy !== null && usesLegacyEnv(task)) {
     return {
       source: "env",
       entry: null,
@@ -562,8 +581,7 @@ export function toPublicTaskConfig(
     const complete = missing.length === 0;
     // Una entrada propia incompleta con el entorno configurado: el worker usa
     // el entorno (ver `resolveLlmConfig`) y la pantalla tiene que decirlo.
-    const usesEnv =
-      !complete && legacy !== null && (task === "text" || task === "judgment");
+    const usesEnv = !complete && legacy !== null && usesLegacyEnv(task);
     return {
       ...base,
       status: complete ? "ready" : "incomplete",
@@ -584,7 +602,7 @@ export function toPublicTaskConfig(
     };
   }
 
-  if (legacy !== null && (task === "text" || task === "judgment")) {
+  if (legacy !== null && usesLegacyEnv(task)) {
     return {
       ...base,
       status: "ready",

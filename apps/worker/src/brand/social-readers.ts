@@ -14,6 +14,9 @@
  * | `INSTAGRAM_BD_IG_USER_ID` + `INSTAGRAM_BD_ACCESS_TOKEN` | Instagram por Business Discovery (Facebook Login) — B |
  * | `TIKTOK_EXTRACTOR_URL` (+ `TIKTOK_EXTRACTOR_API_KEY`) | TikTok por el contenedor de Evil0ctal v5.1.1 — C |
  * | `X_EXTRACTOR_URL` | X por FxTwitter (`https://api.fxtwitter.com`) — C |
+ * | `YOUTUBE_READER=on` (+ `YTDLP_PATH`) | YouTube con `yt-dlp` local — C |
+ * | `YOUTUBE_API_KEY` | YouTube por la Data API v3 — B |
+ * | `LINKEDIN_READER=on` | LinkedIn, página pública de la empresa — C |
  *
  * Con las dos vías de Instagram se monta una escalera **B → C** (`FR-011.4`):
  * Business Discovery primero, y el anónimo sólo si la cuenta no califica o la
@@ -29,8 +32,10 @@ import {
   InstagramBusinessDiscoveryReader,
   InstagramVisionReader,
   LadderSocialReader,
+  LinkedInCompanyReader,
   TikTokDtkReader,
   XFxTwitterReader,
+  YouTubeReader,
   type SocialFetch,
 } from "@fastgram/adapters/social-readers";
 import type { BrandSourceType, SocialReader } from "@fastgram/ports";
@@ -128,6 +133,38 @@ export function socialReadersFromEnv(
   } else {
     readers.x = new XFxTwitterReader({ baseUrl: x, ...f });
     mounted.push("x:fxtwitter(C)");
+  }
+
+  // ── YouTube y LinkedIn — sprint 7 (agente G), `P1-BRAND-010/011` ───────────
+  // Mismo criterio que arriba: nada por defecto. `YOUTUBE_READER=on` monta
+  // YouTube con el `yt-dlp` local (`YTDLP_PATH`, el mismo de `media-import`),
+  // y `YOUTUBE_API_KEY` suma la Data API (tier B) delante. `LINKEDIN_READER=on`
+  // lee la página pública de la empresa (tier C); si LinkedIn pide login, la
+  // fuente cae a D.
+  const ytKey = value(env, "YOUTUBE_API_KEY");
+  if (value(env, "YOUTUBE_READER") !== "on" && ytKey === undefined) {
+    skipped.push({ source: "youtube", why: "sin YOUTUBE_READER=on ni YOUTUBE_API_KEY" });
+  } else {
+    const withYtDlp = value(env, "YOUTUBE_READER") === "on";
+    readers.youtube = new YouTubeReader({
+      ytDlpBinary: withYtDlp ? (value(env, "YTDLP_PATH") ?? "yt-dlp") : null,
+      ...(ytKey === undefined ? {} : { apiKey: ytKey }),
+      ...f,
+    });
+    mounted.push(
+      [
+        ytKey === undefined ? null : "youtube:data-api(B)",
+        withYtDlp ? "youtube:yt-dlp(C)" : null,
+      ]
+        .filter((x) => x !== null)
+        .join("+"),
+    );
+  }
+  if (value(env, "LINKEDIN_READER") !== "on") {
+    skipped.push({ source: "linkedin", why: "sin LINKEDIN_READER=on" });
+  } else {
+    readers.linkedin = new LinkedInCompanyReader(f);
+    mounted.push("linkedin:public-page(C)");
   }
 
   return { readers, mounted, skipped };

@@ -1,7 +1,7 @@
 "use client";
 
-import { Button, EmptyState, Select } from "@fastgram/ui";
-import { useMemo, useRef, useState } from "react";
+import { Button, EmptyState, Input, Select, cn } from "@fastgram/ui";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiErrorState } from "./ApiErrorState";
 import { MediaCard } from "./MediaCard";
 import { DeleteMediaDialog, EditCategoriesDialog } from "./MediaAssetDialogs";
@@ -15,16 +15,33 @@ import { MediaGridSkeleton } from "./MediaGridSkeleton";
 import { UploadQueue } from "./UploadQueue";
 import { BrandKitButton } from "./BrandKitButton";
 import { ImportFromLinkButton } from "./ImportFromLinkButton";
+import { CreateSetBar } from "./CreateSetBar";
+import { MediaSetsRow } from "./MediaSetsRow";
+import { OwnPostsImportButton } from "./OwnPostsImportButton";
 import { tw } from "@/lib/i18n/t";
 import {
+  MEDIA_CATEGORY_COPY,
   MEDIA_TYPES,
   MEDIA_TYPE_COPY,
   flattenMediaPages,
   useMediaList,
 } from "@/lib/media/media";
+import { useMediaTags } from "@/lib/media/tags";
 import { useMediaUploadQueue } from "@/lib/media/upload/queue";
 import { useMediaMeta } from "@/lib/media/import";
-import type { Media, MediaStatus, MediaType } from "@fastgram/contracts";
+import {
+  imageMediaCategorySchema,
+  videoMediaCategorySchema,
+  type Media,
+  type MediaCategory,
+  type MediaStatus,
+  type MediaType,
+} from "@fastgram/contracts";
+
+const ALL_CATEGORIES: readonly MediaCategory[] = [
+  ...imageMediaCategorySchema.options,
+  ...videoMediaCategorySchema.options,
+];
 
 /** `""` es "sin filtro": un `<select>` no puede tener valor `undefined`. */
 const ANY = "";
@@ -61,25 +78,66 @@ function isMediaType(value: string): value is MediaType {
  * ninguno: subir el primer archivo desde el vacío no puede hacer desaparecer
  * la fila que muestra su progreso cuando la grid pasa de vacía a llena.
  *
- * ## Lo que esta tab no hace, y por qué no se inventa
+ * ## Sprint 7: búsqueda, filtros, sets y deep links
  *
- * - **No están los filtros ricos de `P2-MEDIA-007`** (categoría, influencer,
- *   búsqueda). El contrato no tiene parámetro para ninguno y `listMediaQuery`
- *   es `.strict()`: mandarlos sería un `400`.
- * - **No están los Media Sets ni el modo `CREATING SET`.** Son `P2-MEDIA-005` y
- *   `P2-MEDIA-006`, con su propio recurso.
+ * - **Búsqueda y filtros** (`P2-MEDIA-007`): `q` (nombre o etiqueta, con
+ *   debounce), tipo, categoría y chips de etiqueta —incluidas las automáticas
+ *   de los clips—, todo del lado del servidor (`GET /media`).
+ * - **Media Sets** (`P2-MEDIA-005/006`): fila `YOUR SETS`, y el modo
+ *   `CREATING SET` con checkbox por asset y barra inferior con el contador.
+ * - **`?focus=`** (`FR-100.1`, `P2-MEDIA-008`): resalta y lleva a la vista el
+ *   asset pedido (lo lee `LibraryTabs`).
+ * - **Import my posts** (`FR-011.5.1`, opt-in).
+ *
+ * El filtro por influencer sigue sin estar: `DATA-010` no relaciona un asset
+ * con un personaje.
  */
-export function MyMediaBankTab() {
+export function MyMediaBankTab({ focusId = null }: { readonly focusId?: string | null }) {
   const [type, setType] = useState<MediaType | "">(ANY);
+  const [category, setCategory] = useState<MediaCategory | "">(ANY);
+  const [tag, setTag] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [q, setQ] = useState("");
   const [editing, setEditing] = useState<Media | null>(null);
   const [deleting, setDeleting] = useState<Media | null>(null);
+  const [creatingSet, setCreatingSet] = useState(false);
+  const [selection, setSelection] = useState<readonly string[]>([]);
   const dropRef = useRef<MediaDropTargetHandle>(null);
 
-  const query = useMediaList(type === ANY ? {} : { type });
+  useEffect(() => {
+    const id = window.setTimeout(() => setQ(search.trim()), 300);
+    return () => window.clearTimeout(id);
+  }, [search]);
+
+  const query = useMediaList({
+    ...(type === ANY ? {} : { type }),
+    ...(category === ANY ? {} : { category }),
+    ...(tag === null ? {} : { tag }),
+    ...(q === "" ? {} : { q }),
+  });
   const upload = useMediaUploadQueue();
+  const tags = useMediaTags();
 
   const items = flattenMediaPages(query.data);
-  const filtered = type !== ANY;
+  const filtered = type !== ANY || category !== ANY || tag !== null || q !== "";
+  const clearFilters = (): void => {
+    setType(ANY);
+    setCategory(ANY);
+    setTag(null);
+    setSearch("");
+    setQ("");
+  };
+  const toggleSelect = (item: Media): void => {
+    setSelection((current) =>
+      current.includes(item.mediaId)
+        ? current.filter((id) => id !== item.mediaId)
+        : [...current, item.mediaId],
+    );
+  };
+  const stopCreating = (): void => {
+    setCreatingSet(false);
+    setSelection([]);
+  };
   // `PU-MEME-003`: etiquetas de los clips importados, para las tarjetas.
   const meta = useMediaMeta(
     items.filter((item) => item.mediaType === "video").map((item) => item.mediaId),
@@ -96,6 +154,14 @@ export function MyMediaBankTab() {
 
   const filters = (
     <div className="fgw-library-filters">
+      <Input
+        type="search"
+        value={search}
+        placeholder={tw("mediaBank.search.placeholder")}
+        aria-label={tw("mediaBank.search.placeholder")}
+        onChange={(event) => setSearch(event.target.value)}
+        wrapperClassName="min-w-[12rem]"
+      />
       <label className="fgw-library-filters__field">
         <span className="fgw-library-filters__label">{tw("media.filter.typeLabel")}</span>
         <Select
@@ -113,6 +179,25 @@ export function MyMediaBankTab() {
           ]}
         />
       </label>
+      <label className="fgw-library-filters__field">
+        <span className="fgw-library-filters__label">
+          {tw("mediaBank.filter.categoryLabel")}
+        </span>
+        <Select
+          value={category}
+          onChange={(event) => {
+            const next = ALL_CATEGORIES.find((c) => c === event.target.value);
+            setCategory(next ?? ANY);
+          }}
+          options={[
+            { value: ANY, label: tw("mediaBank.filter.allCategories") },
+            ...ALL_CATEGORIES.map((value) => ({
+              value,
+              label: tw(MEDIA_CATEGORY_COPY[value]),
+            })),
+          ]}
+        />
+      </label>
       <span className="fgw-library-filters__count">
         {query.isSuccess
           ? items.length === 1 && !query.hasNextPage
@@ -125,6 +210,7 @@ export function MyMediaBankTab() {
       <span className="ml-auto flex items-start gap-2">
         <BrandKitButton />
         <ImportFromLinkButton />
+        <OwnPostsImportButton />
         <Button
           size="sm"
           leadingIcon={<UploadGlyph className="h-4 w-4" />}
@@ -136,12 +222,49 @@ export function MyMediaBankTab() {
     </div>
   );
 
+  const tagList = Array.isArray(tags.data) ? tags.data : [];
+  const tagChips =
+    tagList.length > 0 ? (
+      <div
+        className="mb-3 flex flex-wrap items-center gap-1.5"
+        role="group"
+        aria-label={tw("mediaBank.tags.filterLabel")}
+      >
+        {tagList.map((t) => (
+          <button
+            key={t.tag}
+            type="button"
+            aria-pressed={tag === t.tag}
+            className={cn(
+              "fg-focusable rounded-full border px-2.5 py-0.5 text-xs",
+              tag === t.tag
+                ? "border-accent bg-accent-subtle text-text"
+                : "border-border text-text-muted hover:border-border-strong",
+            )}
+            onClick={() => setTag((current) => (current === t.tag ? null : t.tag))}
+          >
+            {`#${t.tag}`}
+            <span className="ml-1 opacity-60">{String(t.count)}</span>
+          </button>
+        ))}
+      </div>
+    ) : null;
+
   return (
     <MediaDropTarget ref={dropRef} onFiles={upload.add}>
       <div className="fgw-library-panel" aria-busy={query.isPending ? "true" : undefined}>
+        <MediaSetsRow
+          creating={creatingSet}
+          onNewSet={() => {
+            setSelection([]);
+            setCreatingSet(true);
+          }}
+        />
         {filters}
+        {tagChips}
         <UploadQueue queue={upload} liveStatus={liveStatus} />
         {renderBody()}
+        {creatingSet && <div className="h-24" aria-hidden />}
       </div>
       <EditCategoriesDialog
         item={editing}
@@ -155,6 +278,13 @@ export function MyMediaBankTab() {
           setDeleting(null);
         }}
       />
+      {creatingSet && (
+        <CreateSetBar
+          selectedIds={selection}
+          onCancel={stopCreating}
+          onSaved={stopCreating}
+        />
+      )}
     </MediaDropTarget>
   );
 
@@ -185,12 +315,7 @@ export function MyMediaBankTab() {
           }
           action={
             filtered ? (
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setType(ANY);
-                }}
-              >
+              <Button variant="secondary" onClick={clearFilters}>
                 {tw("media.empty.clearFilters")}
               </Button>
             ) : (
@@ -204,6 +329,7 @@ export function MyMediaBankTab() {
                 </Button>
                 <BrandKitButton size="lg" />
                 <ImportFromLinkButton size="lg" />
+                <OwnPostsImportButton size="lg" />
               </span>
             )
           }
@@ -222,6 +348,13 @@ export function MyMediaBankTab() {
               onEditCategories={setEditing}
               onDelete={setDeleting}
               tags={meta.get(item.mediaId)?.tags?.tags}
+              focused={focusId === item.mediaId}
+              {...(creatingSet
+                ? {
+                    selected: selection.includes(item.mediaId),
+                    onToggleSelect: toggleSelect,
+                  }
+                : {})}
             />
           ))}
         </ul>

@@ -1,6 +1,6 @@
 "use client";
 
-import type { AudioLibrary, EditableContent, MediaElement } from "@fastgram/contracts";
+import type { EditableContent, MediaElement } from "@fastgram/contracts";
 import { fontFamilySchema } from "@fastgram/contracts";
 import {
   Badge,
@@ -53,6 +53,8 @@ import {
 import { AssetsPanel, type SwapTarget } from "./AssetsPanel";
 import { AudioPickerDialog } from "./AudioPickerDialog";
 import { EditorCanvas } from "./EditorCanvas";
+// Sprint 7 (publish-flow): al terminar de editar, programar desde acá.
+import { ScheduleDialog } from "@/components/schedule/ScheduleDialog";
 import { MediaPickerDialog } from "./MediaPickerDialog";
 import { Slider, TextInspector } from "./TextInspector";
 
@@ -272,6 +274,7 @@ function LoadedEditor({
   }, [content.status, content.revision, content.lastEdit, pending, refetchEditable]);
 
   const router = useRouter();
+  const [scheduling, setScheduling] = useState(false);
   const close =
     onClose ??
     (() => router.push(`${ROUTES.library}/${encodeURIComponent(content._id)}`));
@@ -373,6 +376,15 @@ function LoadedEditor({
             {save.isPending ? tw("editor.saving") : tw("editor.save")}
           </Button>
           <Button
+            variant="secondary"
+            disabled={dirty || busy}
+            onClick={() => {
+              setScheduling(true);
+            }}
+          >
+            {tw("library.detail.schedule")}
+          </Button>
+          <Button
             disabled={busy || (dirty && building)}
             onClick={() => {
               if (dirty) doSave("close");
@@ -383,6 +395,13 @@ function LoadedEditor({
           </Button>
         </div>
       </header>
+      <ScheduleDialog
+        open={scheduling}
+        contentId={content._id}
+        onClose={() => {
+          setScheduling(false);
+        }}
+      />
 
       <div aria-live="polite">
         {banner !== null && <BannerView banner={banner} onReload={reload} />}
@@ -509,7 +528,7 @@ function LoadedEditor({
       {picker?.kind === "audio" && (
         <AudioPickerDialog
           open
-          library={content.type as AudioLibrary}
+          format={content.type}
           currentUrl={state.draft.assets.audio?.url ?? null}
           onCancel={() => setPicker(null)}
           onPick={pick}

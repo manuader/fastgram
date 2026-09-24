@@ -25,15 +25,15 @@
  * fuentes no cargaban y cada build habría terminado `font_unavailable` —pieza
  * fallada y save reembolsado, en bucle—. Eso se cerró del lado de
  * `services/render` (`render/fontActivation.ts`): con `RENDER_FONT_DIR`
- * poblado por `pnpm fonts:fetch`, las 10 familias OFL cargan por nombre sin
+ * poblado por `pnpm fonts:fetch`, las 11 familias OFL cargan por nombre sin
  * instalar nada. Quien configura el servicio de render lo quiere para
  * renderizar; si el servicio arranca sin fuentes, `GET /capabilities` y su log
  * de arranque lo dicen, y cada build falla con un código que lo nombra.
  *
- * Lo que sigue abierto y **no** bloquea a Blitz: `tiktok`/`snapchat` sin
- * archivo (una pieza que las pida falla `font_unavailable`, y ningún payload
- * de hoy las pide: sin `fontFamily`, el adaptador usa `inter`), y el audio sin
- * origen (`sharedPrefixes` vacío: una pieza **con** audio se rechaza).
+ * Lo que sigue abierto y **no** bloquea a Blitz: `snapchat` sin archivo (una
+ * pieza que la pida falla `font_unavailable`; sin `fontFamily`, el adaptador
+ * usa `inter`). El audio sale de la biblioteca de la marca (`audio/{companyId}/`,
+ * sprint 7): `media-authorization.ts` firma ese prefijo en el grant.
  */
 import {
   fetchRenderEngineVersion,

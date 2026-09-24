@@ -201,6 +201,8 @@ export function toRenderJob(raw: unknown, contentType: string): RenderJobResult 
         canvas: payload.canvas,
         image: toRenderImage(payload.image),
         video: toRenderVideo(payload.video),
+        // Sprint 7: música de la marca, que el render mezcla con el clip.
+        ...(payload.audio === undefined ? {} : { audio: { url: payload.audio.url } }),
         text: toRenderText(payload.text),
       },
     };

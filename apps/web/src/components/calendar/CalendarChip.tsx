@@ -2,7 +2,7 @@
 
 import { useDraggable } from "@dnd-kit/core";
 import type { CalendarItem, PostStatus } from "@fastgram/contracts";
-import type { CSSProperties } from "react";
+import { createContext, useContext, type CSSProperties } from "react";
 import { dragIdOf, NETWORK_CHIP_COLOR, NETWORK_LABEL } from "@/lib/calendar/board";
 import { formatChipTime } from "@/lib/calendar/calendar";
 import { tw } from "@/lib/i18n/t";
@@ -29,6 +29,14 @@ function statusTone(status: CalendarItem["status"]): string {
 }
 
 /**
+ * Abrir un post del calendario (sprint 7): `CalendarView` provee quién abre el
+ * diálogo de editar/reintentar. Sin proveedor el chip no es clickeable.
+ */
+export const CalendarOpenContext = createContext<((item: CalendarItem) => void) | null>(
+  null,
+);
+
+/**
  * Un post o un slot planificado · F-141 (PRD:1659) + `PU-CAL-002`.
  *
  * Color por red (el borde y el tinte), punto de estado, `Red: Tipo`, hora, y
@@ -40,6 +48,7 @@ function statusTone(status: CalendarItem["status"]): string {
  * dnd-kit pone el rol y el foco para arrastrar con teclado (espacio + flechas).
  */
 export function CalendarChip({ item, timeZone, showBrand, roomy }: CalendarChipProps) {
+  const openItem = useContext(CalendarOpenContext);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: dragIdOf(item),
     disabled: !item.movable,
@@ -66,6 +75,7 @@ export function CalendarChip({ item, timeZone, showBrand, roomy }: CalendarChipP
           transform: `translate3d(${String(transform.x)}px, ${String(transform.y)}px, 0)`,
         }),
     ...(isDragging ? { opacity: 0.6, zIndex: 10, position: "relative" } : {}),
+    ...(openItem !== null && item.kind === "post" ? { cursor: "pointer" } : {}),
   };
 
   const label = [
@@ -87,6 +97,13 @@ export function CalendarChip({ item, timeZone, showBrand, roomy }: CalendarChipP
       style={style}
       {...(item.movable ? { ...attributes, ...listeners } : {})}
       aria-label={label}
+      {...(openItem !== null && item.kind === "post"
+        ? {
+            onClick: () => {
+              openItem(item);
+            },
+          }
+        : {})}
     >
       {roomy && item.thumbnailUrl !== undefined && (
         // Miniatura chica y decorativa: el texto del chip ya dice qué es. `<img>` y

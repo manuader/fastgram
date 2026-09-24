@@ -112,6 +112,8 @@ export const MEDIA_ORIGIN = [
   "demo",
   "internal",
   "brand_kit",
+  // `0029`: posts propios importados al Media Bank (`FR-011.5.1`). Se listan.
+  "imported",
 ] as const;
 export const mediaOriginEnum = pgEnum("media_origin", MEDIA_ORIGIN);
 

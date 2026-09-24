@@ -48,7 +48,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { canonicalObjectUrl } from "@fastgram/adapters";
-import { BYTES_PER_MB, videoMediaCategorySchema } from "@fastgram/contracts";
+import {
+  BYTES_PER_MB,
+  brandAudioKeyPrefix,
+  videoMediaCategorySchema,
+} from "@fastgram/contracts";
 import {
   CLIP_TAGGING_FRAMES,
   CLIP_TAGGING_FRAME_MAX_SIDE,
@@ -67,6 +71,8 @@ import {
   type TaggingState,
 } from "@fastgram/core";
 import {
+  addMediaTag,
+  brandAudioRepository,
   mediaRepository,
   withCompany,
   type Database,
@@ -129,13 +135,52 @@ export function importFilename(title: string | null, extension: string): string 
   return `${clean.length === 0 ? "import" : clean}.${extension}`;
 }
 
+/**
+ * El título de una pista importada: el del sitio (texto de terceros, se trata
+ * como dato y se recorta) o uno genérico. Se renombra desde la Library.
+ */
+export function importedAudioTitle(title: string | null): string {
+  const clean = (title ?? "").replace(/\s+/g, " ").trim().slice(0, 200).trim();
+  return clean.length === 0 ? "Imported audio" : clean;
+}
+
 class ImportFailure extends Error {
   constructor(readonly code: MediaImportFailureCode) {
     super(code);
   }
 }
 
-export function createMediaImportHandler(deps: MediaImportDeps): JobHandler<unknown> {
+/** El job en curso: para el log y para decidir si un fallo se reintenta. */
+export interface ImportRun {
+  readonly jobId: string;
+  readonly attempt: number;
+  readonly maxAttempts: number;
+}
+
+/** Sprint 7: lo que «crear desde prompt» apaga cuando importa un meme solo. */
+export interface ImportOptions {
+  /** `false` = no etiquetar con el modelo de visión. Default: etiquetar. */
+  readonly tagging?: boolean;
+  /** `false` = nunca pagar un recorte de fondo (fal). Default: si se pidió foreground. */
+  readonly paidCutout?: boolean;
+}
+
+/**
+ * El import entero, reutilizable (sprint 7): el handler de la cola lo corre
+ * por job, y «crear desde prompt» lo corre **en línea** con el meme que
+ * encontró (`discovery/meme-finder.ts`) — un solo camino al Media Bank.
+ *
+ * Devuelve el estado final (o `null` si no llegó a escribir ninguno). Con
+ * `attempt < maxAttempts` puede **lanzar** para que la cola reintente una
+ * bajada fallida; quien lo llama en línea pasa `attempt = maxAttempts`.
+ */
+export type MediaImportRunner = (
+  job: MediaImportJob,
+  run: ImportRun,
+  options?: ImportOptions,
+) => Promise<MediaImportStatus | null>;
+
+export function createMediaImportRunner(deps: MediaImportDeps): MediaImportRunner {
   const maxDuration =
     deps.maxDurationSeconds ?? DEFAULT_MEDIA_IMPORT_MAX_DURATION_SECONDS;
   const maxBytes = deps.maxBytes ?? MEDIA_IMPORT_MAX_BYTES;
@@ -230,16 +275,11 @@ export function createMediaImportHandler(deps: MediaImportDeps): JobHandler<unkn
     });
   }
 
-  return async function handle(ctx: JobContext<unknown>): Promise<void> {
-    const parsed = parseMediaImportJob(ctx.payload);
-    if (!parsed.ok) {
-      deps.logger.error(
-        { jobId: ctx.jobId, reason: parsed.reason },
-        "payload de media-import inválido",
-      );
-      return;
-    }
-    const job = parsed.job;
+  return async function runImport(
+    job: MediaImportJob,
+    ctx: ImportRun,
+    options: ImportOptions = {},
+  ): Promise<MediaImportStatus | null> {
     const log = { jobId: ctx.jobId, importId: job.importId, attempt: ctx.attempt };
 
     const previous = await readImportStatus(deps.storage, job.companyId, job.importId);
@@ -251,7 +291,7 @@ export function createMediaImportHandler(deps: MediaImportDeps): JobHandler<unkn
         { ...log, state: previous.state },
         "import ya terminado: se omite",
       );
-      return;
+      return previous;
     }
     let status: MediaImportStatus = await save(
       job,
@@ -274,7 +314,7 @@ export function createMediaImportHandler(deps: MediaImportDeps): JobHandler<unkn
     const url = checkImportUrl(job.url);
     if (!url.ok) {
       await fail("unsupported_url");
-      return;
+      return status;
     }
 
     let dir: string | null = null;
@@ -296,7 +336,7 @@ export function createMediaImportHandler(deps: MediaImportDeps): JobHandler<unkn
           throw new Error("download_failed");
         }
         await fail(outcome.code);
-        return;
+        return status;
       }
       const clip = outcome.clip;
 
@@ -310,21 +350,44 @@ export function createMediaImportHandler(deps: MediaImportDeps): JobHandler<unkn
       const body = await readFile(clip.path);
       if (body.byteLength > maxBytes) throw new ImportFailure("too_large");
 
-      // ── audio: al storage de la marca, sin fila (DATA-010 no tiene tipo audio) ──
+      // ── audio: a la biblioteca de audio de la marca (sprint 7, `0025`) ──
+      // Bajo `audio/{companyId}/` —el prefijo que el build autoriza como
+      // librería— y con fila en `brand_audio_tracks`, que es lo que el editor
+      // lista. Antes quedaba en `media/…/imports/` sin fila: no se podía elegir
+      // y el render la rechazaba. `createFromImport` es idempotente por
+      // `importId`: un reintento encuentra la fila.
       if (job.kind === "audio") {
         const stored = await deps.storage.put({
-          key: `media/${job.companyId}/imports/${job.importId}/audio.${clip.extension}`,
+          key: `${brandAudioKeyPrefix(job.companyId)}/imports/${job.importId}.${clip.extension}`,
           body,
           contentType: clip.contentType,
         });
+        const audioUrl = await canonicalObjectUrl(deps.storage, stored.key);
+        await inCompany(job.companyId, (tx) =>
+          brandAudioRepository.createFromImport(
+            tx,
+            { companyId: job.companyId },
+            {
+              importId: job.importId,
+              title: importedAudioTitle(clip.title),
+              origin: "import",
+              storageKey: stored.key,
+              url: audioUrl,
+              contentType: clip.contentType,
+              sizeMb: body.byteLength / BYTES_PER_MB,
+              durationSec: duration,
+              sourceUrl: job.url,
+            },
+          ),
+        );
         status = await save(job, status, {
           state: "imported",
-          audioUrl: await canonicalObjectUrl(deps.storage, stored.key),
+          audioUrl,
           background: "not_requested",
           tagging: "skipped",
         });
         deps.logger.info(log, "audio importado");
-        return;
+        return status;
       }
 
       // ── video ──
@@ -333,7 +396,10 @@ export function createMediaImportHandler(deps: MediaImportDeps): JobHandler<unkn
         contentType: clip.contentType,
       });
       const isGreen = chroma.kind === "chroma_key";
-      const tagger = await deps.tagger();
+      // Sprint 7: el meme que encuentra «crear desde prompt» no se etiqueta
+      // (el job de prompt tiene 120 s y un modelo de visión local puede
+      // tardar), y no paga un recorte: sólo sirve si ya es verde.
+      const tagger = options.tagging === false ? null : await deps.tagger();
       let frames: readonly Uint8Array[] = [];
       if (tagger !== null) {
         try {
@@ -368,7 +434,8 @@ export function createMediaImportHandler(deps: MediaImportDeps): JobHandler<unkn
       });
       if (!row.created) await discard(stored.key);
 
-      const wantsCutout = wantsForeground(job.categories) && !isGreen;
+      const wantsCutout =
+        wantsForeground(job.categories) && !isGreen && options.paidCutout !== false;
       status = await save(job, status, {
         state: "imported",
         mediaId: job.mediaId,
@@ -468,6 +535,34 @@ export function createMediaImportHandler(deps: MediaImportDeps): JobHandler<unkn
         deps.logger.warn({ ...log, error }, "no se pudo guardar la metadata del clip");
       }
 
+      // Sprint 7: las etiquetas automáticas también van a `media.tags` (0029),
+      // que es lo que filtra y busca el Media Bank y lo que rankea JV-6.
+      if (tags !== undefined) {
+        const labels = [
+          ...new Set(
+            [tags.emotion, tags.situation, ...tags.tags]
+              .map((t) => t.trim().toLowerCase())
+              .filter((t) => t.length > 0 && t.length <= 40),
+          ),
+        ];
+        const ids =
+          cutoutMediaId === undefined ? [job.mediaId] : [job.mediaId, cutoutMediaId];
+        try {
+          await inCompany(job.companyId, async (tx) => {
+            for (const id of ids) {
+              for (const label of labels) {
+                await addMediaTag(tx, { companyId: job.companyId }, id, label);
+              }
+            }
+          });
+        } catch (error: unknown) {
+          deps.logger.warn(
+            { ...log, error },
+            "no se pudieron guardar las etiquetas del clip",
+          );
+        }
+      }
+
       status = await save(job, status, {
         background,
         tagging,
@@ -481,12 +576,12 @@ export function createMediaImportHandler(deps: MediaImportDeps): JobHandler<unkn
     } catch (error: unknown) {
       if (error instanceof ImportFailure) {
         await fail(error.code);
-        return;
+        return status;
       }
       if (status.state === "imported") {
         // Ya hay fila: no se reintenta (bajaría el clip otra vez).
         deps.logger.error({ ...log, error }, "error después de importar; el clip queda");
-        return;
+        return status;
       }
       if (ctx.attempt < ctx.maxAttempts) throw error;
       deps.logger.error({ ...log, error }, "import fallido definitivamente");
@@ -495,5 +590,21 @@ export function createMediaImportHandler(deps: MediaImportDeps): JobHandler<unkn
       // Siempre, también si algo lanzó arriba.
       if (dir !== null) await rm(dir, { recursive: true, force: true });
     }
+    return status;
+  };
+}
+
+export function createMediaImportHandler(deps: MediaImportDeps): JobHandler<unknown> {
+  const runImport = createMediaImportRunner(deps);
+  return async function handle(ctx: JobContext<unknown>): Promise<void> {
+    const parsed = parseMediaImportJob(ctx.payload);
+    if (!parsed.ok) {
+      deps.logger.error(
+        { jobId: ctx.jobId, reason: parsed.reason },
+        "payload de media-import inválido",
+      );
+      return;
+    }
+    await runImport(parsed.job, ctx);
   };
 }

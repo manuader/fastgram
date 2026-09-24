@@ -3,13 +3,10 @@
 /**
  * Los datos de `Library → My Media Bank` · FR-100 (PRD:1618-1626), §12.
  *
- * `GET /media`, paginado por cursor, con **un solo filtro: `type`**.
- * `listMediaQuerySchema` es `.strict()` y sólo extiende `cursorQuerySchema` con
- * `type`: los filtros de categoría, influencer y búsqueda que dibuja el PRD
- * existen en la UI original pero **no tienen parámetro en el contrato**, y el
- * propio contrato lo dice ("quedan fuera del contrato"). Mandar `category=…`
- * no filtraría: lo rechazaría el `.strict()` con un `400`. Así que acá no hay
- * más filtro que el tipo, y es una ausencia declarada, no un olvido.
+ * `GET /media`, paginado por cursor, con filtros por `type` y —desde el
+ * sprint 7 (`P2-MEDIA-007`, migración `0029`)— búsqueda `q` (nombre o
+ * etiqueta), `category` y `tag`. El filtro por influencer sigue sin
+ * parámetro: `DATA-010` no relaciona un asset con un personaje.
  *
  * ## Polling mientras haya un video en `processing`
  *
@@ -73,10 +70,22 @@ export const MEDIA_STATUS_COPY: Readonly<Record<MediaStatus, CopyKey>> = {
 export interface MediaFilters {
   /** `undefined` = sin filtrar. §12 (PRD:2722) sólo contrata `image|video`. */
   readonly type?: MediaType | undefined;
+  /** `P2-MEDIA-007` (sprint 7): nombre de archivo o etiqueta. */
+  readonly q?: string | undefined;
+  readonly category?: MediaCategory | undefined;
+  /** Etiqueta exacta (incluidas las automáticas de los clips). */
+  readonly tag?: string | undefined;
 }
 
+/** Sólo las claves con valor: la clave de caché no cambia por un `undefined`. */
 export function mediaQueryParams(filters: MediaFilters): QueryParams {
-  return filters.type === undefined ? {} : { type: filters.type };
+  const q = filters.q?.trim();
+  return {
+    ...(filters.type === undefined ? {} : { type: filters.type }),
+    ...(q === undefined || q === "" ? {} : { q }),
+    ...(filters.category === undefined ? {} : { category: filters.category }),
+    ...(filters.tag === undefined ? {} : { tag: filters.tag }),
+  };
 }
 
 export function flattenMediaPages(

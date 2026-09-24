@@ -13,6 +13,8 @@ import type { CalendarCounts, CalendarItem } from "@fastgram/contracts";
 import { buttonVariants, Button, EmptyState } from "@fastgram/ui";
 import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { PostEditDialog } from "@/components/schedule/PostEditDialog";
+import { CalendarOpenContext } from "./CalendarChip";
 import { ApiErrorState } from "@/components/library/ApiErrorState";
 import {
   CalendarIcon,
@@ -173,6 +175,8 @@ export function CalendarView({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor),
   );
+  // Sprint 7: click en un post → editar caption / hora, reintentar si falló.
+  const [editing, setEditing] = useState<CalendarItem | null>(null);
 
   if (clock === null || focusDay === null || days === null) {
     return <section className="fgw-calendar" aria-busy="true" />;
@@ -293,27 +297,29 @@ export function CalendarView({
         />
       ) : (
         <>
-          <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-            {view === "month" ? (
-              <MonthGrid
-                month={monthOfKey(focusDay)}
-                caption={title}
-                byDay={loading ? new Map() : byDay}
-                today={dayKeyOf(clock.now, displayZone)}
-                timeZone={displayZone}
-                showBrand={scope === "all"}
-              />
-            ) : (
-              <WeekGrid
-                start={days.first}
-                caption={title}
-                byDay={loading ? new Map() : byDay}
-                today={dayKeyOf(clock.now, displayZone)}
-                timeZone={displayZone}
-                showBrand={scope === "all"}
-              />
-            )}
-          </DndContext>
+          <CalendarOpenContext.Provider value={setEditing}>
+            <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+              {view === "month" ? (
+                <MonthGrid
+                  month={monthOfKey(focusDay)}
+                  caption={title}
+                  byDay={loading ? new Map() : byDay}
+                  today={dayKeyOf(clock.now, displayZone)}
+                  timeZone={displayZone}
+                  showBrand={scope === "all"}
+                />
+              ) : (
+                <WeekGrid
+                  start={days.first}
+                  caption={title}
+                  byDay={loading ? new Map() : byDay}
+                  today={dayKeyOf(clock.now, displayZone)}
+                  timeZone={displayZone}
+                  showBrand={scope === "all"}
+                />
+              )}
+            </DndContext>
+          </CalendarOpenContext.Provider>
 
           {!loading && visibleCount === 0 && (
             <EmptyState
@@ -333,6 +339,15 @@ export function CalendarView({
           )}
         </>
       )}
+      <PostEditDialog
+        open={editing !== null}
+        postId={editing?.id ?? null}
+        timeZone={displayZone}
+        onClose={() => {
+          setEditing(null);
+        }}
+        {...(editing === null ? {} : { brandId: editing.brandId })}
+      />
     </section>
   );
 }

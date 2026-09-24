@@ -19,6 +19,7 @@ import { createdAtOnly, timestamps } from "./_shared.js";
 import { companyRef } from "./identity.js";
 import { influencers } from "./influencers.js";
 import { trendingItems } from "./discovery.js";
+import { media } from "./media.js";
 import {
   genderFilterEnum,
   suggestionContentTypeEnum,
@@ -108,6 +109,8 @@ export const blitzPreferences = pgTable(
 
 /** Estados de un pedido de «crear desde prompt» (`PU-BLITZ-003`). */
 export const BLITZ_PROMPT_STATUS = ["queued", "running", "done", "failed"] as const;
+/** `0026`: las fases de un pedido `running` (`PROMPT_PHASES` de `core`). */
+export const BLITZ_PROMPT_PHASES = ["searching_meme"] as const;
 
 /**
  * NO ESTÁ EN EL PRD como entidad: un pedido de «crear desde prompt» —
@@ -142,10 +145,28 @@ export const blitzPromptRequests = pgTable(
     sourceTrendingItemId: uuid().references(() => trendingItems.id, {
       onDelete: "set null",
     }),
+    /**
+     * `0026` (sprint 7): en qué anda un pedido `running`. `searching_meme` =
+     * buscando e importando un meme porque el Media Bank no tenía uno para el
+     * tema. `null` = el camino de siempre.
+     */
+    phase: text({ enum: BLITZ_PROMPT_PHASES }),
+    /** `0026`: búsquedas automáticas hechas, entre reintentos. Tope 2 (CHECK). */
+    memeSearches: integer().notNull().default(0),
+    /** `0026`: el clip que la búsqueda ya importó; un reintento lo retoma. */
+    autoMediaId: uuid().references(() => media.mediaId, { onDelete: "set null" }),
     ...timestamps(),
   },
   (t) => [
     index("blitz_prompt_requests_company_created_idx").on(t.companyId, t.createdAt),
+    check(
+      "blitz_prompt_requests_phase",
+      sql`${t.phase} is null or ${t.phase} in ('searching_meme')`,
+    ),
+    check(
+      "blitz_prompt_requests_meme_searches_range",
+      sql`${t.memeSearches} between 0 and 2`,
+    ),
     check(
       "blitz_prompt_requests_prompt_length",
       sql`char_length(${t.prompt}) between 3 and 500`,

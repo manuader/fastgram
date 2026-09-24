@@ -132,6 +132,15 @@ export interface AiStudioHandlerDeps {
   readonly pollBudgetMs?: number;
   /** Cuántas veces se espera un tope de concurrencia al enviar. */
   readonly submitRateLimitRetries?: number;
+  /**
+   * Sprint 7 (agente G): qué hacer con una generación **ya lista**. Los
+   * formatos generativos arman acá su pieza (`../formats/finish.ts`). Se
+   * llama también si la entrega encuentra la generación `ready` (el worker
+   * murió entre marcarla y terminar esto): tiene que ser idempotente. Un
+   * error se loguea y **no** falla el job: la generación ya se cobró y está
+   * bien.
+   */
+  readonly afterReady?: (record: GenerationRecord) => Promise<void>;
 }
 
 /** 25 min: por debajo de los 30 de `expireInSeconds` con que encola la API. */
@@ -378,6 +387,22 @@ export function createAiStudioGenerationHandler(
     });
   }
 
+  async function runAfterReady(record: GenerationRecord): Promise<void> {
+    if (deps.afterReady === undefined) return;
+    try {
+      await deps.afterReady(record);
+    } catch (error) {
+      log.error(
+        {
+          generationId: record.id,
+          companyId: record.companyId,
+          code: isPortError(error) ? error.code : "internal",
+        },
+        "el paso posterior a la generación falló",
+      );
+    }
+  }
+
   return async function handle(ctx: JobContext<unknown>): Promise<void> {
     const parsed = parseAiStudioGenerationJob(ctx.payload);
     if (!parsed.ok) {
@@ -400,6 +425,7 @@ export function createAiStudioGenerationHandler(
     }
     if (isTerminalGeneration(record.status)) {
       log.info({ ...base, status: record.status }, "generación ya cerrada");
+      if (record.status === "ready") await runAfterReady(record);
       return;
     }
 
@@ -555,9 +581,12 @@ export function createAiStudioGenerationHandler(
           );
           return;
         }
-        await save(current, (cur) => markReady(cur, mediaIds, now().toISOString()));
+        const ready = await save(current, (cur) =>
+          markReady(cur, mediaIds, now().toISOString()),
+        );
         await spend(current, "settle");
         log.info({ ...base, media: mediaIds.length }, "generación de AI Studio lista");
+        await runAfterReady(ready);
       });
     } catch (error) {
       if (error instanceof RetryLater) {

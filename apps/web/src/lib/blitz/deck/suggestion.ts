@@ -66,6 +66,8 @@ export const deckSuggestionSchema = z.object({
   preview: previewSchema.nullable().optional(),
   /** `PU-BLITZ-003`: salió de un «Create from prompt». Dibuja el chip. */
   promptRequestId: z.string().nullable().optional(),
+  /** Sprint 7: el meme lo encontró solo «crear desde prompt». Dibuja el chip. */
+  autoFoundMeme: z.object({ sourceUrl: z.string() }).nullable().optional(),
 });
 export type DeckSuggestion = z.infer<typeof deckSuggestionSchema>;
 

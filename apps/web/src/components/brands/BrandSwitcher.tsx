@@ -185,7 +185,12 @@ export function BrandSwitcher({
           FG
         </span>
       ) : (
-        <BrandAvatar id={active.id} name={active.name} size="md" />
+        <BrandAvatar
+          id={active.id}
+          name={active.name}
+          logoUrl={active.logoUrl}
+          size="md"
+        />
       )}
       {!collapsed && (
         <>
@@ -260,7 +265,12 @@ export function BrandSwitcher({
                         onNavigate?.();
                       }}
                     >
-                      <BrandAvatar id={workspace.id} name={workspace.name} size="sm" />
+                      <BrandAvatar
+                        id={workspace.id}
+                        name={workspace.name}
+                        logoUrl={workspace.logoUrl}
+                        size="sm"
+                      />
                       <span className="fgw-brand-menu__label">{workspace.name}</span>
                       {checked && (
                         <CheckIcon size={16} className="fgw-brand-menu__check" />

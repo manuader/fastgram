@@ -21,6 +21,7 @@
  * comprobara "hay un error" pasaría igual con el vacío pintado debajo.
  */
 import { postSchema, type Post } from "@fastgram/contracts";
+import { ToastProvider } from "@fastgram/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -36,10 +37,11 @@ import type * as ApiClient from "@/lib/api/client";
 vi.mock("@/lib/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof ApiClient>()),
   apiList: vi.fn(),
+  apiRequest: vi.fn(),
 }));
 
 // El import va después del `vi.mock` sólo para leerse en orden.
-import { apiList, type CursorPage } from "@/lib/api/client";
+import { apiList, apiRequest, type CursorPage } from "@/lib/api/client";
 
 const listMock = vi.mocked(apiList);
 
@@ -97,7 +99,12 @@ function renderTab() {
     defaultOptions: { queries: { retry: false } },
   });
   function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    return (
+      <QueryClientProvider client={client}>
+        {/* Sprint 7: My Posts avisa con toasts (retry, cancel, refresh). */}
+        <ToastProvider>{children}</ToastProvider>
+      </QueryClientProvider>
+    );
   }
   return render(<MyPostsTab />, { wrapper: Wrapper });
 }
@@ -587,5 +594,50 @@ describe("polling: sólo mientras un post se está construyendo", () => {
     await tick(BUILD_POLL_INTERVAL_MS);
     // Ya no cambia solo: anunciarlo sería ruido en cada refetch.
     expect(container.querySelector(".fgw-post-grid")).toHaveAttribute("aria-live", "off");
+  });
+});
+
+// ── Sprint 7 (publish-flow): acciones por tarjeta y modo Select ─────────────
+
+describe("acciones sobre posts (sprint 7)", () => {
+  it("un fallido ofrece Retry, que re-encola con POST /posts/:id/retry", async () => {
+    const user = userEvent.setup();
+    const requestMock = vi.mocked(apiRequest);
+    requestMock.mockReset();
+    requestMock.mockResolvedValue(post({ status: "SCHEDULED" }) as never);
+    listMock.mockResolvedValue(
+      page([post({ status: "FAILED", errorCode: "unknown", errorMessage: "No salió." })]),
+    );
+    renderTab();
+    await user.click(await screen.findByRole("button", { name: "Retry" }));
+    await waitFor(() => {
+      expect(requestMock).toHaveBeenCalled();
+    });
+    expect(requestMock.mock.calls[0]?.[0]).toBe(`posts/${IDS[0]}/retry`);
+  });
+
+  it("un programado ofrece Edit y Cancel; uno publicado, ninguno", async () => {
+    listMock.mockResolvedValue(
+      page([
+        post({ _id: IDS[0], status: "SCHEDULED" }),
+        post({ _id: IDS[1], status: "POSTED", postedAt: SCHEDULED_AT }),
+      ]),
+    );
+    renderTab();
+    expect(await screen.findAllByRole("button", { name: "Edit" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Cancel" })).toHaveLength(1);
+  });
+
+  it("Select muestra casillas y la barra de lote; Delete pide confirmar", async () => {
+    const user = userEvent.setup();
+    listMock.mockResolvedValue(page([post({ _id: IDS[0] }), post({ _id: IDS[1] })]));
+    renderTab();
+    await user.click(await screen.findByRole("button", { name: "Select" }));
+    const boxes = screen.getAllByRole("checkbox", { name: "Select this post" });
+    expect(boxes).toHaveLength(2);
+    await user.click(boxes[0] as HTMLElement);
+    expect(screen.getByText("1 selected")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    expect(await screen.findByText("Delete 1 post(s)?")).toBeTruthy();
   });
 });

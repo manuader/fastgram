@@ -383,6 +383,83 @@ export function planLinkFollowing(links: readonly string[]): readonly string[] {
   return out;
 }
 
+/**
+ * Qué destinos del link-in-bio se leen (`P1-BRAND-015`, `INT-018`).
+ *
+ * Sólo `http(s)`, sin credenciales en la URL, sin repetir la propia fuente, y
+ * después {@link planLinkFollowing}: un nivel, cinco destinos. La guarda SSRF
+ * no está acá a propósito: la aplica el lector web en cada salto (DNS
+ * incluido), que es el único que puede verla completa.
+ */
+export function linkInBioTargets(
+  links: readonly string[] | undefined,
+  ownUrl?: string | undefined,
+): readonly string[] {
+  if (links === undefined) return [];
+  const own = ownUrl?.trim().toLowerCase().replace(/\/+$/, "");
+  const usable: string[] = [];
+  for (const raw of links) {
+    const link = raw.trim();
+    let url: URL;
+    try {
+      url = new URL(link);
+    } catch {
+      continue;
+    }
+    if (url.protocol !== "http:" && url.protocol !== "https:") continue;
+    if (url.username !== "" || url.password !== "") continue;
+    if (own !== undefined && link.toLowerCase().replace(/\/+$/, "") === own) continue;
+    usable.push(link);
+  }
+  return planLinkFollowing(usable);
+}
+
+/**
+ * Lo leído de un destino del link-in-bio, como un ítem más para la síntesis.
+ * Entra como texto de terceros por el mismo camino (título y descripción), sin
+ * engagement: no compite con los posts que mejor rindieron.
+ */
+export function linkDestinationItem(
+  url: string,
+  signals: {
+    readonly displayName?: string | undefined;
+    readonly tagline?: string | undefined;
+    readonly bio?: string | undefined;
+    readonly about?: string | undefined;
+  },
+): {
+  readonly externalId: string;
+  readonly kind: "text";
+  readonly permalink: string;
+  readonly title?: string;
+  readonly caption?: string;
+  readonly hashtags: readonly string[];
+  readonly mentions: readonly string[];
+  readonly engagement: Record<string, never>;
+  readonly mediaUrls: readonly string[];
+} | null {
+  const title = [signals.displayName, signals.tagline]
+    .map((v) => v?.trim() ?? "")
+    .filter((v) => v.length > 0)
+    .join(" — ");
+  const caption = [signals.bio, signals.about]
+    .map((v) => v?.trim() ?? "")
+    .filter((v) => v.length > 0)
+    .join("\n\n");
+  if (title.length === 0 && caption.length === 0) return null;
+  return {
+    externalId: `link:${url}`,
+    kind: "text",
+    permalink: url,
+    ...(title.length === 0 ? {} : { title }),
+    ...(caption.length === 0 ? {} : { caption }),
+    hashtags: [],
+    mentions: [],
+    engagement: {},
+    mediaUrls: [],
+  };
+}
+
 /** Sólo para el badge de origen de `FR-011.2`. */
 export function isSocialSourceType(t: CoreBrandSourceType): t is BrandSourceType {
   return t !== "manual" && t !== "website" && t !== "other_url";

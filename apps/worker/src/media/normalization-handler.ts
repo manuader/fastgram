@@ -41,8 +41,14 @@
  * - **No renombra `filename`** (`clip.mov` sigue diciendo `.mov`): es el nombre
  *   que eligió el usuario y el PRD no dice que cambie.
  * - **No normaliza el video custom** de `POST /content/custom/video`: esa
- *   pieza no crea fila en `media` y su `storageKey` no queda en ningún lado
- *   (ver la cabecera de `content/build-handler.ts`).
+ *   pieza no crea fila en `media`; la normaliza su propio build con la misma
+ *   función (`normalize-video.ts`, rama `custom` de `content/build-handler.ts`).
+ *
+ * ## HDR sin `zscale` (sprint 7, `0029`)
+ *
+ * Un video HDR que el servicio no puede pasar a SDR queda `ready` con el
+ * original y `normalization = 'hdr_kept_original'` (ver `normalize-video.ts`).
+ * Antes terminaba `failed` después de tres reintentos inútiles.
  */
 
 import { randomUUID } from "node:crypto";
@@ -52,6 +58,7 @@ import { BYTES_PER_MB } from "@fastgram/contracts";
 import {
   mediaNormalizationStore,
   withCompany,
+  type MediaNormalizationOutcome,
   type Database,
   type MediaRow,
   type Transaction,
@@ -68,6 +75,7 @@ import {
 } from "@fastgram/ports";
 
 import type { BuildLogger } from "../content/build-handler.js";
+import { normalizeVideo, videoNormalizationReasons } from "./normalize-video.js";
 import { workspaceMediaAuthorization } from "../content/media-authorization.js";
 
 /** `NFR-014`: «MOV→MP4». El único destino que el PRD nombra. */
@@ -115,11 +123,7 @@ export function parseMediaNormalizationJob(
  * lo distingue por el `major_brand`, `ffmpeg/probe.ts`).
  */
 export function normalizationReasons(probe: MediaProbe): readonly string[] {
-  const reasons: string[] = [];
-  if (probe.contentType !== NORMALIZED_CONTENT_TYPE) reasons.push("container");
-  if (probe.isHdr) reasons.push("hdr");
-  if (!probe.isFastStart) reasons.push("faststart");
-  return reasons;
+  return videoNormalizationReasons(probe);
 }
 
 /**
@@ -272,6 +276,7 @@ export function createMediaNormalizationHandler(
       r2Url: string;
       sizeMb: number;
       videoDurationSec: number | null;
+      normalization: MediaNormalizationOutcome;
     } | null = null;
 
     try {
@@ -285,24 +290,26 @@ export function createMediaNormalizationHandler(
         urls: [sourceUrl],
       });
 
-      const probe = await deps.renderer.probe(sourceUrl, auth);
-      reasons = normalizationReasons(probe);
+      const result = await normalizeVideo(deps.renderer, sourceUrl, auth);
+      reasons =
+        result.kind === "normalized"
+          ? result.reasons
+          : videoNormalizationReasons(result.probe);
 
-      if (reasons.length === 0) {
-        // Ya es un MP4 SDR con el `moov` adelante: nada que transcodificar.
-        // Igual pasa por el `UPDATE`, que es lo que lo saca de `processing` y
-        // le pone la duración que midió el probe.
+      if (result.kind !== "normalized") {
+        // Ya es un MP4 SDR con el `moov` adelante, o es HDR y el servicio no
+        // puede pasarlo a SDR (`normalize-video.ts`): se conserva el archivo.
+        // Igual pasa por el `UPDATE`, que es lo que lo saca de `processing`,
+        // le pone la duración que midió el probe y deja la marca (`0029`).
         patch = {
           storageKey: row.storageKey,
           r2Url: row.r2Url,
           sizeMb: row.sizeMb,
-          videoDurationSec: wholeSeconds(probe.durationSeconds),
+          videoDurationSec: wholeSeconds(result.probe.durationSeconds),
+          normalization: result.kind,
         };
       } else {
-        const normalized = await deps.renderer.normalize(
-          { url: sourceUrl, targetContentType: NORMALIZED_CONTENT_TYPE },
-          auth,
-        );
+        const normalized = result.media;
         const key = `${MEDIA_PREFIX}/${job.companyId}/normalized/${job.mediaId}/${randomUUID()}.mp4`;
         const stored = await deps.storage.put({
           key,
@@ -317,8 +324,9 @@ export function createMediaNormalizationHandler(
           // describe ahora — no el del original.
           sizeMb: stored.sizeBytes / BYTES_PER_MB,
           videoDurationSec: wholeSeconds(
-            normalized.durationSeconds ?? probe.durationSeconds,
+            normalized.durationSeconds ?? result.probe.durationSeconds,
           ),
+          normalization: "normalized",
         };
       }
     } catch (error: unknown) {

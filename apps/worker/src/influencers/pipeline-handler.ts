@@ -98,6 +98,7 @@ import {
   readAll,
   type InfluencerCharacterMount,
 } from "./image-handler.js";
+import { createInfluencerVideoHandler } from "./video-handler.js";
 
 /**
  * Lo mínimo del puerto `MediaGeneration` que este handler usa.
@@ -206,6 +207,11 @@ export function createInfluencerPipelineHandler(
   const chars = deps.characters;
   const images =
     chars === undefined ? null : createInfluencerImageHandler({ ...deps, mount: chars });
+  // Sprint 7 (agente G): «Animate this image».
+  const videos =
+    chars?.video === undefined
+      ? null
+      : createInfluencerVideoHandler({ ...deps, mount: { ...chars, ...chars.video } });
   const sleep =
     chars?.sleep ??
     ((ms: number) =>
@@ -297,7 +303,13 @@ export function createInfluencerPipelineHandler(
       const usable = found.items.filter(
         (m) => m.mediaType === "image" && m.status === "ready",
       );
-      if (usable.length < INFLUENCER_REFERENCE_LIMITS.min) {
+      // Sprint 7 (`P4-INFL-003`): un personaje de imagen base generada por texto
+      // se crea con **una** foto; el mínimo de 4 es para fotos propias.
+      const required = Math.min(
+        INFLUENCER_REFERENCE_LIMITS.min,
+        row.referenceMediaIds.length,
+      );
+      if (usable.length < required) {
         await failAndRefund(job, {
           code: "references_missing",
           message: `Only ${String(usable.length)} of the reference photos are still in the Media Bank.`,
@@ -483,6 +495,15 @@ export function createInfluencerPipelineHandler(
     try {
       if (job.op === "image") {
         await images(ctx, job);
+      } else if (job.op === "video") {
+        if (videos === null) {
+          deps.logger.error(
+            { jobId: ctx.jobId, generationId: job.generationId },
+            "influencer-pipeline: video sin montaje de video",
+          );
+          return;
+        }
+        await videos(ctx, job);
       } else {
         await train(ctx, chars, job);
       }

@@ -49,8 +49,12 @@ import { randomUUID } from "node:crypto";
 
 import { z } from "zod";
 import {
+  formatRunRequestSchema,
   generationListQuerySchema,
   generationRequestSchema,
+  type FormatRun,
+  type FormatRunEstimate as FormatRunEstimateView,
+  type GenerativeFormatsView,
   type AiStudioOptions,
   type AiStudioTaskOptions,
   type CostEstimate,
@@ -59,8 +63,19 @@ import {
   type GenModelSpec as GenModelSpecView,
 } from "@fastgram/contracts";
 import {
+  GENERATIVE_FORMATS,
   JOB_QUEUES,
   aiStudioSingletonKey,
+  estimateGenerativeFormatRun,
+  findGenerativeFormat,
+  formatRunStatus,
+  formatVideoModels,
+  parseFormatRunRecord,
+  startGenerativeFormatRun,
+  type FormatRunDeps,
+  type FormatRunInput,
+  type FormatRunRecord,
+  type FormatRunRejection,
   budgetSummary,
   checkGenerationInput,
   fitsBudget,
@@ -78,7 +93,12 @@ import {
   type ReserveResult,
   type ResolvedGenAiConfig,
 } from "@fastgram/core";
-import { mediaRepository, type Transaction } from "@fastgram/db";
+import {
+  companyProfileRepository,
+  contentRepository,
+  mediaRepository,
+  type Transaction,
+} from "@fastgram/db";
 import { isPortError, type GenCostEstimate, type GenModelSpec } from "@fastgram/ports";
 import type { GenClient } from "@fastgram/adapters";
 
@@ -88,9 +108,11 @@ import type { ZodApp } from "../../server/types.js";
 import {
   defaultGenAiRouteDeps,
   genAiConfigFor,
+  createProviderImageResolver,
   ledgerOrFail,
   toBudgetView,
   type GenAiRouteDeps,
+  type GenerationFiles,
 } from "./genai.js";
 
 /** pg-boss cuenta reintentos: 1 = dos intentos (`maxAttempts: 2` del catálogo). */
@@ -107,7 +129,7 @@ const DEFAULT_LIST_LIMIT = 50;
 const idParams = z.object({ id: z.string().min(1) });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function specView(spec: GenModelSpec): GenModelSpecView {
+export function specView(spec: GenModelSpec): GenModelSpecView {
   return {
     id: spec.id,
     label: spec.label,
@@ -152,6 +174,26 @@ function notConfigured(kind: "image" | "video"): ApiRejection {
 
 type GenerationBody = z.infer<typeof generationRequestSchema>;
 
+/**
+ * Lo del request que hace falta fuera del handler. Perezoso a propósito: sólo
+ * la imagen del Media Bank lo usa, y los montajes de test sin scope (sin
+ * `auth` ni `tx`) no tienen que pagarlo.
+ */
+interface RequestCtx {
+  readonly companyId: () => string;
+  readonly run: <T>(fn: (tx: Transaction) => Promise<T>) => Promise<T>;
+}
+
+function ctxOf(request: {
+  readonly auth: { readonly companyId: string };
+  readonly tx: <T>(fn: (tx: Transaction) => Promise<T>) => Promise<T>;
+}): RequestCtx {
+  return {
+    companyId: () => request.auth.companyId,
+    run: (fn) => request.tx(fn),
+  };
+}
+
 interface Prepared {
   readonly config: ResolvedGenAiConfig;
   readonly client: GenClient;
@@ -165,7 +207,39 @@ export function registerAiStudioRoutes(
 ): void {
   const now = (): Date => app.deps.clock.now();
 
-  async function prepare(body: GenerationBody): Promise<Prepared> {
+  const providerImage = createProviderImageResolver(deps);
+
+  /**
+   * Sprint 7 (`P4-AISTUDIO-001`): la imagen de entrada elegida del Media Bank
+   * → una URL que el proveedor pueda leer. Una imagen de otra marca no existe
+   * acá (400, igual que una borrada: el id no dice nada).
+   */
+  async function imageFromMediaBank(
+    config: ResolvedGenAiConfig,
+    ctx: RequestCtx,
+    mediaId: string,
+  ): Promise<string> {
+    const companyId = ctx.companyId();
+    const found = await ctx.run((tx) =>
+      mediaRepository.list(
+        tx,
+        { companyId },
+        { limit: 1, filter: { mediaId: { eq: mediaId } } },
+      ),
+    );
+    const media = found.items[0];
+    if (media === undefined || media.mediaType !== "image" || media.status !== "ready") {
+      throw new ApiRejection(
+        400,
+        "bad_request",
+        "We couldn't find that reference image. Pick another image and try again.",
+        { field: "imageMediaId" },
+      );
+    }
+    return providerImage(config, app.deps.storage, companyId, media);
+  }
+
+  async function prepare(body: GenerationBody, ctx: RequestCtx): Promise<Prepared> {
     const config = await genAiConfigFor(deps, body.kind);
     if (config === null) throw notConfigured(body.kind);
     let client: GenClient;
@@ -176,6 +250,29 @@ export function registerAiStudioRoutes(
     }
     const model = body.model ?? config.model;
     const spec = client.models().find((m) => m.id === model);
+    const typedUrl = body.imageUrl?.trim() === "" ? undefined : body.imageUrl?.trim();
+    if (typedUrl !== undefined && body.imageMediaId !== undefined) {
+      throw new ApiRejection(
+        400,
+        "bad_request",
+        "Use a Media Bank image or a URL, not both.",
+        { field: "imageMediaId" },
+      );
+    }
+    let imageUrl = typedUrl;
+    if (body.imageMediaId !== undefined) {
+      if (spec === undefined || spec.imageInput === "none") {
+        throw new ApiRejection(
+          400,
+          "bad_request",
+          "This model does not take a start image.",
+          {
+            field: "imageMediaId",
+          },
+        );
+      }
+      imageUrl = await imageFromMediaBank(config, ctx, body.imageMediaId);
+    }
     const input: GenerationInput = {
       kind: body.kind,
       model,
@@ -183,7 +280,7 @@ export function registerAiStudioRoutes(
       aspectRatio: body.aspectRatio,
       count: body.count,
       durationSeconds: body.durationSeconds,
-      imageUrl: body.imageUrl?.trim() === "" ? undefined : body.imageUrl?.trim(),
+      imageUrl,
     };
     // ComfyUI (`PU-LATER-003`) corre acá y la imagen de entrada la baja el
     // adaptador: vale también la URL `http://` del MinIO local.
@@ -310,7 +407,7 @@ export function registerAiStudioRoutes(
     "/ai-studio/estimate",
     { schema: { body: generationRequestSchema } },
     async (request) => {
-      const prepared = await prepare(request.body);
+      const prepared = await prepare(request.body, ctxOf(request));
       const cost = await estimate(prepared);
       const ledger = ledgerOrFail(await deps.ledger.read());
       const summary = budgetSummary(ledger, monthKey(now()), deps.env);
@@ -340,7 +437,7 @@ export function registerAiStudioRoutes(
         });
       }
       const companyId = request.auth.companyId;
-      const prepared = await prepare(request.body);
+      const prepared = await prepare(request.body, ctxOf(request));
       const cost = await estimate(prepared);
 
       const at = now();
@@ -480,6 +577,372 @@ export function registerAiStudioRoutes(
       const record = parseGenerationRecord(await deps.generations.get(companyId, id));
       if (record === null || record.companyId !== companyId) throw notFound("generation");
       const [view] = await views(request.tx, companyId, [record]);
+      return data(view);
+    },
+  );
+
+  // Sprint 7 (agente G): formatos generativos. Sin la colección (montajes de
+  // test viejos) no se registran.
+  const formatRuns = deps.formatRuns;
+  if (formatRuns !== undefined) {
+    registerFormatRoutes(app, deps, formatRuns, { taskOptions, providerRejection });
+  }
+}
+
+/* ------------------------------------------------------------------------ *
+ * Formatos generativos — sprint 7 (agente G), `P4-FORMAT-001`/`002`
+ *
+ *   GET  /ai-studio/formats                     catálogo + texto a video + tope
+ *   POST /ai-studio/formats/:format/estimate    costo del clip
+ *   POST /ai-studio/formats/:format/runs        reservar y encolar (202)
+ *   GET  /ai-studio/format-runs                 corridas de la marca
+ *   GET  /ai-studio/format-runs/:id             una corrida
+ *
+ * El clip es una generación de AI Studio (mismo job, mismo tope); al quedar
+ * lista, el worker arma la pieza (`apps/worker/src/formats/`). El caso de uso
+ * es `startGenerativeFormatRun` de `core`, el mismo que puede llamar Blitz.
+ * `:format` y no `:formatId`: trampa 56.
+ * ------------------------------------------------------------------------ */
+
+const formatParams = z.object({ format: z.string().min(1).max(64) });
+
+interface FormatRouteHelpers {
+  readonly taskOptions: (kind: "image" | "video") => Promise<AiStudioTaskOptions>;
+  readonly providerRejection: (error: unknown) => ApiRejection;
+}
+
+function rejectionToApi(r: FormatRunRejection): ApiRejection {
+  switch (r.reason) {
+    case "invalid":
+      return new ApiRejection(400, "bad_request", r.message, { field: r.field });
+    case "not_configured":
+      return new ApiRejection(409, "conflict", r.message, { reason: "not_configured" });
+    case "ledger_unreadable":
+      return new ApiRejection(503, "service_unavailable", r.message);
+    case "budget_exceeded":
+      return new ApiRejection(
+        402,
+        "payment_required",
+        "This generation would go over this month's AI budget.",
+        {
+          reason: "budget_exceeded",
+          estimateUsd: r.estimateUsd,
+          remainingUsd: r.summary.remainingUsd,
+          budgetUsd: r.summary.budgetUsd,
+        },
+      );
+  }
+}
+
+function registerFormatRoutes(
+  app: ZodApp,
+  deps: GenAiRouteDeps,
+  runs: GenerationFiles,
+  helpers: FormatRouteHelpers,
+): void {
+  const now = (): Date => app.deps.clock.now();
+
+  /** El formato pedido: 404 si no existe, 409 si está bloqueado. */
+  function formatOrFail(id: string): void {
+    const format = findGenerativeFormat(id);
+    if (format === undefined) throw notFound("format");
+    if (format.status === "blocked") {
+      throw new ApiRejection(409, "conflict", format.why, {
+        reason: "format_unavailable",
+        blockedBy: format.reason,
+      });
+    }
+  }
+
+  function depsFor(): FormatRunDeps {
+    let client: GenClient | null = null;
+    return {
+      now,
+      newId: () => randomUUID(),
+      env: deps.env,
+      videoTask: async () => {
+        const config = await genAiConfigFor(deps, "video");
+        if (config === null) return null;
+        try {
+          client = deps.clientFor(config);
+        } catch (error) {
+          throw helpers.providerRejection(error);
+        }
+        return {
+          provider: config.provider,
+          defaultModel: config.model,
+          models: client.models(),
+        };
+      },
+      estimate: async (request) => {
+        if (client === null) throw new Error("estimate antes de videoTask");
+        try {
+          return await client.estimateVideo(request);
+        } catch (error) {
+          throw helpers.providerRejection(error);
+        }
+      },
+      ledger: deps.ledger,
+      generations: deps.generations,
+      runs,
+      enqueue: async (job) => {
+        const queue = app.deps.queue;
+        if (queue === undefined) throw new Error("sin cola");
+        await queue.enqueue<AiStudioGenerationJob>({
+          queue: JOB_QUEUES.aiStudioGeneration,
+          payload: job,
+          options: {
+            singletonKey: aiStudioSingletonKey(job),
+            retryLimit: AI_STUDIO_RETRY_LIMIT,
+            retryBackoff: true,
+            expireInSeconds: AI_STUDIO_EXPIRE_SECONDS,
+          },
+        });
+      },
+    };
+  }
+
+  async function inputFor(
+    run: <T>(fn: (tx: Transaction) => Promise<T>) => Promise<T>,
+    companyId: string,
+    formatId: string,
+    body: z.infer<typeof formatRunRequestSchema>,
+  ): Promise<FormatRunInput> {
+    const profile = await run(
+      async (tx) =>
+        (await companyProfileRepository.list(tx, { companyId }, { limit: 1 })).items[0],
+    );
+    return {
+      companyId,
+      formatId,
+      overlayText: body.overlayText,
+      topic: body.topic,
+      includeBrand: body.includeBrand,
+      model: body.model,
+      durationSeconds: body.durationSeconds,
+      brand:
+        profile === undefined
+          ? null
+          : {
+              productOffering: profile.productOffering,
+              coreIdentity: profile.coreIdentity,
+            },
+      source: "studio",
+    };
+  }
+
+  /** Corrida → vista: estado de la generación y de la pieza, y el clip. */
+  async function runViews(
+    tx: <T>(fn: (t: Transaction) => Promise<T>) => Promise<T>,
+    companyId: string,
+    records: readonly FormatRunRecord[],
+  ): Promise<FormatRun[]> {
+    const out: FormatRun[] = [];
+    for (const run of records) {
+      const generation = parseGenerationRecord(
+        await deps.generations.get(companyId, run.id),
+      );
+      const gen =
+        generation !== null && generation.companyId === companyId ? generation : null;
+      const found = await tx(async (t) => ({
+        content:
+          run.contentId === null
+            ? null
+            : await contentRepository.findById(t, { companyId }, run.contentId),
+        clip:
+          gen === null || gen.mediaIds.length === 0
+            ? null
+            : ((
+                await mediaRepository.list(
+                  t,
+                  { companyId },
+                  { limit: 1, filter: { mediaId: { eq: gen.mediaIds[0] as string } } },
+                )
+              ).items[0] ?? null),
+      }));
+      const contentStatus = found.content?.status ?? null;
+      const status = formatRunStatus(run, gen?.status ?? null, contentStatus);
+      let error: FormatRun["error"] = null;
+      if (run.error !== null) error = run.error;
+      else if (gen === null)
+        error = { code: "generation_missing", message: "The clip's record is missing." };
+      else if (gen.error !== null && (status === "failed" || status === "nsfw"))
+        error = gen.error;
+      else if (status === "failed" && contentStatus === "FAILED")
+        error = { code: "build_failed", message: "The video could not be rendered." };
+      else if (status === "failed")
+        error = { code: "content_failed", message: "The piece is no longer available." };
+      out.push({
+        id: run.id,
+        formatId: run.formatId,
+        status,
+        topic: run.topic,
+        overlayText: run.overlayText,
+        videoPrompt: run.videoPrompt,
+        model: gen?.model ?? null,
+        durationSeconds: gen?.durationSeconds ?? null,
+        estimate: gen === null ? null : estimateView(gen.estimate),
+        contentId: found.content === null ? null : run.contentId,
+        clip:
+          found.clip === null
+            ? null
+            : {
+                mediaId: found.clip.mediaId,
+                mediaType: found.clip.mediaType,
+                url: found.clip.r2Url,
+              },
+        error,
+        createdAt: run.createdAt,
+        updatedAt: run.updatedAt,
+      });
+    }
+    return out;
+  }
+
+  // ── GET /ai-studio/formats ──
+  app.get("/ai-studio/formats", async () => {
+    const video = await helpers.taskOptions("video");
+    const models = formatVideoModels(video.models).map(specView);
+    const ledger = ledgerOrFail(await deps.ledger.read());
+    const view: GenerativeFormatsView = {
+      formats: GENERATIVE_FORMATS.map((f) =>
+        f.status === "available"
+          ? {
+              id: f.id,
+              label: f.label,
+              description: f.description,
+              status: "available" as const,
+              reason: null,
+              why: null,
+              narrationMissing: /narration/i.test(f.description) && !f.narration,
+              preferredDurationSeconds: f.preferredDurationSeconds,
+            }
+          : {
+              id: f.id,
+              label: f.label,
+              description: f.description,
+              status: "blocked" as const,
+              reason: f.reason,
+              why: f.why,
+              narrationMissing: false,
+              preferredDurationSeconds: null,
+            },
+      ),
+      video: {
+        ...video,
+        configured: video.configured && models.length > 0,
+        defaultModel:
+          video.defaultModel !== null && models.some((m) => m.id === video.defaultModel)
+            ? video.defaultModel
+            : (models[0]?.id ?? null),
+        models,
+      },
+      budget: toBudgetView(budgetSummary(ledger, monthKey(now()), deps.env)),
+    };
+    return data(view);
+  });
+
+  // ── POST /ai-studio/formats/:format/estimate ──
+  app.post(
+    "/ai-studio/formats/:format/estimate",
+    { schema: { params: formatParams, body: formatRunRequestSchema } },
+    async (request) => {
+      const companyId = request.auth.companyId;
+      formatOrFail(request.params.format);
+      const input = await inputFor(
+        request.tx,
+        companyId,
+        request.params.format,
+        request.body,
+      );
+      const r = await estimateGenerativeFormatRun(depsFor(), input);
+      if (!r.ok) throw rejectionToApi(r);
+      const summary = budgetSummary(
+        ledgerOrFail(await deps.ledger.read()),
+        monthKey(now()),
+        deps.env,
+      );
+      const view: FormatRunEstimateView = {
+        provider: r.provider as FormatRunEstimateView["provider"],
+        model: r.model,
+        durationSeconds: r.durationSeconds,
+        videoPrompt: r.videoPrompt,
+        estimate: estimateView(r.estimate),
+        budget: toBudgetView(summary),
+        fits: fitsBudget(summary, r.estimate.usd),
+      };
+      return data(view);
+    },
+  );
+
+  // ── POST /ai-studio/formats/:format/runs ──
+  app.post(
+    "/ai-studio/formats/:format/runs",
+    { schema: { params: formatParams, body: formatRunRequestSchema } },
+    async (request, reply) => {
+      if (app.deps.queue === undefined) {
+        return reply.status(503).send({
+          error: {
+            code: "service_unavailable",
+            message: "Generative formats are temporarily unavailable.",
+          },
+        });
+      }
+      const companyId = request.auth.companyId;
+      formatOrFail(request.params.format);
+      const input = await inputFor(
+        request.tx,
+        companyId,
+        request.params.format,
+        request.body,
+      );
+      const r = await startGenerativeFormatRun(depsFor(), input);
+      if (!r.ok) throw rejectionToApi(r);
+      request.log.info(
+        {
+          runId: r.run.id,
+          format: r.run.formatId,
+          model: r.generation.model,
+          estimateUsd: r.estimate.usd,
+        },
+        "format run queued",
+      );
+      const [view] = await runViews(request.tx, companyId, [r.run]);
+      return reply.status(202).send(data(view));
+    },
+  );
+
+  // ── GET /ai-studio/format-runs ──
+  app.get(
+    "/ai-studio/format-runs",
+    { schema: { querystring: generationListQuerySchema } },
+    async (request) => {
+      const companyId = request.auth.companyId;
+      const limit = request.query.limit ?? DEFAULT_LIST_LIMIT;
+      const records = (await runs.list(companyId))
+        .map(parseFormatRunRecord)
+        .filter((r): r is FormatRunRecord => r !== null && r.companyId === companyId)
+        .sort((a, b) =>
+          a.createdAt === b.createdAt
+            ? b.id.localeCompare(a.id)
+            : b.createdAt.localeCompare(a.createdAt),
+        )
+        .slice(0, limit);
+      return data(await runViews(request.tx, companyId, records));
+    },
+  );
+
+  // ── GET /ai-studio/format-runs/:id ──
+  app.get(
+    "/ai-studio/format-runs/:id",
+    { schema: { params: idParams } },
+    async (request) => {
+      const companyId = request.auth.companyId;
+      const { id } = request.params;
+      if (!UUID.test(id)) throw notFound("format run");
+      const record = parseFormatRunRecord(await runs.get(companyId, id));
+      if (record === null || record.companyId !== companyId) throw notFound("format run");
+      const [view] = await runViews(request.tx, companyId, [record]);
       return data(view);
     },
   );

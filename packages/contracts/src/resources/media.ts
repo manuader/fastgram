@@ -13,15 +13,37 @@ import {
   imageMediaCategorySchema,
   mediaCategorySchema,
   mediaOriginSchema,
+  mediaSetKindSchema,
   mediaStatusSchema,
   mediaTypeSchema,
   videoMediaCategorySchema,
 } from "../primitives/enums.js";
-import { mediaIdSchema, msEpochSchema, uploadIdSchema } from "../primitives/ids.js";
+import {
+  mediaIdSchema,
+  mediaSetIdSchema,
+  msEpochSchema,
+  uploadIdSchema,
+} from "../primitives/ids.js";
 import { cursorQuerySchema } from "../primitives/pagination.js";
 
 /** FR-100 (PRD:1621) — "`0 selected (need 5 more)`" fija el mínimo de un set. */
 export const MEDIA_SET_MIN_ASSETS = 5;
+
+/** `P2-MEDIA-007`: tope de la búsqueda. El PRD no da número: elección nuestra. */
+export const MEDIA_SEARCH_MAX_CHARS = 100;
+/** Tope de una etiqueta y de etiquetas por asset. Sin número en el PRD. */
+export const MEDIA_TAG_MAX_CHARS = 40;
+export const MEDIA_TAGS_MAX = 30;
+
+/**
+ * Una lista de etiquetas: se guardan en minúsculas y sin repetir. La
+ * normalización la hace el schema para que el filtro `tag=` (también en
+ * minúsculas) encuentre lo que el usuario escribió con mayúsculas.
+ */
+export const mediaTagListSchema = z
+  .array(z.string().trim().toLowerCase().min(1).max(MEDIA_TAG_MAX_CHARS))
+  .max(MEDIA_TAGS_MAX)
+  .transform((tags) => [...new Set(tags)]);
 
 /**
  * Las categorías son válidas **por tipo** (F-129, PRD:601). Un `image` con
@@ -51,6 +73,15 @@ export const mediaSchema = z
     origin: mediaOriginSchema,
     uploadedAt: msEpochSchema,
     deletedAt: msEpochSchema.optional(),
+    /** `0029`: etiquetas buscables (del usuario o automáticas del clip). */
+    tags: z.array(z.string()).optional(),
+    /**
+     * `0029`: qué hizo la normalización con un video. `hdr_kept_original` =
+     * el video es HDR y el servicio no puede pasarlo a SDR: se usa el original.
+     */
+    normalization: z
+      .enum(["normalized", "already_normalized", "hdr_kept_original"])
+      .optional(),
   })
   .strict()
   .refine((m) => categoriesForType(m.mediaType, m.categories), {
@@ -74,8 +105,15 @@ export type FinalizeMediaRequest = z.infer<typeof finalizeMediaRequestSchema>;
  * Por eso el array puede estar vacío y no hay operación de "añadir".
  */
 export const updateMediaRequestSchema = z
-  .object({ categories: z.array(mediaCategorySchema) })
-  .strict();
+  .object({
+    categories: z.array(mediaCategorySchema).optional(),
+    /** `0029`: reemplazo total de las etiquetas, como las categorías. */
+    tags: mediaTagListSchema.optional(),
+  })
+  .strict()
+  .refine((b) => b.categories !== undefined || b.tags !== undefined, {
+    message: "send categories, tags or both",
+  });
 export type UpdateMediaRequest = z.infer<typeof updateMediaRequestSchema>;
 
 /** Variante estrecha: categorías válidas para imágenes. */
@@ -96,7 +134,18 @@ export type UpdateVideoMediaRequest = z.infer<typeof updateVideoMediaRequestSche
  * UI pero el PRD no nombra sus parámetros de query: quedan fuera del contrato.
  */
 export const listMediaQuerySchema = cursorQuerySchema
-  .extend({ type: mediaTypeSchema.optional() })
+  .extend({
+    type: mediaTypeSchema.optional(),
+    /**
+     * `P2-MEDIA-007` (`0029`): búsqueda por nombre de archivo o etiqueta,
+     * sin distinguir mayúsculas. «Search your images» del PRD.
+     */
+    q: z.string().trim().min(1).max(MEDIA_SEARCH_MAX_CHARS).optional(),
+    /** Una categoría de F-129; filtra los assets que la tienen. */
+    category: mediaCategorySchema.optional(),
+    /** Una etiqueta exacta (en minúsculas), incluidas las automáticas de los clips. */
+    tag: z.string().trim().toLowerCase().min(1).max(MEDIA_TAG_MAX_CHARS).optional(),
+  })
   .strict();
 export type ListMediaQuery = z.infer<typeof listMediaQuerySchema>;
 
@@ -242,3 +291,102 @@ export const mediaMetaSchema = z
 export type MediaMetaView = z.infer<typeof mediaMetaSchema>;
 
 export const mediaMetaListSchema = z.array(mediaMetaSchema);
+
+/* ------------------------------------------------------------------------ *
+ * Media Sets — `DATA-011`, `F-127`, `P2-MEDIA-005/006`
+ * ------------------------------------------------------------------------ */
+
+/** Tope de assets por set. El PRD sólo fija el mínimo (5): éste es nuestro. */
+export const MEDIA_SET_MAX_ASSETS = 100;
+export const MEDIA_SET_NAME_MAX_CHARS = 80;
+
+export const mediaSetSchema = z
+  .object({
+    id: mediaSetIdSchema,
+    name: z.string().min(1),
+    kind: mediaSetKindSchema,
+    mediaIds: z.array(mediaIdSchema),
+    createdAt: msEpochSchema,
+  })
+  .strict();
+export type MediaSet = z.infer<typeof mediaSetSchema>;
+
+/**
+ * `POST /media/sets`. Mínimo {@link MEDIA_SET_MIN_ASSETS} (FR-100: *«need 5
+ * more»*), ids únicos. Que cada id sea un asset vivo de la marca lo valida
+ * la ruta (`400` con los que no).
+ */
+export const createMediaSetRequestSchema = z
+  .object({
+    name: z.string().trim().min(1).max(MEDIA_SET_NAME_MAX_CHARS),
+    kind: mediaSetKindSchema,
+    mediaIds: z
+      .array(mediaIdSchema)
+      .min(MEDIA_SET_MIN_ASSETS)
+      .max(MEDIA_SET_MAX_ASSETS)
+      .refine((ids) => new Set(ids).size === ids.length, {
+        message: "mediaIds must be unique",
+      }),
+  })
+  .strict();
+export type CreateMediaSetRequest = z.infer<typeof createMediaSetRequestSchema>;
+
+/* ------------------------------------------------------------------------ *
+ * Importar posts propios — `FR-011.5.1`, `P1-ONB-008` (opt-in)
+ * ------------------------------------------------------------------------ */
+
+/** Default del brief: los últimos 20 posts. Tope 50 (la base lo sostiene). */
+export const OWN_POST_IMPORT_DEFAULT_LIMIT = 20;
+export const OWN_POST_IMPORT_MAX_LIMIT = 50;
+
+/**
+ * `POST /media/own-posts/import`. Dos caminos:
+ * - `connection`: la cuenta conectada de la marca por la API oficial
+ *   (Instagram Graph `/{ig-user-id}/media`, YouTube `uploads`).
+ * - `profile`: un link de perfil público leído con `yt-dlp` sin login
+ *   (TikTok, YouTube), donde funcione.
+ */
+export const ownPostImportRequestSchema = z.discriminatedUnion("source", [
+  z
+    .object({
+      source: z.literal("connection"),
+      connectionId: z.string().uuid(),
+      limit: z.number().int().min(1).max(OWN_POST_IMPORT_MAX_LIMIT).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      source: z.literal("profile"),
+      url: z.string().trim().min(1).max(2048),
+      limit: z.number().int().min(1).max(OWN_POST_IMPORT_MAX_LIMIT).optional(),
+    })
+    .strict(),
+]);
+export type OwnPostImportRequest = z.infer<typeof ownPostImportRequestSchema>;
+
+/** Motivos estables de un import fallido entero (no de un post suelto). */
+export const ownPostImportErrorSchema = z.enum([
+  "unsupported_platform",
+  "unsupported_url",
+  "connection_unavailable",
+  "listing_failed",
+  "nothing_found",
+]);
+
+export const ownPostImportSchema = z
+  .object({
+    id: z.string().uuid(),
+    source: z.enum(["connection", "profile"]),
+    platform: z.string(),
+    state: z.enum(["queued", "running", "done", "failed"]),
+    limit: z.number().int().positive(),
+    found: z.number().int().nonnegative(),
+    imported: z.number().int().nonnegative(),
+    skipped: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+    error: ownPostImportErrorSchema.optional(),
+    createdAt: msEpochSchema,
+    updatedAt: msEpochSchema,
+  })
+  .strict();
+export type OwnPostImport = z.infer<typeof ownPostImportSchema>;

@@ -30,7 +30,8 @@ export function createEngagementJudgment(deps: {
     deps.appRole === undefined ? {} : { role: deps.appRole },
   );
   return async (subject) => {
-    const found = await deps.llmSource.current("judgment");
+    // `P1-JUDGE-004`: modelo propio de Engagement si lo tiene; si no, `judgment`.
+    const found = await deps.llmSource.current("judgment.engagement");
     if (found === null) return null;
     return new RecordingJudgment(
       new LlmJudgmentAdapter(found.llm, { model: found.config.model }),

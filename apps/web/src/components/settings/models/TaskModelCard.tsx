@@ -274,7 +274,8 @@ export function TaskModelCard({ config, presets }: TaskModelCardProps) {
   }
 
   let sourceNote: string | null = null;
-  if (config.inheritsFrom !== null) sourceNote = MODELS_COPY.inherits;
+  if (config.inheritsFrom === "judgment") sourceNote = MODELS_COPY.inheritsJudgment;
+  else if (config.inheritsFrom !== null) sourceNote = MODELS_COPY.inherits;
   else if (config.source === "env" && config.status === "ready")
     sourceNote = MODELS_COPY.usingEnv;
   else if (config.source === "env") sourceNote = MODELS_COPY.usingEnvIncomplete;
