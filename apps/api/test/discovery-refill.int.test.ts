@@ -49,8 +49,7 @@ import { createDbIdempotencyStore } from "../src/support/idempotency-store.js";
 import { createMemoryBucketStore } from "../src/support/bucket-store.js";
 import { RecordingQueue } from "./helpers/harness.js";
 
-const DATABASE_URL =
-  process.env["DATABASE_URL"] ?? "postgres://fastgram:fastgram@localhost:5432/fastgram";
+import { DATABASE_URL } from "./helpers/fixtures.js";
 
 const REFILL = "discovery-refill";
 

@@ -106,6 +106,16 @@ export function registerWorkspaceRoutes(app: ZodApp): void {
         },
         () =>
           withoutCompany(db, async (tx) => {
+            if (body.timezone !== undefined && !isIanaTimeZone(body.timezone)) {
+              throw new ApiRejection(
+                400,
+                "bad_request",
+                "timezone must be an IANA time zone",
+                {
+                  field: "timezone",
+                },
+              );
+            }
             const owner = await ownerOrFail(tx, homeCompanyOf(request));
             return toWorkspace(await workspaceDirectory.create(tx, owner, body));
           }),
@@ -171,4 +181,14 @@ export function registerWorkspaceRoutes(app: ZodApp): void {
       return reply.status(204).send();
     },
   );
+}
+
+/** El mismo criterio que `timeZoneSchema` de strategy: lo que `Intl` acepta. */
+function isIanaTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
 }

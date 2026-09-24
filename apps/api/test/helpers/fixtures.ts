@@ -35,8 +35,45 @@ import {
 
 import { generateApiKey } from "../../src/auth/api-keys.js";
 
-export const DATABASE_URL =
-  process.env["DATABASE_URL"] ?? "postgres://fastgram:fastgram@localhost:5432/fastgram";
+/**
+ * Base propia de esta suite: `…/fastgram` → `…/fastgram_api`.
+ *
+ * **Nunca la de la app.** Los fixtures arrancan con `truncate … cascade` sobre
+ * `companies`, `users`, `api_keys`… Hasta el 2026-09-24 el default era
+ * `…/fastgram`, la misma que usa `pnpm start`: correr `pnpm test:int` con la app
+ * levantada le borraba al dueño sus marcas, sus piezas y la key de la web (la
+ * web quedaba en "Access Denied"). Se deriva del `DATABASE_URL` compartido, como
+ * la del worker (`_worker`), así un `DATABASE_URL` de CI arrastra la suya.
+ */
+export const DATABASE_URL = apiDatabaseUrl(
+  process.env["DATABASE_URL"] ?? "postgres://fastgram:fastgram@localhost:5432/fastgram",
+);
+
+/** `…/fastgram` → `…/fastgram_api`. Respeta el resto de la URL tal cual. */
+export function apiDatabaseUrl(shared: string): string {
+  const url = new URL(shared);
+  const nombre = url.pathname.replace(/^\//, "");
+  if (nombre === "" || nombre.endsWith("_api")) return shared;
+  url.pathname = `/${nombre}_api`;
+  return url.toString();
+}
+
+/** Crea la base de la suite si falta (`CREATE DATABASE` no tiene `IF NOT EXISTS`). */
+export async function ensureApiDatabase(): Promise<void> {
+  const nombre = new URL(DATABASE_URL).pathname.replace(/^\//, "");
+  if (!/^[a-z_][a-z0-9_]*$/.test(nombre)) {
+    throw new Error(`nombre de base inválido: ${JSON.stringify(nombre)}`);
+  }
+  const mantenimiento = new URL(DATABASE_URL);
+  mantenimiento.pathname = "/postgres";
+  const admin = createDb({ url: mantenimiento.toString(), max: 1, onnotice: () => {} });
+  try {
+    const filas = await admin.sql`select 1 from pg_database where datname = ${nombre}`;
+    if (filas.length === 0) await admin.sql.unsafe(`create database ${nombre}`);
+  } finally {
+    await admin.close();
+  }
+}
 
 export interface SeededWorkspace {
   readonly companyId: string;

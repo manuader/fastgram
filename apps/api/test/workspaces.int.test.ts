@@ -146,6 +146,44 @@ describe("CRUD de /workspaces", () => {
     );
   });
 
+  it("crea la marca en la zona horaria que manda la web; sin ella, hereda la de la key", async () => {
+    const conZona = await api.request({
+      method: "POST",
+      path: "/api/v1/workspaces",
+      body: { name: "Con zona", timezone: "America/Argentina/Buenos_Aires" },
+      idempotencyKey: key("tz-con"),
+    });
+    const sinZona = await api.request({
+      method: "POST",
+      path: "/api/v1/workspaces",
+      body: { name: "Sin zona" },
+      idempotencyKey: key("tz-sin"),
+    });
+    expect([conZona.status, sinZona.status]).toEqual([201, 201]);
+    const zonas = await api.handle.sql`
+      select id::text, timezone from companies
+       where id in (${String(dataOf(conZona)["id"])}::uuid, ${String(dataOf(sinZona)["id"])}::uuid,
+                    ${api.data.a.companyId}::uuid)`;
+    const tz = (id: unknown) =>
+      (zonas as unknown as { id: string; timezone: string }[]).find((z) => z.id === id)
+        ?.timezone;
+    expect(tz(dataOf(conZona)["id"])).toBe("America/Argentina/Buenos_Aires");
+    expect(tz(dataOf(sinZona)["id"])).toBe(tz(api.data.a.companyId));
+  });
+
+  it("una zona horaria que Intl no conoce → 400 y no crea nada", async () => {
+    const res = await api.request({
+      method: "POST",
+      path: "/api/v1/workspaces",
+      body: { name: "Zona rara", timezone: "Mars/Olympus_Mons" },
+      idempotencyKey: key("tz-mala"),
+    });
+    expect(res.status).toBe(400);
+    const [fila] = await api.handle
+      .sql`select count(*)::int as n from companies where name = 'Zona rara'`;
+    expect((fila as { n: number }).n).toBe(0);
+  });
+
   it("POST sin Idempotency-Key → 400", async () => {
     const res = await api.request({
       method: "POST",

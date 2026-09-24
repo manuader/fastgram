@@ -23,6 +23,19 @@
 import { createHash, randomBytes } from "node:crypto";
 import postgres from "postgres";
 
+/**
+ * Zona horaria de la máquina (uso personal): la marca de desarrollo y las que
+ * se creen a partir de ella nacen en la hora local, no en UTC. Sólo en el
+ * INSERT: si ya existe, se respeta lo que el usuario haya puesto en Strategy.
+ */
+const LOCAL_TZ = (() => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+})();
+
 export const DEFAULT_DATABASE_URL =
   "postgres://fastgram:fastgram@localhost:5432/fastgram";
 export const DEV_USER_ID = "0de70000-0000-4000-8000-000000000001";
@@ -55,12 +68,12 @@ export async function issueDevWorkspaceKey({ databaseUrl = DEFAULT_DATABASE_URL 
     await sql.begin(async (tx) => {
       await tx`
         insert into users (id, external_identity_id, email, full_name, timezone)
-        values (${DEV_USER_ID}, ${"dev_" + DEV_USER_ID}, 'dev@fastgram.local', 'Dev', 'UTC')
+        values (${DEV_USER_ID}, ${"dev_" + DEV_USER_ID}, 'dev@fastgram.local', 'Dev', ${LOCAL_TZ})
         on conflict (id) do nothing`;
       await tx`
         insert into companies (id, name, owner_user_id, plan_id, billing_anchor_day,
                                timezone, status, subscription_status)
-        values (${DEV_COMPANY_ID}, 'Mi workspace', ${DEV_USER_ID}, 'pro', 1, 'UTC', 'active', 'active')
+        values (${DEV_COMPANY_ID}, 'Mi workspace', ${DEV_USER_ID}, 'pro', 1, ${LOCAL_TZ}, 'active', 'active')
         on conflict (id) do update
           set plan_id = 'pro', status = 'active', subscription_status = 'active'`;
       await tx`

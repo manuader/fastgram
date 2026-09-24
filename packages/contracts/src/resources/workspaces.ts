@@ -60,7 +60,16 @@ export type Workspace = z.infer<typeof workspaceSchema>;
 const workspaceNameSchema = z.string().trim().min(1).max(WORKSPACE_NAME_MAX_CHARS);
 
 export const createWorkspaceRequestSchema = z
-  .object({ name: workspaceNameSchema })
+  .object({
+    name: workspaceNameSchema,
+    /**
+     * IANA (`America/Argentina/Buenos_Aires`). La web manda la del navegador:
+     * sin esto la marca hereda la de la marca de la key, y las ventanas de la
+     * estrategia (09:00, 13:00…) caen en otra hora local. Validada en la ruta
+     * con `Intl` (el mismo criterio que `timeZoneSchema` de strategy).
+     */
+    timezone: z.string().min(1).max(64).optional(),
+  })
   .strict();
 export type CreateWorkspaceRequest = z.infer<typeof createWorkspaceRequestSchema>;
 

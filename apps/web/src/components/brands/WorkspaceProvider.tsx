@@ -94,6 +94,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     enabled: isPersonal,
     // Un 404 acá no se reintenta: es la señal de cookie inválida (punto 3).
     retry: (failureCount, error) => error.status !== 404 && failureCount < 2,
+    // El análisis de una marca corre en el worker y cambia `profileStatus` sin
+    // que la web haga nada: mientras alguna siga `pending`, se vuelve a mirar
+    // para que el selector no diga «Not analysed yet» de una marca ya analizada.
+    refetchInterval: (query) =>
+      query.state.data?.some((w) => w.profileStatus === "pending") === true
+        ? 15_000
+        : false,
   });
 
   const active = useMemo(

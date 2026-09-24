@@ -46,8 +46,7 @@ import { IdempotencyGuard } from "../src/http/idempotency.js";
 import { createDbIdempotencyStore } from "../src/support/idempotency-store.js";
 import { RecordingQueue, openLimiter } from "./helpers/harness.js";
 
-const DATABASE_URL =
-  process.env["DATABASE_URL"] ?? "postgres://fastgram:fastgram@localhost:5432/fastgram";
+import { DATABASE_URL } from "./helpers/fixtures.js";
 
 const NOW = "2026-09-23T12:00:00.000Z";
 /** Ancla 1: el período en curso empieza el 1 de septiembre. */
@@ -72,7 +71,7 @@ async function nuevoWorkspace(
   opts: {
     plan?: Plan;
     subscriptionStatus?: SubscriptionStatus;
-    profile?: "ready" | "pending";
+    profile?: "ready" | "pending" | "partial";
   } = {},
 ): Promise<Workspace> {
   return withoutCompany(handle.db, async (tx) => {
@@ -582,6 +581,16 @@ describe("perfil no listo", () => {
     expect(res.body.error?.code).toBe("company_profile_not_ready");
     expect(await ledger(ws)).toBeNull();
     expect(await estadoSugerencia(sugerencia as string)).toBe("queued");
+  });
+
+  it("un perfil `partial` SÍ acepta: el refill ya generó la cola con ese perfil (decisión 2026-09-24)", async () => {
+    const ws = await nuevoWorkspace({ profile: "partial" });
+    const [sugerencia] = await encolar(ws, 1);
+
+    const res = await aceptar(ws);
+
+    expect(res.status).toBe(202);
+    expect(await estadoSugerencia(sugerencia as string)).not.toBe("queued");
   });
 });
 

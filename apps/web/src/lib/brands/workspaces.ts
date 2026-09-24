@@ -79,10 +79,20 @@ export async function fetchMode(signal?: AbortSignal): Promise<AppMode> {
 export async function createWorkspace(name: string): Promise<Workspace> {
   return apiRequest("workspaces", {
     method: "POST",
-    body: { name: name.trim() },
+    body: { name: name.trim(), ...browserTimeZone() },
     idempotencyKey: newIdempotencyKey(),
     schema: workspaceSchema,
   });
+}
+
+/** La marca nace en la hora local de quien la crea: sin esto hereda UTC. */
+function browserTimeZone(): { timezone?: string } {
+  try {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return zone === "" ? {} : { timezone: zone };
+  } catch {
+    return {};
+  }
 }
 
 export async function renameWorkspace(id: string, name: string): Promise<Workspace> {

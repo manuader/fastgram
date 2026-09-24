@@ -137,7 +137,7 @@ export const workspaceDirectory = {
   async create(
     exec: Executor,
     owner: OwnerDefaults,
-    input: { readonly name: string },
+    input: { readonly name: string; readonly timezone?: string | undefined },
   ): Promise<OwnedWorkspace> {
     const [company] = await exec
       .insert(companies)
@@ -148,7 +148,7 @@ export const workspaceDirectory = {
         planId: "pro",
         subscriptionStatus: "active",
         billingAnchorDay: owner.billingAnchorDay,
-        timezone: owner.timezone,
+        timezone: input.timezone ?? owner.timezone,
       })
       .returning({ id: companies.id });
     if (company === undefined)

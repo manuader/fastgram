@@ -45,8 +45,7 @@ import { IdempotencyGuard } from "../src/http/idempotency.js";
 import { createDbIdempotencyStore } from "../src/support/idempotency-store.js";
 import { RecordingQueue, openLimiter } from "./helpers/harness.js";
 
-const DATABASE_URL =
-  process.env["DATABASE_URL"] ?? "postgres://fastgram:fastgram@localhost:5432/fastgram";
+import { DATABASE_URL } from "./helpers/fixtures.js";
 
 const NOW = "2026-09-23T12:00:00.000Z";
 

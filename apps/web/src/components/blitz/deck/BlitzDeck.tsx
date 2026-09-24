@@ -62,8 +62,14 @@ export const SETTINGS_MODELS_HREF = "/settings/models";
 /** Cuántas piezas recientes muestra el tracker. Más es ruido: están en la Library. */
 const MAX_TRACKED_BUILDS = 5;
 
-/** Ancho de la tarjeta: 360 px —la escala del editor— o lo que entre en un móvil. */
-const CARD_BOX = "relative mx-auto aspect-[9/16] w-[min(360px,82vw)]";
+/**
+ * Ancho de la tarjeta: 360 px —la escala del editor—, o lo que entre en un móvil,
+ * o lo que deje el **alto** de la ventana para que los botones de decidir se vean
+ * sin scrollear (una 9:16 de 360 mide 640 px: en una laptop de 800 px de alto,
+ * con el encabezado y la barra de prompt, los botones quedaban abajo del pliegue).
+ */
+const CARD_BOX =
+  "relative mx-auto aspect-[9/16] w-[min(360px,82vw,max(220px,calc((100dvh-330px)*9/16)))]";
 
 /**
  * `/blitz` · FR-050, `PU-BLITZ-001` y `PU-BLITZ-002`.

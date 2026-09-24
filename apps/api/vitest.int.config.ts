@@ -22,6 +22,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
+    globalSetup: ["./test/helpers/setup-db.ts"],
     include: ["test/**/*.int.test.ts"],
     // Migrar 33 tablas y aplicar RLS no entra en los 5 s por defecto.
     testTimeout: 60_000,

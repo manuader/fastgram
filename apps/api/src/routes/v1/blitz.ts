@@ -912,12 +912,18 @@ async function acceptNextSuggestion(
   // `409 company_profile_not_ready`"*. `company_profiles` tiene un único índice
   // por `companyId`, así que la primera fila del listado es la fila.
   //
-  // `partial` (AI-016, análisis sin OCR) se trata como no listo. El PRD no
-  // distingue "incompleto por el usuario" de "parcial por un motor ausente";
-  // queda anotado como abierto.
+  // `partial` **sí** alcanza (decisión 2026-09-24, uso personal): el refill ya
+  // genera la cola con ese mismo perfil, así que bloquear sólo el aceptar dejaba
+  // un deck lleno que no se puede usar. `partial` es lo normal cuando el
+  // verificador rechaza campos cuyo extracto no está en la fuente (con modelos
+  // chicos pasa seguido); esos campos quedan marcados «Worth a quick check» en
+  // `/brand`. Incompleto de verdad (`pending`, `failed`, sin fila) sigue en 409.
   const profiles = await companyProfileRepository.list(tx, { companyId }, { limit: 1 });
   const profile = profiles.items[0];
-  if (profile === undefined || profile.status !== "ready") {
+  if (
+    profile === undefined ||
+    (profile.status !== "ready" && profile.status !== "partial")
+  ) {
     throw new ApiRejection(
       409,
       "company_profile_not_ready",
