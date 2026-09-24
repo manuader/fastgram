@@ -64,50 +64,55 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [x] **PU-RUN-003** La web obtiene su key sola al arrancar (sin copiar `FASTGRAM_API_KEY` a mano); vive sólo en el entorno del proceso de la web, nunca en disco
 - [x] **PU-MODEL-001** Registro de modelos **por tarea** (texto, juicio, visión, imagen, video, recorte) con presets OpenRouter / DeepSeek / Groq / Cerebras / Gemini / Ollama / LM Studio; keys sólo en entorno o `~/.fastgram/` · `D-14`, `ADR-009`
 - [x] **PU-MODEL-002** Pantalla `Settings → Modelos`: elegir proveedor y modelo por tarea, probar conexión, ver gasto estimado del mes
-- [~] **PU-UI-001** Shell 2026: sidebar compacta con **selector de marca**, `⌘K`, oscuro por defecto, transiciones · ⚠️ dependencias nuevas las instala el coordinador
-  > Hecho y con tests (`88fc15f`). **Falta la pasada visual con screenshot**: el 2026-09-24 el panel del navegador estaba oculto y sólo se verificó por texto y DOM.
+- [x] **PU-UI-001** Shell 2026: sidebar compacta con **selector de marca**, `⌘K`, oscuro por defecto, transiciones · ⚠️ dependencias nuevas las instala el coordinador
+  > Hecho (`88fc15f`) y visto con capturas el 2026-09-24 (Brands, Blitz, Calendar, Brand).
 - [x] **PU-BRAND-001** Crear / cambiar / borrar marcas (workspaces) sin auth · `D-07` · cubre parte de `P1-TENANT-001/002/005`
 - [x] **PU-BLITZ-001** Deck de Blitz con gestos, teclado y chips · `= P2-BLITZ-001…006`, `P2-BLITZ-013`
 - [x] **PU-BLITZ-002** Aceptar en Blitz → pieza construida y visible en Library · `= P2-BLITZ-012`, cierra `P2-BLITZ-014`
   > **Verificado de punta a punta el 2026-09-24:** Ollama qwen2.5 7B configurado desde `/settings/models` → refill de 5 sugerencias → deck → `→` → Save to Library → build `CREATED` → slide 1080×1350 legible. Sin simular nada.
-- [ ] **PU-MEDIA-001** **Subir media desde la UI** (Library → Media Bank): drag & drop de varias imágenes y videos, progreso, categorías · ⚠️ sin esto una marca nueva no tiene con qué generar
-- [ ] **PU-MEDIA-002** **Fondos de marca generados localmente**, sin keys: imágenes (degradés y formas con la paleta de la marca) y videos cortos en loop para wall-of-text, categorizados solos · para que Blitz funcione desde cero
+- [x] **PU-MEDIA-001** **Subir media desde la UI** (Library → Media Bank): drag & drop de varias imágenes y videos, progreso, categorías · ⚠️ sin esto una marca nueva no tiene con qué generar
+- [x] **PU-MEDIA-002** **Fondos de marca generados localmente**, sin keys: imágenes (degradés y formas con la paleta de la marca) y videos cortos en loop para wall-of-text, categorizados solos · para que Blitz funcione desde cero
 
 ## Sprint 2 — Edito y agendo
 
 - [x] **PU-EDIT-001** **Decidir y documentar en el PRD el mapeo editor→px** (decidido 2026-09-24, PRD FR-051) (propuesta: posición y ancho en % del lienzo; fuente y contorno × `canvas.width/360`) · cierra `P2-CONTENT-004`
 - [x] **PU-EDIT-002** Las ediciones llegan al video (rebuild con las cajas editadas) · dep: PU-EDIT-001
-- [ ] **PU-EDIT-003** Editor inline: caption, texto, fondo, música, meme/asset · `= P2-BLITZ-007…011`
-- [ ] **PU-EDIT-004** Preview en vivo en el cliente con la misma escala que el render (lo que ves es lo que sale)
-- [ ] **PU-BLITZ-003** **Crear desde prompt**: tema → pieza de cualquier formato, incluido green-screen con meme de la biblioteca + fondo de marca · `EXT-009`
-- [ ] **PU-CAL-001** Aprobar → **auto-slot** en el próximo horario libre de la estrategia de la marca
-- [ ] **PU-CAL-002** Calendario semana/mes, drag & drop, filtro por marca o todas · completa `P2-CAL-001…003`
-- [ ] **PU-BRAND-002** Estrategia por marca: redes, piezas/día por red, horarios, mix de formatos, idioma, **autonomía manual/piloto** · `D-08`
+- [x] **PU-EDIT-003** Editor inline: caption, texto, fondo, música, meme/asset · `= P2-BLITZ-007…011`
+- [x] **PU-EDIT-004** Preview en vivo en el cliente con la misma escala que el render (lo que ves es lo que sale)
+- [x] **PU-BLITZ-003** **Crear desde prompt**: tema → pieza de cualquier formato, incluido green-screen con meme de la biblioteca + fondo de marca · `EXT-009`
+- [x] **PU-CAL-001** Aprobar → **auto-slot** en el próximo horario libre de la estrategia de la marca
+- [x] **PU-CAL-002** Calendario semana/mes, drag & drop, filtro por marca o todas · completa `P2-CAL-001…003`
+- [x] **PU-BRAND-002** Estrategia por marca: redes, piezas/día por red, horarios, mix de formatos, idioma, **autonomía manual/piloto** · `D-08`
 - [ ] **PU-BRAND-003** Alta de marca de punta a punta (web + perfiles → revisión) · usa `P1-ONB-*` existentes
 
 ## Sprint 3 — Se publica solo
 
-- [ ] **PU-RUN-005** **URL pública para la media** con **Cloudflare Tunnel** (`D-17`) · ⚠️ IG y las fotos de TikTok la traen por URL
-- [ ] **PU-PUB-001** Tokens de redes cifrados en reposo · `= P3-OAUTH-007`
-- [ ] **PU-PUB-002** App de Meta: conectar IG (Instagram Login) y FB/Threads (Facebook Login) por marca · `= P3-OAUTH-003`
-- [ ] **PU-PUB-003** Adaptador Instagram: reel, carrusel e imagen · `= P3-SCHED-008`
-- [ ] **PU-PUB-004** Adaptadores Threads y Facebook Pages (reels)
-- [ ] **PU-PUB-005** Adaptador X (pago por uso; sin links en el texto por defecto)
-- [ ] **PU-PUB-006** TikTok **Upload → `IN_USER_INBOX`** + aviso "terminalo en la app" + marcar hecho · `D-10` · `= P3-OAUTH-002`
-- [ ] **PU-PUB-007** Guardas anti-bot: tope por red y día (default 3), jitter ±7 min, separación entre cuentas, nunca la misma pieza en dos marcas · `D-11`
-- [ ] **PU-PUB-008** Reintentos, reconexión y aviso de fallo · `= P3-PUB-002`, `P3-OAUTH-008`
-- [ ] **PU-UI-002** Pantalla **Hoy**: lo que se publica hoy, lo que espera aprobación, fallos y borradores de TikTok
+- [x] **PU-RUN-005** **URL pública para la media** con **Cloudflare Tunnel** (`D-17`) · ⚠️ IG y las fotos de TikTok la traen por URL
+- [x] **PU-PUB-001** Tokens de redes cifrados en reposo · `= P3-OAUTH-007`
+- [x] **PU-PUB-002** App de Meta: conectar IG (Instagram Login) y FB/Threads (Facebook Login) por marca · `= P3-OAUTH-003`
+- [x] **PU-PUB-003** Adaptador Instagram: reel, carrusel e imagen · `= P3-SCHED-008`
+- [x] **PU-PUB-004** Adaptadores Threads y Facebook Pages (reels)
+- [x] **PU-PUB-005** Adaptador X (pago por uso; sin links en el texto por defecto)
+- [x] **PU-PUB-006** TikTok **Upload → `IN_USER_INBOX`** + aviso "terminalo en la app" + marcar hecho · `D-10` · `= P3-OAUTH-002`
+- [x] **PU-PUB-007** Guardas anti-bot: tope por red y día (default 3), jitter ±7 min, separación entre cuentas, nunca la misma pieza en dos marcas · `D-11`
+- [x] **PU-PUB-008** Reintentos, reconexión y aviso de fallo · `= P3-PUB-002`, `P3-OAUTH-008`
+- [x] **PU-UI-002** Pantalla **Hoy**: lo que se publica hoy, lo que espera aprobación, fallos y borradores de TikTok
 
 ## Sprint 4 — Memes e IA generativa
 
-- [ ] **PU-MEME-001** Importar video o audio por link (`yt-dlp`) al Media Bank · `D-12`
-- [ ] **PU-MEME-002** Recorte de fondo: chromakey local si es verde; BiRefNet (fal) → video con alfa si no; el render compone el alfa
-- [ ] **PU-MEME-003** Etiquetado automático de clips (emoción, situación, duración) con un modelo con visión
-- [ ] **PU-MODEL-003** Puerto `ImageGen` + adaptadores Higgsfield y fal · copiar el resultado a storage propio (Higgsfield lo guarda 7 días)
-- [ ] **PU-MODEL-004** Puerto `VideoGen` + adaptadores Higgsfield y fal (Kling/Wan/Seedance/LTX)
-- [ ] **PU-MODEL-005** Costo estimado antes de generar + **tope mensual** que corta la generación
+- [x] **PU-MEME-001** Importar video o audio por link (`yt-dlp`) al Media Bank · `D-12`
+- [x] **PU-MEME-002** Recorte de fondo: chromakey local si es verde; BiRefNet (fal) → video con alfa si no; el render compone el alfa
+- [x] **PU-MEME-003** Etiquetado automático de clips (emoción, situación, duración) con un modelo con visión
+- [x] **PU-MODEL-003** Puerto `ImageGen` + adaptadores Higgsfield y fal · copiar el resultado a storage propio (Higgsfield lo guarda 7 días)
+- [x] **PU-MODEL-004** Puerto `VideoGen` + adaptadores Higgsfield y fal (Kling/Wan/Seedance/LTX)
+- [x] **PU-MODEL-005** Costo estimado antes de generar + **tope mensual** que corta la generación
 - [ ] **PU-SCRAPE-001** Extractores IG / TikTok / X con el scraper open source elegido, **auditado a mano**, **sin cuentas logueadas** · `D-13` · `= P1-BRAND-007…009`
 - [ ] **PU-SCRAPE-002** IG Business Discovery como vía oficial cuando la cuenta califica
+
+
+> **Estado 2026-09-24 (sprints 1–4, `1465d07`):** todo lo `[x]` de arriba tiene tests y `verify`/`test:int` verdes.
+> **Verificado en el navegador con la app real:** marcas, modelos (Ollama), análisis de web, kit de fondos automático, Blitz (deck, prompt, Edit, Schedule Post), editor (la edición llega al video), calendario, Today, Integrations, Connections, AI Studio (estado sin key), Regenerate (LLM real).
+> **Sin probar contra el mundo real** (faltan credenciales del dueño): OAuth y publicación en IG/Threads/FB/X/TikTok, Higgsfield, fal, túnel `pnpm start --tunnel` completo.
 
 ## Sprint 5 — Piloto automático
 
@@ -127,7 +132,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [ ] **PU-LATER-002** LinkedIn
 - [ ] **PU-LATER-003** Modelos locales: endpoint compatible con OpenAI (ya funciona) + adaptador ComfyUI
 - [ ] **PU-LATER-004** Influencers, **sólo si** Higgsfield expone personajes consistentes por API (no verificado)
-- [ ] **PU-LATER-005** AI Studio sobre `ImageGen` / `VideoGen`
+- [x] **PU-LATER-005** AI Studio sobre `ImageGen` / `VideoGen`
 - [ ] **PU-LATER-006** Engagement Reddit e Inspiration · `D-15`
 
 ---
