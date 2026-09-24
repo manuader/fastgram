@@ -55,19 +55,19 @@ describe("resolveFont", () => {
   });
 
   it("las familias de marca sin nombre resuelto fallan en estricto", async () => {
-    // `tiktok` y `snapchat` están en `FR-051` pero no tienen archivo conocido.
+    // `snapchat` está en `FR-051` pero no tiene archivo conocido.
     await expect(
-      resolveFont("tiktok", 500, 32, { fontDir: dir, strict: true }),
+      resolveFont("snapchat", 500, 32, { fontDir: dir, strict: true }),
     ).rejects.toMatchObject({ code: "font_unavailable" });
   });
 
   it("un fonts.json puede dar el nombre Pango de una familia de marca", async () => {
     await writeFile(
       path.join(dir, "fonts.json"),
-      JSON.stringify({ families: { tiktok: { pangoFamily: "TikTok Display" } } }),
+      JSON.stringify({ families: { snapchat: { pangoFamily: "TikTok Display" } } }),
     );
     resetFontProbeCache();
-    const font = await resolveFont("tiktok", 500, 32, { fontDir: dir, strict: false });
+    const font = await resolveFont("snapchat", 500, 32, { fontDir: dir, strict: false });
     expect(font.pangoDescription).toBe("TikTok Display, Medium 32px");
     // Sigue sin verificar porque el archivo tampoco está.
     expect(font.verified).toBe(false);

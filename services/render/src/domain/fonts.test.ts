@@ -106,10 +106,11 @@ describe("registro tipográfico", () => {
     expect(requiredFontFiles()).toContain("anton-400.ttf");
   });
 
-  it("marca como sin resolver las dos familias de marca", () => {
-    expect(FONT_REGISTRY.tiktok.pangoFamily).toBeNull();
+  it("tiktok es TikTok Sans (OFL); snapchat sigue sin resolver", () => {
+    expect(FONT_REGISTRY.tiktok.pangoFamily).toBe("TikTok Sans");
+    expect(FONT_REGISTRY.tiktok.licence).toBe("ofl");
     expect(FONT_REGISTRY.snapchat.pangoFamily).toBeNull();
-    expect(FONT_REGISTRY.tiktok.licence).toBe("unresolved");
+    expect(FONT_REGISTRY.snapchat.licence).toBe("unresolved");
     expect(FONT_REGISTRY.montserrat.licence).toBe("ofl");
   });
 });

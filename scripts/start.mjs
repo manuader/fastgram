@@ -438,7 +438,10 @@ async function main() {
     ),
   );
   let fonts = countFonts(fontDir);
-  if (fonts === 0) {
+  // 37 = los .ttf de las 11 familias OFL (42 menos los 5 pesos de snapchat).
+  // Con menos, falta alguna: p. ej. una instalación de antes del 2026-09-24,
+  // cuando `tiktok` todavía no era TikTok Sans.
+  if (fonts < 37) {
     mkdirSync(fontDir, { recursive: true });
     const code = await step(`bajando fuentes a ${fontDir}`, [
       "pnpm",
@@ -456,7 +459,7 @@ async function main() {
     if (code !== 0) {
       log(
         "start",
-        `fonts:fetch salió con ${code}: esperado por tiktok/snapchat (P2-RENDER-008). Hay ${fonts} .ttf.`,
+        `fonts:fetch salió con ${code}: esperado por snapchat (P2-RENDER-008, sin fuente libre). Hay ${fonts} .ttf.`,
       );
     }
   }

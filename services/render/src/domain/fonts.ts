@@ -52,9 +52,17 @@ export interface FontFamilySpec {
 }
 
 export const FONT_REGISTRY: Readonly<Record<FontFamily, FontFamilySpec>> = {
-  // Fuentes de marca: el PRD las nombra pero no hay archivo libre equivalente.
-  // La licencia queda ABIERTA (ver reporte); sin manifiesto no se pueden usar.
-  tiktok: { key: "tiktok", weights: W_300_700, pangoFamily: null, licence: "unresolved" },
+  // TikTok Sans: TikTok la liberó bajo OFL 1.1 y está en Google Fonts
+  // (verificado 2026-09-24: css2 devuelve ttf y google/fonts tiene
+  // `ofl/tiktoksans/OFL.txt`). Hasta ese día esta familia figuraba sin resolver.
+  tiktok: {
+    key: "tiktok",
+    weights: W_300_700,
+    pangoFamily: "TikTok Sans",
+    licence: "ofl",
+  },
+  // Snapchat no tiene fuente libre conocida: la licencia queda ABIERTA y sin
+  // manifiesto no se puede usar.
   snapchat: {
     key: "snapchat",
     weights: W_300_700,
@@ -95,8 +103,10 @@ export const FONT_REGISTRY: Readonly<Record<FontFamily, FontFamilySpec>> = {
  * Pango lee como la familia «Inter 700» y cae a la reserva— a
  * `"Inter, Bold 42px"`, y la familia sale del archivo. Todo overlay cacheado
  * con la versión 1 se dibujó con la fuente de reserva.
+ *
+ * `"3"` (2026-09-24): `tiktok` pasa a TikTok Sans; antes caía a la reserva.
  */
-export const FONT_REGISTRY_VERSION = "2";
+export const FONT_REGISTRY_VERSION = "3";
 
 export function isFontFamily(value: string): value is FontFamily {
   return (FONT_FAMILIES as readonly string[]).includes(value);

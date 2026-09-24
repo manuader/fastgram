@@ -58,10 +58,10 @@
  *
  * ## Lo que NO baja, y falla diciéndolo
  *
- * `tiktok` y `snapchat` tienen `licence: "unresolved"` y `pangoFamily: null`:
- * el PRD las nombra y **no hay archivo distribuible que se pueda nombrar sin
- * inventarlo**. El script las saltea y termina con código 1 si se le pidieron,
- * en vez de dejar 32 de 42 archivos y salir en verde — que se vería idéntico a
+ * `snapchat` tiene `licence: "unresolved"` y `pangoFamily: null` (`tiktok` pasó a TikTok Sans, OFL, el 2026-09-24):
+ * el PRD la nombra y **no hay archivo distribuible que se pueda nombrar sin
+ * inventarlo**. El script la saltea y termina con código 1 si se le pidieron,
+ * en vez de dejar 37 de 42 archivos y salir en verde — que se vería idéntico a
  * un éxito hasta el primer build con esa familia.
  */
 import { createHash } from "node:crypto";

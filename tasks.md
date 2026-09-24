@@ -175,11 +175,11 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 ## P1-INFRA — Infraestructura y costos
 
 - [x] **P1-INFRA-001** **Modelo de costos medido**: egress, CPU de render, GPU, tokens, ASR/OCR. Resultado fechado en `docs/HANDOFF.md` · IMPL §5 · ⚠️ ninguna cifra se asume
-- [ ] **P1-INFRA-002** Entornos `dev` / `staging` / `prod` con IaC
-- [ ] **P1-INFRA-003** Postgres gestionado + backups verificados (**probar un restore, no sólo configurarlo**)
-- [ ] **P1-INFRA-004** Bucket R2 + CDN + política de ciclo de vida · `ADR-006`
-- [ ] **P1-INFRA-005** Pipeline de deploy con rollback
-- [ ] **P1-INFRA-006** Gestión de secretos (no en el repo)
+- ~~**P1-INFRA-002** Entornos `dev` / `staging` / `prod` con IaC~~ · **fuera de alcance:** D-16 (Mac → VPS con Compose, sin IaC multi-entorno)
+- [x] **P1-INFRA-003** Postgres gestionado + backups verificados (**probar un restore, no sólo configurarlo**) · **cerrada 2026-09-24:** self-hosted (D-16): backup + restore probado, `deploy/backup/` (PU-RUN-006)
+- ~~**P1-INFRA-004** Bucket R2 + CDN + política de ciclo de vida · `ADR-006`~~ · **fuera de alcance:** D-16/D-17 (MinIO + Cloudflare Tunnel)
+- [~] **P1-INFRA-005** Pipeline de deploy con rollback · @coordinador 2026-09-24 (procedimiento de rollback para el Compose del VPS)
+- [x] **P1-INFRA-006** Gestión de secretos (no en el repo) · **cerrada 2026-09-24:** `~/.fastgram` 0600, `<VAR>_FILE`, `.env.local` ignorado (PU-RUN-001/004)
 
 ## P1-DATA — Modelo de datos
 
@@ -205,20 +205,20 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 
 ## P1-AUTH — Identidad
 
-- [~] **P1-AUTH-001** Puerto `Identity` + adaptador Better Auth · `ADR-008`
-- [ ] **P1-AUTH-002** Signup / login / logout · `F-001`…`F-003`
-- [ ] **P1-AUTH-003** SSO + callback `/auth/sso-callback` · `F-002`
-- [~] **P1-AUTH-004** Sesiones, refresh, revocación
-- [ ] **P1-AUTH-005** Recuperación de contraseña · `§15.3`
-- [~] **P1-AUTH-006** Borrado de cuenta con confirmación por email y sus estados · `F-011`, `FR-160`
+- ~~**P1-AUTH-001** Puerto `Identity` + adaptador Better Auth · `ADR-008`~~ · **fuera de alcance:** D-06 (un usuario, sin auth; queda la rama `auth-y-suscripciones`)
+- ~~**P1-AUTH-002** Signup / login / logout · `F-001`…`F-003`~~ · **fuera de alcance:** D-06 (un usuario, sin auth; queda la rama `auth-y-suscripciones`)
+- ~~**P1-AUTH-003** SSO + callback `/auth/sso-callback` · `F-002`~~ · **fuera de alcance:** D-06 (un usuario, sin auth; queda la rama `auth-y-suscripciones`)
+- ~~**P1-AUTH-004** Sesiones, refresh, revocación~~ · **fuera de alcance:** D-06 (un usuario, sin auth; queda la rama `auth-y-suscripciones`)
+- ~~**P1-AUTH-005** Recuperación de contraseña · `§15.3`~~ · **fuera de alcance:** D-06 (un usuario, sin auth; queda la rama `auth-y-suscripciones`)
+- ~~**P1-AUTH-006** Borrado de cuenta con confirmación por email y sus estados · `F-011`, `FR-160`~~ · **fuera de alcance:** D-06 (un usuario, sin auth; queda la rama `auth-y-suscripciones`)
 
 ## P1-TENANT — Workspaces
 
-- [~] **P1-TENANT-001** Creación de workspace + límite por usuario · `F-008`
-- [ ] **P1-TENANT-002** Cambio de workspace y contexto activo · `F-009`
-- [~] **P1-TENANT-003** Roles `owner` / `member`, comprobados **en el servidor** · PRD §4, `FR-002`
+- [x] **P1-TENANT-001** Creación de workspace + límite por usuario · `F-008` · **cerrada 2026-09-24:** PU-BRAND-001; el límite por usuario no aplica (D-06)
+- [x] **P1-TENANT-002** Cambio de workspace y contexto activo · `F-009` · **cerrada 2026-09-24:** PU-BRAND-001: `BrandSwitcher` + `X-Fastgram-Workspace`
+- ~~**P1-TENANT-003** Roles `owner` / `member`, comprobados **en el servidor** · PRD §4, `FR-002`~~ · **fuera de alcance:** D-06 (un usuario)
 - [x] **P1-TENANT-004** Test de contrato: acceso cruzado devuelve **404**, no 403 · `NFR-006`
-- [ ] **P1-TENANT-005** Borrado de workspace con sus advertencias · `FR-160`
+- [~] **P1-TENANT-005** Borrado de workspace con sus advertencias · `FR-160` · @s7-E 2026-09-24
 
 ## P1-QUOTA — Cuotas y rate limiting
 
@@ -235,7 +235,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
   > **`claimCreditsRefund` marca y devuelve el cargo en la misma sentencia**, que es una respuesta directa a la trampa 24: no hay "preguntar" antes de "devolver", así que no se puede escribir el camino en el orden equivocado. Verificado: reemplazándolo por `SELECT`+`UPDATE`, el test de concurrencia da `expected [Array(2)] to have a length of 1`.
   > **Hallazgo grande: los tests de cross-tenant del paquete medían RLS, no el `WHERE`.** Corren como `fastgram_app` con el GUC puesto, así que la capa 1 tapa el agujero y la capa 2 nunca se mide. Confirmado sobre `lockContent`, que era mío: sin el `companyId`, los 146 tests siguieron verdes. Los tres repositorios nuevos y `content-build` ganan un test que corre **sin RLS de por medio**.
   > `posts.external_post_id` sin índice a propósito: todo acceso entra por `company_id`, y un índice invitaría a buscar sin tenant.
-- [~] **P1-QUOTA-011** **Cablear el cobro de créditos a `POST /influencers`** (250, `AI_STUDIO_COST.influencer`) · `FR-080`, §9.4 · **parcial:** cobra y libera; lo que falta es el saldo
+- ~~**P1-QUOTA-011** **Cablear el cobro de créditos a `POST /influencers`** (250, `AI_STUDIO_COST.influencer`) · `FR-080`, §9.4 · **parcial:** cobra y libera; lo que falta es el saldo~~ · **fuera de alcance:** D-06 (sin créditos)
   > **Dos afirmaciones de esta nota murieron y conviene saber cuáles.** Decía que «nadie libera todavía — el handler de `influencer-pipeline` no existe»: existe desde `058668e`, devuelve los 250 con `claimCreditsRefund` y tiene test de integración. Y decía que el cargo vivía en `internal_refs` de forma interina: la migración `0007` le puso columnas tipadas con tres CHECKs.
   > **Lo que sigue en pie:** `ai_credits` cuenta consumidos y no saldo, falta `ai_credits_purchased`, y `inFlightCount` cuenta sólo influencers.
   > **`ai_credits` cuenta consumidos, no saldo.** La fila del período la crea quien llega primero y dos de los tres caminos la crean con el default `0`; con semántica de saldo, un workspace Growth que guardó contenido antes arrancaría el período en 0 y **todo influencer daría 402**, sin poder distinguir "nunca se sembró" de "se gastó todo". Falta `ai_credits_purchased` para el `Buy more`.
@@ -275,7 +275,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [x] **P1-QUEUE-005** Idempotencia: `Idempotency-Key`, replay de respuesta, `409` con body distinto, liberación al fallar · `NFR-004` · cableada a las cuatro rutas que §9.3 exige (`POST /content`, `PATCH /content/:id`, `POST /content/:id/regenerate`, `POST /influencers`)
   > La nota que vivía acá decía que «el replay nunca se ejerció de punta a punta». **Era falsa** (auditoría del 2026-09-22): `apps/api/test/write-routes.int.test.ts:111` hace exactamente eso, y cubre además el 409 con body distinto (`:136`) y la liberación de la key al fallar (`:155`). Se suman `quota.int.test.ts:117` e `influencer-credits.int.test.ts:184`.
 - [x] **P1-QUEUE-006** Scaffold del `apps/worker`
-- [~] **P1-QUEUE-008** Handler de `content-build` en `apps/worker`: construye, sube y cierra `BUILDING → CREATED|FAILED` **con reembolso del save** · `FR-050`, IMPL §2.3 · **parcial:** el pipeline corre de punta a punta contra los binarios compilados, pero **con `MemoryMediaRenderer`**: el artefacto son bytes sintéticos. El render real es `services/render` y sigue sin adaptador (`P2-RENDER-002`). Tampoco construye `custom` —la fila no guarda la clave del objeto subido— ni aplica `prompt`/`mentionBusiness` de `AI-004`.
+- [~] **P1-QUEUE-008** Handler de `content-build` en `apps/worker`: construye, sube y cierra `BUILDING → CREATED|FAILED` **con reembolso del save** · `FR-050`, IMPL §2.3 · **parcial:** el pipeline corre de punta a punta contra los binarios compilados, pero **con `MemoryMediaRenderer`**: el artefacto son bytes sintéticos. El render real es `services/render` y sigue sin adaptador (`P2-RENDER-002`). Tampoco construye `custom` —la fila no guarda la clave del objeto subido— ni aplica `prompt`/`mentionBusiness` de `AI-004`. · @s7-F 2026-09-24
   > **El círculo cierra.** `POST /content` cobraba el save y encolaba, y del otro lado no había nadie: la pieza quedaba en `BUILDING` para siempre y el save cobrado no se devolvía nunca. `pnpm smoke:binary` levanta ahora los **dos** procesos y espera a que la pieza llegue a `CREATED`.
   > Siete mecanismos verificados **rompiéndolos**: la guarda de doble reembolso, el chequeo de `revision` al leer, al escribir y al fallar, el corte del último intento, el `FOR UPDATE` de `lockContent` y el filtro de soft-delete. Dos de mis tests pasaban por la razón equivocada y lo encontré así.
 
@@ -292,7 +292,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
   > El worker también, por una razón propia: con la API sobre S3 y el worker sobre memoria, `contents.files` guardaría `memory://bucket/...`. Medido: `content/…/1/0` de 64 B en MinIO, puesto por el `put()` del worker.
   > **Diferencia real entre los dos lados:** la API nunca hace `put()` —los bytes van directo al bucket— y el worker sí. Ahí entra la deuda del adaptador: sin `@aws-sdk/lib-storage` no hay multipart y `put` acumula en memoria hasta el tope.
   > **Queda abierto el hueco del CDN:** `canonicalObjectUrl` firma y quita la query, así que con R2 detrás de un CDN las URLs persistidas apuntan al endpoint de firma. Hoy en desarrollo coinciden (MinIO firma y sirve por el mismo host) y el arranque avisa si divergen.
-- [~] **P1-STORAGE-006** Limpieza best-effort que **no bloquea** el borrado de la fila · `ERR-F05` · **parcial:** el caso de uso existe en el worker; falta en la API y falta el test
+- [~] **P1-STORAGE-006** Limpieza best-effort que **no bloquea** el borrado de la fila · `ERR-F05` · **parcial:** el caso de uso existe en el worker; falta en la API y falta el test · @s7-E 2026-09-24
   > La nota decía que «falta el caso de uso que loguea y sigue». Existe: `apps/worker/src/content/build-handler.ts:332-341` descarta los objetos ya subidos cuando el build falla, best-effort como pide §9.11.
   > **Lo que de verdad falta:** ese camino **no tiene test**, y `DELETE /media/:id` no borra el objeto — `apps/api/src/routes/v1/media.ts:322-341` sólo hace soft-delete de la fila, así que cada borrado deja un objeto huérfano en el bucket.
 
@@ -315,8 +315,8 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [x] **P1-JUDGE-001** Puerto `Judgment`: `choice` / `score` / `noul` · PRD §9.15.1
 - [x] **P1-JUDGE-002** `LlmJudgmentAdapter` con decodificación restringida por JSON-schema · `ADR-009`
 - [x] **P1-JUDGE-003** `StubJudgmentAdapter` para tests deterministas
-- [ ] **P1-JUDGE-004** Selección de adaptador **por punto de decisión**, no global · PRD §9.15.2
-- [~] **P1-JUDGE-005** Persistencia de `JudgmentRecord` con `latencyMs` e `inputTokens` · `DATA-033`
+- [~] **P1-JUDGE-004** Selección de adaptador **por punto de decisión**, no global · PRD §9.15.2 · @s7-D 2026-09-24
+- [x] **P1-JUDGE-005** Persistencia de `JudgmentRecord` con `latencyMs` e `inputTokens` · `DATA-033` · **cerrada 2026-09-24:** `recording-judgment.ts`
 - [x] **P1-JUDGE-006** **Evaluación de modelos y precios**, con resultado fechado en `HANDOFF.md` · `ADR-009` · ⚠️ nada de precios de memoria
 - [x] **P1-JUDGE-007** Sanitización obligatoria del estado antes del puerto · PRD §9.15.3
 - [x] **P1-JUDGE-008** Suite de contrato única que corre contra **todos** los adaptadores · IMPL §4
@@ -325,7 +325,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 ## P1-VISION — Servicio de visión
 
 - [x] **P1-VISION-001** Scaffold `services/vision` (Python, HTTP, sin estado)
-- [~] **P1-VISION-002** Puerto `Ocr` + adaptador PaddleOCR · `ADR-011` · **la nota anterior quedó vieja:** el puerto (`packages/ports/src/ocr.ts`) y el adaptador HTTP (`VisionOcr`) existen desde hace tiempo, con la suite de contrato corriendo contra un `services/vision` falso pero real como servidor
+- [~] **P1-VISION-002** Puerto `Ocr` + adaptador PaddleOCR · `ADR-011` · **la nota anterior quedó vieja:** el puerto (`packages/ports/src/ocr.ts`) y el adaptador HTTP (`VisionOcr`) existen desde hace tiempo, con la suite de contrato corriendo contra un `services/vision` falso pero real como servidor · @s7-D 2026-09-24
   > Lo que sigue faltando es otra cosa, y está escrito en la cabecera de `vision-ocr.test.ts`: **nadie comprobó nunca que PaddleOCR lea un overlay de TikTok de verdad.** Necesita el servicio levantado con el extra `ocr` (`docker compose --profile vision up`, que no corre por defecto porque la imagen pesa) y una imagen real. Hasta entonces, lo verificado es el rodeo del adaptador —bytes → URL publicada → descarga → traducción de la respuesta—, no el motor.
 - [x] **P1-VISION-003** OCR sobre imagen y sobre frames de video
 - [x] **P1-VISION-004** Detección de idioma del texto extraído
@@ -333,11 +333,11 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 
 ## P1-BRAND — Brand Sources · `EXT-001`
 
-- [ ] **P1-BRAND-001** Puerto `SocialReader` con una implementación por plataforma
-- [ ] **P1-BRAND-002** **Spike de cobertura pública por plataforma (las 5)** · `OQ-19` · ⚠️ **hacer ANTES de escribir los extractores**; puede reabrir `D-02`
+- [~] **P1-BRAND-001** Puerto `SocialReader` con una implementación por plataforma · @s7-G 2026-09-24
+- [~] **P1-BRAND-002** **Spike de cobertura pública por plataforma (las 5)** · `OQ-19` · ⚠️ **hacer ANTES de escribir los extractores**; puede reabrir `D-02` · @s7-G 2026-09-24
 - [x] **P1-BRAND-003** Resolución y normalización de entrada: URL, `@handle`, limpieza de tracking, `x.com`≡`twitter.com` · `FR-011.1`
-- [ ] **P1-BRAND-004** Desambiguador de plataforma, con preselección de la cuenta ya conectada · `FR-011.1`
-- [~] **P1-BRAND-005** Link a post concreto → resuelve al perfil del autor + aviso · `FR-011.1`
+- [x] **P1-BRAND-004** Desambiguador de plataforma, con preselección de la cuenta ya conectada · `FR-011.1` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [~] **P1-BRAND-005** Link a post concreto → resuelve al perfil del autor + aviso · `FR-011.1` · @s7-D 2026-09-24
   > Resuelto en TikTok y X, donde el handle está en la URL. En **Instagram, YouTube y LinkedIn** hay que preguntarle a la plataforma y no hay `SocialReader` montado: responde `503`. El aviso de `ERR-B12` viaja en `resolvedFromPost`, un campo nuevo y opcional — la forma literal de PRD:2368 no traía ningún canal para él.
 - [x] **P1-BRAND-006** Extractor `website` / `other_url` (OpenGraph + contenido) · `AI-001`
   > **Se evaluó montar el handler de `brand-source-analysis` sin extractor, y se decidió NO hacerlo.** El criterio de la trampa 30 dice que entre no registrar un handler y registrarlo sin proveedor gana registrarlo **si lo que escribe es verdad** — y acá no hay ningún valor del enum que lo sea.
@@ -345,24 +345,24 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
   > Consecuencia hoy, y hay que saberla: **ninguna fuente sale nunca de `pending`.** Lo que la destraba es este extractor, no un handler que mienta. Si hiciera falta cerrar el estado antes, el enum necesita un motivo que hoy no tiene — algo como `no_extractor_configured`, que además es una migración.
   > **Hecho en `6f68221` (2026-09-23).** `WebsiteReader` en `packages/adapters/src/social-reader/`: GET + parseo propio (sin JS), SSRF con DNS resuelto y **todas** las IPs clasificadas, cada redirect revalidado, socket fijado a la IP validada (anti-rebinding), plazo total y tope de cuerpo post-descompresión. Toda la config numérica, los puertos y los hosts bloqueados son **obligatorios y sin default**: el PRD no da ningún número. Reporta **tier B** (OpenGraph, sin render); si se decide que un GET de la web es tier C (D-01 lo llama «fetch público»), es una línea — y hay que sumar `robots.txt`, que hoy no se consulta. Sin verificar: HTTPS real (SNI + certificado con IP fijada), sitios reales, charset sólo en `<meta>`. Baja la home dos veces por análisis.
   > Lo de arriba sobre el handler quedó **superado en `62b91cb`**: con el extractor, el handler existe y es verdadero. Para las sociales usa `unsupported_platform` + `D_assisted` — literal: esta instalación no lee esa plataforma, y no culpa a la plataforma como `provider_unavailable`.
-- [ ] **P1-BRAND-007** Extractor Instagram · `D-02`
-- [ ] **P1-BRAND-008** Extractor TikTok · `D-02`
-- [ ] **P1-BRAND-009** Extractor X · `D-02`
-- [ ] **P1-BRAND-010** Extractor YouTube · `D-02`
-- [ ] **P1-BRAND-011** Extractor LinkedIn · `D-02`
+- [x] **P1-BRAND-007** Extractor Instagram · `D-02` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P1-BRAND-008** Extractor TikTok · `D-02` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P1-BRAND-009** Extractor X · `D-02` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [~] **P1-BRAND-010** Extractor YouTube · `D-02` · @s7-G 2026-09-24
+- [~] **P1-BRAND-011** Extractor LinkedIn · `D-02` · @s7-G 2026-09-24
 - [x] **P1-BRAND-012** Orden de tiers **B → C → A → D**; el signup **no pide OAuth** · `D-01`, `FR-011.4`
-- [~] **P1-BRAND-013** Tier C **detrás de bandera apagada** hasta `OQ-16` · `FR-011.4`
+- [x] **P1-BRAND-013** Tier C **detrás de bandera apagada** hasta `OQ-16` · `FR-011.4` · **cerrada 2026-09-24** (auditoría: ya implementada)
   > **Los enums del tier C no coinciden entre paquetes:** `ports`/`core` dicen `C_rendered_fetch`, `db`/`contracts` dicen `C_page_fetch`. `acquisitionPlan()` puede devolver un valor que Postgres rechaza. Hoy no explota porque el tier está apagado; el día que se encienda, sí. Hay un traductor explícito en la ruta, pero la unificación es de `ports` + `db`.
-- [ ] **P1-BRAND-014** Tier D asistido: pegar bio, subir capturas · `FR-011.4`
-- [ ] **P1-BRAND-015** Resolución de link-in-bio: 1 nivel, máx. 5 destinos, sin recursión · `INT-018`
-- [~] **P1-BRAND-016** `AI-016`: síntesis con `fieldMeta` (confianza + origen + extracto)
+- [~] **P1-BRAND-014** Tier D asistido: pegar bio, subir capturas · `FR-011.4` · @s7-D 2026-09-24
+- [~] **P1-BRAND-015** Resolución de link-in-bio: 1 nivel, máx. 5 destinos, sin recursión · `INT-018` · @s7-D 2026-09-24
+- [~] **P1-BRAND-016** `AI-016`: síntesis con `fieldMeta` (confianza + origen + extracto) · @s7-D 2026-09-24
   > `fieldMetaSchema` exigía `sourceId` y `excerptRef`, y una edición manual no tiene ni fuente ni extracto: era **imposible marcar `editedByUser`** en un campo que la síntesis nunca escribió — y `FR-011.6` depende de esa marca para no pisarlo. Ahora son nullable.
   > **Cableada en `62b91cb`:** `packages/core/src/brand/analysis.ts` arma el pedido (texto de terceros **sólo** en `untrusted`, doble delimitación), exige que el extracto esté **textual** en lo que recibió el modelo, y vacía un campo si valor o cita parecen una orden. Falta `JV-4`: sin él, `materializeField` recorta todo a `low` y cada campo sintetizado sale como `Worth a quick check`. Sin LLM real: nunca se probó el esquema estricto contra un gateway.
 - [x] **P1-BRAND-017** Preguntas de cierre de huecos · `FR-011.3` · ⚠️ **nunca inventar** un campo sin señal
 - [x] **P1-BRAND-018** Protección SSRF en **todos** los orígenes, incluido el seguimiento de link-in-bio · `NFR-017`
   > No se reimplementó en la ruta: `detectBrandSource` llama a `assertHostAllowed` por dentro. Dos definiciones de «URL segura» se desincronizan.
   > **Matiz medido:** la rama `/^\d+$/` es inalcanzable vía `detectBrandSource` — `new URL("http://2130706433/")` normaliza el host a `127.0.0.1` antes, así que entra por la rama de IP privada. Queda bloqueado igual; esa rama sólo la ejercita el test unitario de `core`.
-- [~] **P1-BRAND-019** **Suite de regresión con bios adversariales** (prompt injection) · `FR-011.9` · ⚠️ exigida por el PRD
+- [x] **P1-BRAND-019** **Suite de regresión con bios adversariales** (prompt injection) · `FR-011.9` · ⚠️ exigida por el PRD · **cerrada 2026-09-24** (auditoría: ya implementada)
   > **Parcial (`62b91cb`):** un test adversarial mira el **cuerpo HTTP real** que el adaptador manda: la bio sólo dentro de `<untrusted>`, un único cierre aunque la bio intente cerrar el bloque, y campo vacío si el modelo «obedece» y cita la orden. No es una suite. **Límite conocido y documentado en un test:** un modelo que obedece y cita un fragmento sin marcas pasa, con confianza `low`.
 - [x] **P1-BRAND-020** Unicidad `(sourceType, handle)` global · `FR-011.7`
   > El choque con **otro** workspace no se puede consultar: RLS esconde la fila ajena de cualquier `SELECT` con scope, así que lo único que lo sabe es el índice al fallar el `INSERT`. La rama `ERR-B06` del dominio es **inalcanzable desde HTTP**, y el 409 se traduce del `23505`.
@@ -370,46 +370,47 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [x] **P1-BRAND-021** Retención del snapshot + purga por `rawRetentionExpiresAt`; binarios de terceros **no se persisten** · `DATA-032`
   > El circuito de la omisión: sin handler, `main.ts` **no programa el cron** —a propósito, porque un cron sin consumidor acumula jobs mientras el log dice que está programado—, así que ninguna fuente envejecía nunca.
   > `SECURITY DEFINER` medido: sin él, con `fastgram_app` y sin GUC el `UPDATE` afecta **cero filas y sin error** (`expected 0 to be greater than or equal to 1`). Un test que corra como superusuario no puede ver la diferencia.
-- [~] **P1-BRAND-022** Estados y errores completos de `FR-011.8` / `FR-011.9` (14 mensajes) · `ERR-B01`…`ERR-B14`
+- [x] **P1-BRAND-022** Estados y errores completos de `FR-011.8` / `FR-011.9` (14 mensajes) · `ERR-B01`…`ERR-B14` · **cerrada 2026-09-24** (auditoría: ya implementada)
   > Los 14 mensajes existen y las rutas los emiten, pero **ninguna fuente sale nunca de `pending`**: el handler de `brand-source-analysis` no existe, así que `ready`, `partial`, `failed` y `stale` no los produce nada.
   > **Actualizado (`62b91cb`):** las fuentes salen de `pending` **cuando el handler está montado** — y sólo se monta con `LLM_*` (4), las 7 `BRAND_WEBSITE_*` y `BRAND_SNAPSHOT_RAW_RETENTION_DAYS`. Hoy ningún entorno las trae, así que en la práctica sigue igual. Y había un bug que lo habría vuelto a colgar: la clave del re-análisis repetía `:1` al vencer la ventana (arreglado en `2687ba9`).
-- [ ] **P1-BRAND-023** Semilla de content angles desde los temas con mejor engagement · `AI-016`
-- [ ] **P1-BRAND-024** **Iniciar la revisión legal `OQ-16`** · ⚠️ bloquea el tier C, no es tarea de ingeniería
+- [~] **P1-BRAND-023** Semilla de content angles desde los temas con mejor engagement · `AI-016` · @s7-D 2026-09-24
+- ~~**P1-BRAND-024** **Iniciar la revisión legal `OQ-16`** · ⚠️ bloquea el tier C, no es tarea de ingeniería~~ · **fuera de alcance:** D-13 (uso personal; se reabre si la app se abre a terceros)
 
 ## P1-ONB — Onboarding
 
-- [~] **P1-ONB-001** Wizard multi-paso con progreso persistido y reanudable · `FR-010`
+- ~~**P1-ONB-001** Wizard multi-paso con progreso persistido y reanudable · `FR-010`~~ · **fuera de alcance:** D-07: el alta de marca es Settings → Brands + `/brand` (PU-BRAND-003); `/onboarding` no aplica en modo personal
   > **Las rutas existen y el progreso se reanuda**, pero el paso no se persiste: se **deriva** caminando `advanceOnboarding` sobre lo que sí está guardado. `packages/db` no expone repositorio de `onboarding_records` — es la única tabla sin uno. La lógica de los gates no se reimplementa, así que no puede desincronizarse.
   > Falta la UI entera.
-- [~] **P1-ONB-002** Paso 1: input único de Brand Source + chips de plataforma · `FR-011.2`
+- [x] **P1-ONB-002** Paso 1: input único de Brand Source + chips de plataforma · `FR-011.2` · **cerrada 2026-09-24** (auditoría: ya implementada)
   > **Hecho en jsdom, no en un navegador (`01a32df`).** Literales de FR-011.2, detección vía `POST /brand/sources/resolve` (debounce 500 ms, no se duplica `detectBrandSource`: `@fastgram/core` no está en el `package.json` de `apps/web`), ERR-B03 con preselección, alta con `Idempotency-Key` estable por cuerpo. `/resolve` ya acepta `hint: "website"` (`a8cebb7`), pero la UI todavía lo rodea del lado del cliente.
-- [~] **P1-ONB-003** Paso 2: `Company Name`, `Company Description`, logo · `FR-010`
+- [~] **P1-ONB-003** Paso 2: `Company Name`, `Company Description`, logo · `FR-010` · @s7-D 2026-09-24
   > **No tiene endpoint, y no es olvido:** escribe `companies.name` y `companies.logo_url`, y `companies` **no tiene escritura** (`companyRepository` es sólo lectura por decisión explícita). Un `POST /onboarding/details` que guardara la descripción y descartara en silencio nombre y logo sería peor que no existir.
   > La descripción sí se escribe, por `PATCH /brand/profile` → `company_profiles.core_identity`.
-- [~] **P1-ONB-004** Paso 3: cuestionario de perfilado (6 preguntas) · `F-006`
+- [~] **P1-ONB-004** Paso 3: cuestionario de perfilado (6 preguntas) · `F-006` · @s7-D 2026-09-24
   > **Cerrada la mitad que se podía.** El hueco era más chico: `assertValidProfiling` tiene dos bucles y el de los 4 000 caracteres ya recorría **todo lo que se le pasara** — faltaba que alguien pasara `expectations`. Ahora se recoge, se persiste y se acota, medido rompiéndolo.
   > **No se hizo obligatoria, a propósito:** la lista de Validation de `FR-010` trae mensaje para las otras cinco preguntas y **ninguno** para expectativas. Rechazarla vacía exigiría inventar copy CONFIRMED.
-- [~] **P1-ONB-005** Paso 4: estados de procesamiento con sub-pasos por tipo de fuente · `FR-011.2`
+- [~] **P1-ONB-005** Paso 4: estados de procesamiento con sub-pasos por tipo de fuente · `FR-011.2` · @s7-D 2026-09-24
   > **Parcial (`01a32df`):** estado por fuente con ERR-B* traducidos, polling de 10 s mientras haya `pending`/`analyzing`. **Los sub-pasos no se pueden mostrar**: la API no expone progreso por sub-paso, así que se listan sin marcar (sólo los de Instagram, los únicos que da el PRD). `pending`-para-siempre dicho con honestidad: `Queued`, y a los 3 min (FR-011.12 crit. 9) «hasn't started yet»; nunca `Workspace ready!`.
-- [ ] **P1-ONB-006** **Pantalla de revisión** con `Worth a quick check` para los campos de confianza baja · `FR-011.2`
-- [ ] **P1-ONB-007** Oferta post-análisis de conectar + importar media, **después** del análisis · `D-04`, `FR-011.5.1`
-- [ ] **P1-ONB-008** Importación opt-in de posts propios al Media Bank, checkbox desmarcado · `FR-011.5.1`
-- [~] **P1-ONB-009** Todas las validaciones literales de `FR-010`
+- [x] **P1-ONB-006** **Pantalla de revisión** con `Worth a quick check` para los campos de confianza baja · `FR-011.2` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [~] **P1-ONB-007** Oferta post-análisis de conectar + importar media, **después** del análisis · `D-04`, `FR-011.5.1` · @s7-F 2026-09-24
+- [~] **P1-ONB-008** Importación opt-in de posts propios al Media Bank, checkbox desmarcado · `FR-011.5.1` · @s7-F 2026-09-24
+- [~] **P1-ONB-009** Todas las validaciones literales de `FR-010` · @s7-D 2026-09-24
   > Las validaciones del cuestionario y del alta están y son las literales del PRD. Falta las de los pasos sin endpoint (ver `P1-ONB-003`).
 - [x] **P1-ONB-010** Rama `Use description instead` → `BrandSource` tipo `manual`
-- [ ] **P1-ONB-011** **E2E: alta completa con sólo un perfil de Instagram, sin un solo consentimiento OAuth** · `FR-011.12` crit. 11 · ⚠️ criterio de salida de la fase
+- [!] **P1-ONB-011** **E2E: alta completa con sólo un perfil de Instagram, sin un solo consentimiento OAuth** · `FR-011.12` crit. 11 · ⚠️ criterio de salida de la fase
+  > bloqueada: Instagram anónimo responde 401 "login required" (verificado 2026-09-24). El alta sin OAuth funciona por tier D (pegar bio y captions, o capturas con OCR desde el sprint 7) o por Business Discovery; sin un scraper que funcione sin login no se puede cumplir tal cual.
 
 ## P1-BRANDPG — Página Brand
 
-- [~] **P1-BRANDPG-001** `/brand` con secciones editables · `FR-020`
-- [~] **P1-BRANDPG-002** Tarjeta `Brand sources`: listar, añadir, re-analizar, primaria, eliminar · `F-024`
-- [~] **P1-BRANDPG-003** Badges de origen y confianza por campo · `F-025`
+- [x] **P1-BRANDPG-001** `/brand` con secciones editables · `FR-020` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P1-BRANDPG-002** Tarjeta `Brand sources`: listar, añadir, re-analizar, primaria, eliminar · `F-024` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P1-BRANDPG-003** Badges de origen y confianza por campo · `F-025` · **cerrada 2026-09-24** (auditoría: ya implementada)
   > **001–003 hechas en jsdom, sin navegador (`262fb25`).** El `PATCH` manda **sólo los campos cambiados**: la API marca `editedByUser` cada clave del cuerpo, y mandar la sección entera congelaba campos que el usuario ni miró. Un campo editado no muestra badge de confianza: la API conserva la confianza y la fuente viejas (`markEditedByUser`), y mostrar «low, from @x» sobre texto del usuario sería falso. El header dice `Company Profile` sin nombre: ningún endpoint de brand devuelve el nombre de la empresa.
-- [~] **P1-BRANDPG-004** `brandRevision` + `expectedBrandRevision` en las escrituras · `F-022`
+- [~] **P1-BRANDPG-004** `brandRevision` + `expectedBrandRevision` en las escrituras · `F-022` · @s7-D 2026-09-24
   > **Sólo un aviso, no una guarda.** `updateCompanyProfileRequestSchema` es `.strict()` y no tiene `expectedBrandRevision`: mandarlo da 400. El PRD lo pide para guardar sugerencias generadas, no para editar el perfil. La pantalla muestra la revisión y avisa si cambió en el servidor con una sección abierta; dos pestañas que editan el mismo campo se pisan en silencio.
-- [~] **P1-BRANDPG-005** Re-análisis respeta `editedByUser`: propone, no pisa · `FR-020`
+- [~] **P1-BRANDPG-005** Re-análisis respeta `editedByUser`: propone, no pisa · `FR-020` · @s7-D 2026-09-24
   > **Lo que se ve, sí; las propuestas, no.** Los campos editados se marcan y la tarjeta dice que el re-análisis no los pisa. Pero la propuesta del re-análisis sobre un campo editado vive sólo en el snapshot, ningún endpoint la devuelve, y no hay forma de aceptarla (ERR-B14). Hace falta API.
-- [~] **P1-BRANDPG-006** `stale` a los 90 días + oferta de refrescar · `F-026`
+- [x] **P1-BRANDPG-006** `stale` a los 90 días + oferta de refrescar · `F-026` · **cerrada 2026-09-24** (auditoría: ya implementada)
   > **El barrido está**: marca `stale` a los 90 días, con el mismo borde que el dominio («89 no, 90 sí»). Falta la **oferta de refrescar**, que es UI y necesita las rutas de brand.
 
 ## P1-UI — Shell de aplicación
@@ -422,7 +423,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [x] **P1-UI-006** Primitivas de estado: `empty`, `loading`, `error`, skeletons · PRD §19
 - [x] **P1-UI-007** TanStack Query + capa de cliente de API tipada
 - [x] **P1-UI-008** Responsive: móvil y tablet · `NFR-019`
-- [~] **P1-UI-012** **Cablear las páginas al cliente tipado** · **parcial: una tajada vertical (Library → My Content) contra la API, con los cuatro estados de §19, cursor real y polling de 10 s** — quedan 39 páginas
+- [~] **P1-UI-012** **Cablear las páginas al cliente tipado** · **parcial: una tajada vertical (Library → My Content) contra la API, con los cuatro estados de §19, cursor real y polling de 10 s** — quedan 39 páginas · @s7-F 2026-09-24
   > **Primera vez que alguien abre un navegador en el proyecto**, y lo primero que apareció es que nada había funcionado nunca: `pnpm dev` no arrancaba **ninguna pantalla** (`--turbopack` no lee el `extensionAlias` de webpack, y el `layout.tsx` raíz importa `@fastgram/ui`), y el `KpiRow` del Home venía recibiendo **401 desde siempre**.
   > **La credencial**: el navegador no habla con `apps/api`. Habla con un route handler de la propia app que lee la key del entorno y reenvía — sólo `GET`, con la sesión exigida, headers de salida por lista blanca y el cuerpo tal cual **con su status**, porque reempaquetarlo haría que el `402` deje de distinguirse del `500`. **Provisorio**: una key por despliegue es un workspace para todo el que llegue. Lo que corresponde es P1-AUTH.
   > **Sin verificar, y es lo que importa:** la Library se ejercitó contra un **stub**, no contra la API sirviendo datos — las 4 keys de desarrollo están hasheadas. Sigue pendiente y necesita una key de desarrollo, que la da una persona.
@@ -438,20 +439,20 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
   > Medido antes (`HTTP 500`, `Can't resolve './cn.js'`) y después (`/library` → **200**, cero `Module not found`).
 - [x] **P1-UI-009** Home con KPIs, Tasks y Views History · `FR-030`
 - [x] **P1-UI-010** FAQ del Home: 5 categorías, 37 preguntas, copy literal · `FR-030`
-- [ ] **P1-UI-011** **`text-subtle` en modo oscuro no cumple AA para texto normal** · `NFR-019`
+- [x] **P1-UI-011** **`text-subtle` en modo oscuro no cumple AA para texto normal** · `NFR-019` · **cerrada 2026-09-24:** `neutral-450`, `tokens.contrast.test.ts` (637bf5d)
   > Medido el 2026-09-21: 3,65:1 sobre `surface` y 3,16:1 sobre `raised`, contra el 4,5:1 que exige AA. Cumple el 3:1 de texto grande y nada más. Hoy eso significa que **en oscuro `text-subtle` no se puede usar en tamaño normal**.
   > No se arregla subiéndolo a `neutral-400`, que es donde vive `muted`: se perdería la distinción entre los dos niveles. Es una decisión de paleta. `packages/ui/src/tokens.contrast.test.ts` fija los valores medidos, así que la limitación no puede empeorar en silencio.
 
 ## P1-OBS — Observabilidad
 
 - [x] **P1-OBS-001** Logs estructurados con `companyId` y `requestId` en todo
-- [ ] **P1-OBS-002** OpenTelemetry: trazas y métricas
-- [ ] **P1-OBS-003** Sentry (errores) + PostHog (producto) · `INT-010`
+- ~~**P1-OBS-002** OpenTelemetry: trazas y métricas~~ · **fuera de alcance:** D-06
+- ~~**P1-OBS-003** Sentry (errores) + PostHog (producto) · `INT-010`~~ · **fuera de alcance:** D-06
 - [x] **P1-OBS-004** Health checks y status page · `F-255`
   > Las tres mitades: `/health` de la API comprueba Postgres, storage y cola; la status page redacta **en el servidor**; y el worker expone su propia sonda, con la semántica invertida (liveness sirve, readiness frena un rollout en vez de sacar de rotación).
   > **Cerradas las dos mitades que se podían:** `/health` de la API comprueba Postgres, storage y cola de verdad (y `degraded` devuelve 200 a propósito), y la status page de `F-255` existe y redacta **en el servidor** — no renderizar no es no publicar.
   > Falta: **`apps/worker` no expone ninguna sonda.** Un worker con la base caída no lo dice en ningún lado.
-- [ ] **P1-OBS-005** Alertas: cola atascada, tasa de fallo de build, saturación de rate limit
+- [~] **P1-OBS-005** Alertas: cola atascada, tasa de fallo de build, saturación de rate limit · @s7-E 2026-09-24
 
 ---
 
@@ -465,7 +466,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [x] **P2-ANGLE-002** Caps: 100 por workspace, 10 por influencer, con sus códigos de error · `FR-056`
 - [x] **P2-ANGLE-003** **Auto-reconcile de `angleWeights` en la MISMA transacción** que la mutación · `FR-055` · ⚠️ test de integración obligatorio
 - [x] **P2-ANGLE-004** Soft-delete reversible; desactivar limpia links y reactivar **no** los restaura · `FR-056`
-- [~] **P2-ANGLE-005** Generador de ángulos (no persiste) + límite 5/min + liberación de reserva al fallar · `AI-005`
+- [~] **P2-ANGLE-005** Generador de ángulos (no persiste) + límite 5/min + liberación de reserva al fallar · `AI-005` · @s7-D 2026-09-24
 
 ## P2-PREFS — Blitz Settings
 
@@ -479,20 +480,20 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 
 ## P2-DISC — Discovery queue
 
-- [~] **P2-DISC-001** `DATA-007` + relleno en background, objetivo ~5 · `F-050`
+- [x] **P2-DISC-001** `DATA-007` + relleno en background, objetivo ~5 · `F-050` · **cerrada 2026-09-24** (auditoría: ya implementada)
   > **El handler existe y está montado; el productor no.** `discovery-refill` no lo encola nadie — el nombre sólo aparece en el catálogo y en `queues.ts`. Con el consumidor arriba y sin productor, la cola sigue vacía, así que `FR-030`/`AI-002` («automático en background») no se cumple todavía. **Es el próximo tapón.**
   > La guarda contra la reentrega es un **advisory lock** por workspace, no la sentencia atómica: un `INSERT` no bloquea contra nada, así que escribir conteo e inserción juntos da atomicidad entre sí y ningún aislamiento. Lo que la sentencia única aporta es que no se puedan escribir en transacciones distintas por descuido.
   > **Trampa medida:** el primer test de tres entregas concurrentes pasaba sin guarda porque las tres **no se solapaban** — `postgres.js` conecta bajo demanda y las dos últimas perdían ~8 ms montando el TCP. Medía `connect(2)`. El único que mide la guarda es el que sostiene una transacción abierta a mano.
 - [x] **P2-DISC-002** Selección ponderada: tipo, ángulo, remix/original, own-media, estilo · `AI-002`
 - [x] **P2-DISC-003** `influencerChance` como **tirada independiente**, no ratio de lote · `FR-055`
 - [x] **P2-DISC-004** Fallback a contenido regular si no hay influencer elegible; `green-screen` nunca usa influencer · `FR-055`
-- [~] **P2-DISC-005** `aiExplanation` **persistida con la sugerencia**, no regenerada al abrir · `AI-002`
-- [~] **P2-DISC-006** Generación on-demand por `contentType` forzado · `F-067`
+- [x] **P2-DISC-005** `aiExplanation` **persistida con la sugerencia**, no regenerada al abrir · `AI-002` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P2-DISC-006** Generación on-demand por `contentType` forzado · `F-067` · **cerrada 2026-09-24** (auditoría: ya implementada)
 
 ## P2-RENDER — Motor de render
 
 - [x] **P2-RENDER-001** Scaffold `services/render` (FFmpeg + sharp, sin estado) · `ADR-007`
-- [~] **P2-RENDER-002** Puerto `MediaRenderer` + adaptador HTTP contra `services/render` · **parcial: el adaptador existe y rinde video real, pero NO está montado** — montarlo hoy rompería todos los builds; ver `P2-RENDER-015`.
+- [x] **P2-RENDER-002** Puerto `MediaRenderer` + adaptador HTTP contra `services/render` · **parcial: el adaptador existe y rinde video real, pero NO está montado** — montarlo hoy rompería todos los builds; ver `P2-RENDER-015`. · **cerrada 2026-09-24** (auditoría: ya implementada)
   > Al escribir el handler apareció que `audio` era **obligatorio** en `WallOfTextJob` y `VideoHookJob`, y `FR-053.1` (PRD:1234) dice que *No audio* omite el bloque. El contrato público ya lo tenía opcional: una pieza válida de `POST /content` no se podía ni escribir como `RenderJob`. Corregido en el puerto.
   > La nota decía que «`services/render` todavía lo exige (`payload.ts`)». **Era falsa las dos veces**: ese archivo es `src/domain/payload.ts` —el `render/payload.ts` que citaba no existe— y ahí `audio` es opcional desde `P2-RENDER-014`, tres líneas más abajo en este mismo documento. Sirve de recordatorio de que una nota envejece peor que una casilla.
   > **Cerrado en `7cb8dd9`:** el puerto lleva `MediaAuthorization` (obligatoria), tiene `renderAll` para los N artefactos de un slideshow, y `probe`/`normalize`/`thumbnail` llaman a los endpoints reales en vez de lanzar. Falta montarlo: ver `P2-RENDER-015`.
@@ -501,9 +502,10 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [x] **P2-RENDER-005** Render `wall-of-text` · `FR-070`
 - [x] **P2-RENDER-006** Render `green-screen` (chromakey sobre fondo) · `FR-070`
 - [x] **P2-RENDER-007** Render `video-hook` (hook + demo apilados + audio) · `FR-070`
-- [~] **P2-RENDER-008** 12 familias tipográficas con sus pesos permitidos · `FR-051` · **parcial:** el registro de las 12 familias con sus pesos está y tiene test; faltan los **42 archivos de fuente** (ninguno en la máquina) y **`tiktok`/`snapchat` no tienen archivo distribuible** — decisión de licencia, de una persona
+- [!] **P2-RENDER-008** 12 familias tipográficas con sus pesos permitidos · `FR-051` · **11 de 12 (2026-09-24):** `tiktok` pasó a **TikTok Sans** (OFL 1.1, Google Fonts); 37 `.ttf` bajan con `fonts:fetch`
+  > bloqueada: `snapchat` no tiene fuente libre conocida. Hace falta que el dueño elija un sustituto (se mapea con `fonts.json`) o la saque del selector.
   > **32 de 42 verifican** (`835628e`): `fonts:fetch` baja las 10 familias OFL fuera del repo y el servicio las activa por proceso. Siguen `tiktok`/`snapchat` sin archivo (licencia). Bug encontrado de paso: `"Montserrat 700 42px"` Pango lo leía como familia inexistente — ahora `"Familia, Peso NNpx"`.
-- [~] **P2-RENDER-009** **Validación de que toda URL de media pertenece al workspace o a la librería compartida** · `FR-070` · ⚠️ se rechaza antes de iniciar el build
+- [~] **P2-RENDER-009** **Validación de que toda URL de media pertenece al workspace o a la librería compartida** · `FR-070` · ⚠️ se rechaza antes de iniciar el build · @s7-F 2026-09-24
 - [x] **P2-RENDER-010** **Cache por hash del payload**: no re-encodear si sólo cambió el texto · IMPL §5
 - [x] **P2-RENDER-011** Golden-file tests por formato · IMPL §4
 - [x] **P2-RENDER-012** Recorte inteligente en vez de `stretch-to-canvas` · `EXT-006`
@@ -526,7 +528,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
   > **(6) Nuevo, abierto: el audio no tiene origen.** `FR-070` exige que venga de la librería compartida y **en todo el repo no hay una sola pista de dónde vive** — ni clave, ni variable, ni endpoint. `workspaceMediaAuthorization` deja `sharedPrefixes` vacío en vez de inventar un prefijo. Consecuencia: con el adaptador montado, un `wall-of-text` o un `video-hook` **con** audio se rechaza con `audio_fuera_de_libreria`.
   > **(7) La normalización NO necesita esto (`dc20938`).** `media-normalization` se monta con **su propia** instancia de `HttpMediaRenderer` cuando están `RENDER_SERVICE_URL` + `RENDER_MEDIA_GRANT_SECRET` (las dos o ninguna; una sola = el worker no arranca). `content-build` sigue en memoria. Probado a mano contra `services/render`: probe de un `.mov` y normalize a mp4. Un test de cableado ve si alguien le pasa el renderer de `content-build`: los de `handlers.test.ts` no lo veían.
   > **Cerrado (`835628e`, `af8d80d`), verificado de punta a punta a mano el 2026-09-23:** subida real al Media Bank → `POST /content` → cola → worker con `HttpMediaRenderer` → `services/render` con fuentes activadas → dos slides JPEG 1080×1350 y thumbnail en MinIO, con Inter Bold legible. **Lo que destrabó las fuentes no fue fontconfig**: en macOS el Pango de sharp sólo tiene backend CoreText, así que se registran los archivos con `CTFontManagerRegisterFontsForURL` en scope de proceso (`node:ffi`, `NODE_OPTIONS=--experimental-ffi`). En Linux el mecanismo es `FONTCONFIG_FILE` (generado al arrancar) y **no está verificado**. El texto escala por `canvas.width / 360` (decisión del dueño, PRD). Detalle menor: el worker muere al arrancar si el servicio de render todavía no contesta (hay que levantar el render primero).
-- [~] **P2-RENDER-013** Normalización de media: MOV→MP4, HDR→SDR, faststart · `NFR-014` · **parcial: MOV→MP4 y faststart ahora sí corrieron sobre archivos reales y aparecieron dos bugs**; HDR→SDR sigue sin poder probarse
+- [~] **P2-RENDER-013** Normalización de media: MOV→MP4, HDR→SDR, faststart · `NFR-014` · **parcial: MOV→MP4 y faststart ahora sí corrieron sobre archivos reales y aparecieron dos bugs**; HDR→SDR sigue sin poder probarse · @s7-F 2026-09-24
   > **Los dos bugs se cancelaban entre sí.** `isMp4Compatible` daba `true` para un `.mov` —MOV y MP4 comparten demuxer: ffprobe emite `mov,mp4,m4a,3gp,3g2,mj2` para los dos y el discriminador real es `major_brand` (`qt ` vs `isom`)— y `needsRemux` daba `true` siempre. Uno decía "ya está bien" y el otro "hay que convertir", así que **en el único caso que alguien miró el resultado era correcto**. El test unitario pasaba fabricando `["mov","quicktime"]`, una lista que ffprobe **no emite jamás**.
   > **HDR→SDR exitoso NUNCA corrió**: este ffmpeg no trae `zscale` ni `libplacebo`, así que la cadena de tonemapping sólo existe como string en un test de plan. Falla cerrado sobre un PQ real, que es lo único verificable en esta máquina.
   > **El productor y el handler existen (`2757f86`, `dc20938`):** `POST /media` encola cada video en la misma transacción; el handler normaliza sólo si no es mp4, es HDR o no tiene faststart, y cierra con un `UPDATE` condicionado. Quedan: el MOV original huérfano en el bucket (el PRD no dice qué hacer), el custom video del Studio **no entra** (no guarda `storageKey` en ningún lado — decisión de schema), y HDR→SDR sigue sin haber corrido nunca con ffmpeg.
@@ -537,7 +539,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [x] **P2-CONTENT-002** Concurrencia optimista por `revision`; `409 stale_revision` · `FR-051`
 - [x] **P2-CONTENT-003** Edición menor: **no** crea fila, **no** consume save, **no** factura · `FR-051`
   > **Estaba roto en el camino de fallo hasta `eab8fa5`.** Las ediciones se encolaban en `content-build`, cuyo cierre de fallo es `FAILED` + reembolso; la pieza editada lleva el `saveBucket` del build original, así que **cada edición fallida devolvía un save** y mataba una pieza que PRD:1204 dice que sigue usable. Ahora van a `content-rebuild`: el fallo vuelve a `CREATED` con los archivos anteriores y `lastEdit` fallido, sin reembolso. `PATCH` y `regenerate` leen con lock (dos `PATCH` con la misma `revision` escribían los dos).
-- [~] **P2-CONTENT-004** Regeneración de copy preservando estructura y nº de slides · `AI-004` · **parcial:** `POST /content/:id/regenerate` valida, sube la revisión y encola; el modelo lo llama el worker, que no existe
+- [x] **P2-CONTENT-004** Regeneración de copy preservando estructura y nº de slides · `AI-004` · **parcial:** `POST /content/:id/regenerate` valida, sube la revisión y encola; el modelo lo llama el worker, que no existe · **cerrada 2026-09-24** (auditoría: ya implementada)
   > **Hoy ninguna edición llega al video (`eab8fa5`).** El render lee sólo `buildPayload`; `PATCH` escribe `content_text_boxes`. El mapeo de cajas del editor (0–100) a píxeles del payload **no lo da el PRD**, y `regenerate` necesita un modelo de copy que el worker no tiene. Una pieza con cajas cierra el rebuild con `edit_not_renderable` sin llamar al renderer — honesto, no aplicado. Decisiones de una persona: el mapeo, el modelo, y el contrato del swap de media (F-061, sin ruta).
 - [x] **P2-CONTENT-005** Todas las validaciones de rango de `FR-051`
 - [x] **P2-CONTENT-006** Borrado: soft-delete + `409 content_has_linked_posts` (cancelar no basta) · `FR-051` · **parcial:** el 409 está en `PATCH`; el `DELETE` no lo comprueba
@@ -547,48 +549,48 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 
 ## P2-BLITZ — Blitz
 
-- [ ] **P2-BLITZ-001** Deck con stack de tarjetas y swipe · `FR-050`
-- [ ] **P2-BLITZ-002** Teclado ← / → equivalentes a los botones · `F-052`
-- [ ] **P2-BLITZ-003** Chips de tipo, influencer y ángulo · `F-053`, `F-054`
-- [ ] **P2-BLITZ-004** Panel `Why This Content?` · `F-055`
-- [ ] **P2-BLITZ-005** Panel `Remixed From` con likes y views · `F-056`
-- [ ] **P2-BLITZ-006** Mute/unmute con indicador sobre la tarjeta · `F-057`
-- [ ] **P2-BLITZ-007** Editor inline: panel ASSETS + inspector de texto · `FR-051`
-- [~] **P2-BLITZ-008** `Regenerate Text` con prompt opcional (≤500) · `F-059`
-- [ ] **P2-BLITZ-009** Swap de video/audio/imagen con sus modales · `F-061`
-- [ ] **P2-BLITZ-010** Modal `Select Video` con filtros, tags y paginación · `FR-052`
-- [ ] **P2-BLITZ-011** Modal `Select Audio` con opción `No audio` y catálogos por tipo · `FR-053`
-- [ ] **P2-BLITZ-012** Flujo de aceptación: `What would you like to do?` · `F-064`, `F-065`
-- [ ] **P2-BLITZ-013** Estados: cola vacía, cuota agotada, perfil no listo, view-only · `FR-050`
-- [~] **P2-BLITZ-014** Aceptar descuenta **1 swipe + 1 save**; fallo de build reembolsa · `FR-050`
+- [x] **P2-BLITZ-001** Deck con stack de tarjetas y swipe · `FR-050` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P2-BLITZ-002** Teclado ← / → equivalentes a los botones · `F-052` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P2-BLITZ-003** Chips de tipo, influencer y ángulo · `F-053`, `F-054` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P2-BLITZ-004** Panel `Why This Content?` · `F-055` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P2-BLITZ-005** Panel `Remixed From` con likes y views · `F-056` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P2-BLITZ-006** Mute/unmute con indicador sobre la tarjeta · `F-057` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P2-BLITZ-007** Editor inline: panel ASSETS + inspector de texto · `FR-051` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P2-BLITZ-008** `Regenerate Text` con prompt opcional (≤500) · `F-059` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [~] **P2-BLITZ-009** Swap de video/audio/imagen con sus modales · `F-061` · @s7-B 2026-09-24
+- [x] **P2-BLITZ-010** Modal `Select Video` con filtros, tags y paginación · `FR-052` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [~] **P2-BLITZ-011** Modal `Select Audio` con opción `No audio` y catálogos por tipo · `FR-053` · @s7-B 2026-09-24
+- [x] **P2-BLITZ-012** Flujo de aceptación: `What would you like to do?` · `F-064`, `F-065` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P2-BLITZ-013** Estados: cola vacía, cuota agotada, perfil no listo, view-only · `FR-050` · **cerrada 2026-09-24:** la parte de cuota/view-only no aplica (D-06)
+- ~~**P2-BLITZ-014** Aceptar descuenta **1 swipe + 1 save**; fallo de build reembolsa · `FR-050`~~ · **fuera de alcance:** D-06 (sin cuotas)
   > **En `main` (sin auth):** el accept cobra 1 save + 1 swipe (swipes sin límite, decisión del dueño), arma el `buildPayload` desde la sugerencia **antes de cobrar** (`a914d47`) y encola. Una sugerencia necesita copy del LLM: **sin `LLM_*` la cola queda vacía**. El workspace de desarrollo es plan pro (`pnpm dev:workspace`); el trial de Free sin número responde 503 honesto.
 
 ## P2-STUDIO — Content Studio
 
 - [x] **P2-STUDIO-001** Hub `/content` con las 22 tarjetas de formato · `F-070`
   > **Ya estaba hecho; lo que faltaba era el test que lo fija.** Las 22 tarjetas están, cada una es un `<a>` real y su id coincide con el segmento del PRD. Lo único de `F-070` que no está son el póster y el video de ejemplo, que son **assets** que el repo no tiene y que nadie decidió de dónde salen.
-- [ ] **P2-STUDIO-002** Wizard con pasos, checks y `Generate` deshabilitado hasta completar · `F-073`
-- [ ] **P2-STUDIO-003** Modos Remix y Create New · `F-071`, `F-072`
-- [ ] **P2-STUDIO-004** Picker de trending con carrusel paginado y chips de nicho · `F-074`
-- [ ] **P2-STUDIO-005** Preview + inspector por formato · `F-075`
-- [ ] **P2-STUDIO-006** Modal `Swap image for slide N` · `FR-071`
-- [ ] **P2-STUDIO-007** Estilos de wall-of-text · `F-078` · ⚠️ catálogo completo en `OQ-08`
-- [ ] **P2-STUDIO-008** Demo video + enlace a la guía de grabación · `F-079`
-- [~] **P2-STUDIO-009** Subida de video custom (MP4/MOV ≤50 MB) · `F-083`
+- [~] **P2-STUDIO-002** Wizard con pasos, checks y `Generate` deshabilitado hasta completar · `F-073` · @s7-F 2026-09-24
+- [~] **P2-STUDIO-003** Modos Remix y Create New · `F-071`, `F-072` · @s7-F 2026-09-24
+- ~~**P2-STUDIO-004** Picker de trending con carrusel paginado y chips de nicho · `F-074`~~ · **fuera de alcance:** D-15/OQ-13 (sin catálogo de terceros; lo reemplaza Inspiration)
+- [x] **P2-STUDIO-005** Preview + inspector por formato · `F-075` · **cerrada 2026-09-24:** vía el editor (PU-EDIT-003/004)
+- [x] **P2-STUDIO-006** Modal `Swap image for slide N` · `FR-071` · **cerrada 2026-09-24:** vía el editor (PU-EDIT-003)
+- [~] **P2-STUDIO-007** Estilos de wall-of-text · `F-078` · ⚠️ catálogo completo en `OQ-08` · @s7-F 2026-09-24
+- [~] **P2-STUDIO-008** Demo video + enlace a la guía de grabación · `F-079` · @s7-F 2026-09-24
+- [~] **P2-STUDIO-009** Subida de video custom (MP4/MOV ≤50 MB) · `F-083` · @s7-F 2026-09-24
   > La pantalla está completa —tres pasos de §9.8, progreso real por `XMLHttpRequest`, política de reintento que sigue al costo— y **no puede completar una sola subida**. Ver el bloqueo del proxy más abajo.
-- [~] **P2-STUDIO-010** `Save` / `Schedule` / `Clear` · `F-081`, `F-082`
+- [~] **P2-STUDIO-010** `Save` / `Schedule` / `Clear` · `F-081`, `F-082` · @s7-A 2026-09-24
 
 ## P2-MEDIA — Media Bank
 
 - [x] **P2-MEDIA-001** `DATA-010` + subida y finalización · `FR-100`
 - [x] **P2-MEDIA-002** Categorías válidas por tipo de media · `F-129`
 - [x] **P2-MEDIA-003** PATCH de categorías = reemplazo total; lista vacía saca del pool · `FR-100`
-- [~] **P2-MEDIA-004** Borrado idempotente + `409 media_in_use` · `FR-100`
-- [~] **P2-MEDIA-005** `DATA-011` Media Sets con **mínimo 5 assets** · `F-127`
-- [ ] **P2-MEDIA-006** Modo `CREATING SET` con contador y validación · `FR-100`
-- [~] **P2-MEDIA-007** Filtros: tipo, categoría, influencer + búsqueda · PRD §12
-- [ ] **P2-MEDIA-008** Deep-linking con `from` y `focus` · `FR-100.1`
-- [~] **P2-MEDIA-009** Assets generados, demo e internos **nunca** se listan · `FR-100`
+- [~] **P2-MEDIA-004** Borrado idempotente + `409 media_in_use` · `FR-100` · @s7-E 2026-09-24
+- [~] **P2-MEDIA-005** `DATA-011` Media Sets con **mínimo 5 assets** · `F-127` · @s7-F 2026-09-24
+- [~] **P2-MEDIA-006** Modo `CREATING SET` con contador y validación · `FR-100` · @s7-F 2026-09-24
+- [~] **P2-MEDIA-007** Filtros: tipo, categoría, influencer + búsqueda · PRD §12 · @s7-F 2026-09-24
+- [~] **P2-MEDIA-008** Deep-linking con `from` y `focus` · `FR-100.1` · @s7-F 2026-09-24
+- [x] **P2-MEDIA-009** Assets generados, demo e internos **nunca** se listan · `FR-100` · **cerrada 2026-09-24** (auditoría: ya implementada)
 
 ## P2-LIB — Library
 
@@ -597,30 +599,32 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [x] **P2-LIB-003** Tab `My Media Bank` · `F-125`
   > Se construyó pidiendo `P2-MEDIA-006` por error del coordinador: esa tarea es el modo `CREATING SET`, que **no** está. Lo que se hizo es esta tab — lista, los cuatro estados de §19 y filtro por `type`, que es el único filtro que `GET /media` tiene hoy.
   > **Sin polling a propósito**, aunque un asset nazca `processing`: no hay handler de normalización en el worker, así que se quedaría así para siempre y el intervalo sería una petición cada 10 s sin ver cambiar nada.
-- [~] **P2-LIB-004** `Refresh Metrics` · `F-121`
-- [ ] **P2-LIB-005** Modo `Select` y acciones masivas · `F-122` · ⚠️ alcance exacto en `OQ-04`
+- [~] **P2-LIB-004** `Refresh Metrics` · `F-121` · @s7-A 2026-09-24
+- [~] **P2-LIB-005** Modo `Select` y acciones masivas · `F-122` · ⚠️ alcance exacto en `OQ-04` · @s7-A 2026-09-24
 
 ## P2-CAL — Calendar
 
-- [~] **P2-CAL-001** Vista mes con navegación · `F-140`
-- [~] **P2-CAL-002** Chips de post por plataforma, tipo y hora · `F-141`
-- [~] **P2-CAL-003** Contador por día y contadores de cabecera · `F-142`, `F-143`
+- [x] **P2-CAL-001** Vista mes con navegación · `F-140` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P2-CAL-002** Chips de post por plataforma, tipo y hora · `F-141` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P2-CAL-003** Contador por día y contadores de cabecera · `F-142`, `F-143` · **cerrada 2026-09-24** (auditoría: ya implementada)
   > **Las tres, parciales por la API (`1e2c19d`).** `GET /posts` **no filtra por fecha** y ordena por creación, así que nunca se sabe que un mes está completo: se piden hasta 5 páginas de 100 y, si hay más, la pantalla lo dice (`5+`, «may not be empty»). `Post` no trae el tipo de contenido: se cruza con `GET /content` (otras 5 páginas como mucho). La zona es la del navegador, nombrada en pantalla: el PRD guarda `timezone` en usuario y workspace, pero ningún endpoint la publica — y la Library fija UTC, así que un post puede caer en días distintos en cada pantalla. Sin navegador real.
 
 ## P2-TREND — Catálogo de tendencias
 
-- [ ] **P2-TREND-001** **Decisión de derechos y estrategia de adquisición del catálogo** · `F-041`, `OQ-13` · ⚠️ **bloquea el resto de la épica; no es tarea de ingeniería**
-- [~] **P2-TREND-002** `DATA-023` + pipeline de ingesta · `F-041`
-- [~] **P2-TREND-003** Extracción a texto: caption, hashtags, OCR, métricas · `JV-1` dep
-- [ ] **P2-TREND-004** `/inspiration`: búsqueda, filtro por nicho, `Remix this` · `FR-040`
-- [ ] **P2-TREND-005** Estados: `No results`, `Inspiration is being set up`, error · `FR-040`
+- ~~**P2-TREND-001** **Decisión de derechos y estrategia de adquisición del catálogo** · `F-041`, `OQ-13` · ⚠️ **bloquea el resto de la épica; no es tarea de ingeniería**~~ · **fuera de alcance:** D-15: tablero propio en vez de catálogo
+- [x] **P2-TREND-002** `DATA-023` + pipeline de ingesta · `F-041` · **cerrada 2026-09-24:** tablero propio (D-15): `0022_inspiration_references`
+- [x] **P2-TREND-003** Extracción a texto: caption, hashtags, OCR, métricas · `JV-1` dep · **cerrada 2026-09-24:** `reference-reader.ts` (yt-dlp + OCR)
+- [x] **P2-TREND-004** `/inspiration`: búsqueda, filtro por nicho, `Remix this` · `FR-040` · **cerrada 2026-09-24:** `InspirationBoard.tsx` (PU-LATER-006)
+- [x] **P2-TREND-005** Estados: `No results`, `Inspiration is being set up`, error · `FR-040` · **cerrada 2026-09-24:** "being set up" no aplica a un tablero propio
 
 ## P2-JV — Judgment features
 
-- [~] **P2-JV-001** **`JV-1`** clasificador del catálogo: 5 preguntas, umbrales, cuarentena · PRD §25.3 · dep: P2-TREND-003
-- [ ] **P2-JV-002** Dataset de 250 items etiquetados a mano (**50 en español**) · PRD §25.4
-- [ ] **P2-JV-003** **Experimento de validación `DP-001`**: acierto, **calibración**, costo, latencia, es↔en · `OQ-20` · ⚠️ la calibración es el criterio de corte
-- [~] **P2-JV-004** **`JV-4`** verificador de campos de marca → `fieldMeta.confidence` · PRD §25.3
+- ~~**P2-JV-001** **`JV-1`** clasificador del catálogo: 5 preguntas, umbrales, cuarentena · PRD §25.3 · dep: P2-TREND-003~~ · **fuera de alcance:** D-15: clasificador del catálogo de terceros que no existe
+- [!] **P2-JV-002** Dataset de 250 items etiquetados a mano (**50 en español**) · PRD §25.4
+  > bloqueada: dataset etiquetado a mano: tarea de una persona
+- [!] **P2-JV-003** **Experimento de validación `DP-001`**: acierto, **calibración**, costo, latencia, es↔en · `OQ-20` · ⚠️ la calibración es el criterio de corte
+  > bloqueada: depende de P2-JV-002
+- [~] **P2-JV-004** **`JV-4`** verificador de campos de marca → `fieldMeta.confidence` · PRD §25.3 · @s7-D 2026-09-24
 
 ---
 
@@ -631,68 +635,68 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 ## P3-OAUTH — Conexiones sociales
 
 - [x] **P3-OAUTH-001** Puerto `SocialPublisher` + `DATA-016`
-- [ ] **P3-OAUTH-002** OAuth TikTok (Business/Creator) · `INT-001`
-- [ ] **P3-OAUTH-003** OAuth Instagram (nativo + Ayrshare) · `INT-002`, `INT-006`
-- [ ] **P3-OAUTH-004** OAuth YouTube · `INT-003`
-- [ ] **P3-OAUTH-005** OAuth LinkedIn + **aviso de caducidad a 60 días** · `INT-004`
-- [ ] **P3-OAUTH-006** OAuth Reddit · `INT-005`
-- [ ] **P3-OAUTH-007** Tokens cifrados en reposo, **nunca** devueltos por la API · `NFR-007`
-- [ ] **P3-OAUTH-008** Estados de conexión y flujo de reconexión · PRD §19.5
+- [x] **P3-OAUTH-002** OAuth TikTok (Business/Creator) · `INT-001` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P3-OAUTH-003** OAuth Instagram (nativo + Ayrshare) · `INT-002`, `INT-006` · **cerrada 2026-09-24:** la mitad Ayrshare queda fuera (D-15)
+- [x] **P3-OAUTH-004** OAuth YouTube · `INT-003` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [~] **P3-OAUTH-005** OAuth LinkedIn + **aviso de caducidad a 60 días** · `INT-004` · @s7-E 2026-09-24
+- [x] **P3-OAUTH-006** OAuth Reddit · `INT-005` · **cerrada 2026-09-24:** para Engagement (PU-LATER-006)
+- [x] **P3-OAUTH-007** Tokens cifrados en reposo, **nunca** devueltos por la API · `NFR-007` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P3-OAUTH-008** Estados de conexión y flujo de reconexión · PRD §19.5 · **cerrada 2026-09-24** (auditoría: ya implementada)
 - [x] **P3-OAUTH-009** Multi-cuenta por plataforma + `400 connection_ambiguous` · `FR-060`
-- [ ] **P3-OAUTH-010** **Separar permiso de lectura (marca) del de publicación** · §10 regla 7, `EXT-001`
-- [ ] **P3-OAUTH-011** Los 16 estados de error de integración de PRD §19.5
+- [x] **P3-OAUTH-010** **Separar permiso de lectura (marca) del de publicación** · §10 regla 7, `EXT-001` · **cerrada 2026-09-24:** lectura sin login (D-13); `publishScopesOf` separa publicar de leer
+- [~] **P3-OAUTH-011** Los 16 estados de error de integración de PRD §19.5 · @s7-E 2026-09-24
 
 ## P3-SCHED — Scheduling
 
 - [x] **P3-SCHED-001** `DATA-020` con la máquina de estados completa (10 estados) · `FR-060`
-- [ ] **P3-SCHED-002** Paso `Select Platforms` con opciones por plataforma · `F-150`
-- [ ] **P3-SCHED-003** Paso `Content Details` multi-plataforma con contadores · `F-153`
-- [ ] **P3-SCHED-004** `Improve` / `Regenerate` por campo · `F-154`, `AI-006`
-- [ ] **P3-SCHED-005** Paso `Schedule` con time + date picker y disclaimers · `F-156`
+- [~] **P3-SCHED-002** Paso `Select Platforms` con opciones por plataforma · `F-150` · @s7-A 2026-09-24
+- [~] **P3-SCHED-003** Paso `Content Details` multi-plataforma con contadores · `F-153` · @s7-A 2026-09-24
+- [~] **P3-SCHED-004** `Improve` / `Regenerate` por campo · `F-154`, `AI-006` · @s7-A 2026-09-24
+- [~] **P3-SCHED-005** Paso `Schedule` con time + date picker y disclaimers · `F-156` · @s7-A 2026-09-24
 - [x] **P3-SCHED-006** TikTok: `posting_mode` + `privacy_level` + entitlement `tiktokDirect` · `F-151`, `F-152`
-- [ ] **P3-SCHED-007** `Auto-Add Music` · `F-155`
-- [ ] **P3-SCHED-008** Instagram slideshow `carousel` / `reel` · `F-158`
-- [ ] **P3-SCHED-009** AI content label y paid partnership disclosure · `F-160`, `F-161`
-- [ ] **P3-SCHED-010** Post now · `F-157`
+- [~] **P3-SCHED-007** `Auto-Add Music` · `F-155` · @s7-B 2026-09-24
+- [~] **P3-SCHED-008** Instagram slideshow `carousel` / `reel` · `F-158` · @s7-A 2026-09-24
+- [~] **P3-SCHED-009** AI content label y paid partnership disclosure · `F-160`, `F-161` · @s7-A 2026-09-24
+- [~] **P3-SCHED-010** Post now · `F-157` · @s7-A 2026-09-24
 - [x] **P3-SCHED-011** Cancel / delete por lote, **atómicos**, máx. 100 ids · `F-162`, `ERR-F01`
 
 ## P3-PUB — Publicación
 
 - [x] **P3-PUB-001** Worker de publicación en la hora programada
-- [ ] **P3-PUB-002** `AWAITING_RECONNECT` con reanudación automática · `FR-060`
+- [x] **P3-PUB-002** `AWAITING_RECONNECT` con reanudación automática · `FR-060` · **cerrada 2026-09-24** (auditoría: ya implementada)
 - [x] **P3-PUB-003** `IN_USER_INBOX` como estado normal, **no error** · `FR-060`
-- [ ] **P3-PUB-004** **Watcher de carril lento de TikTok hasta 72 h; nunca duplicar** · `NFR-015` · ⚠️ regla explícita
+- [x] **P3-PUB-004** **Watcher de carril lento de TikTok hasta 72 h; nunca duplicar** · `NFR-015` · ⚠️ regla explícita · **cerrada 2026-09-24** (auditoría: ya implementada)
 - [x] **P3-PUB-005** `publishedCaption` + `captionAdjustmentReason` · `FR-060`
-- [~] **P3-PUB-006** Traducción a `errorCode` estable y neutral · `DP-006` · tabla determinística primero
+- [~] **P3-PUB-006** Traducción a `errorCode` estable y neutral · `DP-006` · tabla determinística primero · @s7-A 2026-09-24
   > **Tabla determinística hecha y cableada (`382f82d`, `3118b48`).** 7 motivos × 5 plataformas, las 35 celdas escritas; sólo cambia la fila cuando el PRD tiene un código literal. `uncoded` (el PRD clasifica sin código: `permissions_missing`, etc.) deja el motivo neutral del puerto. **Falta la rama `escalate`**: `unknown` va a DP-006, que no tiene adaptador de `Judgment`. Decisión mía, revisable: límites de LinkedIn y Reddit → `rate_limited` (PRD:1398, «límite de plataforma»).
 - [x] **P3-PUB-007** Límites de plataforma diferenciados · `FR-060`
   > **Estaba marcada hecha y no se cumplía hasta `3118b48`:** el worker escribía `failure.reason` tal cual, así que un límite de TikTok quedaba `post_limit_exceeded` y un test lo fijaba así. Ahora pasa por la tabla de DP-006.
 
 ## P3-METRIC — Métricas
 
-- [ ] **P3-METRIC-001** Job de sync de views/likes/comments
+- [x] **P3-METRIC-001** Job de sync de views/likes/comments · **cerrada 2026-09-24** (auditoría: ya implementada)
 - [x] **P3-METRIC-002** Batch analytics ≤100 ids con éxito parcial · `ERR-F02`
 - [x] **P3-METRIC-003** **Distinguir cero real de pre-sync con `postedAt`** · `NFR-016`
 
 ## P3-ANALYT — Analytics
 
-- [ ] **P3-ANALYT-001** `/analytics` con selector de rango · `FR-120`
-- [ ] **P3-ANALYT-002** Desglose por plataforma y por tipo de contenido · `F-171`, `F-172`
-- [ ] **P3-ANALYT-003** Script de website analytics activable · `F-174`
-- [ ] **P3-ANALYT-004** Atribución de ads · `F-175` · ⚠️ alcance real en `OQ-06`
+- [x] **P3-ANALYT-001** `/analytics` con selector de rango · `FR-120` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P3-ANALYT-002** Desglose por plataforma y por tipo de contenido · `F-171`, `F-172` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- ~~**P3-ANALYT-003** Script de website analytics activable · `F-174`~~ · **fuera de alcance:** D-15 (growth)
+- ~~**P3-ANALYT-004** Atribución de ads · `F-175` · ⚠️ alcance real en `OQ-06`~~ · **fuera de alcance:** D-15 (sin ads; OQ-06)
 
 ## P3-WARM — Warmed Accounts
 
 > **Fuera de alcance por `D-15` (2026-09-24, uso personal).** Las tareas quedan como referencia; no se trabajan salvo que el dueño lo reabra.
 
 - [x] **P3-WARM-001** `DATA-017`…`DATA-019` · `FR-130`
-- [ ] **P3-WARM-002** Compra y configuración (plataforma, país, nicho) · `F-181`
-- [ ] **P3-WARM-003** Flujo de aprobación por el owner · `F-183`
-- [ ] **P3-WARM-004** `postingAvailability` y `postable` · `F-186`
+- ~~**P3-WARM-002** Compra y configuración (plataforma, país, nicho) · `F-181`~~ · **fuera de alcance:** D-15
+- ~~**P3-WARM-003** Flujo de aprobación por el owner · `F-183`~~ · **fuera de alcance:** D-15
+- ~~**P3-WARM-004** `postingAvailability` y `postable` · `F-186`~~ · **fuera de alcance:** D-15
 - [x] **P3-WARM-005** Lead time **por cuenta** + techo de 30 días · `F-185`
-- [ ] **P3-WARM-006** Slot balance + `402` al agotarse · `F-184`
-- [ ] **P3-WARM-007** Replacement decisions · `F-187`
-- [ ] **P3-WARM-008** TikTok commercial sounds · `F-159`
+- ~~**P3-WARM-006** Slot balance + `402` al agotarse · `F-184`~~ · **fuera de alcance:** D-15
+- ~~**P3-WARM-007** Replacement decisions · `F-187`~~ · **fuera de alcance:** D-15
+- ~~**P3-WARM-008** TikTok commercial sounds · `F-159`~~ · **fuera de alcance:** D-15
 
 ## P3-AUTO — Automations
 
@@ -722,85 +726,86 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 ## P4-INFL — Influencers
 
 - [x] **P4-INFL-001** `DATA-013`…`DATA-015` · `FR-080`
-- [ ] **P4-INFL-002** Wizard de 3 pasos con costos visibles · `F-091`
-- [ ] **P4-INFL-003** Generación de imagen base con **FLUX.1 [schnell]** · `ADR-010`
+- [x] **P4-INFL-002** Wizard de 3 pasos con costos visibles · `F-091` · **cerrada 2026-09-24:** adaptado: Higgsfield Soul ID, sin créditos (D-06)
+- [~] **P4-INFL-003** Generación de imagen base con **FLUX.1 [schnell]** · `ADR-010` · @s7-G 2026-09-24
 - [x] **P4-INFL-004** Subida de imagen base propia · `F-092`
-- [ ] **P4-INFL-005** **Pipeline de entrenamiento LoRA** (el "training" de 15–20 min del PRD) · `ADR-010`, `AI-007`
-- [ ] **P4-INFL-006** Regenerar = **persona nueva**, no edición · `F-093` · ⚠️ regla de producto
-- [ ] **P4-INFL-007** Estados y `progress` 0–100 · `F-094`
+- [x] **P4-INFL-005** **Pipeline de entrenamiento LoRA** (el "training" de 15–20 min del PRD) · `ADR-010`, `AI-007` · **cerrada 2026-09-24:** reemplazado por Higgsfield Soul ID (PU-LATER-004)
+- [~] **P4-INFL-006** Regenerar = **persona nueva**, no edición · `F-093` · ⚠️ regla de producto · @s7-G 2026-09-24
+- [x] **P4-INFL-007** Estados y `progress` 0–100 · `F-094` · **cerrada 2026-09-24** (auditoría: ya implementada)
 - [x] **P4-INFL-008** Cap de 50 activos + idempotencia obligatoria · `FR-080`
-- [ ] **P4-INFL-009** Galería de imágenes + barra de generación con templates · `FR-081`
-- [ ] **P4-INFL-010** Galería de videos + selección de modelo y duración · `FR-082`
-- [ ] **P4-INFL-011** Talking Head UGC con validación de longitud de script · `AI-010`
-- [ ] **P4-INFL-012** Tab Configuration: ángulos, cuentas, sets · `FR-083`
-- [ ] **P4-INFL-013** Integración con Blitz: `influencerChance`, chips, fallback · `FR-055`
+- [~] **P4-INFL-009** Galería de imágenes + barra de generación con templates · `FR-081` · @s7-G 2026-09-24
+- [~] **P4-INFL-010** Galería de videos + selección de modelo y duración · `FR-082` · @s7-G 2026-09-24
+- [~] **P4-INFL-011** Talking Head UGC con validación de longitud de script · `AI-010` · @s7-G 2026-09-24
+- [~] **P4-INFL-012** Tab Configuration: ángulos, cuentas, sets · `FR-083` · @s7-G 2026-09-24
+- [~] **P4-INFL-013** Integración con Blitz: `influencerChance`, chips, fallback · `FR-055` · @s7-C 2026-09-24
 
 ## P4-AISTUDIO — AI Studio
 
-- [ ] **P4-AISTUDIO-001** `/ai-studio` con prompt, referencias y contador · `FR-090`
+- [~] **P4-AISTUDIO-001** `/ai-studio` con prompt, referencias y contador · `FR-090` · @s7-G 2026-09-24
 - [x] **P4-AISTUDIO-002** Cap de **10 generaciones en vuelo** · `F-112`
-- [ ] **P4-AISTUDIO-003** Filtro de contenido con mensajes diferenciados · `F-113`
-- [ ] **P4-AISTUDIO-004** Gating por plan · `F-115`
+- [x] **P4-AISTUDIO-003** Filtro de contenido con mensajes diferenciados · `F-113` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- ~~**P4-AISTUDIO-004** Gating por plan · `F-115`~~ · **fuera de alcance:** D-06 (sin planes)
 
 ## P4-FORMAT — Formatos IA adicionales
 
-- [ ] **P4-FORMAT-001** Pipeline genérico de formato generativo · `F-084`
-- [ ] **P4-FORMAT-002** Los 17 formatos del catálogo · `F-070` tabla · dep: P4-FORMAT-001
+- [~] **P4-FORMAT-001** Pipeline genérico de formato generativo · `F-084` · @s7-G 2026-09-24
+- [~] **P4-FORMAT-002** Los 17 formatos del catálogo · `F-070` tabla · dep: P4-FORMAT-001 · @s7-G 2026-09-24
 
 ## P4-ENGAGE — Engagement
 
-- [ ] **P4-ENGAGE-001** `DATA-024` + `DATA-025` · `FR-140`
-- [ ] **P4-ENGAGE-002** Configuración de subreddits · `F-192`
-- [ ] **P4-ENGAGE-003** Job de descubrimiento con backoff · `F-191`
-- [ ] **P4-ENGAGE-004** **`JV-2`** scoring de leads: 5 preguntas + composición en código · PRD §25.3
-- [ ] **P4-ENGAGE-005** Pesos y umbrales en código, recalculables sin reinferir · `JV-2`
-- [ ] **P4-ENGAGE-006** Listado, filtros y vistas · `F-193`
-- [ ] **P4-ENGAGE-007** Detalle + `Why this lead?` (LLM) · `F-194`
-- [ ] **P4-ENGAGE-008** Generación y regeneración de respuesta con reglas propias · `F-195`, `F-196`
-- [ ] **P4-ENGAGE-009** **`JV-5`** clasificador de tono → ban meter · PRD §25.3
-- [ ] **P4-ENGAGE-010** **Ratio y nivel del ban meter calculados en CÓDIGO** · `DP-003` · ⚠️ nunca por el modelo
-- [ ] **P4-ENGAGE-011** Monitorización de hilos + `Sync with Reddit` · `F-198`, `F-199`
-- [ ] **P4-ENGAGE-012** Estados de error del módulo · PRD §19.4
+- [x] **P4-ENGAGE-001** `DATA-024` + `DATA-025` · `FR-140` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P4-ENGAGE-002** Configuración de subreddits · `F-192` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P4-ENGAGE-003** Job de descubrimiento con backoff · `F-191` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P4-ENGAGE-004** **`JV-2`** scoring de leads: 5 preguntas + composición en código · PRD §25.3 · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P4-ENGAGE-005** Pesos y umbrales en código, recalculables sin reinferir · `JV-2` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P4-ENGAGE-006** Listado, filtros y vistas · `F-193` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P4-ENGAGE-007** Detalle + `Why this lead?` (LLM) · `F-194` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P4-ENGAGE-008** Generación y regeneración de respuesta con reglas propias · `F-195`, `F-196` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P4-ENGAGE-009** **`JV-5`** clasificador de tono → ban meter · PRD §25.3 · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P4-ENGAGE-010** **Ratio y nivel del ban meter calculados en CÓDIGO** · `DP-003` · ⚠️ nunca por el modelo · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P4-ENGAGE-011** Monitorización de hilos + `Sync with Reddit` · `F-198`, `F-199` · **cerrada 2026-09-24** (auditoría: ya implementada)
+- [x] **P4-ENGAGE-012** Estados de error del módulo · PRD §19.4 · **cerrada 2026-09-24** (auditoría: ya implementada)
 
 ## P4-JV — Judgment features restantes
 
-- [ ] **P4-JV-001** **`JV-3`** pre-flight de publicación · `EXT-007`, `DP-007`
-- [ ] **P4-JV-002** Pre-flight con **timeout duro: si no responde, se publica igual** · `JV-3` · ⚠️ no puede bloquear el producto
-- [ ] **P4-JV-003** **`JV-6`** rerank marca↔candidato · `DP-005` · dep: P2-JV-001
-- [ ] **P4-JV-004** `JV-6` aplicado a personajes AI UGC y videos UGC humanos · PRD §25.3
+- [x] **P4-JV-001** **`JV-3`** pre-flight de publicación · `EXT-007`, `DP-007` · **cerrada 2026-09-24:** adaptado: corre en el piloto (PU-AUTO-002)
+- [x] **P4-JV-002** Pre-flight con **timeout duro: si no responde, se publica igual** · `JV-3` · ⚠️ no puede bloquear el producto · **cerrada 2026-09-24:** desvío deliberado: si no responde, **retiene** (nunca aprueba sin juzgar, PU-AUTO-002)
+- [~] **P4-JV-003** **`JV-6`** rerank marca↔candidato · `DP-005` · dep: P2-JV-001 · @s7-C 2026-09-24
+- [!] **P4-JV-004** `JV-6` aplicado a personajes AI UGC y videos UGC humanos · PRD §25.3
+  > bloqueada: no hay librerías de personajes/UGC (P5-LIBR-*)
 
 ## P4-BILL — Billing
 
 > **Fuera de alcance por `D-15` (2026-09-24, uso personal).** Las tareas quedan como referencia; no se trabajan salvo que el dueño lo reabra.
 
-- [ ] **P4-BILL-001** Puerto `Payments` + adaptador · `INT-008`
+- ~~**P4-BILL-001** Puerto `Payments` + adaptador · `INT-008`~~ · **fuera de alcance:** D-15
 - [x] **P4-BILL-002** Los 4 planes con sus límites · PRD §16.1
-- [ ] **P4-BILL-003** Upgrade prorrateado / downgrade programable · PRD §16.3
-- [ ] **P4-BILL-004** Compra de créditos, saves y post slots · `F-237`, `F-238`
-- [ ] **P4-BILL-005** Cancelación con feedback · PRD §16.5
-- [ ] **P4-BILL-006** Modo view-only al agotar cuota · PRD §16
-- [ ] **P4-BILL-007** API overage billing · `F-240`
-- [ ] **P4-BILL-008** Restricciones de trial · PRD §16.7
+- ~~**P4-BILL-003** Upgrade prorrateado / downgrade programable · PRD §16.3~~ · **fuera de alcance:** D-15
+- ~~**P4-BILL-004** Compra de créditos, saves y post slots · `F-237`, `F-238`~~ · **fuera de alcance:** D-15
+- ~~**P4-BILL-005** Cancelación con feedback · PRD §16.5~~ · **fuera de alcance:** D-15
+- ~~**P4-BILL-006** Modo view-only al agotar cuota · PRD §16~~ · **fuera de alcance:** D-15
+- ~~**P4-BILL-007** API overage billing · `F-240`~~ · **fuera de alcance:** D-15
+- ~~**P4-BILL-008** Restricciones de trial · PRD §16.7~~ · **fuera de alcance:** D-15
 
 ## P4-PUBAPI — API pública
 
 > **Fuera de alcance por `D-15` (2026-09-24, uso personal).** Las tareas quedan como referencia; no se trabajan salvo que el dueño lo reabra.
 
-- [ ] **P4-PUBAPI-001** Los 29 endpoints de PRD §9.3 · dep: P1-API-002
-- [ ] **P4-PUBAPI-002** Gestión de API keys en Settings · `F-239`
-- [ ] **P4-PUBAPI-003** Documentación embebida `/developers` · `F-243`
-- [ ] **P4-PUBAPI-004** Tests de contrato por endpoint contra el OpenAPI
-- [ ] **P4-PUBAPI-005** Webhooks salientes · `EXT-002`, `OQ-11`
+- ~~**P4-PUBAPI-001** Los 29 endpoints de PRD §9.3 · dep: P1-API-002~~ · **fuera de alcance:** D-15
+- ~~**P4-PUBAPI-002** Gestión de API keys en Settings · `F-239`~~ · **fuera de alcance:** D-15
+- ~~**P4-PUBAPI-003** Documentación embebida `/developers` · `F-243`~~ · **fuera de alcance:** D-15
+- ~~**P4-PUBAPI-004** Tests de contrato por endpoint contra el OpenAPI~~ · **fuera de alcance:** D-15
+- ~~**P4-PUBAPI-005** Webhooks salientes · `EXT-002`, `OQ-11`~~ · **fuera de alcance:** D-15
 
 ## P4-MCP — Servidor MCP
 
 > **Fuera de alcance por `D-15` (2026-09-24, uso personal).** Las tareas quedan como referencia; no se trabajan salvo que el dueño lo reabra.
 
-- [ ] **P4-MCP-001** `apps/mcp` con JSON-RPC 2.0 stateless · `AI-015`
-- [ ] **P4-MCP-002** Los 16 tools de lectura · `AI-015`
-- [ ] **P4-MCP-003** Los 18 tools de acción, con los destructivos marcados · `AI-015`
-- [ ] **P4-MCP-004** Rate limit propio de 30/min por usuario · `AI-015`
-- [ ] **P4-MCP-005** Connector OAuth con scopes y confirmaciones · `AI-015`
+- ~~**P4-MCP-001** `apps/mcp` con JSON-RPC 2.0 stateless · `AI-015`~~ · **fuera de alcance:** D-15
+- ~~**P4-MCP-002** Los 16 tools de lectura · `AI-015`~~ · **fuera de alcance:** D-15
+- ~~**P4-MCP-003** Los 18 tools de acción, con los destructivos marcados · `AI-015`~~ · **fuera de alcance:** D-15
+- ~~**P4-MCP-004** Rate limit propio de 30/min por usuario · `AI-015`~~ · **fuera de alcance:** D-15
+- ~~**P4-MCP-005** Connector OAuth con scopes y confirmaciones · `AI-015`~~ · **fuera de alcance:** D-15
 
 ---
 
@@ -810,40 +815,42 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 
 ## P5-NOTIF — Notificaciones
 
-- [ ] **P5-NOTIF-001** Centro de notificaciones con read/unread · PRD §13.3
-- [ ] **P5-NOTIF-002** Preferencias por categoría y canal · `F-234` · ⚠️ contenido exacto en `OQ-03`
-- [ ] **P5-NOTIF-003** Email transaccional
-- [ ] **P5-NOTIF-004** Los 22 triggers de PRD §13.2
+- [~] **P5-NOTIF-001** Centro de notificaciones con read/unread · PRD §13.3 · @s7-E 2026-09-24
+- [~] **P5-NOTIF-002** Preferencias por categoría y canal · `F-234` · ⚠️ contenido exacto en `OQ-03` · @s7-E 2026-09-24
+- [~] **P5-NOTIF-003** Email transaccional · @s7-E 2026-09-24
+- [~] **P5-NOTIF-004** Los 22 triggers de PRD §13.2 · @s7-E 2026-09-24
 
 ## P5-MEMBER — Miembros y permisos
 
-- [ ] **P5-MEMBER-001** Invitaciones · `F-005`, `OQ-02`
-- [ ] **P5-MEMBER-002** Sección `members` en Settings · `EXT-003`
-- [ ] **P5-MEMBER-003** Matriz de permisos completa · PRD §4.2, `OQ-01`
+- ~~**P5-MEMBER-001** Invitaciones · `F-005`, `OQ-02`~~ · **fuera de alcance:** D-06 (un usuario)
+- ~~**P5-MEMBER-002** Sección `members` en Settings · `EXT-003`~~ · **fuera de alcance:** D-06 (un usuario)
+- ~~**P5-MEMBER-003** Matriz de permisos completa · PRD §4.2, `OQ-01`~~ · **fuera de alcance:** D-06 (un usuario)
 
 ## P5-GROWTH — Crecimiento y soporte
 
 > **Fuera de alcance por `D-15` (2026-09-24, uso personal).** Las tareas quedan como referencia; no se trabajan salvo que el dueño lo reabra.
 
-- [ ] **P5-GROWTH-001** Refer & Earn · `F-250`
-- [ ] **P5-GROWTH-002** Guide · `F-251`
-- [ ] **P5-GROWTH-003** Roadmap y Changelog · `F-252`, `F-253`
-- [ ] **P5-GROWTH-004** Feedback · `F-254`
-- [ ] **P5-GROWTH-005** Páginas SEO: comparativas, `/for`, `/tools` · PRD §3
+- ~~**P5-GROWTH-001** Refer & Earn · `F-250`~~ · **fuera de alcance:** D-15
+- ~~**P5-GROWTH-002** Guide · `F-251`~~ · **fuera de alcance:** D-15
+- ~~**P5-GROWTH-003** Roadmap y Changelog · `F-252`, `F-253`~~ · **fuera de alcance:** D-15
+- ~~**P5-GROWTH-004** Feedback · `F-254`~~ · **fuera de alcance:** D-15
+- ~~**P5-GROWTH-005** Páginas SEO: comparativas, `/for`, `/tools` · PRD §3~~ · **fuera de alcance:** D-15
 
 ## P5-QUALITY — Calidad transversal
 
-- [ ] **P5-AUDIT-001** Audit log de acciones destructivas y facturables · `EXT-004`, PRD §9.12
-- [ ] **P5-A11Y-001** WCAG 2.1 AA · `NFR-020`
-- [ ] **P5-A11Y-002** **Alternativa no gestual al swipe de Blitz** · `NFR-020` · ⚠️ el swipe no puede ser el único camino
-- [ ] **P5-EVENT-001** Suite completa de eventos de PRD §18
-- [ ] **P5-EVENT-002** Funnel de activación **segmentado por `source_type`** · PRD §18 · ⚠️ es la métrica que decide si `EXT-001` funcionó
-- [ ] **P5-ERR-001** Auditoría: los ~90 estados de error y vacío de PRD §19 con su copy literal
-- [ ] **P5-I18N-001** Contenido multi-idioma del plan Pro · `OQ-12`
-- [ ] **P5-LIBR-001** Estrategia de librería de personajes AI UGC · `OQ-13`
-- [ ] **P5-LIBR-002** Estrategia de librería de UGC humano · `OQ-13`
-- [ ] **P5-PERF-001** Pruebas de carga k6: rate limits, cuotas, fan-out de publicación
-- [ ] **P5-PARITY-001** **Recorrer la Parity Matrix de PRD §23 y cerrar cada fila**
+- ~~**P5-AUDIT-001** Audit log de acciones destructivas y facturables · `EXT-004`, PRD §9.12~~ · **fuera de alcance:** D-06 (un usuario, sin billing; `judgment_records` cubre las decisiones de IA)
+- [~] **P5-A11Y-001** WCAG 2.1 AA · `NFR-020` · @coordinador 2026-09-24 (pasada al cerrar el sprint 7)
+- [x] **P5-A11Y-002** **Alternativa no gestual al swipe de Blitz** · `NFR-020` · ⚠️ el swipe no puede ser el único camino · **cerrada 2026-09-24:** botones + `aria-keyshortcuts` + flechas en `BlitzDeck.tsx`
+- ~~**P5-EVENT-001** Suite completa de eventos de PRD §18~~ · **fuera de alcance:** D-06 (un usuario)
+- ~~**P5-EVENT-002** Funnel de activación **segmentado por `source_type`** · PRD §18 · ⚠️ es la métrica que decide si `EXT-001` funcionó~~ · **fuera de alcance:** D-06 (un usuario)
+- [~] **P5-ERR-001** Auditoría: los ~90 estados de error y vacío de PRD §19 con su copy literal · @coordinador 2026-09-24 (pasada al cerrar el sprint 7)
+- [x] **P5-I18N-001** Contenido multi-idioma del plan Pro · `OQ-12` · **cerrada 2026-09-24:** adaptado: `language` por marca en la estrategia (el copy lo respeta desde el sprint 7, @s7-C)
+- [!] **P5-LIBR-001** Estrategia de librería de personajes AI UGC · `OQ-13`
+  > bloqueada: derechos y curación de la librería (OQ-13): decisión del dueño
+- [!] **P5-LIBR-002** Estrategia de librería de UGC humano · `OQ-13`
+  > bloqueada: derechos y curación de la librería (OQ-13): decisión del dueño
+- ~~**P5-PERF-001** Pruebas de carga k6: rate limits, cuotas, fan-out de publicación~~ · **fuera de alcance:** D-06 (un usuario)
+- [~] **P5-PARITY-001** **Recorrer la Parity Matrix de PRD §23 y cerrar cada fila** · @coordinador 2026-09-24: auditoría hecha (96 filas); se cierra con el sprint 7
 
 ---
 
