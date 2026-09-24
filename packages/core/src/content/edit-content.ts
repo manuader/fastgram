@@ -386,3 +386,7 @@ export function markEditRebuildSucceeded(
     lastEdit: { at: now, outcome: "applied", kind: "rebuild" },
   };
 }
+
+// El mapeo de cajas a `buildPayload` que usa `content-rebuild` (`PU-EDIT-002`).
+// Re-exportado desde acá para no tocar `index.ts`: es la otra mitad de editar.
+export * from "./text-boxes-to-build-payload.js";

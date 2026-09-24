@@ -44,6 +44,11 @@ import {
   type ContentBuildPayload,
   type MediaElement,
 } from "@fastgram/contracts";
+import {
+  applyTextBoxesToBuildPayload,
+  type ContentTextBox,
+  type TextFontFamilies,
+} from "@fastgram/core";
 import type { RenderImage, RenderJob, RenderText, RenderVideo } from "@fastgram/ports";
 
 /** Los cuatro formatos que el motor sabe construir. `custom` no está: ver el handler. */
@@ -51,7 +56,18 @@ export type RenderableFormat = RenderJob["format"];
 
 export type RenderJobResult =
   | { readonly ok: true; readonly job: RenderJob }
-  | { readonly ok: false; readonly reason: string };
+  | {
+      readonly ok: false;
+      /** Para el log. */
+      readonly reason: string;
+      /**
+       * Código estable, el que puede terminar en `lastEdit.failureReason`.
+       * `invalid_build_payload` si el payload persistido no cumple el contrato;
+       * `edit_not_renderable` si son las cajas del editor las que no se pueden
+       * llevar al payload (ver {@link toEditedRenderJob}).
+       */
+      readonly code: "invalid_build_payload" | "edit_not_renderable";
+    };
 
 /**
  * Qué formato describe un payload.
@@ -121,6 +137,7 @@ export function toRenderJob(raw: unknown, contentType: string): RenderJobResult 
     // se esperaba, no qué llegó.
     return {
       ok: false,
+      code: "invalid_build_payload",
       reason: `buildPayload no cumple el contrato: ${parsed.error.issues
         .map((i) => `${i.path.join(".")}: ${i.code}`)
         .join("; ")}`,
@@ -132,6 +149,7 @@ export function toRenderJob(raw: unknown, contentType: string): RenderJobResult 
   if (format !== contentType) {
     return {
       ok: false,
+      code: "invalid_build_payload",
       reason:
         `el buildPayload tiene forma de ${format} y la pieza dice ser ` +
         `${contentType}. Alguien reescribió uno de los dos sin el otro.`,
@@ -196,4 +214,63 @@ export function toRenderJob(raw: unknown, contentType: string): RenderJobResult 
       text: toRenderText(payload.text),
     },
   };
+}
+
+/**
+ * El job de un **rebuild de edición**: el `buildPayload` original con las cajas
+ * del editor aplicadas encima — `FR-051`, `PU-EDIT-002`.
+ *
+ * `PATCH /content/:id` escribe `content_text_boxes` y no toca `buildPayload`.
+ * El mapeo de caja a texto de `FR-070` (centro + ancho en % → px de canvas)
+ * vive en `core` (`applyTextBoxesToBuildPayload`); acá se hace lo que `core`
+ * no puede:
+ *
+ *  1. **Se valida el payload original** con el contrato antes de editarlo.
+ *  2. **Se revalida el editado** pasándolo por {@link toRenderJob}: si el mapeo
+ *     produjera algo que el contrato no acepta, falla acá y no en el motor.
+ *  3. **Se pone `fontFamily`**, que el payload de `FR-070` no tiene y el puerto
+ *     sí. Sin esto, cambiar la tipografía en el inspector no cambiaría nada.
+ *
+ * El payload editado **no se persiste**: las cajas son el estado completo del
+ * texto, y rehacerlo desde el original en cada edición hace que dos ediciones
+ * seguidas no se acumulen sobre un payload ya editado.
+ */
+export function toEditedRenderJob(
+  raw: unknown,
+  contentType: string,
+  boxes: readonly ContentTextBox[],
+): RenderJobResult {
+  const parsed = contentBuildPayloadSchema.safeParse(raw);
+  if (!parsed.success) return toRenderJob(raw, contentType);
+
+  const edited = applyTextBoxesToBuildPayload(parsed.data, boxes);
+  if (!edited.ok) {
+    return {
+      ok: false,
+      code: "edit_not_renderable",
+      reason: `${edited.code}: ${edited.reason}`,
+    };
+  }
+
+  const mapped = toRenderJob(edited.payload, contentType);
+  if (!mapped.ok) return mapped;
+  return { ok: true, job: withFontFamilies(mapped.job, edited.fontFamilies) };
+}
+
+function withFamily(text: RenderText, family: string | undefined): RenderText {
+  return family === undefined ? text : { ...text, fontFamily: family };
+}
+
+/** `families[superficie][texto]`, con el mismo orden que el payload editado. */
+function withFontFamilies(job: RenderJob, families: TextFontFamilies): RenderJob {
+  if (job.format === "slideshow") {
+    return {
+      ...job,
+      images: job.images.map((slide, i) => ({
+        ...slide,
+        texts: slide.texts.map((t, k) => withFamily(t, families[i]?.[k])),
+      })),
+    };
+  }
+  return { ...job, text: withFamily(job.text, families[0]?.[0]) };
 }

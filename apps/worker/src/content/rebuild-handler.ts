@@ -23,18 +23,25 @@
  *   siendo usable y se reporta `lastEdit` fallido"* (PRD:1204): vuelve a
  *   `CREATED` con los `files` de antes.
  *
- * ## Lo que hoy NO puede hacer, y por eso falla con motivo
+ * ## Cómo llega una edición al video (`PU-EDIT-002`)
  *
- * **El render lee sólo `buildPayload`**, y ninguna de las dos ediciones que
- * existen lo modifica: `PATCH` escribe `content_text_boxes` y `regenerate`
- * necesita un modelo de copy que este worker no tiene. Una pieza con cajas de
- * texto se cierra como rebuild fallido (`edit_not_renderable`) **sin llamar al
- * renderer**: renderizar produciría la versión de antes con la edición
- * declarada `applied`, que es exactamente lo que la trampa 30 prohíbe escribir.
+ * **El render lee sólo `buildPayload`** y `PATCH` escribe `content_text_boxes`.
+ * El motor lee las cajas con la fila bloqueada y, si hay, las aplica sobre el
+ * `buildPayload` original (`toEditedRenderJob` → `applyTextBoxesToBuildPayload`
+ * de `core`): `position` es el centro de la caja en % del lienzo,
+ * `widthPercent` su ancho, `font.size`/`stroke.width` siguen en unidades de
+ * editor y los escala el render (decisiones del dueño 2026-09-23/24, FR-051 y
+ * FR-070). En éxito la pieza queda `CREATED` con los archivos nuevos y el
+ * `lastEdit` aplicado que escribió la API.
  *
- * El camino que sí renderiza —pieza sin cajas, `buildPayload` reescrito— es el
- * que tomaría un swap de media (`F-061`) el día que exista una ruta que
- * reescriba el payload. Hoy ninguna lo hace.
+ * Lo que sigue cerrando con `edit_not_renderable`, sin llamar al renderer:
+ *
+ * - **`regenerate`**: necesita un modelo de copy que este worker no tiene;
+ *   renderizar las cajas de antes declararía aplicada una regeneración que no
+ *   cambió nada (trampa 30).
+ * - **Cajas que no caben en el payload de `FR-070`**: más de una caja en un
+ *   formato de `text` singular, o una caja de un slide que no existe. Ver la
+ *   cabecera de `core/content/text-boxes-to-build-payload.ts`.
  *
  * ## El renderer
  *

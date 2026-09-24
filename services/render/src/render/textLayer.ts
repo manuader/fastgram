@@ -156,32 +156,69 @@ export async function renderTextBox(
   const pad = strokeWidthPx;
   const glyphLeft = pad;
   const glyphTop = pad;
-  let layerWidth = fill.width + pad * 2;
+  /** El bloque de texto con su contorno, sin fondo. */
+  const blockWidth = fill.width + pad * 2;
+  let layerWidth = blockWidth;
   let layerHeight = fill.height + pad * 2;
+
+  // ── Dónde cae el bloque (FR-051, decisión del dueño 2026-09-24) ─────────
+  // `position` es el CENTRO de la caja, en % del lienzo; `widthPercent` es el
+  // ancho de la caja. El texto hace wrap a ese ancho y la caja crece hacia
+  // arriba y abajo desde el centro. Pango devuelve la imagen recortada al
+  // texto (una línea corta sale más angosta que la caja), así que la
+  // alineación se resuelve acá, contra la caja: `left` pega el bloque al borde
+  // izquierdo de la caja, `right` al derecho, `center` lo centra en `x`. Antes
+  // se centraba siempre en `x`, y `left`/`right` sólo alineaban las líneas
+  // entre sí: una caja alineada a la izquierda no arrancaba donde el editor la
+  // muestra.
+  const centerX = (canvas.width * box.position.x) / 100;
+  const centerY = (canvas.height * box.position.y) / 100;
+  const boxLeft = centerX - boxWidth / 2;
 
   const composites: sharp.OverlayOptions[] = [];
 
   // Fondo (`FR-051`: pill | full-width | null).
-  let backgroundLeftShift = 0;
+  const fullWidth = box.background?.style === "full-width";
+  let backgroundPadding = 0;
   if (box.background !== null) {
-    const padding = Math.round(fontSizePx * BACKGROUND_PADDING_RATIO);
+    backgroundPadding = Math.round(fontSizePx * BACKGROUND_PADDING_RATIO);
     const rgb = hexToRgb(box.background.color);
-    const bgHeight = layerHeight + padding * 2;
-    const bgWidth =
-      box.background.style === "full-width" ? canvas.width : layerWidth + padding * 2;
+    const bgHeight = layerHeight + backgroundPadding * 2;
+    const bgWidth = fullWidth ? canvas.width : layerWidth + backgroundPadding * 2;
     const radius = box.background.style === "pill" ? Math.round(bgHeight / 2) : 0;
     const svg = Buffer.from(
       `<svg xmlns="http://www.w3.org/2000/svg" width="${bgWidth}" height="${bgHeight}">` +
         `<rect x="0" y="0" width="${bgWidth}" height="${bgHeight}" rx="${radius}" ry="${radius}" ` +
         `fill="rgb(${rgb.r},${rgb.g},${rgb.b})" fill-opacity="${box.background.opacity}"/></svg>`,
     );
-    backgroundLeftShift = Math.round((bgWidth - layerWidth) / 2);
     layerWidth = bgWidth;
     layerHeight = bgHeight;
     composites.push({ input: svg, left: 0, top: 0 });
   }
 
-  const contentLeft = backgroundLeftShift > 0 ? backgroundLeftShift : 0;
+  // Ancho de lo que se alinea dentro de la caja: el bloque con su pill, o el
+  // bloque solo cuando el fondo es una banda de lado a lado.
+  const alignedWidth = fullWidth ? blockWidth : layerWidth;
+  const alignedLeft =
+    box.align === "left"
+      ? boxLeft
+      : box.align === "right"
+        ? boxLeft + boxWidth - alignedWidth
+        : centerX - alignedWidth / 2;
+
+  // `full-width` es una banda de TODO el ancho del lienzo: la capa va en 0 y
+  // el texto se corre adentro. Antes la banda se centraba en `x`, y con una
+  // caja fuera del centro quedaba corrida y cortada de un lado. Se acota al
+  // lienzo porque `composite` no acepta desplazamientos negativos.
+  const layerLeft = fullWidth ? 0 : Math.round(alignedLeft);
+  const contentLeft = fullWidth
+    ? Math.min(
+        Math.max(0, Math.round(alignedLeft)),
+        Math.max(0, canvas.width - blockWidth),
+      )
+    : box.background === null
+      ? 0
+      : backgroundPadding;
   const contentTop =
     box.background === null ? 0 : Math.round((layerHeight - fill.height - pad * 2) / 2);
 
@@ -219,10 +256,7 @@ export async function renderTextBox(
     .png({ compressionLevel: 9 })
     .toBuffer();
 
-  // `position` es el CENTRO de la caja (elección del servicio; ver reporte).
-  const centerX = (canvas.width * box.position.x) / 100;
-  const centerY = (canvas.height * box.position.y) / 100;
-  const left = Math.round(centerX - layerWidth / 2);
+  const left = layerLeft;
   const top = Math.round(centerY - layerHeight / 2);
 
   return {

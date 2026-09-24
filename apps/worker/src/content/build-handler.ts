@@ -85,6 +85,7 @@
 import {
   parseContentBuildJob,
   type ContentBuildJob,
+  type ContentTextBox,
   type SaveBucket,
 } from "@fastgram/core";
 import {
@@ -109,7 +110,7 @@ import { canonicalObjectUrl } from "@fastgram/adapters";
 import { mediaUrlsOf, workspaceMediaAuthorization } from "./media-authorization.js";
 
 import { refundContentSave } from "../support/quota.js";
-import { toRenderJob } from "./render-job.js";
+import { toEditedRenderJob, toRenderJob } from "./render-job.js";
 
 /** Lo mínimo que el handler necesita loguear. `pino` lo cumple. */
 export interface BuildLogger {
@@ -221,6 +222,13 @@ interface BuildSubject {
   readonly buildPayload: unknown;
   readonly contentType: string;
   readonly revision: number;
+  /**
+   * Sólo en un rebuild: las cajas del editor (`content_text_boxes`), leídas con
+   * la fila bloqueada. Si hay, se aplican sobre `buildPayload` antes de
+   * renderizar (`toEditedRenderJob`). Vacío = pieza sin cajas, el payload va
+   * tal cual.
+   */
+  readonly textBoxes?: readonly ContentTextBox[];
 }
 
 type ReadOutcome =
@@ -228,6 +236,73 @@ type ReadOutcome =
   /** No hay nada que hacer y no es un error: la pieza se borró, ya está lista, o el job es viejo. */
   | { readonly kind: "skip"; readonly why: string }
   | { readonly kind: "fail"; readonly failure: BuildFailure };
+
+/** El tope del repositorio (`PAGINATION.limitMax`). Pedir más lo recorta igual. */
+const TEXT_BOX_PAGE_SIZE = 100;
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * Todas las cajas de la pieza, **no la primera página**: un slideshow de 20
+ * slides con seis cajas pasa de 100, y quedarse con la página 1 renderizaría
+ * una pieza a la que le faltan textos. Mismo recorrido que `listAllTextBoxes`
+ * de la API (`routes/v1/content.ts`).
+ *
+ * Las columnas `jsonb` vuelven como `unknown`. Acá sólo se comprueba que sean
+ * objetos —para que la validación de `core` no explote con un `TypeError` sobre
+ * un `null`—; los rangos y las claves los valida `applyTextBoxesToBuildPayload`
+ * con `assertValidTextBoxes`, la misma regla que aceptó el `PATCH`. Una fila
+ * con forma rota se entrega igual y `core` la rechaza con código estable.
+ */
+async function listAllTextBoxes(
+  tx: Transaction,
+  companyId: string,
+  contentId: string,
+): Promise<ContentTextBox[]> {
+  const all: ContentTextBox[] = [];
+  let cursor: string | undefined;
+  for (;;) {
+    const chunk = await contentTextBoxRepository.list(
+      tx,
+      { companyId },
+      {
+        filter: { contentId: { eq: contentId } },
+        limit: TEXT_BOX_PAGE_SIZE,
+        ...(cursor === undefined ? {} : { cursor }),
+      },
+    );
+    for (const row of chunk.items) {
+      const shaped =
+        isRecord(row.position) &&
+        isRecord(row.font) &&
+        isRecord(row.stroke) &&
+        (row.background === null || isRecord(row.background));
+      // Una caja con JSON que no es objeto se manda con geometría imposible:
+      // `assertValidTextBoxes` la rechaza y el rebuild cierra con código
+      // estable en vez de un `TypeError` reintentable.
+      all.push({
+        id: row.id,
+        ...(row.slideIndex === null ? {} : { slideIndex: row.slideIndex }),
+        text: row.text,
+        // Los `as` están acotados a columnas `jsonb` cuya forma valida `core`
+        // (`assertValidTextBoxes`) antes de usarlas.
+        position: (shaped
+          ? row.position
+          : { x: Number.NaN, y: Number.NaN }) as ContentTextBox["position"],
+        widthPercent: row.widthPercent,
+        font: (shaped ? row.font : {}) as ContentTextBox["font"],
+        color: row.color,
+        stroke: (shaped ? row.stroke : {}) as ContentTextBox["stroke"],
+        background: (shaped ? row.background : null) as ContentTextBox["background"],
+      });
+    }
+    // `cursor === null` con `hasMore` no debería pasar; si pasara, el bucle no
+    // tendría por dónde avanzar.
+    if (!chunk.hasMore || chunk.cursor === null) return all;
+    cursor = chunk.cursor;
+  }
+}
 
 export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<unknown> {
   return createContentRenderHandler(deps, "build");
@@ -292,30 +367,32 @@ export function createContentRenderHandler(
         };
 
       if (mode === "rebuild") {
-        // **El render lee sólo `buildPayload`.** Las ediciones de `PATCH
-        // /content/:id` viven en `content_text_boxes` (posición 0–100,
-        // `widthPercent`, fuente), y `regenerate` necesita un modelo de copy
-        // que este worker no tiene. Ninguna de las dos llega a `toRenderJob`:
-        // rehacer el render acá produciría **la misma pieza de antes** y la
-        // dejaría en `CREATED` con `lastEdit.outcome = "applied"` — una edición
-        // que dice estar aplicada y no se ve (FR-051, criterio 1). El mapeo de
-        // cajas a píxeles del payload no lo da el PRD, y `content.ts` ya se
-        // negó a inventarlo; acá tampoco. Se cierra como rebuild fallido:
-        // la versión anterior sigue usable y el fallo se reporta (PRD:1204).
-        const cajas = await contentTextBoxRepository.count(
-          tx,
-          { companyId: job.companyId },
-          { filter: { contentId: { eq: job.contentId } } },
-        );
-        if (cajas > 0)
+        const boxes = await listAllTextBoxes(tx, job.companyId, job.contentId);
+
+        // `regenerate` (AI-004) reescribe el copy con un modelo **antes** de
+        // construir, y este worker no lo hace. Renderizar las cajas tal como
+        // están produciría la pieza de antes con `lastEdit.kind =
+        // "regenerate"` y `outcome = "applied"`: una regeneración que dice
+        // estar aplicada y no cambió una letra (trampa 30). Sigue cerrándose
+        // como rebuild fallido hasta que el copy se regenere acá.
+        if (boxes.length > 0 && job.reason === "regenerate")
           return {
             kind: "fail",
             failure: permanent(
-              `la pieza tiene ${String(cajas)} caja(s) de texto y el render sólo lee ` +
-                "buildPayload: la edición no llegaría al video",
+              "regenerate necesita reescribir el copy con un modelo y este worker no lo hace",
               "edit_not_renderable",
             ),
           };
+
+        return {
+          kind: "build",
+          subject: {
+            buildPayload: row.buildPayload,
+            contentType: row.type,
+            revision: row.revision,
+            textBoxes: boxes,
+          },
+        };
       }
 
       return {
@@ -525,12 +602,17 @@ export function createContentRenderHandler(
     let thumbnailUrl: string | undefined;
 
     if (outcome.kind === "build") {
-      const mapped = toRenderJob(
-        outcome.subject.buildPayload,
-        outcome.subject.contentType,
-      );
+      const boxes = outcome.subject.textBoxes ?? [];
+      const mapped =
+        boxes.length > 0
+          ? toEditedRenderJob(
+              outcome.subject.buildPayload,
+              outcome.subject.contentType,
+              boxes,
+            )
+          : toRenderJob(outcome.subject.buildPayload, outcome.subject.contentType);
       if (!mapped.ok) {
-        failure = permanent(mapped.reason, "invalid_build_payload");
+        failure = permanent(mapped.reason, mapped.code);
       } else {
         try {
           // El grant se acuña **por build** y autoriza exactamente la media de

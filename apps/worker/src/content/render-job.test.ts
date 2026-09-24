@@ -13,7 +13,9 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { formatOf, toRenderJob } from "./render-job.js";
+import type { ContentTextBox } from "@fastgram/core";
+
+import { formatOf, toEditedRenderJob, toRenderJob } from "./render-job.js";
 
 const TEXTO = {
   content: "hola",
@@ -135,5 +137,67 @@ describe("toRenderJob", () => {
       "wall-of-text",
     );
     expect(out.ok).toBe(false);
+  });
+});
+
+describe("toEditedRenderJob — las cajas del editor llegan al job (PU-EDIT-002)", () => {
+  const caja = (over: Partial<ContentTextBox> = {}): ContentTextBox => ({
+    id: "slide-0-text-0",
+    slideIndex: 0,
+    text: "editado",
+    position: { x: 25, y: 10 },
+    widthPercent: 50,
+    font: { family: "oswald", weight: 600, size: 24 },
+    color: "#FF0000",
+    stroke: { width: 4, color: "#00FF00" },
+    background: { color: "#000000", opacity: 0.5, style: "pill" },
+    ...over,
+  });
+
+  it("wall-of-text: geometría a px, fuente en unidades de editor, fontFamily puesto", () => {
+    const r = toEditedRenderJob(WALL_OF_TEXT, "wall-of-text", [caja()]);
+    if (!r.ok) throw new Error(r.reason);
+    if (r.job.format !== "wall-of-text") throw new Error(r.job.format);
+    expect(r.job.text).toEqual({
+      content: "editado",
+      x: 270,
+      y: 192,
+      width: 540,
+      fontSize: 24,
+      color: "#FF0000",
+      textAlign: "center",
+      fontWeight: 600,
+      strokeWidth: 4,
+      strokeColor: "#00FF00",
+      backgroundColor: "#000000",
+      fontFamily: "oswald",
+    });
+    expect(r.job.video).toEqual(MEDIA);
+  });
+
+  it("slideshow: cada slide con su canvas (1080×1350) y su familia", () => {
+    const r = toEditedRenderJob(SLIDESHOW, "slideshow", [
+      caja({ position: { x: 50, y: 50 } }),
+    ]);
+    if (!r.ok) throw new Error(r.reason);
+    if (r.job.format !== "slideshow") throw new Error(r.job.format);
+    expect(r.job.images[0]?.texts[0]).toMatchObject({
+      x: 540,
+      y: 675,
+      fontFamily: "oswald",
+    });
+  });
+
+  it("dos cajas en un formato de `text` singular → edit_not_renderable", () => {
+    const r = toEditedRenderJob(GREEN_SCREEN, "green-screen", [
+      caja(),
+      caja({ id: "slide-0-text-1" }),
+    ]);
+    expect(r).toMatchObject({ ok: false, code: "edit_not_renderable" });
+  });
+
+  it("un payload persistido roto sigue siendo invalid_build_payload", () => {
+    const r = toEditedRenderJob({ roto: true }, "wall-of-text", [caja()]);
+    expect(r).toMatchObject({ ok: false, code: "invalid_build_payload" });
   });
 });

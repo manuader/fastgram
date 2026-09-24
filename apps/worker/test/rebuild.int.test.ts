@@ -11,8 +11,11 @@
  *    `lastEdit` fallido (PRD:1204), nunca `FAILED`;
  *  - **nunca reembolsa**: la fila trae el `saveBucket` del build original, que
  *    se entregó, y devolverlo sería un save gratis por edición fallida;
- *  - una pieza con cajas de texto no se renderiza —el render no las lee— y se
- *    cierra con `edit_not_renderable` en vez de declararse aplicada;
+ *  - una pieza con cajas de texto se renderiza **con las cajas aplicadas**
+ *    sobre el `buildPayload` (`PU-EDIT-002`: centro + ancho en % → px); lo
+ *    que no cabe en el payload (dos cajas en un formato de `text` singular,
+ *    `regenerate` sin modelo) cierra con `edit_not_renderable` sin llamar al
+ *    renderer, en vez de declararse aplicado;
  *  - un job de edición que quedó en la cola `content-build` se cierra igual;
  *  - y `createHandlers` lo monta con el renderer de `content-build`.
  *
@@ -55,11 +58,14 @@ const silencioso: BuildLogger = { info: () => {}, warn: () => {}, error: () => {
 class RendererEspia implements MediaRenderer {
   readonly #inner = new MemoryMediaRenderer();
   next: Error | null = null;
+  /** El último job que llegó al motor: es lo que prueba que la edición viajó. */
+  lastJob: RenderJob | null = null;
   duranteElRender: (() => Promise<void>) | null = null;
   calls = 0;
 
   async renderAll(...args: Parameters<MediaRenderer["renderAll"]>) {
     this.calls += 1;
+    this.lastJob = args[0];
     if (this.duranteElRender !== null) {
       const fn = this.duranteElRender;
       this.duranteElRender = null;
@@ -130,7 +136,12 @@ const jobFor = (
  * **el cargo del build original** en la fila.
  */
 async function enRebuild(
-  options: { cajas?: boolean; company?: string; buildPayload?: unknown } = {},
+  options: {
+    /** `true` o `1`: una caja; `2`: dos (no caben en el `text` singular). */
+    cajas?: boolean | 1 | 2;
+    company?: string;
+    buildPayload?: unknown;
+  } = {},
 ): Promise<string> {
   const company = options.company ?? companyId;
   const contentId = await seedPiece(handle, company, {
@@ -144,7 +155,7 @@ async function enRebuild(
         last_edit = ${JSON.stringify({ at: 1, outcome: "applied", kind: "minor" })}::jsonb
     where id = ${contentId}::uuid
   `;
-  if (options.cajas === true) {
+  if (options.cajas === true || options.cajas === 1 || options.cajas === 2) {
     await handle.sql`
       insert into content_text_boxes
         (id, content_id, company_id, slide_index, text, position, width_percent,
@@ -153,6 +164,17 @@ async function enRebuild(
               ${JSON.stringify({ x: 10, y: 20 })}::jsonb, 80,
               ${JSON.stringify({ family: "anton", weight: 400, size: 48 })}::jsonb,
               '#FFFFFF', ${JSON.stringify({ width: 2, color: "#000000" })}::jsonb, null)
+    `;
+  }
+  if (options.cajas === 2) {
+    await handle.sql`
+      insert into content_text_boxes
+        (id, content_id, company_id, slide_index, text, position, width_percent,
+         font, color, stroke, background)
+      values ('slide-0-text-1', ${contentId}::uuid, ${company}::uuid, 0, 'Otra',
+              ${JSON.stringify({ x: 50, y: 80 })}::jsonb, 60,
+              ${JSON.stringify({ family: "inter", weight: 400, size: 18 })}::jsonb,
+              '#FFFFFF', ${JSON.stringify({ width: 0, color: "#000000" })}::jsonb, null)
     `;
   }
   return contentId;
@@ -197,20 +219,62 @@ beforeEach(() => {
   storage = new MemoryStorage(clock, "memory://bucket");
 });
 
-describe("una edición de cajas de texto no se puede renderizar hoy", () => {
-  it("vuelve a CREATED con los files anteriores, sin llamar al renderer", async () => {
+describe("una edición de cajas de texto llega al render (PU-EDIT-002)", () => {
+  it("renderiza con la caja aplicada, sube con la revisión nueva y deja CREATED", async () => {
     const contentId = await enRebuild({ cajas: true });
+    const antes = await usados();
 
     await rebuild()(ctx(jobFor(contentId)));
 
     const row = await pieza(contentId);
-    // Primero lo que no tiene que pasar (trampa 35).
+    expect(row.status).not.toBe("FAILED");
+    expect(renderer.calls).toBe(1);
+    expect(row.status).toBe("CREATED");
+    expect(row.files).toHaveLength(1);
+    expect(row.files).not.toEqual(PREVIOS);
+    expect(decodeURIComponent(row.files[0] ?? "")).toContain(`/${contentId}/2/`);
+    expect(row.revision).toBe(2);
+    // El `lastEdit` aplicado que escribió la API queda: el éxito no lo toca.
+    expect(row.last_edit).toEqual({ at: 1, outcome: "applied", kind: "minor" });
+    expect(await usados()).toBe(antes);
+  });
+
+  it("lo que llega al motor es la caja, no el texto original", async () => {
+    const contentId = await enRebuild({ cajas: true });
+
+    await rebuild()(ctx(jobFor(contentId)));
+
+    const job = renderer.lastJob;
+    if (job === null || job.format !== "wall-of-text") throw new Error("sin job");
+    // Caja (10, 20) al 80 % en 1080×1920: centro (108, 384), ancho 864. La
+    // fuente va en unidades de editor (48): el ×3 lo aplica el render.
+    expect(job.text).toMatchObject({
+      content: "Editado",
+      x: 108,
+      y: 384,
+      width: 864,
+      fontSize: 48,
+      fontFamily: "anton",
+      fontWeight: 400,
+      strokeWidth: 2,
+      strokeColor: "#000000",
+      color: "#FFFFFF",
+    });
+    // La media no se toca en una edición menor.
+    expect(job.video.url).toContain("https://");
+  });
+
+  it("dos cajas en un formato de `text` singular: edit_not_renderable, sin llamar al renderer", async () => {
+    const contentId = await enRebuild({ cajas: 2 });
+
+    await rebuild()(ctx(jobFor(contentId)));
+
+    const row = await pieza(contentId);
     expect(row.status).not.toBe("FAILED");
     expect(renderer.calls).toBe(0);
     expect(row.status).toBe("CREATED");
     expect(row.files).toEqual(PREVIOS);
     expect(row.thumbnail_url).toBe(PREVIA_THUMB);
-    expect(row.revision).toBe(2);
     expect(row.last_edit).toEqual({
       at: NOW.getTime(),
       outcome: "failed",
@@ -219,19 +283,21 @@ describe("una edición de cajas de texto no se puede renderizar hoy", () => {
     });
   });
 
-  it("regenerate queda con kind `regenerate`", async () => {
+  it("regenerate sigue sin renderizarse: no hay modelo de copy en el worker", async () => {
     const contentId = await enRebuild({ cajas: true });
 
     await rebuild()(ctx(jobFor(contentId, 2, "regenerate")));
 
+    expect(renderer.calls).toBe(0);
     expect((await pieza(contentId)).last_edit).toMatchObject({
       outcome: "failed",
       kind: "regenerate",
+      failureReason: "edit_not_renderable",
     });
   });
 
-  it("no reembolsa el save del build original", async () => {
-    const contentId = await enRebuild({ cajas: true });
+  it("un fallo al cerrar no reembolsa el save del build original", async () => {
+    const contentId = await enRebuild({ cajas: 2 });
     const antes = await usados();
 
     await rebuild()(ctx(jobFor(contentId)));
@@ -323,7 +389,7 @@ describe("reintentos", () => {
 
 describe("reentrega idempotente", () => {
   it("tras un fallo, la segunda entrega no reescribe nada", async () => {
-    const contentId = await enRebuild({ cajas: true });
+    const contentId = await enRebuild({ cajas: 2 });
     await rebuild()(ctx(jobFor(contentId)));
     const primera = await pieza(contentId);
 
