@@ -78,14 +78,34 @@ de desarrollador hay que actualizarlas en cada consola. Para no hacerlo cada vez
 - Los valores por defecto son una elección nuestra, no un dato: ninguna red publica una
   "frecuencia segura".
 
-## 6. Lo que todavía no está
+## 6. Piloto automático, métricas y perfiles sociales
 
-Los avances en curso están en `tasks.md` §PU:
+- **Piloto** (Settings → Strategy → Autonomy → Autopilot): la marca genera sola, cada pieza pasa un
+  pre-chequeo (en tema, sin afirmaciones riesgosas, sin otras marcas, coherente, en el idioma) y
+  lo que pasa se aprueba y se agenda. Lo que no pasa queda rechazado con el motivo en **Today**.
+  Si el modelo no responde, la pieza espera tu revisión: **nunca se aprueba algo que no se juzgó**.
+  **Ojo:** con el modelo local de 7B el chequeo de "otras marcas" es flojo. Antes de dejar una marca
+  en piloto, poné un modelo mejor en Settings → Models → **Judgment**.
+- **Analytics**: aparece cuando haya posts publicados y cuentas conectadas. X está apagado por
+  defecto porque leer métricas cuesta US$0,005 por post (`METRICS_X_ENABLED=true` para prenderlo).
+  TikTok no da métricas con el modo borrador. Con **Auto-tune content mix**, el mix de formatos se
+  ajusta una vez por semana hacia lo que mejor rinde.
+- **Perfiles sociales** en Brand → Add source:
+  - **X**: funciona sin login (FxTwitter).
+  - **Instagram sin login: hoy no funciona** (Instagram responde "login required"). Queda el panel
+    **"Paste your bio and a few recent captions"**, o Business Discovery si conectás una cuenta con
+    Facebook Login.
+  - **TikTok**: hace falta levantar el contenedor de Evil0ctal (ver
+    `docs/AUDITORIA-SCRAPERS.md` y el reporte en `tasks.md`); sin él, pegar la bio.
 
-- Piloto automático, métricas y ajuste automático del mix.
-- Leer perfiles de Instagram, TikTok y X para el análisis de marca. Hoy sólo la web. Instagram y X
-  sin login funcionan mal: la alternativa es pegar la bio a mano.
-- Deploy a un VPS para publicar con la Mac apagada.
+## 7. Publicar con la Mac apagada (VPS)
 
-Más adelante: YouTube, LinkedIn, modelos locales de imagen (ComfyUI), influencers IA, Reddit e
-Inspiration.
+Todo está en [`deploy/README.md`](../deploy/README.md): Docker Compose, túnel con nombre, acceso
+privado por SSH o Tailscale (la app no tiene login: **no la expongas a internet**), y backups con
+restore probado. Antes de desplegar falta una decisión tuya: la licencia del build de FFmpeg
+(`P0-REPO-004`).
+
+## 8. Lo que todavía no está
+
+YouTube, LinkedIn, modelos locales de imagen (ComfyUI), influencers IA (depende de que Higgsfield
+exponga personajes por API), Reddit e Inspiration.

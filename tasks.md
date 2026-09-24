@@ -83,7 +83,7 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [x] **PU-CAL-001** Aprobar → **auto-slot** en el próximo horario libre de la estrategia de la marca
 - [x] **PU-CAL-002** Calendario semana/mes, drag & drop, filtro por marca o todas · completa `P2-CAL-001…003`
 - [x] **PU-BRAND-002** Estrategia por marca: redes, piezas/día por red, horarios, mix de formatos, idioma, **autonomía manual/piloto** · `D-08`
-- [ ] **PU-BRAND-003** Alta de marca de punta a punta (web + perfiles → revisión) · usa `P1-ONB-*` existentes
+- [x] **PU-BRAND-003** Alta de marca de punta a punta (web + perfiles → revisión) · usa `P1-ONB-*` existentes
 
 ## Sprint 3 — Se publica solo
 
@@ -106,8 +106,8 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 - [x] **PU-MODEL-003** Puerto `ImageGen` + adaptadores Higgsfield y fal · copiar el resultado a storage propio (Higgsfield lo guarda 7 días)
 - [x] **PU-MODEL-004** Puerto `VideoGen` + adaptadores Higgsfield y fal (Kling/Wan/Seedance/LTX)
 - [x] **PU-MODEL-005** Costo estimado antes de generar + **tope mensual** que corta la generación
-- [ ] **PU-SCRAPE-001** Extractores IG / TikTok / X con el scraper open source elegido, **auditado a mano**, **sin cuentas logueadas** · `D-13` · `= P1-BRAND-007…009`
-- [ ] **PU-SCRAPE-002** IG Business Discovery como vía oficial cuando la cuenta califica
+- [x] **PU-SCRAPE-001** Extractores IG / TikTok / X con el scraper open source elegido, **auditado a mano**, **sin cuentas logueadas** · `D-13` · `= P1-BRAND-007…009`
+- [x] **PU-SCRAPE-002** IG Business Discovery como vía oficial cuando la cuenta califica
 
 
 > **Estado 2026-09-24 (sprints 1–4, `1465d07`):** todo lo `[x]` de arriba tiene tests y `verify`/`test:int` verdes.
@@ -116,15 +116,20 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 
 ## Sprint 5 — Piloto automático
 
-- [ ] **PU-AUTO-001** Generación continua por marca: mantiene la cola según la frecuencia de su estrategia
-- [ ] **PU-AUTO-002** Piloto: pre-chequeo (`JV-3`) → aprobación automática → calendario · `= P4-JV-001/002`
-- [ ] **PU-AUTO-003** Resumen diario (qué se generó, qué se publicó, qué falló)
-- [ ] **PU-AUTO-004** Métricas de vuelta y ajuste de pesos de formatos y ángulos · `= P3-METRIC-001`
+- [x] **PU-AUTO-001** Generación continua por marca: mantiene la cola según la frecuencia de su estrategia
+- [x] **PU-AUTO-002** Piloto: pre-chequeo (`JV-3`) → aprobación automática → calendario · `= P4-JV-001/002`
+- [x] **PU-AUTO-003** Resumen diario (qué se generó, qué se publicó, qué falló)
+- [x] **PU-AUTO-004** Métricas de vuelta y ajuste de pesos de formatos y ángulos · `= P3-METRIC-001`
+
+
+> **Estado 2026-09-24, sprints 5–6 (`d368a42`, `327c721`):** piloto, métricas, extractores, deploy.
+> **Verificado con la app real:** X por FxTwitter lee el perfil público (20 posts → perfil `partial`); **Instagram anónimo falla (401 "login required")** → cae a tier D (pegar la bio). La vía estable para IG es Business Discovery (necesita conexión de Facebook Login). Deploy: stack completo en Docker, render con fuentes en Linux (32/32) y restore probados.
+> **Hallazgo del piloto:** con qwen2.5 7B, "¿menciona otra marca?" deja pasar "Skip the Starbucks line…": usar un modelo de `judgment` más grande antes de poner marcas en piloto.
 
 ## Sprint 6 — 24/7
 
-- [ ] **PU-RUN-004** Docker Compose completo para un VPS (incluye verificar las fuentes del render en Linux)
-- [ ] **PU-RUN-006** Backups de Postgres y del bucket, **con un restore probado**
+- [x] **PU-RUN-004** Docker Compose completo para un VPS (incluye verificar las fuentes del render en Linux)
+- [x] **PU-RUN-006** Backups de Postgres y del bucket, **con un restore probado**
 
 ## Después
 
