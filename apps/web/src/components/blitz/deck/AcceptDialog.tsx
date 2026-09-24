@@ -9,7 +9,6 @@ import {
   DialogTitle,
   Button,
   Spinner,
-  Tooltip,
 } from "@fastgram/ui";
 import { presentError } from "@/lib/api/error-presentation";
 import { tw } from "@/lib/i18n/t";
@@ -25,9 +24,9 @@ import { CalendarIcon, LibraryIcon } from "./icons";
  * `Cancel` devuelve la tarjeta al centro sin haber tocado el backend. Es la
  * lectura del PRD que hace de `Cancel` algo que cancela.
  *
- * `Schedule Post` (F-065) necesita el flujo de FR-060 y la programación de
- * posts desde acá, que no son de este sprint: se muestra —el usuario sabe que
- * existe— pero deshabilitado y con su tooltip.
+ * `Schedule Post` (F-065) guarda y manda la pieza al próximo horario libre de
+ * la estrategia de la marca (`POST /content/:id/autoschedule`, PU-CAL-001). El
+ * paso a paso de FR-060 (elegir redes y hora a mano) vive en el calendario.
  */
 export interface AcceptDialogProps {
   readonly open: boolean;
@@ -35,6 +34,9 @@ export interface AcceptDialogProps {
   /** El fallo del último intento, si lo hubo. Se muestra dentro del diálogo. */
   readonly error: unknown;
   readonly onSave: () => void;
+  /** Guardar y mandar al próximo horario libre de la estrategia (PU-CAL-001). */
+  readonly onSchedule: () => void;
+  readonly scheduling?: boolean;
   readonly onCancel: () => void;
 }
 
@@ -43,6 +45,8 @@ export function AcceptDialog({
   saving,
   error,
   onSave,
+  onSchedule,
+  scheduling = false,
   onCancel,
 }: AcceptDialogProps) {
   const failure = error === null || error === undefined ? null : presentError(error);
@@ -87,28 +91,29 @@ export function AcceptDialog({
             </span>
           </button>
 
-          <Tooltip content={td("deck.comingSoon")}>
-            <button
-              type="button"
-              aria-disabled="true"
-              className="flex w-full cursor-not-allowed items-start gap-3 rounded-xl border border-border bg-surface-sunken p-4 text-left opacity-60"
-              onClick={(event) => {
-                event.preventDefault();
-              }}
-            >
-              <span className="mt-0.5 text-text-subtle">
+          <button
+            type="button"
+            className="fg-focusable flex items-start gap-3 rounded-xl border border-border bg-surface p-4 text-left hover:border-border-strong disabled:opacity-60"
+            onClick={onSchedule}
+            disabled={saving}
+            aria-busy={scheduling || undefined}
+          >
+            <span className="mt-0.5 text-accent">
+              {scheduling ? (
+                <Spinner size="sm" aria-hidden />
+              ) : (
                 <CalendarIcon size={20} />
+              )}
+            </span>
+            <span>
+              <span className="block font-semibold text-text">
+                {td("deck.accept.schedule")}
               </span>
-              <span>
-                <span className="block font-semibold text-text">
-                  {td("deck.accept.schedule")}
-                </span>
-                <span className="block text-sm text-text-muted">
-                  {td("deck.accept.scheduleDescription")}
-                </span>
+              <span className="block text-sm text-text-muted">
+                {td("deck.accept.scheduleAuto")}
               </span>
-            </button>
-          </Tooltip>
+            </span>
+          </button>
 
           {failure !== null && (
             <p role="alert" className="text-sm text-danger">

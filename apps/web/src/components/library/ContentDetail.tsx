@@ -1,6 +1,15 @@
 "use client";
 
-import { Badge, Card, EmptyState, Skeleton, SkeletonText, Spinner } from "@fastgram/ui";
+import {
+  Badge,
+  Card,
+  EmptyState,
+  Skeleton,
+  SkeletonText,
+  Spinner,
+  buttonVariants,
+} from "@fastgram/ui";
+import { editorHref } from "@/components/editor/ContentEditor";
 import Link from "next/link";
 import { ApiErrorState } from "./ApiErrorState";
 import { tw } from "@/lib/i18n/t";
@@ -70,7 +79,17 @@ export function ContentDetail({ contentId }: ContentDetailProps) {
 
   return (
     <div className="fgw-detail">
-      {back}
+      <div className="flex items-center justify-between gap-3">
+        {back}
+        {query.data.status !== "FAILED" && (
+          <Link
+            href={editorHref(contentId)}
+            className={buttonVariants({ variant: "secondary", size: "sm" })}
+          >
+            {tw("library.detail.edit")}
+          </Link>
+        )}
+      </div>
       <ContentBody item={query.data} />
     </div>
   );

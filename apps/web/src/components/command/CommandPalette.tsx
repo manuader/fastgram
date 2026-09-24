@@ -15,6 +15,7 @@ import {
   PlusIcon,
   SearchIcon,
   SunIcon,
+  ZapIcon,
   type IconProps,
 } from "@/icons";
 import { tw, type CopyKey } from "@/lib/i18n/t";
@@ -131,6 +132,29 @@ export function CommandPalette({
               </Command.Item>
             </Command.Group>
           )}
+
+          <Command.Group heading={tw("command.group.create")}>
+            <Command.Item
+              value="create:prompt"
+              keywords={[
+                "create",
+                "prompt",
+                "generate",
+                "meme",
+                "video",
+                "idea",
+                "blitz",
+              ]}
+              onSelect={() => {
+                run(() => {
+                  router.push(`${ROUTES.blitz}#create`);
+                });
+              }}
+            >
+              <ZapIcon size={16} />
+              <span>{tw("command.createFromPrompt")}</span>
+            </Command.Item>
+          </Command.Group>
 
           <Command.Group heading={tw("command.group.navigation")}>
             {links.map((link) => {

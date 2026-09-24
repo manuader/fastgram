@@ -19,7 +19,11 @@ export const deckEn = {
   "deck.skip": "Skip", // nuevo · el PRD sólo dibuja `✕`
   "deck.accept": "Accept", // nuevo · el PRD sólo dibuja `✓`
   "deck.edit": "Edit", // literal
-  "deck.comingSoon": "Coming soon — sprint 2", // nuevo
+  "deck.comingSoon": "Coming soon", // nuevo
+  "deck.accept.scheduleAuto": "Add it to the next free slot of this brand's strategy", // nuevo
+  "deck.viewCalendar": "View calendar", // nuevo
+  "deck.scheduleFailed":
+    "Saved to Library, but it couldn't be scheduled. Try again from the calendar.", // nuevo
   "deck.keyHint": "Use ← to skip and → to accept", // nuevo
   "deck.indicator.accept": "Accept", // nuevo
   "deck.indicator.skip": "Skip", // nuevo

@@ -208,6 +208,12 @@ export const webEn = {
   "library.detail.files": "{count} files", // nuevo
   "library.detail.noFiles": "This piece has no files yet.", // nuevo
   "library.detail.revision": "Revision {revision}", // nuevo
+  "library.detail.edit": "Edit", // nuevo · PU-EDIT-003
+  "brandKit.generate": "Generate brand backgrounds", // nuevo · PU-MEDIA-002
+  "brandKit.queued":
+    "Generating {images} images and {videos} looping videos in your brand colors. They show up here in about a minute.", // nuevo
+  "brandKit.failed":
+    "Couldn't start the background generator. Is the render service running?", // nuevo
   "library.detail.openFile": "Open file {index}", // nuevo
 
   /* ------------------------------ Calendar · F-140..F-143, FR-110 (PRD:1653) */

@@ -54,6 +54,11 @@ export function CreatePromptBar() {
   const queryClient = useQueryClient();
   const generate = useGenerateFromPrompt();
   const inputId = useId();
+  // ⌘K → "Create from prompt" navega a `/blitz#create`: el foco va directo al tema.
+  useEffect(() => {
+    if (window.location.hash !== "#create") return;
+    document.getElementById(inputId)?.focus();
+  }, [inputId]);
   const errorId = useId();
 
   const [prompt, setPrompt] = useState("");

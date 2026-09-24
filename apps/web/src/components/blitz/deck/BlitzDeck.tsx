@@ -40,6 +40,10 @@ import {
   type DeckCard,
   type DeckSuggestion,
 } from "@/lib/blitz/deck/suggestion";
+import { autoscheduleResultSchema, type AutoscheduleResult } from "@fastgram/contracts";
+import { apiRequest } from "@/lib/api/client";
+import { autoschedulePath, describeAutoschedule } from "@/lib/calendar/autoschedule";
+import { editorHref } from "@/components/editor/ContentEditor";
 import { AcceptDialog } from "./AcceptDialog";
 import { BuildTray } from "./BuildTray";
 import { CardChips, RemixedFromPanel, WhyPanel, WhyToggle } from "./CardDetails";
@@ -88,6 +92,13 @@ export function BlitzDeck() {
   const [exitDir, setExitDir] = useState(0);
   const [whyOpen, setWhyOpen] = useState(false);
   const [builds, setBuilds] = useState<readonly string[]>([]);
+  /**
+   * Qué hacer después de aceptar (PU-CAL-001, PU-EDIT-003): guardar sólo,
+   * mandarla al próximo horario libre de la estrategia, o abrir el editor.
+   * Las tres pasan por el mismo `POST /blitz` —un solo cobro, una sola key—.
+   */
+  const [intent, setIntent] = useState<"library" | "schedule" | "edit">("library");
+  const [editRequested, setEditRequested] = useState(false);
 
   const items = pendingSuggestions(queue.data ?? [], decided);
   const view = deckViewFor({
@@ -140,65 +151,108 @@ export function BlitzDeck() {
     [accept, discard, markDecided, pending, toast, top],
   );
 
-  const save = useCallback(() => {
-    const card = pending;
-    if (card === null) return;
-    const suggestionId = card.kind === "preview" ? card.suggestion.id : undefined;
-    accept.mutate(
-      { suggestionId, idempotencyKey: attemptKey },
-      {
-        onSuccess: (content) => {
-          setExitDir(1);
-          setWhyOpen(false);
-          if (suggestionId === undefined) setBlindRound((n) => n + 1);
-          else markDecided(suggestionId);
-          setBuilds((prev) =>
-            [content._id, ...prev.filter((id) => id !== content._id)].slice(
-              0,
-              MAX_TRACKED_BUILDS,
-            ),
-          );
-          setPending(null);
-          // FR-050 *User flow* 6 — literal: `Content saved!` + `View in Library`.
-          toast({
-            title: tw("toast.contentSaved"),
-            tone: "success",
-            action: {
-              label: tw("toast.viewInLibrary"),
-              onClick: () => {
-                router.push(ROUTES.library);
-              },
-            },
-          });
-        },
-        onError: (error) => {
-          if (isProfileNotReady(error)) {
-            setPending(null);
-            setProfileBlocked(true);
-            return;
-          }
-          if (isEmptyQueue(error)) {
-            setPending(null);
-            if (suggestionId === undefined) setBlindEmpty(true);
-            else markDecided(suggestionId);
-            void queryClient.invalidateQueries({ queryKey: blitzQueueKey() });
-            return;
-          }
-          if (isUnbuildable(error)) {
-            // La API ya la descartó y no cobró (ver la ruta): se va del deck.
-            setPending(null);
-            setExitDir(-1);
+  const save = useCallback(
+    (next: "library" | "schedule" | "edit" = "library") => {
+      const card = pending;
+      if (card === null) return;
+      setIntent(next);
+      const suggestionId = card.kind === "preview" ? card.suggestion.id : undefined;
+      accept.mutate(
+        { suggestionId, idempotencyKey: attemptKey },
+        {
+          onSuccess: (content) => {
+            setExitDir(1);
+            setWhyOpen(false);
             if (suggestionId === undefined) setBlindRound((n) => n + 1);
             else markDecided(suggestionId);
-            toast({ title: td("deck.unbuildable"), tone: "warning" });
-            return;
-          }
-          // Cualquier otro fallo queda dentro del diálogo, con la misma key:
-          // reintentar este intento no cobra dos veces.
+            setBuilds((prev) =>
+              [content._id, ...prev.filter((id) => id !== content._id)].slice(
+                0,
+                MAX_TRACKED_BUILDS,
+              ),
+            );
+            setPending(null);
+            if (next === "edit") {
+              router.push(editorHref(content._id));
+              return;
+            }
+            if (next === "schedule") {
+              // Se puede programar mientras construye: la API sólo rechaza FAILED.
+              apiRequest<AutoscheduleResult>(autoschedulePath(content._id), {
+                method: "POST",
+                body: {},
+                schema: autoscheduleResultSchema,
+              })
+                .then((result) => {
+                  void queryClient.invalidateQueries({ queryKey: ["posts"] });
+                  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                  toast({
+                    title: describeAutoschedule(result, tz) ?? tw("toast.contentSaved"),
+                    tone: "success",
+                    action: {
+                      label: td("deck.viewCalendar"),
+                      onClick: () => {
+                        router.push(ROUTES.calendar);
+                      },
+                    },
+                  });
+                })
+                .catch(() => {
+                  toast({ title: td("deck.scheduleFailed"), tone: "danger" });
+                });
+              return;
+            }
+            // FR-050 *User flow* 6 — literal: `Content saved!` + `View in Library`.
+            toast({
+              title: tw("toast.contentSaved"),
+              tone: "success",
+              action: {
+                label: tw("toast.viewInLibrary"),
+                onClick: () => {
+                  router.push(ROUTES.library);
+                },
+              },
+            });
+          },
+          onError: (error) => {
+            if (isProfileNotReady(error)) {
+              setPending(null);
+              setProfileBlocked(true);
+              return;
+            }
+            if (isEmptyQueue(error)) {
+              setPending(null);
+              if (suggestionId === undefined) setBlindEmpty(true);
+              else markDecided(suggestionId);
+              void queryClient.invalidateQueries({ queryKey: blitzQueueKey() });
+              return;
+            }
+            if (isUnbuildable(error)) {
+              // La API ya la descartó y no cobró (ver la ruta): se va del deck.
+              setPending(null);
+              setExitDir(-1);
+              if (suggestionId === undefined) setBlindRound((n) => n + 1);
+              else markDecided(suggestionId);
+              toast({ title: td("deck.unbuildable"), tone: "warning" });
+              return;
+            }
+            // Cualquier otro fallo queda dentro del diálogo, con la misma key:
+            // reintentar este intento no cobra dos veces.
+          },
         },
-      },
-    );
-  }, [accept, attemptKey, markDecided, pending, queryClient, router, toast]);
+      );
+    },
+    [accept, attemptKey, markDecided, pending, queryClient, router, toast],
+  );
+
+  // "Edit" en la barra: acepta la de arriba y abre el editor, sin pasar por el
+  // diálogo. Se dispara cuando `pending` ya quedó puesto.
+  useEffect(() => {
+    if (editRequested && pending !== null && !accept.isPending) {
+      setEditRequested(false);
+      save("edit");
+    }
+  }, [accept.isPending, editRequested, pending, save]);
 
   // F-052: ← / → en toda la pantalla. El listener lee el `decide` vigente por
   // ref para no re-suscribirse en cada render.
@@ -268,6 +322,14 @@ export function BlitzDeck() {
               setWhyOpen((open) => !open);
             }}
             onDecide={decide}
+            onEdit={() => {
+              if (top === null || pending !== null) return;
+              accept.reset();
+              setAttemptKey(newIdempotencyKey());
+              setPending(top);
+              setEditRequested(true);
+            }}
+            editDisabled={top === null || pending !== null}
             onRetry={() => {
               setBlindEmpty(false);
               void queue.refetch();
@@ -281,10 +343,16 @@ export function BlitzDeck() {
       </div>
 
       <AcceptDialog
-        open={pending !== null}
+        open={pending !== null && !editRequested && intent !== "edit"}
         saving={accept.isPending}
+        scheduling={accept.isPending && intent === "schedule"}
         error={accept.error}
-        onSave={save}
+        onSave={() => {
+          save("library");
+        }}
+        onSchedule={() => {
+          save("schedule");
+        }}
         onCancel={() => {
           setPending(null);
         }}
@@ -315,6 +383,9 @@ interface DeckBodyProps {
   readonly whyPanelId: string;
   readonly onToggleWhy: () => void;
   readonly onDecide: (decision: Decision) => void;
+  /** Acepta la de arriba y abre el editor (PU-EDIT-003). */
+  readonly onEdit: () => void;
+  readonly editDisabled: boolean;
   readonly onRetry: () => void;
 }
 
@@ -356,6 +427,8 @@ function DeckBody(props: DeckBodyProps) {
 }
 
 function Deck({
+  onEdit,
+  editDisabled,
   view,
   top,
   items,
@@ -435,15 +508,14 @@ function Deck({
             onDecide("skip");
           }}
         />
-        <Tooltip content={td("deck.comingSoon")}>
-          <Button
-            variant="secondary"
-            aria-disabled="true"
-            leadingIcon={<PencilIcon size={16} />}
-          >
-            {td("deck.edit")}
-          </Button>
-        </Tooltip>
+        <Button
+          variant="secondary"
+          disabled={editDisabled}
+          leadingIcon={<PencilIcon size={16} />}
+          onClick={onEdit}
+        >
+          {td("deck.edit")}
+        </Button>
         <DecisionButton
           kind="accept"
           disabled={false}

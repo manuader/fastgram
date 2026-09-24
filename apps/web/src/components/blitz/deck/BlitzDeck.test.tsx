@@ -97,6 +97,7 @@ interface Backend {
   queue: () => Promise<unknown>;
   accept: (options: ApiRequestOptions<unknown>) => Promise<unknown>;
   contentItem: () => Promise<unknown>;
+  autoschedule: (path: string) => Promise<unknown>;
 }
 
 function installBackend(backend: Partial<Backend>): void {
@@ -104,6 +105,20 @@ function installBackend(backend: Partial<Backend>): void {
     queue: () => Promise.resolve([S1, S2]),
     accept: () => Promise.resolve(built("BUILDING")),
     contentItem: () => Promise.resolve(built("BUILDING")),
+    autoschedule: () =>
+      Promise.resolve({
+        posts: [],
+        plannedSlots: [
+          {
+            _id: "00000000-0000-4000-8000-0000000000aa",
+            contentId: CONTENT_ID,
+            network: "instagram",
+            scheduledAtUtc: Date.UTC(2026, 9, 1, 13, 4),
+            status: "planned",
+          },
+        ],
+        skipped: [],
+      }),
     ...backend,
   };
   requestMock.mockImplementation(((
@@ -112,6 +127,7 @@ function installBackend(backend: Partial<Backend>): void {
   ) => {
     if (path === "/blitz/queue") return full.queue();
     if (path === "/blitz" && options.method === "POST") return full.accept(options);
+    if (path.endsWith("/autoschedule")) return full.autoschedule(path);
     if (path.startsWith("/content/")) return full.contentItem();
     return Promise.reject(new Error(`ruta no esperada en el test: ${path}`));
   }) as typeof apiRequest);
@@ -305,21 +321,40 @@ describe("BlitzDeck · botones", () => {
     expect(topCardLabel()).toBe("Wall of Text suggestion");
   });
 
-  it("Edit y Schedule Post se ven pero están deshabilitados (sprint 2)", async () => {
+  it("Edit acepta la de arriba (un solo POST /blitz) y abre el editor de la pieza", async () => {
     installBackend({});
     const { user } = renderDeck();
     await screen.findByText("Wall of Text", CHIP_ONLY);
 
-    expect(screen.getByRole("button", { name: "Edit" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+
+    await waitFor(() => {
+      expect(push).toHaveBeenCalledWith(`/library/${CONTENT_ID}/edit`);
+    });
+    expect(acceptCalls()).toHaveLength(1);
+    // Sin pasar por el diálogo de aceptar.
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("Schedule Post guarda y manda la pieza al próximo horario libre (autoschedule)", async () => {
+    const autoscheduled: string[] = [];
+    installBackend({
+      autoschedule: (path) => {
+        autoscheduled.push(path);
+        return Promise.resolve({ posts: [], plannedSlots: [], skipped: [] });
+      },
+    });
+    const { user } = renderDeck();
+    await screen.findByText("Wall of Text", CHIP_ONLY);
+
     await user.click(screen.getByRole("button", { name: "Accept" }));
     const dialog = await screen.findByRole("dialog");
-    const schedule = within(dialog).getByRole("button", { name: /Schedule Post/ });
-    expect(schedule).toHaveAttribute("aria-disabled", "true");
-    await user.click(schedule);
-    expect(acceptCalls()).toHaveLength(0);
+    await user.click(within(dialog).getByRole("button", { name: /Schedule Post/ }));
+
+    await waitFor(() => {
+      expect(autoscheduled).toEqual([`content/${CONTENT_ID}/autoschedule`]);
+    });
+    expect(acceptCalls()).toHaveLength(1);
   });
 });
 

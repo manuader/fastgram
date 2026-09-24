@@ -13,6 +13,7 @@ import {
 } from "./MediaDropzone";
 import { MediaGridSkeleton } from "./MediaGridSkeleton";
 import { UploadQueue } from "./UploadQueue";
+import { BrandKitButton } from "./BrandKitButton";
 import { tw } from "@/lib/i18n/t";
 import {
   MEDIA_TYPES,
@@ -115,14 +116,16 @@ export function MyMediaBankTab() {
               })
           : null}
       </span>
-      <Button
-        size="sm"
-        className="ml-auto"
-        leadingIcon={<UploadGlyph className="h-4 w-4" />}
-        onClick={openPicker}
-      >
-        {tw("mediaUpload.upload")}
-      </Button>
+      <span className="ml-auto flex items-start gap-2">
+        <BrandKitButton />
+        <Button
+          size="sm"
+          leadingIcon={<UploadGlyph className="h-4 w-4" />}
+          onClick={openPicker}
+        >
+          {tw("mediaUpload.upload")}
+        </Button>
+      </span>
     </div>
   );
 
@@ -184,13 +187,16 @@ export function MyMediaBankTab() {
                 {tw("media.empty.clearFilters")}
               </Button>
             ) : (
-              <Button
-                size="lg"
-                leadingIcon={<UploadGlyph className="h-5 w-5" />}
-                onClick={openPicker}
-              >
-                {tw("mediaUpload.empty.action")}
-              </Button>
+              <span className="flex flex-wrap items-start justify-center gap-3">
+                <Button
+                  size="lg"
+                  leadingIcon={<UploadGlyph className="h-5 w-5" />}
+                  onClick={openPicker}
+                >
+                  {tw("mediaUpload.empty.action")}
+                </Button>
+                <BrandKitButton size="lg" />
+              </span>
             )
           }
         />

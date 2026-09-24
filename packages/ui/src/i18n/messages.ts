@@ -286,6 +286,8 @@ export const en = {
   "command.group.navigation": "Go to",
   "command.group.theme": "Theme",
   "command.switchTo": "Switch to {name}",
+  "command.group.create": "Create", // nuevo · PU-BLITZ-003
+  "command.createFromPrompt": "Create from prompt…", // nuevo · PU-BLITZ-003
   "command.themeLight": "Use light theme",
   "command.themeDark": "Use dark theme",
   "command.themeSystem": "Match system theme",
