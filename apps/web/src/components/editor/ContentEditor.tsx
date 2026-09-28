@@ -57,6 +57,7 @@ import { EditorCanvas } from "./EditorCanvas";
 import { ScheduleDialog } from "@/components/schedule/ScheduleDialog";
 import { MediaPickerDialog } from "./MediaPickerDialog";
 import { Slider, TextInspector } from "./TextInspector";
+import { ReelEditor } from "./reel/ReelEditor";
 
 export interface ContentEditorProps {
   readonly contentId: string;
@@ -103,6 +104,18 @@ export function ContentEditor({ contentId, onClose, className }: ContentEditorPr
       ← {tw("editor.back")}
     </Link>
   );
+
+  // Sprint 9 (`PU-S9-010`): un reel se edita por capas, con su propio editor.
+  // (`/editable` responde 422 para un reel; esa respuesta se ignora.)
+  if (content.data?.type === "reel") {
+    return (
+      <ReelEditor
+        content={content.data}
+        back={back}
+        {...(className === undefined ? {} : { className })}
+      />
+    );
+  }
 
   if (content.isPending || (editable.isPending && !editable.isError)) {
     return (

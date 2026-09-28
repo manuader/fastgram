@@ -143,13 +143,23 @@ export function paletteFromProfileText(
 export interface ResolvedBrandPalette {
   readonly palette: readonly string[];
   /** De dónde salió, para el log y la explicación. */
-  readonly source: "profile" | "default";
+  readonly source: "design_system" | "profile" | "default";
 }
 
+/**
+ * Sprint 9 (`PU-S9-003`): con un design system activo, **manda el design
+ * system** (`designSystemPalette` de `core/design-system`); si no trae dos
+ * colores, lo de antes.
+ */
 export function resolveBrandPalette(input: {
   readonly companyId: string;
   readonly profileTexts: readonly (string | null | undefined)[];
+  readonly designSystemPalette?: readonly string[] | null | undefined;
 }): ResolvedBrandPalette {
+  const ds = input.designSystemPalette;
+  if (ds !== null && ds !== undefined && ds.length >= BRAND_KIT_MIN_COLORS) {
+    return { palette: ds.slice(0, BRAND_KIT_MAX_COLORS), source: "design_system" };
+  }
   const fromProfile = paletteFromProfileText(input.profileTexts);
   if (fromProfile !== null) return { palette: fromProfile, source: "profile" };
   return { palette: defaultPaletteFor(input.companyId), source: "default" };

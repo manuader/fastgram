@@ -48,6 +48,18 @@ const previewSchema = z.object({
   overlayVideoUrl: z.string().url().nullable().optional(),
   audioUrl: z.string().url().nullable().optional(),
   aspectRatio: aspectRatioSchema.nullable().optional(),
+  /**
+   * Sprint 9 (`PU-S9-010`): un reel ya renderizado (borrador de HyperFrames).
+   * Con esto la tarjeta muestra el póster y el video, no una preview armada
+   * en el cliente: el texto animado y los subtítulos están en el video.
+   */
+  reel: z
+    .object({
+      videoUrl: z.string().url(),
+      posterUrl: z.string().url().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
 });
 
 export const deckSuggestionSchema = z.object({

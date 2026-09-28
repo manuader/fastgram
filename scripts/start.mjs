@@ -26,7 +26,12 @@
  * con `tsx watch` un proceso que se cae se queda esperando cambios en vez de
  * salir, y este script no se enteraría. Para desarrollar con recarga, `--watch`.
  *
- * Flags: `--no-web`, `--no-worker`, `--watch`, `--tunnel`.
+ * Flags: `--no-web`, `--no-worker`, `--watch`, `--tunnel`, `--no-laya`.
+ *
+ * Laya (sprint 9, D-18, `lib/laya.mjs`): el motor de juicio local. Si
+ * `/health` ya responde en `LAYA_PORT` (3006) se reusa sin tocarlo; si está
+ * instalado (`scripts/setup-laya.sh`) se lanza en 127.0.0.1 con MPS si hay, y
+ * se baja con el resto; si no, se sigue sin él (el juicio usa el LLM).
  *
  * `--tunnel` (o `FASTGRAM_TUNNEL=1`, `PU-RUN-005`): antes del render levanta
  * el proceso de media pública y `cloudflared` (ver `lib/tunnel.mjs`), y exporta
@@ -45,6 +50,7 @@ import { fileURLToPath } from "node:url";
 import { DEFAULT_DATABASE_URL, issueDevWorkspaceKey } from "./lib/dev-workspace.mjs";
 import { readEnvFile } from "./lib/env-file.mjs";
 import { DEFAULT_PUBLIC_MEDIA_PORT, startTunnel } from "./lib/tunnel.mjs";
+import { startLaya } from "./lib/laya.mjs";
 import {
   killAllNow,
   log,
@@ -62,6 +68,7 @@ const KNOWN_FLAGS = new Set([
   "--no-worker",
   "--watch",
   "--tunnel",
+  "--no-laya",
   "--help",
   "-h",
 ]);
@@ -71,7 +78,7 @@ for (const f of unknown) process.stderr.write(`flag desconocido: ${f}\n`);
 if (unknown.length > 0 || flags.has("--help") || flags.has("-h")) {
   process.stdout.write(
     [
-      "uso: node scripts/start.mjs [--no-web] [--no-worker] [--watch] [--tunnel]",
+      "uso: node scripts/start.mjs [--no-web] [--no-worker] [--watch] [--tunnel] [--no-laya]",
       "",
       "  --no-web     no levanta apps/web (ni emite su key)",
       "  --no-worker  no levanta apps/worker",
@@ -81,6 +88,7 @@ if (unknown.length > 0 || flags.has("--help") || flags.has("-h")) {
       "               necesitan Instagram y TikTok para publicar. Igual que",
       "               FASTGRAM_TUNNEL=1. Sin cuenta: quick tunnel trycloudflare;",
       "               con TUNNEL_TOKEN + FASTGRAM_PUBLIC_URL: named tunnel",
+      "  --no-laya    no levanta Laya (el juicio local); si ya corre, igual se usa",
       "",
     ].join("\n"),
   );
@@ -89,6 +97,7 @@ if (unknown.length > 0 || flags.has("--help") || flags.has("-h")) {
 const WITH_WEB = !flags.has("--no-web");
 const WITH_WORKER = !flags.has("--no-worker");
 const WATCH = flags.has("--watch");
+const WITH_LAYA = !flags.has("--no-laya");
 
 // ── Entorno ──────────────────────────────────────────────────────────────
 /**
@@ -396,6 +405,19 @@ async function main() {
     }
   }
 
+  // 1b. Laya (opcional, D-18). Primero y sin esperarlo: precargar los
+  // checkpoints tarda y se solapa con Docker y el build.
+  /** @type {import("./lib/laya.mjs").LayaStart | null} */
+  let laya = null;
+  if (WITH_LAYA) {
+    laya = await startLaya({
+      env,
+      spawnTracked,
+      log,
+      isShuttingDown: () => shuttingDown,
+    });
+  }
+
   // 2. Infra
   if ((await step("docker compose up -d", ["docker", "compose", "up", "-d"])) !== 0) {
     throw new Error("`docker compose up -d` falló. ¿Está corriendo Docker?");
@@ -566,7 +588,15 @@ async function main() {
   checkAbort();
   const api = spawnTracked("api", "pnpm", tsxArgs, {
     cwd: join(ROOT, "apps/api"),
-    env: { ...env, API_PORT: String(API_PORT), FASTGRAM_MODE: mode },
+    // Sprint 9: la API también habla con el render (`POST /reels/preview` arma la
+    // composición HTML del editor con el mismo grant que el worker).
+    env: {
+      ...env,
+      API_PORT: String(API_PORT),
+      FASTGRAM_MODE: mode,
+      RENDER_SERVICE_URL: `http://localhost:${RENDER_PORT}`,
+      RENDER_MEDIA_GRANT_SECRET: grantSecret,
+    },
   });
   watchDeath(api);
   await waitForHttp(api, `http://127.0.0.1:${API_PORT}/health`, {
@@ -649,6 +679,18 @@ async function main() {
   }
 
   checkAbort();
+  // Laya ya tuvo todo el arranque para precargar; si sigue sin estar, no se
+  // espera más: su propia línea avisa cuando quede listo (o si no).
+  const layaLine =
+    laya === null
+      ? "apagado (--no-laya)"
+      : laya.status === "reused"
+        ? `${laya.url} (ya corría)`
+        : laya.status === "started"
+          ? (await Promise.race([laya.ready, sleep(0).then(() => null)])) === true
+            ? `${laya.url}`
+            : `${laya.url} (cargando)`
+          : "no disponible: el juicio usa el LLM";
   const url = WITH_WEB ? `http://localhost:${WEB_PORT}` : `http://localhost:${API_PORT}`;
   const line = "─".repeat(44);
   process.stdout.write(
@@ -656,6 +698,7 @@ async function main() {
       (publicUrl === null
         ? ""
         : `${prefix("start")}   media pública → ${publicUrl}/public-media/…\n`) +
+      `${prefix("start")}   juicio local (Laya) → ${layaLine}\n` +
       `${prefix("start")}   modo ${mode} · Ctrl+C para bajar todo\n${prefix("start")} ${line}\n\n`,
   );
 }

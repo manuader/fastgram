@@ -1,0 +1,71 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "pages": [
+      {
+        "pageid": 93108122,
+        "ns": 6,
+        "title": "File:Scales Symbol of Law Green Screen.webm",
+        "imagerepository": "local",
+        "imageinfo": [
+          {
+            "size": 129551,
+            "width": 1920,
+            "height": 1080,
+            "duration": 8.32,
+            "thumburl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fb/Scales_Symbol_of_Law_Green_Screen.webm/960px--Scales_Symbol_of_Law_Green_Screen.webm.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo",
+            "thumbwidth": 640,
+            "thumbheight": 360,
+            "responsiveUrls": {
+              "2": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fb/Scales_Symbol_of_Law_Green_Screen.webm/1280px--Scales_Symbol_of_Law_Green_Screen.webm.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo"
+            },
+            "thumbattribs": [],
+            "url": "https://upload.wikimedia.org/wikipedia/commons/f/fb/Scales_Symbol_of_Law_Green_Screen.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Scales_Symbol_of_Law_Green_Screen.webm",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=93108122",
+            "extmetadata": {
+              "Credit": {
+                "value": "<bdi lang=\"en\" dir=\"ltr\"><a href=\"//commons.wikimedia.org/wiki/Commons:YouTube_files\" title=\"Commons:YouTube files\">YouTube</a>: <a rel=\"nofollow\" class=\"external text\" href=\"https://www.youtube.com/watch?v=xAHM0mCwqPk\"><bdi lang=\"\">Scales Symbol of Law Green Screen</bdi></a> \u2013 View/save archived versions on <a rel=\"nofollow\" class=\"external text\" href=\"https://web.archive.org/web/*/https://www.youtube.com/watch?v=xAHM0mCwqPk\">archive.org</a></bdi>",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<p><a rel=\"nofollow\" class=\"external text\" href=\"https://www.youtube.com/channel/UCwNG7D5foTK8yFCnCDhAkoA\">HD Green Screen</a>\n</p>\nHD Green Screen",
+                "source": "commons-desc-page"
+              },
+              "LicenseShortName": {
+                "value": "CC BY 3.0",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "UsageTerms": {
+                "value": "Creative Commons Attribution 3.0",
+                "source": "commons-desc-page"
+              },
+              "AttributionRequired": {
+                "value": "true",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by/3.0",
+                "source": "commons-desc-page"
+              },
+              "Restrictions": {
+                "value": "",
+                "source": "commons-desc-page",
+                "hidden": ""
+              },
+              "License": {
+                "value": "cc-by-3.0",
+                "source": "commons-templates",
+                "hidden": ""
+              }
+            },
+            "mime": "video/webm",
+            "mediatype": "VIDEO"
+          }
+        ]
+      }
+    ]
+  }
+}

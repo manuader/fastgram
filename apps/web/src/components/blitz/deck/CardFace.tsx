@@ -40,6 +40,16 @@ const TEXT_SIZE_UNITS = 22;
 
 export function CardFace({ card, interactive }: CardFaceProps) {
   const { suggestion } = card;
+  const reel = suggestion.preview?.reel ?? null;
+  if (reel !== null) {
+    return (
+      <ReelFace
+        videoUrl={reel.videoUrl}
+        posterUrl={reel.posterUrl ?? null}
+        interactive={interactive}
+      />
+    );
+  }
   return (
     <SuggestionFace
       contentType={suggestion.contentType}
@@ -286,5 +296,74 @@ function SlideNav({
         ))}
       </div>
     </>
+  );
+}
+
+/**
+ * Sprint 9 (`PU-S9-010`): la cara de un reel es **el reel**: póster mientras
+ * carga y el video en loop (mudo; el sonido se prende con el mismo botón que
+ * el resto del deck). Sin movimiento reducido no hay autoplay: queda el póster
+ * y se reproduce al tocar.
+ */
+export function ReelFace({
+  videoUrl,
+  posterUrl,
+  interactive,
+}: {
+  readonly videoUrl: string;
+  readonly posterUrl: string | null;
+  readonly interactive: boolean;
+}) {
+  const reduce = useReducedMotion() === true;
+  const video = useRef<HTMLVideoElement | null>(null);
+  const [muted, setMuted] = useState(true);
+  const [playing, setPlaying] = useState(false);
+
+  function toggle(): void {
+    const el = video.current;
+    if (el === null) return;
+    if (el.paused) void el.play().catch(() => undefined);
+    else el.pause();
+  }
+
+  return (
+    <div
+      className="relative h-full w-full overflow-hidden bg-black"
+      data-testid="reel-face"
+    >
+      <video
+        ref={video}
+        src={interactive ? videoUrl : undefined}
+        poster={posterUrl ?? undefined}
+        muted={muted}
+        loop
+        playsInline
+        autoPlay={interactive && !reduce}
+        preload={interactive ? "metadata" : "none"}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+      {interactive && (
+        <div className="absolute bottom-3 right-3 flex gap-2">
+          <button
+            type="button"
+            onClick={toggle}
+            aria-label={td(playing ? "deck.reel.pause" : "deck.reel.play")}
+            className="fg-focusable rounded-full bg-black/60 px-3 py-1.5 text-xs font-medium text-white"
+          >
+            {td(playing ? "deck.reel.pause" : "deck.reel.play")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMuted((m) => !m)}
+            aria-label={td(muted ? "deck.unmute" : "deck.mute")}
+            className="fg-focusable rounded-full bg-black/60 p-2 text-white"
+          >
+            {muted ? <MuteIcon size={16} /> : <VolumeIcon size={16} />}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

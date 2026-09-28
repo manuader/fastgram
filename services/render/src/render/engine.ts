@@ -37,9 +37,10 @@ import { probeMedia } from "../ffmpeg/probe.js";
 import { normalizeMedia } from "../ffmpeg/normalize.js";
 import { runFfmpeg } from "../ffmpeg/run.js";
 import type { CacheStore } from "../cache/store.js";
-import type { FontLoaderOptions } from "./fontLoader.js";
+import { brandFontListSchema, type BrandFontRef } from "../domain/fonts.js";
+import { brandFontsFingerprint, prepareBrandFonts } from "./brandText.js";
 import { engineVersion } from "./engineVersion.js";
-import { renderTextOverlay } from "./textLayer.js";
+import { renderTextOverlay, type TextLayerOptions } from "./textLayer.js";
 import { renderSlideBase, renderSlideWithText } from "./slideshow.js";
 import {
   planGreenScreenBase,
@@ -59,7 +60,8 @@ export type MediaResolver = (
 export interface RenderEngineConfig {
   readonly cache: CacheStore;
   readonly policy: MediaPolicyConfig;
-  readonly fonts: FontLoaderOptions;
+  /** Sprint 9 (M): `TextLayerOptions` = opciones de fuentes + caras de marca del request. */
+  readonly fonts: TextLayerOptions;
   readonly resolveMedia: MediaResolver;
   /** `false` salta `NFR-014`. Sólo para tests con media ya normalizada. */
   readonly normalizeInputs: boolean;
@@ -103,6 +105,11 @@ export const renderRequestSchema = z
   .object({
     payload: buildPayloadSchema,
     grant: mediaGrantSchema.optional(),
+    /**
+     * Sprint 9 (M): las caras de las familias de marca que piden las cajas
+     * (`family: "brand:<id>"`). URLs autorizadas como una imagen.
+     */
+    brandFonts: brandFontListSchema.optional(),
   })
   .strict();
 
@@ -122,7 +129,11 @@ export type RenderRequestInput = z.input<typeof renderRequestSchema>;
 export function validateRequest(
   raw: unknown,
   policy: MediaPolicyConfig,
-): { payload: BuildPayload; grant: VerifiedGrant | null } {
+): {
+  payload: BuildPayload;
+  grant: VerifiedGrant | null;
+  brandFonts: readonly BrandFontRef[];
+} {
   const parsed = renderRequestSchema.safeParse(raw);
   if (!parsed.success) {
     throw new RenderError("bad_request", "el payload de build no es válido", {
@@ -137,8 +148,21 @@ export function validateRequest(
   const grant =
     parsed.data.grant === undefined ? null : verifyGrant(parsed.data.grant, policy);
   const payload = parsed.data.payload;
-  assertAllMediaAllowed(collectMediaReferences(payload), policy, grant);
-  return { payload, grant };
+  const brandFonts = parsed.data.brandFonts ?? [];
+  assertAllMediaAllowed(
+    [
+      ...collectMediaReferences(payload),
+      // Una fuente se autoriza como una imagen: mismo grant, mismos prefijos.
+      ...brandFonts.map((f, index) => ({
+        url: f.url,
+        role: "image" as const,
+        path: ["brandFonts", index, "url"],
+      })),
+    ],
+    policy,
+    grant,
+  );
+  return { payload, grant, brandFonts };
 }
 
 async function geometryOf(localPath: string): Promise<SourceGeometry> {
@@ -163,20 +187,39 @@ export async function renderBuild(
   raw: unknown,
   config: RenderEngineConfig,
 ): Promise<RenderOutput> {
-  const { payload } = validateRequest(raw, config.policy);
+  const { payload, brandFonts } = validateRequest(raw, config.policy);
   const caps = config.capabilities ?? (await probeCapabilities());
   // La versión del motor entra en las tres claves: si cambia el código, ffmpeg,
   // sharp o el registro de fuentes, el artefacto viejo deja de ser válido y la
   // cache lo tiene que saber (`P2-RENDER-016`).
-  const keys = computeCacheKeys(payload, (await engineVersion(caps)).version);
+  const version = (await engineVersion(caps)).version;
+  // Sprint 9 (M): sin fuentes de marca la clave es la de siempre.
+  const keys = computeCacheKeys(
+    payload,
+    brandFonts.length === 0
+      ? version
+      : `${version}+bf:${brandFontsFingerprint(brandFonts)}`,
+  );
   const warnings: string[] = [];
 
   const workDir = await mkdtemp(path.join(tmpdir(), "fastgram-render-"));
   try {
+    const withBrand: RenderEngineConfig =
+      brandFonts.length === 0
+        ? config
+        : {
+            ...config,
+            fonts: {
+              ...config.fonts,
+              brandFonts: await prepareBrandFonts(brandFonts, (url) =>
+                config.resolveMedia(url, "image"),
+              ),
+            },
+          };
     if (payload.type === "slideshow") {
-      return await renderSlideshowBuild(payload, keys, config, warnings);
+      return await renderSlideshowBuild(payload, keys, withBrand, warnings);
     }
-    return await renderVideoBuild(payload, keys, config, caps, workDir, warnings);
+    return await renderVideoBuild(payload, keys, withBrand, caps, workDir, warnings);
   } finally {
     await rm(workDir, { recursive: true, force: true });
   }

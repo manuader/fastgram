@@ -15,6 +15,25 @@ export {
   type LlmJudgmentOptions,
   type RawJudgmentResponse,
 } from "./judgment/llm-judgment.js";
+/** Sprint 9 (O, D-18): Laya / Jev por el protocolo SystemOne. */
+export {
+  LAYA_AUTO_MODEL,
+  LAYA_MAX_CHOICE_OPTIONS,
+  LAYA_SOFT_CHOICE_OPTIONS,
+  SystemOneJudgmentAdapter,
+  type SystemOneJudgmentOptions,
+  type SystemOneRawResponse,
+  type SystemOneWarning,
+} from "./judgment/systemone-judgment.js";
+export {
+  SYSTEMONE_MODELS,
+  defaultSystemOneModel,
+  probeSystemOne,
+  systemOneAdapterName,
+  systemOneOptions,
+  type SystemOneModel,
+  type SystemOneProbeResult,
+} from "./judgment/systemone-catalog.js";
 
 export {
   hashState,

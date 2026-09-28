@@ -483,6 +483,18 @@ export function createBlitzPromptHandler(deps: BlitzPromptDeps): JobHandler<unkn
               subjectId: job.promptRequestId,
             })
             .catch(() => null);
+    // Sprint 9 (O): el decisor por candidato, si `judgment.assets` es SystemOne.
+    const assets =
+      deps.judgment?.assets === undefined
+        ? null
+        : await deps.judgment
+            .assets({
+              companyId: job.companyId,
+              subjectType: "blitz_prompt_request",
+              subjectId: job.promptRequestId,
+            })
+            .catch(() => null);
+    const recentIds = new Set<string>();
     const autoMeme = meme.kind === "found" ? meme : null;
 
     const drafts: QueuedSuggestionDraft[] = [];
@@ -498,6 +510,8 @@ export function createBlitzPromptHandler(deps: BlitzPromptDeps): JobHandler<unkn
         logger: deps.logger,
         // Sprint 8 (P4-JV-004): el perfil de los modelos de la biblioteca.
         influencerProfiles: refill.influencerProfiles,
+        assets,
+        recentIds,
       });
       const memeId = p.media.format === "green-screen" ? p.media.video.mediaId : null;
       if (autoMeme !== null && memeId === autoMeme.media.id) {

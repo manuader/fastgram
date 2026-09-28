@@ -38,6 +38,8 @@ export const deckEn = {
   "deck.remix.views": "{count} views", // nuevo · ídem
   "deck.mute": "Mute", // literal
   "deck.unmute": "Unmute", // literal
+  "deck.reel.play": "Play reel", // nuevo · sprint 9
+  "deck.reel.pause": "Pause reel", // nuevo · sprint 9
   "deck.slide.prev": "Previous slide", // nuevo
   "deck.slide.next": "Next slide", // nuevo
   "deck.slide.position": "Slide {current} of {total}", // nuevo

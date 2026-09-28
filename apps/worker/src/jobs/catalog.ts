@@ -1,4 +1,5 @@
 import {
+  ADS_SYNC_CRON,
   AUTOPILOT_SWEEP_CRON,
   AUTOMATION_BUILD_SWEEP_CRON,
   ENGAGEMENT_CRONS,
@@ -505,6 +506,71 @@ export const JOB_CATALOG = {
     // FFmpeg es CPU: de a uno.
     concurrency: 1,
     idempotent: true,
+  },
+  /**
+   * Sprint 9 (N): importar a la biblioteca **global** (`apps/worker/src/library`).
+   * Idempotente: el `assetId` viene en el payload y la fila ya existe; un
+   * reintento sobre una fila que ya no está `processing` no hace nada.
+   */
+  libraryImport: {
+    name: JOB_QUEUES.libraryImport,
+    what: "Baja o lee un asset de la biblioteca global, lo normaliza, mide su croma y etiqueta su JSON.",
+    prd: "PRD §2.7 D-19, PU-S9-005/006 (fuera de §9.5)",
+    // La fuente puede estar caída un rato; un archivo roto no se arregla solo.
+    maxAttempts: 2,
+    backoff: "exponential",
+    retryDelaySeconds: 30,
+    // Bajar hasta 200 MB + transcodificar a 1080p + un modelo de visión local.
+    timeoutSeconds: 1_200,
+    // FFmpeg es CPU: de a uno.
+    concurrency: 1,
+    idempotent: true,
+  },
+  /**
+   * Sprint 9 (M): design system de una marca (`apps/worker/src/design-system`).
+   * Idempotente: las claves de storage son deterministas por design system y
+   * contenido, y las filas de media se insertan sólo si su clave no existe.
+   */
+  designSystem: {
+    name: JOB_QUEUES.designSystem,
+    what: "Importa el zip de un design system (assets, fuentes, resumen de estilo) o genera assets nuevos pendientes de aprobación.",
+    prd: "PRD §2.7 sprint 9, PU-S9-001/004 (fuera de §9.5)",
+    // Un zip roto no se arregla reintentando; el render o el modelo caídos sí.
+    maxAttempts: 2,
+    backoff: "exponential",
+    retryDelaySeconds: 30,
+    // FOCUS: 43 MB, ~30 archivos a subir + un resumen del modelo `text`
+    // (Ollama local, hasta un par de minutos). 15 min de techo.
+    timeoutSeconds: 900,
+    // Descomprimir en memoria (hasta 300 MB) y rasterizar: de a uno.
+    concurrency: 1,
+    idempotent: true,
+  },
+  /**
+   * Sprint 9 (R): insights de anuncios + guardia de topes (`apps/worker/src/ads`).
+   * Idempotente por convergencia: upsert de insights por (anuncio, día) y la
+   * pausa es un `UPDATE … WHERE status = 'ACTIVE'` (un solo aviso). No
+   * reintenta: la vuelta siguiente (30 min) es el reintento, y repetir en
+   * segundos contra el límite BUC de Meta lo empeora.
+   */
+  adsSync: {
+    name: JOB_QUEUES.adsSync,
+    what: "Trae los insights de las campañas pagas y pausa las que llegaron a su tope diario o total, con aviso.",
+    prd: "PRD §2.7 D-21, PU-S9-012/013 (fuera de §9.5)",
+    maxAttempts: 1,
+    backoff: "fixed",
+    retryDelaySeconds: 60,
+    // Pocas marcas × pocas campañas × (1 GET de insights + a lo sumo 1 POST).
+    timeoutSeconds: 300,
+    concurrency: 1,
+    idempotent: true,
+    scheduled: {
+      cron: ADS_SYNC_CRON,
+      why:
+        "Cada 30 min: el tier de desarrollo de Meta da 600 + 400 × anuncios activos " +
+        "llamadas de insights por cuenta y hora (BUC); una vuelta es ~1 por campaña. " +
+        "Más seguido no mejora la guardia (el gasto llega con retraso). A los 11 y 41.",
+    },
   },
 } as const satisfies Record<string, JobPolicy>;
 

@@ -58,6 +58,8 @@ describe("enums literales del PRD", () => {
       "green-screen",
       "video-hook",
       "custom",
+      // PRD §2.7 D-20 (sprint 9): el formato `reel`, composición con HyperFrames.
+      "reel",
     ]);
   });
 

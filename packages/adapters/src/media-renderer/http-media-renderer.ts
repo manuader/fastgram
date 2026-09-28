@@ -88,6 +88,11 @@ import {
   type MediaProbe,
   type MediaRenderer,
   type NormalizeRequest,
+  type ReelCaptionWord,
+  type ReelPreview,
+  type ReelRenderBuild,
+  type ReelRenderer,
+  type ReelRenderJob,
   type PortErrorCode,
   type RenderedMedia,
   type RenderJob,
@@ -115,6 +120,8 @@ export const MAPPING_VERSION = "1";
 
 /** Techo de `NFR-001` para un build. */
 const DEFAULT_TIMEOUT_MS = 120_000;
+/** Reel: el presupuesto del servicio (10 min, cola incluida) más un minuto. */
+export const REEL_TIMEOUT_MS = 660_000;
 
 /** Inactividad tolerada entre chunks del cuerpo del artefacto. */
 const DEFAULT_IDLE_TIMEOUT_MS = 30_000;
@@ -213,7 +220,8 @@ export interface HttpMediaRendererConfig {
 }
 
 export interface WarningContext {
-  readonly format: RenderJob["format"];
+  /** Sprint 9: `reel` viene de {@link HttpMediaRenderer.renderReel}. */
+  readonly format: RenderJob["format"] | "reel";
   readonly fingerprint: string;
 }
 
@@ -263,7 +271,9 @@ export interface HttpRenderBuild {
   readonly renderMs: number;
 }
 
-export class HttpMediaRenderer implements MediaRenderer, BrandBackgroundGenerator {
+export class HttpMediaRenderer
+  implements MediaRenderer, BrandBackgroundGenerator, ReelRenderer
+{
   readonly #baseUrl: string;
   readonly #engineVersion: string;
   readonly #timeoutMs: number;
@@ -581,6 +591,96 @@ export class HttpMediaRenderer implements MediaRenderer, BrandBackgroundGenerato
     }
   }
 
+  /**
+   * Sprint 9 (`PU-S9-009`): un reel con HyperFrames. El servicio corre de a
+   * uno con cola y presupuesto propios (`RENDER_REEL_TIMEOUT_MS`, 10 min), así
+   * que este pedido espera más que un `/render`: {@link REEL_TIMEOUT_MS}.
+   */
+  async renderReel(
+    job: ReelRenderJob,
+    auth: MediaAuthorization,
+  ): Promise<ReelRenderBuild> {
+    const startedAt = this.#clock.nowMs();
+    const grant = this.#grant(auth);
+    const response = await this.#request(
+      "POST",
+      "/reels/render",
+      { spec: job.spec, quality: job.quality, ...(grant === undefined ? {} : { grant }) },
+      REEL_TIMEOUT_MS,
+    );
+    if (!response.ok) throw await translateHttp(response, "render");
+    const raw = parseReelRenderResponse(await readJson(response));
+    if (raw.warnings.length > 0 && this.#onWarnings !== undefined) {
+      this.#onWarnings(raw.warnings, { format: "reel", fingerprint: raw.href });
+    }
+    return {
+      artifact: {
+        kind: "video",
+        index: 0,
+        sizeBytes: raw.bytes,
+        open: () => this.#openReelArtifact(raw.href, raw.bytes),
+      },
+      captions: raw.captions,
+      warnings: raw.warnings,
+      renderMs: this.#clock.nowMs() - startedAt,
+    };
+  }
+
+  /** La composición HTML para el editor (`POST /reels/preview-html`). */
+  async previewReel(
+    spec: Readonly<Record<string, unknown>>,
+    auth: MediaAuthorization,
+  ): Promise<ReelPreview> {
+    const grant = this.#grant(auth);
+    const response = await this.#request("POST", "/reels/preview-html", {
+      spec,
+      ...(grant === undefined ? {} : { grant }),
+    });
+    if (!response.ok) throw await translateHttp(response, "render");
+    const raw = await readJson(response);
+    const obj =
+      typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+    if (typeof obj["html"] !== "string" || typeof obj["durationSec"] !== "number") {
+      throw new PortError(
+        "provider_contract_violation",
+        "the reel preview response is malformed",
+        {
+          source: SOURCE,
+        },
+      );
+    }
+    return {
+      html: obj["html"],
+      durationSec: obj["durationSec"],
+      warnings: stringList(obj["warnings"]),
+    };
+  }
+
+  async #openReelArtifact(href: string, declaredBytes: number): Promise<RenderedMedia> {
+    assertOpaqueHref(href);
+    const response = await this.#request("GET", href);
+    if (!response.ok) throw await translateHttp(response, "artifact");
+    const body = response.body;
+    if (body === null) {
+      throw new PortError(
+        "provider_contract_violation",
+        "the artifact response had no body",
+        {
+          source: SOURCE,
+        },
+      );
+    }
+    assertDeclaredLength(response, declaredBytes);
+    return {
+      body: streamBody(body, declaredBytes, this.#idleTimeoutMs),
+      contentType: resolveContentType(response.headers.get("content-type"), "video"),
+      sizeBytes: declaredBytes,
+      // El reel tiene un solo lienzo; el servicio lo verificó con ffprobe.
+      width: 1080,
+      height: 1920,
+    };
+  }
+
   async #openArtifact(
     job: RenderJob,
     href: string,
@@ -635,11 +735,12 @@ export class HttpMediaRenderer implements MediaRenderer, BrandBackgroundGenerato
     method: "GET" | "POST",
     path: string,
     body?: unknown,
+    timeoutMs?: number,
   ): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => {
       controller.abort();
-    }, this.#timeoutMs);
+    }, timeoutMs ?? this.#timeoutMs);
 
     try {
       return await this.#fetch(`${this.#baseUrl}${path}`, {
@@ -1455,4 +1556,62 @@ function parseRetryAfter(header: string | null): number | null {
   const date = Date.parse(header);
   if (Number.isNaN(date)) return null;
   return Math.max(0, Math.ceil((date - Date.now()) / 1000));
+}
+
+/* ------------------------------------------------------------------------ *
+ * Reels — respuesta de `POST /reels/render`
+ * ------------------------------------------------------------------------ */
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((v): v is string => typeof v === "string")
+    : [];
+}
+
+export interface ReelRenderResponse {
+  readonly href: string;
+  readonly bytes: number;
+  readonly warnings: readonly string[];
+  readonly captions: Readonly<Record<string, readonly ReelCaptionWord[]>>;
+}
+
+/** Pura: la fija el test. Un campo de más se ignora; uno de menos es violación. */
+export function parseReelRenderResponse(raw: unknown): ReelRenderResponse {
+  const obj =
+    typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  const href = obj["href"];
+  const bytes = obj["bytes"];
+  if (
+    obj["type"] !== "reel" ||
+    typeof href !== "string" ||
+    typeof bytes !== "number" ||
+    bytes <= 0
+  ) {
+    throw new PortError(
+      "provider_contract_violation",
+      "the reel render response is malformed",
+      {
+        source: SOURCE,
+      },
+    );
+  }
+  const captions: Record<string, ReelCaptionWord[]> = {};
+  const rawCaptions = obj["captions"];
+  if (typeof rawCaptions === "object" && rawCaptions !== null) {
+    for (const [layerId, words] of Object.entries(
+      rawCaptions as Record<string, unknown>,
+    )) {
+      if (!Array.isArray(words)) continue;
+      captions[layerId] = words.flatMap((w: unknown) => {
+        const o =
+          typeof w === "object" && w !== null ? (w as Record<string, unknown>) : {};
+        return typeof o["text"] === "string" &&
+          typeof o["start"] === "number" &&
+          typeof o["end"] === "number"
+          ? [{ text: o["text"], start: o["start"], end: o["end"] }]
+          : [];
+      });
+    }
+  }
+  return { href, bytes, warnings: stringList(obj["warnings"]), captions };
 }

@@ -171,6 +171,8 @@ describe("Create from prompt · la barra", () => {
       "Wall of Text",
       "Green Screen",
       "Video Hook",
+      // Sprint 9 (P): el reel entra al selector, fuera de Blitz.
+      "Reel (HyperFrames)",
     ]);
     const count = within(bar).getByRole("combobox", { name: "How many" });
     expect(within(count).getAllByRole("option")).toHaveLength(5);

@@ -20,6 +20,7 @@ import { engineVersionFrom } from "../render/engineVersion.js";
 import type { FontActivation } from "../render/fontActivation.js";
 import type { FontStatus } from "../render/fontLoader.js";
 import { brandBackgroundOperation } from "../render/brandBackground.js";
+import { rasterizeOperation } from "../render/designSystemAssets.js";
 import {
   normalizeOperation,
   probeOperation,
@@ -31,6 +32,8 @@ import {
   artifactNotFound,
   parseArtifactName,
 } from "./artifacts.js";
+import { reelConfigFromEnv, type ReelConfig } from "../reels/config.js";
+import { registerReelRoutes } from "../reels/routes.js";
 
 export interface ServerDeps {
   readonly engine: RenderEngineConfig;
@@ -43,6 +46,8 @@ export interface ServerDeps {
     readonly activation: FontActivation;
     readonly status: readonly FontStatus[];
   };
+  /** Sprint 9: motor de reels (HyperFrames). Sin él, se lee del entorno. */
+  readonly reel?: ReelConfig;
 }
 
 /**
@@ -221,6 +226,11 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     return reply.status(200).send(withHref(result));
   });
 
+  // Sprint 9 (M): motivos SVG de un design system → PNG teñido.
+  app.post("/design-system/rasterize", async (request, reply) => {
+    return reply.status(200).send(await rasterizeOperation(request.body));
+  });
+
   /**
    * `GET /artifact/<clave>.<ext>` — los bytes del artefacto.
    *
@@ -265,6 +275,18 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         .header("cache-control", "private, max-age=31536000, immutable")
         .send(createReadStream(entry.path))
     );
+  });
+
+  // Sprint 9 (`PU-S9-009`): `POST /reels/render` y `POST /reels/preview-html`.
+  registerReelRoutes(app, {
+    cache: deps.engine.cache,
+    policy: deps.engine.policy,
+    resolveMedia: deps.engine.resolveMedia,
+    fontDir: deps.engine.fonts.fontDir,
+    reel: deps.reel ?? reelConfigFromEnv(),
+    ...(deps.engine.capabilities === undefined
+      ? {}
+      : { capabilities: deps.engine.capabilities }),
   });
 
   return app;

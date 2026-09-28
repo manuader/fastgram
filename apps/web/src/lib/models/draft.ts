@@ -12,13 +12,14 @@
  * - **La ventana es del modelo**: si el proveedor la publica en `/models`, se
  *   completa sola al elegir el modelo, salvo que el usuario ya haya escrito una.
  */
-import type {
-  ListedModel,
-  ModelProvider,
-  ModelProviderPreset,
-  ModelTaskConfig,
-  TestModelConnectionRequest,
-  UpdateModelTaskRequest,
+import {
+  isSystemOneModelProvider,
+  type ListedModel,
+  type ModelProvider,
+  type ModelProviderPreset,
+  type ModelTaskConfig,
+  type TestModelConnectionRequest,
+  type UpdateModelTaskRequest,
 } from "@fastgram/contracts";
 
 export interface TaskDraft {
@@ -67,8 +68,9 @@ export function draftFrom(config: ModelTaskConfig): TaskDraft {
 
 /**
  * Cambiar de proveedor: la base URL pasa a la del preset y el modelo se vacía
- * (los ids no se comparten entre proveedores). La key escrita se conserva:
- * puede que el usuario la haya pegado antes de elegir.
+ * (los ids no se comparten entre proveedores) — salvo que el preset proponga
+ * uno de su catálogo cerrado (sprint 9: Laya `auto`, Jev `jev-latest`). La key
+ * escrita se conserva: puede que el usuario la haya pegado antes de elegir.
  */
 export function withProvider(
   draft: TaskDraft,
@@ -80,7 +82,7 @@ export function withProvider(
     ...draft,
     provider,
     baseUrl: presetOf(presets, provider)?.baseUrl ?? "",
-    model: "",
+    model: presetOf(presets, provider)?.defaultModel ?? "",
     contextWindow: "",
     contextWindowAuto: false,
   };
@@ -125,6 +127,17 @@ export function keyWillBeDropped(draft: TaskDraft, config: ModelTaskConfig): boo
 
 export type DraftField = "provider" | "baseUrl" | "model" | "contextWindow";
 
+/**
+ * ¿Lleva ventana de contexto? Las tareas LLM sí; un motor SystemOne (Laya,
+ * Jev) en una tarea de juicio no (sprint 9, D-18).
+ */
+export function needsContextWindow(
+  kind: ModelTaskConfig["kind"],
+  provider: ModelProvider | "",
+): boolean {
+  return kind === "llm" && !isSystemOneModelProvider(provider);
+}
+
 /** Lo que se puede decir sin preguntarle al servidor. El resto lo dice él. */
 export function draftErrors(
   draft: TaskDraft,
@@ -140,7 +153,7 @@ export function draftErrors(
   if (draft.model.trim() === "") errors.model = "Model is required.";
   const w = draft.contextWindow.trim();
   if (w !== "" && !/^\d+$/.test(w)) errors.contextWindow = "Whole number of tokens.";
-  else if (kind === "llm" && w === "") {
+  else if (needsContextWindow(kind, draft.provider) && w === "") {
     errors.contextWindow = "Needed to keep prompts inside the model's limit.";
   }
   return errors;
@@ -153,7 +166,8 @@ export function toUpdateRequest(
 ): UpdateModelTaskRequest | null {
   if (draft.provider === "" || draft.model.trim() === "") return null;
   const key = draft.apiKey.trim();
-  const w = draft.contextWindow.trim();
+  // Un SystemOne no lleva ventana: no se manda aunque el campo tenga algo.
+  const w = isSystemOneModelProvider(draft.provider) ? "" : draft.contextWindow.trim();
   const hadWindow = config.source === "registry" && config.contextWindowTokens !== null;
   return {
     provider: draft.provider,

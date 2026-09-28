@@ -29,6 +29,7 @@ export * from "./resources/angles.js";
 export * from "./resources/influencers.js";
 export * from "./resources/media.js";
 export * from "./resources/content.js";
+export * from "./resources/reel.js";
 export * from "./resources/posts.js";
 export * from "./resources/analytics.js";
 export * from "./resources/connections.js";
@@ -52,6 +53,16 @@ export * from "./resources/notifications.js";
 export * from "./resources/brand-flow.js";
 // Sprint 8 (K): biblioteca de modelos del dueño.
 export * from "./resources/character-models.js";
+// Sprint 9 (Q): preferencias aprendidas desde Blitz (D-22).
+export * from "./resources/preferences.js";
+
+// Sprint 9 (N): biblioteca global de assets (D-19).
+export * from "./resources/library.js";
+
+// Sprint 9 (R): anuncios pagos con Meta (D-21).
+export * from "./resources/ads.js";
+// Sprint 9 (M): design system por marca (`PU-S9-001…004`).
+export * from "./resources/design-system.js";
 
 // OpenAPI
 export * from "./openapi.js";

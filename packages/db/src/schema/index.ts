@@ -24,6 +24,17 @@ export * from "./engagement.js";
 export * from "./notifications.js";
 // Sprint 8 (K): biblioteca de modelos del dueño (migración 0033).
 export * from "./character-models.js";
+// Sprint 9 (Q): preferencias aprendidas desde Blitz (migración 0039).
+export * from "./preferences.js";
+// Sprint 9 (N): biblioteca global de assets (migración 0036).
+export * from "./library.js";
+
+// Sprint 9 (R): anuncios pagos con Meta (migración 0040).
+export * from "./ads.js";
+// Sprint 9 (O): decisiones del decisor de assets (migración 0037).
+export * from "./asset-decisions.js";
+// Sprint 9 (M): design system por marca (migración 0035).
+export * from "./design-system.js";
 
 export { tsColumn, timestamps, createdAtOnly, softDelete } from "./_shared.js";
 
@@ -50,6 +61,18 @@ import { autopilotDecisions, autopilotRuns } from "./autopilot.js";
 import { contentMixAutotune, formatMixAdjustments } from "./metrics.js";
 import { engagementReplies, engagementSettings, redditAccounts } from "./engagement.js";
 import { notifications } from "./notifications.js";
+import {
+  adAccounts,
+  adActions,
+  adCampaigns,
+  adExperiments,
+  adInsightsDaily,
+  ads,
+  adSets,
+} from "./ads.js";
+import { preferenceSignals, preferenceWeights } from "./preferences.js";
+import { assetDecisions } from "./asset-decisions.js";
+import { brandDesignSystems } from "./design-system.js";
 import { brandAudioTracks, media, mediaSets, ownPostImports } from "./media.js";
 import {
   apiKeys,
@@ -115,6 +138,21 @@ export const COMPANY_SCOPED_TABLES = [
   notifications,
   brandAudioTracks,
   ownPostImports,
+  // Sprint 9 (Q): 0039.
+  preferenceSignals,
+  preferenceWeights,
+  // Sprint 9 (R): 0040.
+  adAccounts,
+  adCampaigns,
+  adSets,
+  ads,
+  adExperiments,
+  adInsightsDaily,
+  adActions,
+  // Sprint 9 (O): 0037.
+  assetDecisions,
+  // Sprint 9 (M): 0035.
+  brandDesignSystems,
 ] as const;
 
 /** La raíz de la tenencia. Su política compara `id`, no `company_id`. */
@@ -140,5 +178,15 @@ export const NON_TENANT_TABLES: ReadonlyArray<{ table: string; reason: string }>
     table: "character_models",
     reason:
       "Sprint 8 (0033): biblioteca de modelos del dueño, por encima de las marcas; scope por ownerUserId en el repositorio",
+  },
+  {
+    table: "owner_preferences",
+    reason:
+      "Sprint 9 (0039): configuración y nivel del dueño de las preferencias; scope por ownerUserId en el repositorio",
+  },
+  {
+    table: "library_assets",
+    reason:
+      "Sprint 9 (0036, D-19): biblioteca global de la instalación, como audio_tracks; imported_by_company_id es auditoría, no scope",
   },
 ];

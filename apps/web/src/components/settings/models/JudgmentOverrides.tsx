@@ -9,6 +9,8 @@ import { TaskModelCard } from "./TaskModelCard";
 
 /** `P1-JUDGE-004`: las tareas de override, en el orden en que se muestran. */
 export const JUDGMENT_OVERRIDES = [
+  // Sprint 9 (O): primero, porque es el que más gana con Laya.
+  "judgment.assets",
   "judgment.autopilot",
   "judgment.brand",
   "judgment.engagement",

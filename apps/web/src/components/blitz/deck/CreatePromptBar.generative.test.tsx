@@ -193,7 +193,8 @@ describe("Create from prompt · formatos IA", () => {
     server({ configured: false });
     renderBar();
     const options = await formatOptions();
-    expect(options.slice(5)).toEqual([
+    // Sprint 9 (P): «Reel» ocupa el lugar 6; los formatos IA vienen después.
+    expect(options.slice(6)).toEqual([
       { text: "On a Walk · needs a video model", disabled: true },
     ]);
     expect(options.some((o) => o.text?.includes("News Anchor"))).toBe(false);
@@ -274,6 +275,7 @@ describe("Create from prompt · formatos IA", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10);
     });
-    expect(within(format).getAllByRole("option")).toHaveLength(5);
+    // Los cuatro de siempre + «Any» + «Reel» (sprint 9).
+    expect(within(format).getAllByRole("option")).toHaveLength(6);
   });
 });

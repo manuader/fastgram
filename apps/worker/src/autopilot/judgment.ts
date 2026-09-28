@@ -3,8 +3,8 @@
  *
  * ## De dónde sale
  *
- * `LlmJudgmentAdapter` sobre el LLM de la tarea `judgment.autopilot` del
- * registro de modelos (`PU-MODEL-001`, `P1-JUDGE-004`): sin entrada propia usa
+ * El juicio de la tarea `judgment.autopilot` del registro de modelos (LLM o,
+ * desde el sprint 9, un SystemOne: `judgment/judgment-source.ts`) (`PU-MODEL-001`, `P1-JUDGE-004`): sin entrada propia usa
  * la de `judgment`, que a su vez hereda la de `text` (`resolveLlmConfig`). Se resuelve **en cada corrida**: un modelo nuevo en
  * Settings → Models llega a la próxima, sin reiniciar.
  *
@@ -21,16 +21,16 @@
  * pasado el plazo, la pieza queda `held` aunque la llamada siga viva. La
  * respuesta tardía se descarta.
  */
-import { LlmJudgmentAdapter, RecordingJudgment } from "@fastgram/adapters";
 import {
   AUTOPILOT_PRECHECK_QUESTIONS,
   type PrecheckAnswers,
   type PrecheckOutcome,
 } from "@fastgram/core";
-import { createJudgmentSink, type Database } from "@fastgram/db";
+import type { Database } from "@fastgram/db";
 import { isPortError, type Judgment, type JudgmentState } from "@fastgram/ports";
 
 import type { BuildLogger } from "../content/build-handler.js";
+import { judgmentSourceFor } from "../judgment/judgment-source.js";
 import type { LlmSource } from "../llm/registry-llm.js";
 
 /**
@@ -49,38 +49,19 @@ export function createRegistryJudgment(deps: {
   readonly appRole: string | undefined;
   readonly logger: BuildLogger;
 }): JudgmentProvider {
-  const sink = createJudgmentSink(
-    deps.db,
-    deps.appRole === undefined ? {} : { role: deps.appRole },
-  );
-  return async (subject) => {
+  // Sprint 9 (O, D-18): LLM o SystemOne según el registro, siempre con
+  // `RecordingJudgment` (`judgment/judgment-source.ts`).
+  const source = judgmentSourceFor(deps);
+  return async (subject) =>
     // `P1-JUDGE-004`: el modelo del piloto, si tiene uno propio; si no, el de
-    // `judgment` (que hereda el de `text`). Lo resuelve `resolveLlmConfig`.
-    const found = await deps.llmSource.current("judgment.autopilot");
-    if (found === null) return null;
-    const inner = new LlmJudgmentAdapter(found.llm, { model: found.config.model });
-    return new RecordingJudgment(
-      inner,
-      sink,
-      {
+    // `judgment` (que hereda el de `text`).
+    (
+      await source.resolve("judgment.autopilot", {
         companyId: subject.companyId,
         subjectType: "suggestion",
         subjectId: subject.suggestionId,
-      },
-      {
-        onError: (error) => {
-          deps.logger.warn(
-            {
-              companyId: subject.companyId,
-              suggestionId: subject.suggestionId,
-              reason: error instanceof Error ? error.message : String(error),
-            },
-            "no se pudo guardar el juicio en judgment_records (la decisión sigue)",
-          );
-        },
-      },
-    );
-  };
+      })
+    )?.judgment ?? null;
 }
 
 export interface PrecheckRun {

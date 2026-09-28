@@ -38,6 +38,8 @@ export const modelTaskSchema = z.enum([
   "judgment.autopilot",
   "judgment.brand",
   "judgment.engagement",
+  // Sprint 9 (O): el decisor de assets. Hereda `judgment`.
+  "judgment.assets",
   "vision",
   "image",
   "video",
@@ -63,8 +65,18 @@ export const modelProviderSchema = z.enum([
   "fal",
   // `PU-LATER-003`: ComfyUI local. El «modelo» es un workflow (`comfyWorkflow`).
   "comfyui",
+  // Sprint 9 (O, D-18): motores de juicio SystemOne. Sólo tareas `judgment*`.
+  "laya",
+  "typesafe",
 ]);
 export type ModelProvider = z.infer<typeof modelProviderSchema>;
+
+/** Los proveedores SystemOne (D-18): sin ventana de contexto, sólo juicio. */
+export const SYSTEMONE_MODEL_PROVIDERS = ["laya", "typesafe"] as const;
+
+export function isSystemOneModelProvider(provider: string): boolean {
+  return (SYSTEMONE_MODEL_PROVIDERS as readonly string[]).includes(provider);
+}
 
 export const modelProviderPresetSchema = z.object({
   id: modelProviderSchema,
@@ -74,6 +86,12 @@ export const modelProviderPresetSchema = z.object({
   requiresKey: z.boolean(),
   local: z.boolean(),
   note: z.string().nullable(),
+  /**
+   * Sprint 9 (O): el modelo a proponer al elegir el proveedor, cuando el
+   * adaptador tiene un catálogo cerrado (Laya: `auto`; Jev: `jev-latest`).
+   * Ausente/`null` = el usuario lo escribe o lo carga de la lista.
+   */
+  defaultModel: z.string().nullable().optional(),
 });
 export type ModelProviderPreset = z.infer<typeof modelProviderPresetSchema>;
 

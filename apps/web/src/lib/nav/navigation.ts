@@ -26,6 +26,7 @@ import {
   DiscordIcon,
   GiftIcon,
   HomeIcon,
+  LayersIcon,
   LibraryIcon,
   MapIcon,
   MessageSquareIcon,
@@ -101,12 +102,24 @@ export const TOOLS_NAV: readonly NavItem[] = [
   },
   // Sprint 8 (K): la biblioteca de modelos es del dueño; se ve igual en cualquier marca.
   { id: "models", labelKey: "nav.models", href: ROUTES.models, icon: UsersRoundIcon },
+  // Sprint 9 (N): la biblioteca global de assets, también del dueño. Va en
+  // Tools y no en el bloque principal: el test fija ese bloque exacto, y es una
+  // pantalla de armado de catálogo, no del circuito diario.
+  {
+    id: "global-library",
+    labelKey: "nav.globalLibrary",
+    href: `${ROUTES.library}/assets`,
+    icon: LayersIcon,
+  },
   {
     id: "analytics",
     labelKey: "nav.analytics",
     href: ROUTES.analytics,
     icon: BarChartIcon,
   },
+  // Sprint 9 (R): anuncios pagos en Meta + dashboard de marketing (D-21). Reusa
+  // el ícono de gráfico: el set de íconos es SVG a mano y no tiene megáfono.
+  { id: "ads", labelKey: "nav.ads", href: "/ads", icon: BarChartIcon },
   {
     id: "automations",
     labelKey: "nav.automations",

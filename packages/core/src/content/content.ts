@@ -35,6 +35,9 @@ export const CONTENT_TYPES = [
   "green-screen",
   "video-hook",
   "custom",
+  // Sprint 9 (`D-20`): composición por capas con HyperFrames. No es de Blitz
+  // (todavía): sale de «Create from prompt» y del editor.
+  "reel",
 ] as const;
 export type ContentType = (typeof CONTENT_TYPES)[number];
 

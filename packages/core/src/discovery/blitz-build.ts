@@ -64,6 +64,13 @@ export interface SuggestionBuildPlan {
    * válido y significa exactamente eso.
    */
   readonly audio?: BuildPlanAudio | undefined;
+  /**
+   * Sprint 9 (M, `PU-S9-003`): el estilo de caption del design system activo
+   * de la marca **al planificar** (`designSystemCaptionStyle`). Si está, manda
+   * sobre el preset al componer el payload. Opcional y sin subir la versión,
+   * como `audio`: un plan sin la clave es un plan de antes.
+   */
+  readonly textStyle?: CaptionStyle | undefined;
 }
 
 /** Una pista de la biblioteca de la marca, tal como se guarda en el plan. */
@@ -191,6 +198,10 @@ export function parseSuggestionBuildPlan(
     contentType === "slideshow" || raw["audio"] === undefined
       ? null
       : parseAudio(raw["audio"]);
+  // Igual que la música: un estilo roto no descarta la sugerencia, sale con
+  // el preset.
+  const textStyle =
+    raw["textStyle"] === undefined ? null : parseCaptionStyle(raw["textStyle"]);
   return {
     ok: true,
     plan: {
@@ -198,7 +209,45 @@ export function parseSuggestionBuildPlan(
       media,
       texts,
       ...(audio === null ? {} : { audio }),
+      ...(textStyle === null ? {} : { textStyle }),
     },
+  };
+}
+
+const HEX_RE = /^#[0-9A-Fa-f]{6}$/u;
+
+/** Valida un `CaptionStyle` guardado en el plan. `null` si no tiene forma. */
+export function parseCaptionStyle(v: unknown): CaptionStyle | null {
+  if (!isObj(v)) return null;
+  const { color, fontWeight, strokeWidth, strokeColor, backgroundColor } = v;
+  if (typeof color !== "string" || !HEX_RE.test(color)) return null;
+  if (
+    typeof fontWeight !== "number" ||
+    !Number.isInteger(fontWeight) ||
+    fontWeight < 100 ||
+    fontWeight > 900
+  ) {
+    return null;
+  }
+  const optHex = (x: unknown): string | null | undefined =>
+    x === undefined ? undefined : typeof x === "string" && HEX_RE.test(x) ? x : null;
+  const sc = optHex(strokeColor);
+  const bg = optHex(backgroundColor);
+  if (sc === null || bg === null) return null;
+  if (
+    strokeWidth !== undefined &&
+    (typeof strokeWidth !== "number" ||
+      strokeWidth < TEXT_BOX_LIMITS.strokeWidthMin ||
+      strokeWidth > TEXT_BOX_LIMITS.strokeWidthMax)
+  ) {
+    return null;
+  }
+  return {
+    color,
+    fontWeight,
+    ...(typeof strokeWidth === "number" ? { strokeWidth } : {}),
+    ...(sc === undefined ? {} : { strokeColor: sc }),
+    ...(bg === undefined ? {} : { backgroundColor: bg }),
   };
 }
 
@@ -469,7 +518,8 @@ export function composeBlitzBuildPayload(
   plan: SuggestionBuildPlan,
   options: ComposeOptions = {},
 ): BlitzBuildPayload {
-  const style = captionStyleFor(options.textStylePresetId);
+  // Sprint 9 (M): el estilo del design system, si el plan lo trae, manda.
+  const style = plan.textStyle ?? captionStyleFor(options.textStylePresetId);
   const media = plan.media;
   const first = plan.texts[0] as string;
 

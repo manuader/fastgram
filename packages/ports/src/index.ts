@@ -28,6 +28,8 @@ export * from "./video-gen.js";
 export * from "./speech.js";
 export * from "./talking-avatar.js";
 export * from "./character-swap.js";
+// Sprint 9 (agente R): ads con la Marketing API de Meta (D-21).
+export * from "./ads.js";
 
 /**
  * Suites de contrato de puerto.

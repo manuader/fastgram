@@ -58,6 +58,11 @@ export default defineConfig({
     ],
   },
   test: {
+    // Los tests de UI que tipean con `userEvent` tardan 1–2 s solos; con
+    // `pnpm verify` (turbo con todos los paquetes a la vez, más Laya y Ollama en
+    // la misma Mac) pasaron los 5 s por defecto al azar — Automations,
+    // GlobalLibrary — en el sprint 9. 15 s no esconde un cuelgue real.
+    testTimeout: 15_000,
     environment: "node",
     environmentMatchGlobs: [
       ["src/components/**", "jsdom"],

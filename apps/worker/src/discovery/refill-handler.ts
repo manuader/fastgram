@@ -143,9 +143,11 @@ import {
 } from "@fastgram/ports";
 
 import type { BuildLogger } from "../content/build-handler.js";
+import type { AssetJudge } from "../judgment/asset-decider.js";
 import type { SuggestionCopywriter } from "./copywriter.js";
 import {
   applyJv6,
+  decisionBrand,
   judgeBest,
   libraryModelProfile,
   type Jv6JudgmentProvider,
@@ -409,6 +411,16 @@ export function createDiscoveryRefillHandler(
         : await deps
             .judgment({ companyId: job.companyId, subjectType: "blitz_refill" })
             .catch(() => null);
+    // Sprint 9 (O): el decisor por candidato, si `judgment.assets` es SystemOne.
+    const assets =
+      deps.judgment?.assets === undefined
+        ? null
+        : await deps.judgment
+            .assets({ companyId: job.companyId, subjectType: "blitz_refill" })
+            .catch(() => null);
+    const recentIds = new Set<string>();
+    /** El tema de cada borrador, para elegir su música con el decisor. */
+    const topics = new Map<QueuedSuggestionDraft, string | null>();
 
     const drafts: QueuedSuggestionDraft[] = [];
     let lastRetryable: PortError | null = null;
@@ -433,6 +445,8 @@ export function createDiscoveryRefillHandler(
         profile: subject.profile,
         logger: deps.logger,
         influencerProfiles: subject.influencerProfiles,
+        assets,
+        recentIds,
       });
       const judged =
         judged0.influencerId === bound.influencerId ? judged0 : restrict(judged0);
@@ -447,7 +461,9 @@ export function createDiscoveryRefillHandler(
           remix === null ? undefined : toCopyRemixReference(remix),
         );
         if (draft.ok) {
-          drafts.push(remix === null ? draft.draft : withRemixSource(draft.draft, remix));
+          const d = remix === null ? draft.draft : withRemixSource(draft.draft, remix);
+          drafts.push(d);
+          topics.set(d, p.topic);
         } else {
           deps.logger.warn(
             { ...base, contentType: p.plan.contentType, reason: draft.reason },
@@ -486,6 +502,7 @@ export function createDiscoveryRefillHandler(
             { ...base, error: error instanceof Error ? error.message : String(error) },
             "no se pudo leer la biblioteca de audio: las sugerencias salen sin música",
           ),
+        assets === null ? undefined : musicDecider(assets, subject, topics, recentIds),
       ),
     );
 
@@ -828,30 +845,101 @@ export async function withBrandAudio(
   inTx: <T>(fn: (tx: Transaction) => Promise<T>) => Promise<T>,
   scope: { readonly companyId: string },
   onReadError?: (error: unknown) => void,
+  /**
+   * Sprint 9 (O): con dos o más pistas, la elige el decisor de assets (id de
+   * la pista, o `null` = sorteo como antes). Ausente = sorteo.
+   */
+  decideTrack?: MusicDecider,
 ): Promise<QueuedSuggestionDraft[]> {
   if (!drafts.some((d) => d.contentType !== "slideshow")) return [...drafts];
   let tracks: { audioId: string; url: string }[];
+  let described: readonly MusicTrack[];
   try {
     const rows = await inTx((tx) => brandAudioRepository.listAutoUse(tx, scope));
     tracks = rows.map((row) => ({ audioId: row.id, url: row.url }));
+    described = rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      durationSec: row.durationSec,
+    }));
   } catch (error: unknown) {
     onReadError?.(error);
     return [...drafts];
   }
   if (tracks.length === 0) return [...drafts];
-  return drafts.map((draft) => {
-    const audio = pickBuildPlanAudio(
-      draft.contentType as BlitzContentType,
-      tracks,
-      (items) => rng.weightedPick(items),
-    );
+  const out: QueuedSuggestionDraft[] = [];
+  for (const draft of drafts) {
+    let decided: string | null = null;
+    if (
+      decideTrack !== undefined &&
+      tracks.length >= 2 &&
+      draft.contentType !== "slideshow"
+    ) {
+      decided = await decideTrack(draft, described).catch(() => null);
+    }
+    const fixed = tracks.find((t) => t.audioId === decided);
+    const audio =
+      fixed ??
+      pickBuildPlanAudio(draft.contentType as BlitzContentType, tracks, (items) =>
+        rng.weightedPick(items),
+      );
     if (
       audio === null ||
       typeof draft.buildPlan !== "object" ||
       draft.buildPlan === null
     ) {
-      return draft;
+      out.push(draft);
+      continue;
     }
-    return { ...draft, buildPlan: { ...draft.buildPlan, audio } };
-  });
+    out.push({ ...draft, buildPlan: { ...draft.buildPlan, audio } });
+  }
+  return out;
+}
+
+/** Una pista de la biblioteca de la marca, como la ve el decisor. */
+export interface MusicTrack {
+  readonly id: string;
+  readonly title: string;
+  readonly durationSec: number | null;
+}
+
+export type MusicDecider = (
+  draft: QueuedSuggestionDraft,
+  tracks: readonly MusicTrack[],
+) => Promise<string | null>;
+
+/**
+ * Sprint 9 (O): la música de cada borrador con el decisor (rol `music`), con
+ * el tema del borrador como idea. Sin tema, `null` (sorteo). Lo que el
+ * decisor no pueda decidir (`all_unsafe`, sin respuesta) también es sorteo.
+ *
+ * El formato del decisor es el de la pieza, así que un slideshow nunca llega
+ * (no lleva música, `pickBuildPlanAudio`).
+ */
+export function musicDecider(
+  assets: AssetJudge,
+  subject: Pick<RefillSubject, "businessName" | "profile">,
+  topics: ReadonlyMap<QueuedSuggestionDraft, string | null>,
+  recentIds: Set<string>,
+): MusicDecider {
+  return async (draft, tracks) => {
+    const idea = topics.get(draft) ?? null;
+    if (idea === null || idea.trim() === "") return null;
+    const decision = await assets.decide({
+      idea,
+      brand: decisionBrand(subject.businessName, subject.profile),
+      format: draft.contentType as BlitzContentType,
+      role: "music",
+      candidates: tracks.map((t) => ({
+        id: t.id,
+        kind: "audio",
+        source: "brand",
+        description: `music track: ${t.title}`,
+        durationSec: t.durationSec,
+      })),
+      recentIds,
+    });
+    if (decision.chosenId !== null) recentIds.add(decision.chosenId);
+    return decision.mode === "judged" ? decision.chosenId : null;
+  };
 }

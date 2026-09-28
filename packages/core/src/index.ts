@@ -64,3 +64,15 @@ export * from "./influencers/index.js";
 export * from "./automations/index.js";
 // Sprint 7 (notify-reliability): notificaciones, canales y salud de la cola.
 export * from "./notifications/index.js";
+// Sprint 9 (Q): preferencias aprendidas desde Blitz (`PU-S9-011`, `D-22`).
+export * from "./preferences/index.js";
+// Sprint 9 (R): ads con la Marketing API de Meta (`D-21`).
+export * from "./ads/index.js";
+// Sprint 9 (N): biblioteca global de assets (`PU-S9-005/006`, `D-19`).
+export * from "./library/index.js";
+// Sprint 9 (M, `PU-S9-001…004`): design system por marca (zip de Claude Design o derivado).
+export * from "./design-system/index.js";
+// Sprint 9 (O): decisor de assets (`PU-S9-008`, `D-18`).
+export * from "./assets/index.js";
+// Sprint 9 (P): reels con HyperFrames — plan idea→spec (`PU-S9-010`, `D-20`).
+export * from "./reels/index.js";

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { BrandProfile } from "@/components/brand/BrandProfile";
+import { DesignSystemCard } from "@/components/design-system/DesignSystemCard";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { tw } from "@/lib/i18n/t";
 
@@ -20,6 +21,8 @@ export default function BrandPage() {
         description={tw("brand.profile.subtitle")}
       />
       <BrandProfile />
+      {/* Sprint 9 (M): design system de la marca (`PU-S9-001…004`). */}
+      <DesignSystemCard />
     </div>
   );
 }

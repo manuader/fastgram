@@ -31,6 +31,7 @@ export const contentTypeSchema = z.enum([
   "green-screen",
   "video-hook",
   "custom",
+  "reel", // sprint 9 (D-20): composición por capas renderizada con HyperFrames
 ]);
 export type ContentType = z.infer<typeof contentTypeSchema>;
 

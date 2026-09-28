@@ -15,6 +15,8 @@ export * from "./idempotency.js";
 export * from "./workspace-directory.js";
 // Sprint 8 (K): biblioteca de modelos del dueño.
 export * from "./character-models.js";
+// Sprint 9 (Q): preferencias aprendidas desde Blitz.
+export * from "./preferences.js";
 export * from "./strategy.js";
 export * from "./connections.js";
 
@@ -430,3 +432,11 @@ export * from "./media-usage.js";
 export * from "./blitz-prompt-meme.js";
 // `0031` (sprint 7, H): oferta post-análisis de `/brand`.
 export * from "./brand-flow.js";
+// `0036` (sprint 9, N): biblioteca global de assets (D-19).
+export * from "./library.js";
+// `0040` (sprint 9, R): anuncios pagos con Meta (D-21).
+export * from "./ads.js";
+// `0037` (sprint 9, O): decisiones del decisor de assets.
+export * from "./asset-decisions.js";
+// `0035` (sprint 9, M): design system por marca.
+export * from "./design-system.js";

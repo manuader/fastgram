@@ -68,6 +68,7 @@ export const CATEGORY_LABEL: Readonly<Record<NotificationCategoryId, string>> = 
   daily_summary: "Daily summary",
   queue_stuck: "Queue stuck",
   queue_dead_letter: "Jobs failed for good",
+  ad_spend_cap: "Ad campaign hit its spend cap",
 };
 
 export const TEST_ERROR_COPY: Readonly<Record<NotificationTestError, string>> = {

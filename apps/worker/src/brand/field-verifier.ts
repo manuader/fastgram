@@ -7,7 +7,8 @@
  *
  * ## De dónde sale el juicio
  *
- * `LlmJudgmentAdapter` sobre la tarea `judgment.brand` del registro de modelos
+ * El juicio de la tarea `judgment.brand` del registro de modelos (LLM o, desde
+ * el sprint 9, un SystemOne: `judgment/judgment-source.ts`)
  * (`P1-JUDGE-004`): sin entrada propia usa `judgment`, que hereda `text`. Se
  * resuelve en cada análisis. Cada lote deja su fila en `judgment_records`
  * (`RecordingJudgment`, `DATA-033`) con el campo como sujeto.
@@ -19,7 +20,6 @@
  * `materializeField` recorta a `low`. Un verificador caído nunca sube una
  * confianza, y nunca tumba el análisis: la síntesis ya se pagó.
  */
-import { LlmJudgmentAdapter, RecordingJudgment } from "@fastgram/adapters";
 import {
   FIELD_VERIFIER_QUESTIONS,
   applyVerification,
@@ -28,10 +28,11 @@ import {
   parseFieldVerifierAnswers,
   type DerivedField,
 } from "@fastgram/core";
-import { createJudgmentSink, type Database } from "@fastgram/db";
+import type { Database } from "@fastgram/db";
 import type { Judgment } from "@fastgram/ports";
 
 import type { BuildLogger } from "../content/build-handler.js";
+import { judgmentSourceFor } from "../judgment/judgment-source.js";
 import type { LlmSource } from "../llm/registry-llm.js";
 
 /** Presupuesto por campo. No es un número del PRD: JV-4 es asíncrono (no hay humano esperando). */
@@ -128,32 +129,14 @@ export function createRegistryFieldJudgment(deps: {
   readonly appRole: string | undefined;
   readonly logger: BuildLogger;
 }): FieldJudgmentProvider {
-  const sink = createJudgmentSink(
-    deps.db,
-    deps.appRole === undefined ? {} : { role: deps.appRole },
-  );
-  return async (subject) => {
-    const found = await deps.llmSource.current("judgment.brand");
-    if (found === null) return null;
-    return new RecordingJudgment(
-      new LlmJudgmentAdapter(found.llm, { model: found.config.model }),
-      sink,
-      {
+  // Sprint 9 (O, D-18): LLM o SystemOne según el registro (`judgment-source.ts`).
+  const source = judgmentSourceFor(deps);
+  return async (subject) =>
+    (
+      await source.resolve("judgment.brand", {
         companyId: subject.companyId,
         subjectType: "brand_source",
         subjectId: subject.subjectId,
-      },
-      {
-        onError: (error) => {
-          deps.logger.warn(
-            {
-              ...subject,
-              reason: error instanceof Error ? error.message : String(error),
-            },
-            "no se pudo guardar el juicio en judgment_records (la decisión sigue)",
-          );
-        },
-      },
-    );
-  };
+      })
+    )?.judgment ?? null;
 }

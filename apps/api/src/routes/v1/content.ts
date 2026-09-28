@@ -76,6 +76,7 @@ import {
   type ContentBuildPayload,
   type ContentTextBox,
   type EditableContent,
+  type ReelSpec,
   type UploadReservation,
 } from "@fastgram/contracts";
 import {
@@ -110,6 +111,7 @@ import { rateLimit } from "../../plugins/rate-limit.js";
 import { canFinalize } from "../../http/uploads.js";
 import { canonicalObjectUrl } from "../../support/upload-reservations.js";
 import { toContent, type ContentResource } from "../../support/serializers.js";
+import { capturePreferenceEdit } from "../../services/preferences.js";
 import { consumeContentSave, quotaPolicyFor } from "../../support/quota.js";
 import { crossTenant, data, idempotencyKeyOf, page, withIdempotency } from "./shared.js";
 import type { ZodApp } from "../../server/types.js";
@@ -138,7 +140,7 @@ const UPLOAD_RESERVATION_TTL_SECONDS = MAX_SIGNED_URL_TTL_SECONDS;
  * deriva del código: `content_not_editable` y `content_unavailable_for_type` son
  * **422** y el resto de los de contenido son **409** (§19.6).
  */
-class ContentRejection extends Error {
+export class ContentRejection extends Error {
   override readonly name = "ContentRejection";
   constructor(
     readonly status: number,
@@ -151,7 +153,7 @@ class ContentRejection extends Error {
 }
 
 /** Serializa un `ContentRejection`; el resto de los errores siguen su camino. */
-function sendRejection(reply: FastifyReply, e: unknown): FastifyReply | null {
+export function sendRejection(reply: FastifyReply, e: unknown): FastifyReply | null {
   if (!(e instanceof ContentRejection)) return null;
   return reply.status(e.status).send({
     error: {
@@ -185,7 +187,10 @@ export function queueUnavailable(reply: FastifyReply): FastifyReply {
  */
 function contentTypeOf(
   payload: ContentBuildPayload,
-): "slideshow" | "video-hook" | "green-screen" | "wall-of-text" {
+): "slideshow" | "video-hook" | "green-screen" | "wall-of-text" | "reel" {
+  // Sprint 9: sólo el payload del reel tiene la clave `reel`. Primero, igual
+  // que `formatOf` del worker.
+  if ("reel" in payload) return "reel";
   if ("num_images" in payload) return "slideshow";
   if ("hook_video" in payload) return "video-hook";
   if ("image" in payload) return "green-screen";
@@ -206,6 +211,10 @@ function canvasOf(buildPayload: unknown): Canvas | null {
   const parsed = contentBuildPayloadSchema.safeParse(buildPayload);
   if (!parsed.success) return null;
   const payload = parsed.data;
+  // Un reel no tiene lienzo editable de `FR-051`: se edita por capas en
+  // `GET/PUT /content/:id/reel` (y `GET /editable` responde 422 como a una
+  // pieza sin cajas).
+  if ("reel" in payload) return null;
 
   if ("num_images" in payload) {
     const first = payload.images[0];
@@ -260,7 +269,7 @@ function toContentTextBox(row: typeof contentTextBoxes.$inferSelect): ContentTex
  */
 function derivedTextBoxes(buildPayload: unknown): ContentTextBox[] {
   const parsed = contentBuildPayloadSchema.safeParse(buildPayload);
-  if (!parsed.success) return [];
+  if (!parsed.success || "reel" in parsed.data) return [];
   const boxes = z
     .array(contentTextBoxSchema)
     .safeParse(deriveTextBoxesFromBuildPayload(parsed.data));
@@ -426,7 +435,7 @@ async function enqueueRebuild(
  */
 function assetsFor(buildPayload: unknown, studioState: unknown): ContentAssets | null {
   const parsed = contentBuildPayloadSchema.safeParse(buildPayload);
-  if (!parsed.success) return null;
+  if (!parsed.success || "reel" in parsed.data) return null;
   const swaps = readAssetSwaps(studioState) ?? {};
   const applied = applyAssetSwaps(parsed.data, swaps);
   return assetsOf(applied.ok ? applied.payload : parsed.data) as ContentAssets;
@@ -456,7 +465,8 @@ async function resolveSwaps(
   patch: ContentAssetsPatch,
 ): Promise<AssetSwaps> {
   const parsed = contentBuildPayloadSchema.safeParse(row.buildPayload);
-  if (!parsed.success) {
+  // Un reel cambia su media por capas (`PUT /content/:id/reel`), no por slots.
+  if (!parsed.success || "reel" in parsed.data) {
     throw new ContentRejection(
       422,
       "content_not_editable",
@@ -554,7 +564,7 @@ async function ownsAsset(
  * matchee `media/ws-10/`. Una URL con `..` se normaliza al parsearla, así que
  * `…/media/{id}/../{otro}/x.mp4` no pasa el prefijo.
  */
-async function foreignPayloadAssets(
+export async function foreignPayloadAssets(
   tx: Transaction,
   storage: Storage,
   companyId: string,
@@ -604,6 +614,7 @@ function normalizedUrl(raw: string): string | null {
  * validar hasta el render (que igual la rechaza).
  */
 function payloadAssets(payload: ContentBuildPayload): IncomingAsset[] {
+  if ("reel" in payload) return reelAssets(payload.reel);
   if ("images" in payload) {
     return payload.images.map((slide, index) => ({
       url: slide.image.url,
@@ -626,9 +637,34 @@ function payloadAssets(payload: ContentBuildPayload): IncomingAsset[] {
   return out;
 }
 
+/**
+ * Sprint 9: la media de un reel, capa por capa. La música y la voz van como
+ * `audio` (biblioteca de la marca, `FR-070`); fondos, clips e imágenes, como
+ * media del Media Bank.
+ */
+function reelAssets(spec: ReelSpec): IncomingAsset[] {
+  const out: IncomingAsset[] = [];
+  for (const layer of spec.layers) {
+    const slot = `reel.layers.${layer.id}`;
+    if (layer.kind === "background") {
+      if (layer.fill.type === "image")
+        out.push({ url: layer.fill.url, kind: "image", slot });
+      if (layer.fill.type === "video")
+        out.push({ url: layer.fill.url, kind: "video", slot });
+    } else if (layer.kind === "clip") {
+      out.push({ url: layer.url, kind: "video", slot });
+    } else if (layer.kind === "image") {
+      out.push({ url: layer.url, kind: "image", slot });
+    } else if (layer.kind === "audio") {
+      out.push({ url: layer.url, kind: "audio", slot });
+    }
+  }
+  return out;
+}
+
 /** Fila de `contents` tal como la devuelve el repositorio. */
 type ContentRow = Awaited<ReturnType<typeof contentRepository.findById>>;
-type LiveContentRow = NonNullable<ContentRow>;
+export type LiveContentRow = NonNullable<ContentRow>;
 
 /**
  * Las guardas de edición de FR-051, en el orden del PRD.
@@ -644,7 +680,7 @@ type LiveContentRow = NonNullable<ContentRow>;
  * contrato —AI-004 tampoco la menciona— y queda reportado: hoy regenerar sobre
  * una pieza que alguien acaba de editar no da `stale_revision`.
  */
-async function assertEditable(
+export async function assertEditable(
   tx: Transaction,
   companyId: string,
   row: LiveContentRow,
@@ -760,7 +796,7 @@ function linkedPostsRejection(
  * `files` **no se limpia**: el PRD dice que durante el rebuild *"el contenido
  * previo sigue usable"*.
  */
-async function bumpAndRebuild(
+export async function bumpAndRebuild(
   tx: Transaction,
   queue: Queue,
   companyId: string,
@@ -1122,6 +1158,12 @@ export function registerContentRoutes(app: ZodApp): void {
                 });
               }
 
+              // Sprint 9 (Q): señal de preferencias (savepoint: nunca rompe la edición).
+              await capturePreferenceEdit(
+                tx,
+                { companyId, contentId: row.id, nowMs: clock.nowMs() },
+                request.log,
+              );
               return bumpAndRebuild(
                 tx,
                 queue,
@@ -1205,6 +1247,12 @@ export function registerContentRoutes(app: ZodApp): void {
               // Ver la nota de `assertEditable`.
               await assertEditable(tx, companyId, row, boxes, undefined);
 
+              // Sprint 9 (Q): señal de preferencias (savepoint: nunca rompe la regeneración).
+              await capturePreferenceEdit(
+                tx,
+                { companyId, contentId: row.id, nowMs: clock.nowMs(), regenerated: true },
+                request.log,
+              );
               return bumpAndRebuild(
                 tx,
                 queue,

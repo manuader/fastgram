@@ -33,6 +33,12 @@ export const TASK_COPY: Readonly<
     title: "Engagement scoring",
     description: "Scores Reddit leads and the tone of replies.",
   },
+  // Sprint 9 (O): el decisor de assets. Con Laya o Jev juzga cada candidato.
+  "judgment.assets": {
+    title: "Asset picker",
+    description:
+      "Picks the meme, background, music and character for each piece. Laya (local, free) judges every candidate; a language model only picks among the top few.",
+  },
   vision: {
     title: "Vision",
     description: "Tagging images and clips. Saved now, used once meme tagging lands.",
@@ -135,7 +141,7 @@ export const MODELS_COPY = {
   inheritsJudgment: "Not set — uses the Judgment model.",
   judgmentSection: "Judgment by decision point",
   judgmentSectionHint:
-    "Every decision uses the Judgment model unless you pick a different one here.",
+    "Every decision uses the Judgment model unless you pick a different one here. Laya runs on this Mac for free; pnpm start launches it when it's installed (scripts/setup-laya.sh).",
   useDifferentModel: "Use a different model for…",
   clearOverride: "Use the Judgment model again",
   clearingOverride: "Switching back…",
@@ -160,7 +166,8 @@ export const PROBE_ERROR_COPY: Readonly<Record<ModelProbeError["code"], string>>
   provider_unavailable:
     "Couldn't reach the provider. Is the URL right and the server running?",
   bad_request: "The provider rejected the request.",
-  provider_contract_violation: "That URL doesn't answer like an OpenAI-compatible API.",
+  provider_contract_violation:
+    "That URL doesn't answer like the API this provider speaks.",
   conflict: "The provider rejected the request.",
 };
 

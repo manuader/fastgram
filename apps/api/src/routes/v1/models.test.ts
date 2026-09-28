@@ -313,3 +313,153 @@ describe("GET /models/providers/:provider/models", () => {
     ).toBe(404);
   });
 });
+
+/* ------------------------------------------------------------------------ *
+ * Sprint 9 (O, D-18): Laya y Jev (SystemOne)
+ * ------------------------------------------------------------------------ */
+
+describe("SystemOne (Laya, Jev)", () => {
+  async function withProbe(
+    probe: (config: {
+      provider: string;
+      baseUrl: string;
+      apiKey: string;
+      model: string;
+    }) => Promise<{ model: string; latencyMs: number }>,
+  ): Promise<ZodApp> {
+    await app.close();
+    const raw = Fastify({ logger: false }).withTypeProvider<ZodTypeProvider>();
+    raw.setValidatorCompiler(validatorCompiler);
+    raw.setSerializerCompiler(serializerCompiler);
+    raw.decorate("deps", {
+      clock: new FixedClock(new Date("2026-09-28T12:00:00Z")),
+    } as never);
+    registerErrorHandler(raw);
+    app = raw as unknown as ZodApp;
+    registerModelRoutes(app, { registry, catalog, env, systemOneProbe: probe });
+    await app.ready();
+    return app;
+  }
+
+  it("los presets proponen el modelo del catálogo; judgment.assets acepta Laya", async () => {
+    const res = await app.inject({ method: "GET", url: "/models" });
+    const overview = modelsOverviewSchema.parse(body(res));
+    expect(overview.providers.find((p) => p.id === "laya")).toMatchObject({
+      baseUrl: "http://127.0.0.1:3006",
+      requiresKey: false,
+      defaultModel: "auto",
+    });
+    expect(overview.providers.find((p) => p.id === "typesafe")?.defaultModel).toBe(
+      "jev-latest",
+    );
+    const assets = overview.tasks.find((t) => t.task === "judgment.assets");
+    expect(assets?.providers).toContain("laya");
+    expect(overview.tasks.find((t) => t.task === "text")?.providers).not.toContain(
+      "laya",
+    );
+  });
+
+  it("guardar Laya en judgment.assets: ready, sin ventana; un modelo inventado es 400", async () => {
+    const bad = await app.inject({
+      method: "PUT",
+      url: "/models/judgment.assets",
+      payload: { provider: "laya", model: "gpt-9" },
+    });
+    expect(bad.statusCode).toBe(400);
+    const ok = await app.inject({
+      method: "PUT",
+      url: "/models/judgment.assets",
+      payload: { provider: "laya", model: "auto", contextWindowTokens: 4096 },
+    });
+    expect(ok.statusCode).toBe(200);
+    const view = modelTaskConfigSchema.parse(body(ok));
+    expect(view).toMatchObject({
+      status: "ready",
+      provider: "laya",
+      model: "auto",
+      contextWindowTokens: null,
+      missing: [],
+    });
+  });
+
+  it("probar Laya: catálogo + la prueba del adaptador; sin tocar el catálogo OpenAI", async () => {
+    const seen: string[] = [];
+    await withProbe(async (c) => {
+      seen.push(
+        `${c.provider} ${c.baseUrl} ${c.model} key=${c.apiKey === "" ? "none" : "yes"}`,
+      );
+      return { model: "laya-rl-agent/english", latencyMs: 42 };
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/models/test",
+      payload: { task: "judgment.assets", provider: "laya", baseUrl: "" },
+    });
+    const result = modelConnectionTestSchema.parse(body(res));
+    expect(result.ok).toBe(true);
+    expect(result.completion).toEqual({
+      ok: true,
+      model: "laya-rl-agent/english",
+      latencyMs: 42,
+    });
+    expect(result.models.ok && result.models.models.map((m) => m.id)).toEqual([
+      "auto",
+      "english",
+      "multilingual",
+      "typed-decisions",
+    ]);
+    expect(seen).toEqual(["laya http://127.0.0.1:3006 auto key=none"]);
+    expect(catalog.calls).toHaveLength(0);
+  });
+
+  it("Laya caído: ok:false con código estable", async () => {
+    await withProbe(async () => {
+      throw new PortError("provider_unavailable", "Laya is not answering", {
+        source: "Judgment/laya",
+      });
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/models/test",
+      payload: { provider: "laya", baseUrl: "http://127.0.0.1:3006", model: "auto" },
+    });
+    expect(res.statusCode).toBe(200);
+    const result = modelConnectionTestSchema.parse(body(res));
+    expect(result.ok).toBe(false);
+    expect(result.completion).toMatchObject({
+      ok: false,
+      error: { code: "provider_unavailable" },
+    });
+  });
+
+  it("Jev sin key: no se llama, unauthorized", async () => {
+    let called = false;
+    await withProbe(async () => {
+      called = true;
+      return { model: "x", latencyMs: 1 };
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/models/test",
+      payload: { provider: "typesafe", baseUrl: "" },
+    });
+    const result = modelConnectionTestSchema.parse(body(res));
+    expect(result.completion).toMatchObject({
+      ok: false,
+      error: { code: "unauthorized" },
+    });
+    expect(called).toBe(false);
+  });
+
+  it("la lista de modelos de un SystemOne es el catálogo", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/models/providers/typesafe/models",
+    });
+    const result = providerModelsSchema.parse(body(res));
+    expect(result.result).toEqual({
+      ok: true,
+      models: [{ id: "jev-latest", ownedBy: "Jev (latest)" }],
+    });
+  });
+});

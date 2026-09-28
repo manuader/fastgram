@@ -19,6 +19,8 @@ export const NOTIFICATION_CATEGORIES = [
   "daily_summary",
   "queue_stuck",
   "queue_dead_letter",
+  // Sprint 9 (R): la guardia de topes pausó (o no pudo pausar) una campaña paga.
+  "ad_spend_cap",
 ] as const;
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
 
@@ -54,4 +56,5 @@ export const DEFAULT_CATEGORY_PREFERENCES: Readonly<
   daily_summary: { inApp: true, push: true },
   queue_stuck: { inApp: true, push: true },
   queue_dead_letter: { inApp: true, push: true },
+  ad_spend_cap: { inApp: true, push: true },
 };

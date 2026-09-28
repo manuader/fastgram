@@ -57,7 +57,10 @@ export function regenerationBoxesOf(
 ): readonly ContentTextBox[] {
   if (saved.length > 0) return saved;
   const parsed = contentBuildPayloadSchema.safeParse(buildPayload);
-  return parsed.success ? deriveTextBoxesFromBuildPayload(parsed.data) : [];
+  // Un reel no tiene cajas de `FR-051`: su texto vive en las capas del spec.
+  return parsed.success && !("reel" in parsed.data)
+    ? deriveTextBoxesFromBuildPayload(parsed.data)
+    : [];
 }
 
 export async function regenerateTextBoxes(

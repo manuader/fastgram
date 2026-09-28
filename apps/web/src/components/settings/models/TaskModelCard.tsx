@@ -38,6 +38,7 @@ import {
   draftFrom,
   isDirty,
   keyWillBeDropped,
+  needsContextWindow,
   presetOf,
   toTestRequest,
   toUpdateRequest,
@@ -173,7 +174,8 @@ export function TaskModelCard({ config, presets }: TaskModelCardProps) {
   }, [serverList.data]);
 
   const preset = presetOf(presets, draft.provider);
-  const isLlm = config.kind === "llm";
+  // Sprint 9 (O): un motor SystemOne (Laya, Jev) no lleva ventana de contexto.
+  const isLlm = needsContextWindow(config.kind, draft.provider);
   // `PU-MODEL-003`/`004`: imagen y video también listan (catálogo verificado) y
   // prueban (una llamada autenticada que no genera). Sólo las reservadas no.
   const canProbe = config.kind !== "reserved";

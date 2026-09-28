@@ -19,7 +19,7 @@
  * ADR-009 y `P1-JUDGE-006`: los ids de modelo cambian mes a mes. El usuario lo
  * escribe o lo elige de lo que el proveedor lista en `GET {baseUrl}/models`.
  */
-import type { ModelProvider, ModelTask } from "@fastgram/ports";
+import { SYSTEMONE_PROVIDERS, type ModelProvider, type ModelTask } from "@fastgram/ports";
 
 export interface ModelProviderPreset {
   readonly id: ModelProvider;
@@ -136,6 +136,35 @@ export const MODEL_PROVIDER_PRESETS: readonly ModelProviderPreset[] = [
     local: true,
     note: "Runs on your own ComfyUI: no cost, no budget used. Paste a workflow exported in API format.",
   },
+  /*
+   * Sprint 9 (O, D-18): motores de juicio SystemOne (`POST {baseUrl}/v1/systemone`).
+   *
+   * - Laya: `laya-serve` en la Mac. Host y puerto son los que `pnpm start`
+   *   usa para levantarlo (`scripts/start.mjs`, `LAYA_PORT` = 3006); el
+   *   server en sí no tiene default de puerto que sirva (el suyo es 8000).
+   *   Sin key: `LAYA_API_KEY` es opcional y en la Mac no se usa.
+   * - TypeSafe (Jev): `https://api.typesafe.ai`, `Authorization: Bearer`
+   *   (https://docs.typesafe.ai/api.md, verificado el 2026-09-28).
+   *
+   * Los modelos de cada uno están en el catálogo del adaptador
+   * (`packages/adapters/src/judgment/systemone-catalog.ts`), no acá.
+   */
+  {
+    id: "laya",
+    label: "Laya",
+    baseUrl: "http://127.0.0.1:3006",
+    requiresKey: false,
+    local: true,
+    note: "Runs on this Mac (pnpm start launches it when installed): free and private. Only for judgment tasks.",
+  },
+  {
+    id: "typesafe",
+    label: "TypeSafe Jev",
+    baseUrl: "https://api.typesafe.ai",
+    requiresKey: true,
+    local: false,
+    note: "Hosted judgment model. Needs a TypeSafe API key. Only for judgment tasks.",
+  },
   {
     id: "custom",
     label: "Custom",
@@ -177,21 +206,42 @@ export interface ModelTaskSpec {
 
 /** Los de imagen y video: no hablan OpenAI, no sirven para texto. */
 export const GENAI_PROVIDERS: readonly ModelProvider[] = ["higgsfield", "fal", "comfyui"];
+/** Sprint 9 (D-18): hablan SystemOne. Sólo juicio. */
+const SYSTEMONE: readonly ModelProvider[] = SYSTEMONE_PROVIDERS;
 const LLM_PROVIDERS: readonly ModelProvider[] = MODEL_PROVIDER_PRESETS.map(
   (p) => p.id,
-).filter((id) => !GENAI_PROVIDERS.includes(id));
+).filter((id) => !GENAI_PROVIDERS.includes(id) && !SYSTEMONE.includes(id));
+/**
+ * Las tareas de juicio: cualquier LLM **o** un motor SystemOne (D-18). El
+ * SystemOne va primero en la lista a propósito: es el motor recomendado, y el
+ * LLM queda de fallback.
+ */
+const JUDGMENT_PROVIDERS: readonly ModelProvider[] = [...SYSTEMONE, ...LLM_PROVIDERS];
 const RESERVED_PROVIDERS: readonly ModelProvider[] = ["custom"];
 /** Voz, talking avatar y character swap: sólo fal tiene adaptador. */
 const VOICE_PROVIDERS: readonly ModelProvider[] = ["fal"];
 
 export const MODEL_TASK_SPECS: readonly ModelTaskSpec[] = [
   { task: "text", kind: "llm", wired: true, providers: LLM_PROVIDERS },
-  { task: "judgment", kind: "llm", wired: true, providers: LLM_PROVIDERS },
+  { task: "judgment", kind: "llm", wired: true, providers: JUDGMENT_PROVIDERS },
   // `P1-JUDGE-004`: overrides por punto de decisión. Mismo adaptador que
-  // `judgment`; sin entrada propia heredan de ahí (`resolveLlmConfig`).
-  { task: "judgment.autopilot", kind: "llm", wired: true, providers: LLM_PROVIDERS },
-  { task: "judgment.brand", kind: "llm", wired: true, providers: LLM_PROVIDERS },
-  { task: "judgment.engagement", kind: "llm", wired: true, providers: LLM_PROVIDERS },
+  // `judgment`; sin entrada propia heredan de ahí (`resolveJudgmentConfig`).
+  {
+    task: "judgment.autopilot",
+    kind: "llm",
+    wired: true,
+    providers: JUDGMENT_PROVIDERS,
+  },
+  { task: "judgment.brand", kind: "llm", wired: true, providers: JUDGMENT_PROVIDERS },
+  {
+    task: "judgment.engagement",
+    kind: "llm",
+    wired: true,
+    providers: JUDGMENT_PROVIDERS,
+  },
+  // Sprint 9 (O): el decisor de assets. Con un SystemOne usa el decisor por
+  // candidato; con un LLM, el `choice` de JV-6 de siempre (ver el worker).
+  { task: "judgment.assets", kind: "llm", wired: true, providers: JUDGMENT_PROVIDERS },
   { task: "vision", kind: "llm", wired: true, providers: LLM_PROVIDERS },
   { task: "image", kind: "genai", wired: true, providers: GENAI_PROVIDERS },
   { task: "video", kind: "genai", wired: true, providers: GENAI_PROVIDERS },

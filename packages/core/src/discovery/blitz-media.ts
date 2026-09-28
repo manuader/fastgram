@@ -388,6 +388,22 @@ export function relevantCandidates(
     .map((r) => r.item);
 }
 
+/**
+ * Sprint 9 (O, decisor de assets): el pool **entero** de un rol, sin filtrar
+ * por tema. El decisor filtra, rankea y juzga él (`core/assets/decision`):
+ * a diferencia de {@link relevantCandidates}, un clip sin palabras en común con
+ * el tema también compite, porque el juicio sí entiende sinónimos e idiomas.
+ */
+export function rolePool(
+  bank: MediaBank,
+  format: BlitzContentType,
+  influencerId: string | null,
+  role: JudgeableRole,
+): readonly PlanningMedia[] {
+  const pools = poolsFor(bank, format, influencerId);
+  return (role === "video" ? pools?.video : pools?.image) ?? [];
+}
+
 /** Reemplaza el asset de un rol en una selección de un formato que lo tiene. */
 export function withRoleMedia(
   selection: MediaSelection,

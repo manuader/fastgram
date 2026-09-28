@@ -69,6 +69,7 @@ export const CONTENT_TYPE_COPY: Readonly<Record<ContentType, CopyKey>> = {
   "green-screen": "library.type.greenScreen",
   "video-hook": "library.type.videoHook",
   custom: "library.type.custom",
+  reel: "library.type.reel",
 };
 
 export const CONTENT_STATUS_COPY: Readonly<Record<ContentStatus, CopyKey>> = {

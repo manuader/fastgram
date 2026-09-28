@@ -25,7 +25,10 @@ import {
   MODEL_PROVIDERS,
   MODEL_TASKS,
   isJudgmentOverrideTask,
+  isSystemOneProvider,
   type ComfyWorkflowConfig,
+  type JudgmentTask,
+  type SystemOneProvider,
   type ModelProvider,
   type ModelRegistrySnapshot,
   type ModelTask,
@@ -307,7 +310,12 @@ export function applyTaskUpdate(
   // La ventana es del modelo: si el modelo cambió y no vino una nueva, la
   // vieja no vale.
   let contextWindowTokens: number | undefined;
-  if (update.contextWindowTokens === null) {
+  if (isSystemOneProvider(update.provider)) {
+    // D-18: un motor SystemOne no tiene ventana que el adaptador use (el
+    // estado lo recorta el server, 50 000 caracteres en Laya). Guardarla sería
+    // un número que nadie lee y que la pantalla mostraría como si importara.
+    contextWindowTokens = undefined;
+  } else if (update.contextWindowTokens === null) {
     contextWindowTokens = undefined;
   } else if (update.contextWindowTokens !== undefined) {
     const n = update.contextWindowTokens;
@@ -389,8 +397,13 @@ export function missingFields(
   if (providerPreset(config.provider).requiresKey && key === null) {
     missing.push("apiKey");
   }
-  // `OpenAiCompatibleLlm` la exige; las reservadas no tienen adaptador que la use.
-  if (taskSpec(task).kind === "llm" && config.contextWindowTokens === undefined) {
+  // `OpenAiCompatibleLlm` la exige; las reservadas no tienen adaptador que la use,
+  // y un motor SystemOne (D-18) tampoco.
+  if (
+    taskSpec(task).kind === "llm" &&
+    !isSystemOneProvider(config.provider) &&
+    config.contextWindowTokens === undefined
+  ) {
     missing.push("contextWindowTokens");
   }
   return missing;
@@ -447,17 +460,26 @@ export interface ResolvedLlmConfig {
   readonly contextWindowTokens: number;
 }
 
-/** Qué entrada del registro sirve para una tarea, y si es heredada. */
+/**
+ * Qué entrada del registro sirve para una tarea, y si es heredada.
+ *
+ * Con `llmOnly`, una entrada SystemOne (D-18) cuenta como ausente: es lo que
+ * necesita quien arma un **LLM** (`resolveLlmConfig`), para el que Laya no es
+ * un modelo. Sin él —la pantalla— se muestra lo que hay guardado.
+ */
 function entryFor(
   task: ModelTask,
   snapshot: ModelRegistrySnapshot,
+  llmOnly = false,
 ): { readonly entry: ModelTask; readonly config: ModelTaskConfig } | null {
   const own = snapshot.tasks[task];
-  if (own !== undefined) return { entry: task, config: own };
+  if (own !== undefined && !(llmOnly && isSystemOneProvider(own.provider))) {
+    return { entry: task, config: own };
+  }
   // `P1-JUDGE-004`: un punto de decisión sin modelo propio usa el de juicio
   // general (y éste, el de texto). Es lo que hace compatible un `models.json`
   // escrito antes de que existieran los overrides.
-  if (isJudgmentOverrideTask(task)) return entryFor("judgment", snapshot);
+  if (isJudgmentOverrideTask(task)) return entryFor("judgment", snapshot, llmOnly);
   // `judgment` corre sobre el mismo puerto `Llm` que `text` (`LlmJudgmentAdapter`
   // recibe un `Llm`): sin entrada propia, usa la de texto. Es lo que pasaba
   // antes con las `LLM_*`, que eran una sola configuración para todo.
@@ -488,11 +510,17 @@ export function resolveLlmConfig(
     // regla 3 de la cabecera, un paso más abajo. Guardar a medias el modelo
     // del piloto no puede dejar al piloto sin juicio.
     const own = snapshot.tasks[task];
-    if (own === undefined || missingFields(task, own, secrets).length > 0) {
+    if (
+      own === undefined ||
+      isSystemOneProvider(own.provider) ||
+      missingFields(task, own, secrets).length > 0
+    ) {
       return resolveLlmConfig("judgment", snapshot, legacy, secrets);
     }
   }
-  const found = entryFor(task, snapshot);
+  // D-18: una entrada SystemOne no es un LLM. `judgment` apuntando a Laya deja
+  // como LLM de juicio (el fallback) al de texto, como si no tuviera entrada.
+  const found = entryFor(task, snapshot, true);
   if (found !== null && missingFields(found.entry, found.config, secrets).length === 0) {
     const { config } = found;
     const contextWindowTokens = config.contextWindowTokens;
@@ -520,6 +548,67 @@ export function resolveLlmConfig(
     };
   }
   return null;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Juicio: LLM o SystemOne (sprint 9, D-18)
+ * ------------------------------------------------------------------------ */
+
+/** Un motor SystemOne listo para hablarle: base, key (vacía = sin key) y modelo. */
+export interface ResolvedSystemOneConfig {
+  readonly engine: "systemone";
+  /** La entrada del registro que se usó (un override puede heredar `judgment`). */
+  readonly entry: ModelTask;
+  readonly provider: SystemOneProvider;
+  readonly baseUrl: string;
+  readonly apiKey: string;
+  readonly model: string;
+}
+
+export type ResolvedJudgmentConfig =
+  ResolvedSystemOneConfig | { readonly engine: "llm"; readonly llm: ResolvedLlmConfig };
+
+/**
+ * Con qué motor juzga una tarea de juicio: un SystemOne (Laya, Jev) o un LLM.
+ *
+ * Se recorre la cadena de herencia de siempre (`judgment.x` → `judgment`) y
+ * **gana la primera entrada completa**: si es SystemOne, ése; si es un LLM, el
+ * LLM de esa tarea. Una entrada incompleta no tapa a la de abajo (la misma
+ * regla 3 de la cabecera). Si ninguna de la cadena está completa, el LLM que
+ * `resolveLlmConfig` encuentre (hereda `text` y las `LLM_*`): D-18 deja el LLM
+ * de fallback.
+ *
+ * Ojo con lo que implica: con `judgment` en Laya, **todos** los puntos de
+ * decisión sin override propio pasan a Laya (el piloto, la marca, Engagement,
+ * los assets). Es lo que D-18 pide («los `JV-*` pueden correr sin costo»);
+ * quien quiera el piloto en un LLM le pone override.
+ */
+export function resolveJudgmentConfig(
+  task: JudgmentTask,
+  snapshot: ModelRegistrySnapshot,
+  legacy: LegacyLlmEnv | null,
+  secrets: SecretEnv,
+): ResolvedJudgmentConfig | null {
+  const chain: readonly JudgmentTask[] =
+    task === "judgment" ? ["judgment"] : [task, "judgment"];
+  for (const link of chain) {
+    const own = snapshot.tasks[link];
+    if (own === undefined || missingFields(link, own, secrets).length > 0) continue;
+    if (isSystemOneProvider(own.provider)) {
+      return {
+        engine: "systemone",
+        entry: link,
+        provider: own.provider,
+        baseUrl: own.baseUrl,
+        apiKey: resolveApiKey(own, secrets)?.key ?? "",
+        model: own.model,
+      };
+    }
+    // Un LLM completo en la cadena: ése, con las reglas de `resolveLlmConfig`.
+    break;
+  }
+  const llm = resolveLlmConfig(task, snapshot, legacy, secrets);
+  return llm === null ? null : { engine: "llm", llm };
 }
 
 /* ------------------------------------------------------------------------ *

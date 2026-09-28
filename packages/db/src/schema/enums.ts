@@ -67,6 +67,10 @@ export const SUGGESTION_CONTENT_TYPE = [
   "wall-of-text",
   "green-screen",
   "video-hook",
+  // `reel` YA existe en Postgres (0038 lo agrega a los dos enums) pero no acá
+  // todavía: ninguna sugerencia es un reel hasta el planificador semanal (segunda
+  // tanda del sprint 9). Sumarlo acá antes ensancha el tipo de las filas de la
+  // cola y obliga a tocar todo Blitz para un valor que nadie escribe.
 ] as const;
 export const suggestionContentTypeEnum = pgEnum(
   "suggestion_content_type",
@@ -84,6 +88,8 @@ export const CONTENT_TYPE = [
   "green-screen",
   "video-hook",
   "custom",
+  // Sprint 9 (`D-20`, migración 0038): composición por capas con HyperFrames.
+  "reel",
 ] as const;
 export const contentTypeEnum = pgEnum("content_type", CONTENT_TYPE);
 
@@ -395,7 +401,9 @@ export const DECISION_POINT = [
 ] as const;
 export const decisionPointEnum = pgEnum("decision_point", DECISION_POINT);
 
-export const JUDGMENT_ADAPTER = ["llm", "jev", "stub"] as const;
+// `laya`: sprint 9 (O, D-18, migración 0037). Habla el protocolo de Jev pero es
+// otro modelo: §25.4 compara adaptadores, así que no se registra como `jev`.
+export const JUDGMENT_ADAPTER = ["llm", "jev", "stub", "laya"] as const;
 export const judgmentAdapterEnum = pgEnum("judgment_adapter", JUDGMENT_ADAPTER);
 
 // ───────────────────────── Entitlements (DATA-002) ─────────────────────────

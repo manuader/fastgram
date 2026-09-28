@@ -238,6 +238,12 @@ function isOwnerLevelRoute(url: string): boolean {
     path.startsWith(`${API_V1_PREFIX}/workspaces/`) ||
     // Sprint 8 (K): la biblioteca de modelos es del dueño, no de la marca.
     path === `${API_V1_PREFIX}/character-models` ||
-    path.startsWith(`${API_V1_PREFIX}/character-models/`)
+    path.startsWith(`${API_V1_PREFIX}/character-models/`) ||
+    // Sprint 9 (N): la biblioteca global es de la instalación; «usar en marca»
+    // escribe en la marca activa y va con el scope normal.
+    (path.startsWith(`${API_V1_PREFIX}/library/`) && !path.endsWith("/use-in-brand")) ||
+    // Sprint 9 (Q): el nivel del dueño de las preferencias.
+    path === `${API_V1_PREFIX}/preferences/owner` ||
+    path.startsWith(`${API_V1_PREFIX}/preferences/owner/`)
   );
 }

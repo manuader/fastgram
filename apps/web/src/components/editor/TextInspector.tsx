@@ -242,7 +242,7 @@ export function Slider({
  * recién cuando es un `#RRGGBB` válido: aplicar a medio escribir mandaría al
  * reducer un color que el contrato rechaza.
  */
-function ColorField({
+export function ColorField({
   id,
   label,
   value,

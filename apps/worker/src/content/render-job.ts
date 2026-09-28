@@ -80,7 +80,10 @@ export type RenderJobResult =
  * cruzada contra `contents.type` que hace {@link toRenderJob} — si un lado
  * cambiara, la pieza se rechazaría en vez de construirse mal.
  */
-export function formatOf(payload: ContentBuildPayload): RenderableFormat {
+export function formatOf(payload: ContentBuildPayload): RenderableFormat | "reel" {
+  // Sprint 9: la clave `reel` sólo la tiene el payload del reel (ver
+  // `reelBuildPayloadSchema`). Va primero, igual que en `contentTypeOf`.
+  if ("reel" in payload) return "reel";
   if ("num_images" in payload) return "slideshow";
   if ("hook_video" in payload) return "video-hook";
   if ("image" in payload) return "green-screen";
@@ -156,6 +159,16 @@ export function toRenderJob(raw: unknown, contentType: string): RenderJobResult 
       reason:
         `el buildPayload tiene forma de ${format} y la pieza dice ser ` +
         `${contentType}. Alguien reescribió uno de los dos sin el otro.`,
+    };
+  }
+
+  if ("reel" in payload) {
+    // No se llega acá desde el build (la rama `reel` va por `reel-job.ts`); si
+    // algún día se llega, es un error de cableado y no un job de los cuatro.
+    return {
+      ok: false,
+      code: "invalid_build_payload",
+      reason: "un reel se construye con renderReel, no con toRenderJob",
     };
   }
 
@@ -257,7 +270,7 @@ export function toEditedRenderJob(
   studioState: unknown = null,
 ): RenderJobResult {
   const parsed = contentBuildPayloadSchema.safeParse(raw);
-  if (!parsed.success) return toRenderJob(raw, contentType);
+  if (!parsed.success || "reel" in parsed.data) return toRenderJob(raw, contentType);
 
   const swaps = readAssetSwaps(studioState);
   if (swaps === null) {

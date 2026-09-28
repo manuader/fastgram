@@ -75,6 +75,12 @@ import { createAutomationGenerationDispatcher } from "./automations/generation-h
 import type { MediaImportMount } from "./media-import/mount.js";
 import { createAudioExtractHandler } from "./audio-extract/handler.js";
 import type { AudioExtractMount } from "./audio-extract/ffmpeg.js";
+import { createLibraryImportHandler } from "./library/handler.js";
+import type { LibraryImportMount } from "./library/mount.js";
+import {
+  createDesignSystemMount,
+  type DesignSystemMountDeps,
+} from "./design-system/mount.js";
 
 export interface WorkerHandlerDeps {
   readonly db: Database;
@@ -184,6 +190,25 @@ export interface WorkerHandlerDeps {
    * (`audio-extract/ffmpeg.ts`). Ausente = no se monta (tests que no lo miran).
    */
   readonly audioExtract?: AudioExtractMount;
+  /**
+   * Sprint 9 (N): `library-import`, la biblioteca global con FFmpeg local
+   * (`library/mount.ts`). Ausente = no se monta (tests que no lo miran).
+   */
+  readonly libraryImport?: LibraryImportMount;
+  /**
+   * Sprint 9 (M): la cola `design-system` (import del zip y generar assets).
+   * Ausente = no se monta (tests que no lo miran). El generador de fondos es
+   * el mismo del kit (`brandBackgrounds`).
+   */
+  readonly designSystem?: Omit<
+    DesignSystemMountDeps,
+    "db" | "storage" | "appRole" | "logger" | "generator"
+  >;
+  /**
+   * Sprint 9 (R): `ads-sync`, insights de anuncios y guardia de topes
+   * (`ads/mount.ts`). Ausente = no se monta (tests que no lo miran).
+   */
+  readonly adsSync?: JobHandler<unknown>;
 }
 
 export type BrandAnalysisMount =
@@ -590,6 +615,40 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
     } else {
       unmounted.push({ queue: JOB_QUEUES.audioExtract, why: deps.audioExtract.why });
     }
+  }
+
+  /*
+   * `library-import` (sprint 9, N) — sólo con FFmpeg. Sin él, el asset queda
+   * `processing`, que es verdad: nadie lo procesó.
+   */
+  if (deps.libraryImport !== undefined) {
+    if (deps.libraryImport.kind === "mounted") {
+      handlers[JOB_QUEUES.libraryImport] = createLibraryImportHandler({
+        db,
+        storage,
+        clock,
+        logger,
+        ...deps.libraryImport.deps,
+      });
+    } else {
+      unmounted.push({ queue: JOB_QUEUES.libraryImport, why: deps.libraryImport.why });
+    }
+  }
+
+  // Sprint 9 (R): insights de anuncios y guardia de topes (D-21).
+  if (deps.adsSync !== undefined) handlers[JOB_QUEUES.adsSync] = deps.adsSync;
+
+  // Sprint 9 (M): design system por marca. Se monta siempre que venga: lo
+  // opcional (render, modelos) degrada con aviso adentro (`design-system/mount.ts`).
+  if (deps.designSystem !== undefined) {
+    handlers[JOB_QUEUES.designSystem] = createDesignSystemMount({
+      db,
+      storage,
+      appRole,
+      logger,
+      generator: brandBackgrounds,
+      ...deps.designSystem,
+    });
   }
 
   /*

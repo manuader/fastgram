@@ -393,3 +393,58 @@ export interface MediaRenderer {
   /** IMPL §5: «Nunca servir el master para un preview». */
   thumbnail(request: ThumbnailRequest, auth: MediaAuthorization): Promise<RenderedMedia>;
 }
+
+/* ------------------------------------------------------------------------ *
+ * Reels (sprint 9, `PU-S9-009`, `D-20`) — puerto aparte y aditivo
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Un render de reel. El `spec` viaja **opaco** (`ReelSpec` de
+ * `@fastgram/contracts`, validado por la API al guardarlo y por el servicio al
+ * recibirlo): `ports` no importa `contracts` ni `core`, y duplicar acá las
+ * seis clases de capa sería una tercera copia que mantener.
+ *
+ * Es un puerto aparte y no un quinto miembro de {@link RenderJob} para no
+ * tocar `RENDER_FORMATS` (que `check-consistency` compara con el enum de
+ * sugerencias: un reel no es una sugerencia de Blitz todavía) ni los adaptadores
+ * de los cuatro formatos base.
+ */
+export interface ReelRenderJob {
+  readonly spec: Readonly<Record<string, unknown>>;
+  /** `draft` para previews/iterar, `delivery` para la pieza final. */
+  readonly quality: "draft" | "delivery";
+}
+
+export interface ReelCaptionWord {
+  readonly text: string;
+  readonly start: number;
+  readonly end: number;
+}
+
+export interface ReelRenderBuild {
+  /** El MP4 (1080×1920, 30 fps), sin bajar: mismas reglas que {@link RenderArtifactRef}. */
+  readonly artifact: RenderArtifactRef;
+  /**
+   * Subtítulos que el motor transcribió en ESTE render, por id de capa. Quien
+   * llama los guarda en el spec para que el editor los muestre y los corrija;
+   * vacío en un cache hit.
+   */
+  readonly captions: Readonly<Record<string, readonly ReelCaptionWord[]>>;
+  readonly warnings: readonly string[];
+  readonly renderMs: number;
+}
+
+export interface ReelPreview {
+  /** La composición HTML, la misma del render, lista para un iframe. */
+  readonly html: string;
+  readonly durationSec: number;
+  readonly warnings: readonly string[];
+}
+
+export interface ReelRenderer {
+  renderReel(job: ReelRenderJob, auth: MediaAuthorization): Promise<ReelRenderBuild>;
+  previewReel(
+    spec: Readonly<Record<string, unknown>>,
+    auth: MediaAuthorization,
+  ): Promise<ReelPreview>;
+}

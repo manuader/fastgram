@@ -4,7 +4,7 @@
  * de un lado y no del otro, el worker escribe algo que la base rechaza o que
  * la API no puede devolver: este test lo dice antes.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { NOTIFICATION_CATEGORY_VALUES } from "@fastgram/contracts";
@@ -30,6 +30,17 @@ describe("categorías de notificación", () => {
         migration,
       );
     const inCheck = [...(check?.[1] ?? "").matchAll(/'([a-z_]+)'/gu)].map((m) => m[1]);
+    // Las migraciones posteriores **agregan** al CHECK vigente (sin reescribir
+    // la lista, para no pisar la de otra migración) y lo declaran con una
+    // línea `notifications_category_check += '<categoría>'`. Sprint 9 (R): 0040.
+    const drizzleDir = fileURLToPath(
+      new URL("../../../../../packages/db/drizzle/", import.meta.url),
+    );
+    for (const file of readdirSync(drizzleDir).filter((f) => f.endsWith(".sql"))) {
+      const sql = readFileSync(`${drizzleDir}${file}`, "utf8");
+      for (const m of sql.matchAll(/notifications_category_check \+= '([a-z_]+)'/gu))
+        inCheck.push(m[1]);
+    }
     expect(inCheck.sort()).toEqual([...NOTIFICATION_CATEGORIES].sort());
   });
 });

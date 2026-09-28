@@ -27,8 +27,8 @@
 
 /**
  * Las tareas. `text` y `judgment` tienen adaptador (`Llm` y
- * `LlmJudgmentAdapter`); el resto se guarda y todavía no lo consume nadie
- * (D-14: faltan los puertos `ImageGen`, `VideoGen` y `BackgroundRemoval`).
+ * `LlmJudgmentAdapter`, o `SystemOneJudgmentAdapter` si la tarea de juicio
+ * apunta a un proveedor SystemOne, D-18); el resto tiene cada una el suyo.
  */
 export const MODEL_TASKS = [
   "text",
@@ -40,6 +40,10 @@ export const MODEL_TASKS = [
   "judgment.autopilot",
   "judgment.brand",
   "judgment.engagement",
+  // Sprint 9 (O, D-18): el decisor de assets (meme, fondo, música, …). Hereda
+  // `judgment`. Es la tarea que más gana con un motor SystemOne: N juicios
+  // chicos por decisión en vez de un `choice` largo.
+  "judgment.assets",
   "vision",
   "image",
   "video",
@@ -62,6 +66,7 @@ export const JUDGMENT_OVERRIDE_TASKS = [
   "judgment.autopilot",
   "judgment.brand",
   "judgment.engagement",
+  "judgment.assets",
 ] as const;
 
 export type JudgmentOverrideTask = (typeof JUDGMENT_OVERRIDE_TASKS)[number];
@@ -94,9 +99,26 @@ export const MODEL_PROVIDERS = [
   // `PU-LATER-003`: ComfyUI local (imagen y video). El «modelo» es un workflow
   // en formato API que el usuario exporta y guarda en `comfyWorkflow`.
   "comfyui",
+  // Sprint 9 (O, D-18): motores de juicio que hablan el protocolo SystemOne
+  // (`POST {baseUrl}/v1/systemone`), no la API de OpenAI. Sólo sirven para las
+  // tareas `judgment*`; los atiende `SystemOneJudgmentAdapter`.
+  "laya",
+  "typesafe",
 ] as const;
 
 export type ModelProvider = (typeof MODEL_PROVIDERS)[number];
+
+/**
+ * Los proveedores SystemOne (D-18). Laya es el modelo open source que corre en
+ * la Mac (`laya-serve`); `typesafe` es Jev, el hospedado, con key.
+ */
+export const SYSTEMONE_PROVIDERS = ["laya", "typesafe"] as const;
+
+export type SystemOneProvider = (typeof SYSTEMONE_PROVIDERS)[number];
+
+export function isSystemOneProvider(provider: string): provider is SystemOneProvider {
+  return (SYSTEMONE_PROVIDERS as readonly string[]).includes(provider);
+}
 
 /** Lo que se guarda por tarea. */
 export interface ModelTaskConfig {

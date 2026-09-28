@@ -198,6 +198,11 @@ import { isUuid } from "../../http/route-ids.js";
 import { rateLimit } from "../../plugins/rate-limit.js";
 import { lockLedger, quotaPolicyFor, type QuotaPolicy } from "../../support/quota.js";
 import { toBlitzPreferences, toContent } from "../../support/serializers.js";
+import {
+  capturePreferenceAccept,
+  capturePreferenceDiscard,
+  type PreferenceLog,
+} from "../../services/preferences.js";
 import { brandContext } from "./calendar.js";
 import { data, idempotencyKeyOf, notFound, withIdempotency } from "./shared.js";
 import type { ZodApp } from "../../server/types.js";
@@ -929,6 +934,8 @@ async function acceptNextSuggestion(
     readonly queue: Queue;
     readonly clock: Clock;
     readonly policy: QuotaPolicy;
+    /** Sprint 9 (Q): para loguear si la señal de preferencias falla. */
+    readonly log?: PreferenceLog;
   },
 ): Promise<ContentRow> {
   const { companyId } = args;
@@ -1000,6 +1007,17 @@ async function acceptNextSuggestion(
     },
   );
 
+  // Sprint 9 (Q): señal de preferencias (en un savepoint: nunca rompe la aceptación).
+  await capturePreferenceAccept(
+    tx,
+    {
+      companyId,
+      suggestion: claimed,
+      contentId: created().id,
+      nowMs: args.clock.nowMs(),
+    },
+    args.log,
+  );
   return created();
 }
 
@@ -1254,13 +1272,19 @@ export function registerBlitzRoutes(app: ZodApp): void {
       const companyId = request.auth.companyId;
       const { id } = request.params;
       await request.tx(async (tx) => {
-        await lockQueuedSuggestion(tx, companyId, id);
+        const row = await lockQueuedSuggestion(tx, companyId, id);
         const discarded = await discardQueuedSuggestion(tx, { companyId }, id);
         if (!discarded) {
           throw new Error(
             `La sugerencia ${id} no pasó a \`discarded\` con el lock tomado y \`queued\`.`,
           );
         }
+        // Sprint 9 (Q): señal de preferencias (en un savepoint: nunca rompe el descarte).
+        await capturePreferenceDiscard(
+          tx,
+          { companyId, suggestion: row, nowMs: clock.nowMs() },
+          request.log,
+        );
       });
       // La cola acaba de perder una.
       await pedirRelleno(request, companyId);
@@ -1405,6 +1429,7 @@ export function registerBlitzRoutes(app: ZodApp): void {
               queue,
               clock,
               policy: quotaPolicyFor(app.deps.mode),
+              log: request.log,
             }),
           ),
         );

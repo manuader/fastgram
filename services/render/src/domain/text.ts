@@ -22,7 +22,11 @@
  * conversión: adivinarla sería inventar. Ver reporte.
  */
 import { z } from "zod";
-import { FONT_FAMILIES, isWeightAllowed, type FontFamily } from "./fonts.js";
+import {
+  fontFamilyFieldSchema,
+  isWeightAllowedForField,
+  type FontFamilyField,
+} from "./fonts.js";
 
 export const MAX_TEXT_LENGTH = 5000;
 export const POSITION_MIN = 0;
@@ -83,14 +87,15 @@ export const textBackgroundSchema = z
 
 export const fontSpecSchema = z
   .object({
-    family: z.enum(FONT_FAMILIES),
+    // Sprint 9 (M): una de las 12 o `brand:<id>` (ver `fonts.ts`).
+    family: fontFamilyFieldSchema,
     weight: z.number().int(),
     /** Default 18 — es el valor que muestra el inspector de `FR-051` (`Size: <18px>`). */
     size: z.number().int().min(FONT_SIZE_MIN).max(FONT_SIZE_MAX).default(18),
   })
   .strict()
   .superRefine((value, ctx) => {
-    if (!isWeightAllowed(value.family, value.weight)) {
+    if (!isWeightAllowedForField(value.family, value.weight)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["weight"],
@@ -154,6 +159,6 @@ export const textObjectListSchema = z
     }
   });
 
-export function fontFamilyOf(box: TextObject): FontFamily {
+export function fontFamilyOf(box: TextObject): FontFamilyField {
   return box.font.family;
 }

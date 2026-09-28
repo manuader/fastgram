@@ -1,7 +1,8 @@
 /**
  * Registro de modelos — `GET /models`, `PUT /models/:task`, `DELETE /models/:task`
  * (sólo overrides de juicio, `P1-JUDGE-004`), `POST /models/test`,
- * `GET /models/providers/:provider/models`. `PU-MODEL-001`, `PU-MODEL-002`,
+ * `GET /models/providers/:provider/models`. `PU-MODEL-001`, `PU-MODEL-002`, y
+ * desde el sprint 9 (O, D-18) los motores de juicio SystemOne (Laya, Jev),
  * `docs/PLAN-USO-PERSONAL.md` §4, D-14, ADR-009.
  *
  * Toda la lógica está en `packages/core/src/models` (validar, fusionar,
@@ -81,6 +82,10 @@ import {
   genCatalog,
   isGenProvider,
   modelRegistryPath,
+  // Sprint 9 (O, D-18): Laya / Jev (SystemOne).
+  SYSTEMONE_MODELS,
+  defaultSystemOneModel,
+  probeSystemOne,
   type GenClient,
   type GenProviderId,
 } from "@fastgram/adapters";
@@ -88,6 +93,8 @@ import {
   MODEL_TASKS,
   isJudgmentOverrideTask,
   isPortError,
+  isSystemOneProvider,
+  type SystemOneProvider,
   type ModelCatalog,
   type ModelProvider,
   type ModelRegistry,
@@ -130,6 +137,11 @@ export interface ModelRoutesDeps {
     readonly baseUrl: string;
     readonly apiKey: string;
   }) => Pick<FalVoiceClient, "checkVoiceCredentials">;
+  /**
+   * Sprint 9 (O): «Test connection» de Laya/Jev (`GET /health` + una pregunta
+   * trivial). Opcional: sin él, el de verdad (`probeSystemOne`).
+   */
+  readonly systemOneProbe?: typeof probeSystemOne;
 }
 
 function defaultVoiceClient(config: {
@@ -183,7 +195,14 @@ function presetView(id: ModelProvider): ModelProviderPreset {
     requiresKey: p.requiresKey,
     local: p.local,
     note: p.note ?? null,
+    // Sprint 9 (O): Laya y Jev tienen catálogo cerrado; se propone el primero.
+    defaultModel: isSystemOneProvider(id) ? defaultSystemOneModel(id) : null,
   };
+}
+
+/** Sprint 9 (O): el catálogo de un proveedor SystemOne, como lo lista la pantalla. */
+function systemOneModelsFor(provider: SystemOneProvider) {
+  return SYSTEMONE_MODELS[provider].map((m) => ({ id: m.id, ownedBy: m.label }));
 }
 
 function taskView(
@@ -301,6 +320,19 @@ export function registerModelRoutes(
           { field: "model" },
         );
       }
+      // Sprint 9 (O): Laya sólo entiende sus checkpoints (y `auto`); un id
+      // inventado haría que el router elija solo sin que nadie se entere.
+      if (
+        body.provider === "laya" &&
+        !SYSTEMONE_MODELS.laya.some((m) => m.id === body.model.trim())
+      ) {
+        throw new ApiRejection(
+          400,
+          "bad_request",
+          "Pick a model from the provider's list.",
+          { field: "model" },
+        );
+      }
       const snapshot = await registry.read();
       const result = applyTaskUpdate(
         task,
@@ -366,6 +398,48 @@ export function registerModelRoutes(
       if (!base.ok) throw badBaseUrl(base.message);
 
       const { key, source } = await keyFor(body.apiKey, body.task, base.baseUrl);
+
+      // Sprint 9 (O, D-18): Laya y Jev hablan SystemOne. La lista es el
+      // catálogo del adaptador; la prueba, `GET /health` (Laya) y una pregunta
+      // trivial con el modelo elegido (o el default).
+      const systemOneProvider = body.provider;
+      if (isSystemOneProvider(systemOneProvider)) {
+        const models: ModelListOutcome = {
+          ok: true,
+          models: systemOneModelsFor(systemOneProvider),
+        };
+        let completion: ModelCompletionOutcome;
+        if (systemOneProvider === "typesafe" && key === undefined) {
+          completion = {
+            ok: false,
+            error: { code: "unauthorized", message: "Paste the API key to test it." },
+          };
+        } else {
+          try {
+            const done = await (deps.systemOneProbe ?? probeSystemOne)({
+              provider: systemOneProvider,
+              baseUrl: base.baseUrl,
+              apiKey: key ?? "",
+              model: body.model ?? defaultSystemOneModel(systemOneProvider),
+              timeoutMs: MODEL_PROBE_TIMEOUT_MS,
+            });
+            completion = { ok: true, model: done.model, latencyMs: done.latencyMs };
+          } catch (error) {
+            request.log.info(
+              { probe: "systemone", code: probeError(error).code },
+              "judgment engine test failed",
+            );
+            completion = { ok: false, error: probeError(error) };
+          }
+        }
+        const result: ModelConnectionTest = {
+          ok: completion.ok,
+          keySource: source,
+          models,
+          completion,
+        };
+        return data(result);
+      }
 
       // `PU-MODEL-003`/`004`: Higgsfield y fal no hablan OpenAI. La lista es
       // el catálogo verificado; la prueba, una llamada autenticada que no
@@ -473,7 +547,9 @@ export function registerModelRoutes(
         keySource: source,
         result: isGenProvider(provider)
           ? { ok: true, models: genModelsFor(provider, query.task) }
-          : await list(base.baseUrl, key),
+          : isSystemOneProvider(provider)
+            ? { ok: true, models: systemOneModelsFor(provider) }
+            : await list(base.baseUrl, key),
       };
       return data(result);
     },

@@ -77,9 +77,10 @@ const sleep = (ms: number) =>
 export async function withFileLock<T>(
   lockPath: string,
   fn: () => Promise<T>,
+  waitMs: number = LOCK_WAIT_MS,
 ): Promise<T> {
   await mkdir(dirname(lockPath), { recursive: true, mode: DIR_MODE });
-  const deadline = Date.now() + LOCK_WAIT_MS;
+  const deadline = Date.now() + waitMs;
   for (;;) {
     try {
       await writeFile(lockPath, String(process.pid), { flag: "wx", mode: FILE_MODE });
@@ -165,9 +166,16 @@ export interface DocumentUpdate<T> {
 /** Un documento JSON (el gasto del mes). */
 export class JsonFileDocument {
   readonly #path: string;
+  readonly #lockWaitMs: number;
 
-  constructor(path: string) {
+  /**
+   * `lockWaitMs` existe para el test de contención (100 escritores a la vez):
+   * con la suite entera en paralelo, el último espera más que los 10 s de
+   * producción, donde nunca hay más que un par de escritores.
+   */
+  constructor(path: string, options: { readonly lockWaitMs?: number } = {}) {
     this.#path = path;
+    this.#lockWaitMs = options.lockWaitMs ?? LOCK_WAIT_MS;
   }
 
   /** `null` si todavía no existe. */
@@ -177,11 +185,15 @@ export class JsonFileDocument {
 
   /** Leer-modificar-escribir bajo lock. `fn` tiene que ser sincrónica y pura. */
   update<T>(fn: (current: unknown) => DocumentUpdate<T>): Promise<T> {
-    return withFileLock(`${this.#path}.lock`, async () => {
-      const out = fn(await readJson(this.#path));
-      if (out.next !== undefined) await writeJsonAtomic(this.#path, out.next);
-      return out.result;
-    });
+    return withFileLock(
+      `${this.#path}.lock`,
+      async () => {
+        const out = fn(await readJson(this.#path));
+        if (out.next !== undefined) await writeJsonAtomic(this.#path, out.next);
+        return out.result;
+      },
+      this.#lockWaitMs,
+    );
   }
 }
 

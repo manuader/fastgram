@@ -35,6 +35,7 @@ export const NOTIFICATION_CATEGORY_VALUES = [
   "daily_summary",
   "queue_stuck",
   "queue_dead_letter",
+  "ad_spend_cap",
 ] as const;
 export const notificationCategorySchema = z.enum(NOTIFICATION_CATEGORY_VALUES);
 export type NotificationCategoryId = z.infer<typeof notificationCategorySchema>;

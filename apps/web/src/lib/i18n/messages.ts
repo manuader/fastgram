@@ -43,6 +43,7 @@ export const webEn = {
   "nav.primaryLabel": "Main", // nuevo · sólo para lectores de pantalla
   "nav.secondaryLabel": "More", // nuevo · sólo para lectores de pantalla
   "nav.collapse": "Collapse sidebar", // nuevo
+  "nav.globalLibrary": "Global library", // nuevo (sprint 9, N): biblioteca global de assets
   "nav.expand": "Expand sidebar", // nuevo
   "nav.openMenu": "Open menu", // nuevo
   "nav.closeMenu": "Close menu", // nuevo
@@ -190,6 +191,7 @@ export const webEn = {
   "library.type.greenScreen": "Green Screen", // literal
   "library.type.videoHook": "Video Hook", // literal
   "library.type.custom": "Custom", // literal F-070 (PRD:532)
+  "library.type.reel": "Reel", // nuevo · sprint 9 (D-20)
   // DATA-008 (PRD:2076) da el enum, no el texto de pantalla: los tres son `nuevo`.
   "library.status.building": "Building", // nuevo
   "library.status.created": "Created", // nuevo
@@ -1400,6 +1402,623 @@ export const webEn = {
   "charModels.piece.textProduct": "Text on product slide {n}",
   "charModels.piece.create": "Create piece",
   "charModels.piece.failed": "Couldn't create the piece. Try again.",
+  /* ---------------------- biblioteca global de assets · sprint 9 (N), D-19 */
+  // Todo `nuevo`: la pantalla es del sprint 9 y el PRD no da copy.
+  "globalLibrary.title": "Global library",
+  "globalLibrary.subtitle":
+    "Green-screen clips, backgrounds, images and audio any brand can use. Every asset carries its license.",
+  "globalLibrary.close": "Close",
+  "globalLibrary.cancel": "Cancel",
+  "globalLibrary.loadMore": "Load more",
+  "globalLibrary.needsReview": "Needs review",
+  "globalLibrary.attribution": "Credit: {text}",
+  "globalLibrary.author": "By {name}",
+  "globalLibrary.preview.none": "No preview",
+  "globalLibrary.card.open": "Details",
+  "globalLibrary.card.openFor": "Details for {title}",
+  "globalLibrary.kind.green_screen_video": "Green screen",
+  "globalLibrary.kind.background_video": "Background video",
+  "globalLibrary.kind.background_image": "Background image",
+  "globalLibrary.kind.image": "Image",
+  "globalLibrary.kind.audio": "Audio",
+  "globalLibrary.status.processing": "Processing",
+  "globalLibrary.status.ready": "Ready",
+  "globalLibrary.status.failed": "Failed",
+  "globalLibrary.status.hidden": "Hidden",
+  "globalLibrary.memeType.reaction": "Reaction",
+  "globalLibrary.memeType.punchline": "Punchline",
+  "globalLibrary.memeType.transition": "Transition",
+  "globalLibrary.memeType.when_x_happens": "When X happens",
+  "globalLibrary.memeType.overlay_effect": "Overlay effect",
+  "globalLibrary.memeType.background": "Background",
+  "globalLibrary.memeType.b_roll": "B-roll",
+  "globalLibrary.memeType.sound_effect": "Sound effect",
+  "globalLibrary.memeType.music": "Music",
+  "globalLibrary.memeType.other": "Other",
+  "globalLibrary.emotion.joy": "Joy",
+  "globalLibrary.emotion.laughter": "Laughter",
+  "globalLibrary.emotion.surprise": "Surprise",
+  "globalLibrary.emotion.shock": "Shock",
+  "globalLibrary.emotion.excitement": "Excitement",
+  "globalLibrary.emotion.pride": "Pride",
+  "globalLibrary.emotion.love": "Love",
+  "globalLibrary.emotion.calm": "Calm",
+  "globalLibrary.emotion.neutral": "Neutral",
+  "globalLibrary.emotion.boredom": "Boredom",
+  "globalLibrary.emotion.confusion": "Confusion",
+  "globalLibrary.emotion.embarrassment": "Embarrassment",
+  "globalLibrary.emotion.sarcasm": "Sarcasm",
+  "globalLibrary.emotion.frustration": "Frustration",
+  "globalLibrary.emotion.anger": "Anger",
+  "globalLibrary.emotion.sadness": "Sadness",
+  "globalLibrary.emotion.fear": "Fear",
+  "globalLibrary.emotion.disgust": "Disgust",
+  "globalLibrary.framing.full_body": "Full body",
+  "globalLibrary.framing.half_body": "Half body",
+  "globalLibrary.framing.face": "Face",
+  "globalLibrary.framing.object": "Object",
+  "globalLibrary.framing.scene": "Scene",
+  "globalLibrary.framing.none": "None",
+  "globalLibrary.energy.low": "Low",
+  "globalLibrary.energy.medium": "Medium",
+  "globalLibrary.energy.high": "High",
+  "globalLibrary.chroma.green": "Green key",
+  "globalLibrary.chroma.blue": "Blue key",
+  "globalLibrary.chroma.alpha": "Alpha channel",
+  "globalLibrary.chroma.none": "No key",
+  "globalLibrary.aspect.9_16": "9:16",
+  "globalLibrary.aspect.16_9": "16:9",
+  "globalLibrary.aspect.1_1": "1:1",
+  "globalLibrary.aspect.4_5": "4:5",
+  "globalLibrary.aspect.other": "Other",
+  "globalLibrary.license.cc0": "CC0",
+  "globalLibrary.license.cc-by": "CC BY",
+  "globalLibrary.license.pexels": "Pexels License",
+  "globalLibrary.license.pixabay": "Pixabay License",
+  "globalLibrary.license.own": "My own",
+  "globalLibrary.license.generated": "AI-generated",
+  "globalLibrary.failure.download_failed": "Couldn't download the file.",
+  "globalLibrary.failure.too_large": "The file is too large.",
+  "globalLibrary.failure.too_long": "The clip is too long.",
+  "globalLibrary.failure.unsupported_media": "That format isn't supported.",
+  "globalLibrary.failure.normalization_failed": "Couldn't convert the file.",
+  "globalLibrary.failure.invalid_metadata": "Couldn't describe the asset automatically.",
+  "globalLibrary.failure.nsfw_rejected":
+    "Rejected: explicit or graphic content can't enter the library.",
+  "globalLibrary.failure.source_rate_limited":
+    "The source is rate-limiting downloads. Import it again in about 10 minutes.",
+  "globalLibrary.unimportable.license_not_accepted":
+    "Its license isn't accepted (for example, share-alike or non-commercial).",
+  "globalLibrary.unimportable.license_unverifiable": "Its license can't be verified.",
+  "globalLibrary.unimportable.restricted": "The source restricts how it can be used.",
+  "globalLibrary.unimportable.too_long": "The clip is too long.",
+  "globalLibrary.unimportable.too_large": "The file is too large.",
+  "globalLibrary.unimportable.unsupported_media": "That format isn't supported.",
+  "globalLibrary.unimportable.not_found": "It's no longer available at the source.",
+  "globalLibrary.unimportable.unknown": "It can't be imported.",
+  "globalLibrary.filter.search": "Search the library",
+  "globalLibrary.filter.any": "Any",
+  "globalLibrary.filter.kind": "Type",
+  "globalLibrary.filter.memeType": "Use",
+  "globalLibrary.filter.emotion": "Emotion",
+  "globalLibrary.filter.aspect": "Aspect",
+  "globalLibrary.filter.license": "License",
+  "globalLibrary.filter.maxDuration": "Max length",
+  "globalLibrary.filter.upTo": "Up to {seconds} s",
+  "globalLibrary.filter.showAll": "Show hidden and failed",
+  "globalLibrary.empty.title": "The global library is empty",
+  "globalLibrary.empty.body":
+    "Upload your own clips or import from Wikimedia, Pexels or Pixabay.",
+  "globalLibrary.empty.filteredTitle": "Nothing matches these filters",
+  "globalLibrary.empty.filteredBody": "Try fewer filters or another search.",
+  "globalLibrary.empty.clearFilters": "Clear filters",
+  "globalLibrary.useInBrand.action": "Use in brand",
+  "globalLibrary.useInBrand.actionFor": "Use {title} in the active brand",
+  "globalLibrary.useInBrand.added": "Added to {brand}",
+  "globalLibrary.useInBrand.doneMedia": "Added to {brand}'s Media Bank",
+  "globalLibrary.useInBrand.doneAudio": "Added to {brand}'s audio",
+  "globalLibrary.useInBrand.failed": "Couldn't add it to the brand",
+  "globalLibrary.import.open": "Add assets",
+  "globalLibrary.import.title": "Add to the global library",
+  "globalLibrary.import.tab.upload": "Upload",
+  "globalLibrary.import.tab.sources": "From sources",
+  "globalLibrary.upload.file.label": "File",
+  "globalLibrary.upload.file.hint":
+    "Video (MP4, MOV, WebM), image (JPG, PNG, WebP) or audio (MP3, M4A, WAV), up to {max} MB.",
+  "globalLibrary.upload.file.missing": "Choose a file to upload.",
+  "globalLibrary.upload.file.empty": "That file is empty.",
+  "globalLibrary.upload.file.tooLarge": "That file is over {max} MB.",
+  "globalLibrary.upload.file.unsupported": "That file type isn't supported.",
+  "globalLibrary.upload.title": "Title (optional)",
+  "globalLibrary.upload.kind": "Type",
+  "globalLibrary.upload.kindAuto": "Detect automatically",
+  "globalLibrary.upload.optional": "(optional)",
+  "globalLibrary.upload.license.legend": "License",
+  "globalLibrary.upload.license.type": "License type",
+  "globalLibrary.upload.license.placeholder": "Choose a license",
+  "globalLibrary.upload.license.version": "License version",
+  "globalLibrary.upload.license.author": "Author",
+  "globalLibrary.upload.license.attribution": "Attribution",
+  "globalLibrary.upload.license.sourceUrl": "Source page",
+  "globalLibrary.upload.license.licenseUrl": "License page",
+  "globalLibrary.upload.excluded.title": "Not accepted:",
+  "globalLibrary.upload.error.required": "{field} is required for this license.",
+  "globalLibrary.upload.error.invalid": "{field} isn't valid.",
+  "globalLibrary.upload.error.transfer": "The upload didn't go through. Try again.",
+  "globalLibrary.upload.error.generic": "Couldn't upload that. Try again.",
+  "globalLibrary.upload.step.reserve": "Preparing the upload…",
+  "globalLibrary.upload.step.transfer": "Uploading… {percent}",
+  "globalLibrary.upload.step.finalize": "Finishing…",
+  "globalLibrary.upload.done":
+    "Uploaded. It's processing now and will appear in the library.",
+  "globalLibrary.upload.submit": "Upload",
+  "globalLibrary.sources.title": "Sources",
+  "globalLibrary.sources.ready": "Ready",
+  "globalLibrary.sources.disabled": "Disabled",
+  "globalLibrary.sources.missingKey":
+    "{source} needs an API key before you can search it.",
+  "globalLibrary.sources.keyFromEnv": "The API key comes from the server environment.",
+  "globalLibrary.sources.license": "Source license",
+  "globalLibrary.sources.key.label": "{source} API key",
+  "globalLibrary.sources.key.save": "Save key",
+  "globalLibrary.sources.key.remove": "Remove key",
+  "globalLibrary.sources.key.invalid": "That doesn't look like an API key.",
+  "globalLibrary.sources.search": "Search",
+  "globalLibrary.sources.searchPlaceholder": "Search {source}",
+  "globalLibrary.sources.noResults": "No results",
+  "globalLibrary.sources.noResultsBody": "Try other words.",
+  "globalLibrary.sources.alreadyInLibrary": "Already in library",
+  "globalLibrary.sources.select": "Select",
+  "globalLibrary.sources.viewOnSource": "View on source",
+  "globalLibrary.sources.prev": "Previous",
+  "globalLibrary.sources.next": "Next",
+  "globalLibrary.sources.page": "Page {page}",
+  "globalLibrary.sources.importAs": "Import as",
+  "globalLibrary.sources.selected": "{count} of {max} selected",
+  "globalLibrary.sources.import": "Import selected",
+  "globalLibrary.sources.outcomes": "Import results",
+  "globalLibrary.sources.outcome.queued": "Queued",
+  "globalLibrary.sources.outcome.duplicate": "Already in library",
+  "globalLibrary.sources.outcome.rejected": "Rejected",
+  "globalLibrary.detail.title": "Asset",
+  "globalLibrary.detail.formLabel": "Asset metadata",
+  "globalLibrary.detail.titleField": "Title",
+  "globalLibrary.detail.kind": "Type",
+  "globalLibrary.detail.description": "Description",
+  "globalLibrary.detail.descriptionHint":
+    "What happens in the clip, in 1–3 sentences. {count}/{max}",
+  "globalLibrary.detail.memeType": "Use",
+  "globalLibrary.detail.framing": "Framing",
+  "globalLibrary.detail.energy": "Energy",
+  "globalLibrary.detail.emotions": "Emotions",
+  "globalLibrary.detail.useCases": "Use cases",
+  "globalLibrary.detail.useCasesPlaceholder": "When the client asks for changes",
+  "globalLibrary.detail.characters": "Characters",
+  "globalLibrary.detail.tags": "Tags",
+  "globalLibrary.detail.chips.count": "{count}/{max}",
+  "globalLibrary.detail.chips.add": "Add",
+  "globalLibrary.detail.chips.remove": "Remove {value}",
+  "globalLibrary.detail.hasSpeech": "Has speech",
+  "globalLibrary.detail.language": "Language",
+  "globalLibrary.detail.languageHint": "Short code: en, es, pt-BR.",
+  "globalLibrary.detail.noMetadata":
+    "The description, emotions and tags appear when processing finishes.",
+  "globalLibrary.detail.needsReviewHint":
+    "Some of this couldn't be tagged automatically. Check it and save.",
+  "globalLibrary.detail.measured": "Measured",
+  "globalLibrary.detail.duration": "Duration",
+  "globalLibrary.detail.aspect": "Aspect ratio",
+  "globalLibrary.detail.chroma": "Key",
+  "globalLibrary.detail.keyQuality": "Key quality",
+  "globalLibrary.detail.keyColor": "Key color",
+  "globalLibrary.detail.license": "License",
+  "globalLibrary.detail.licenseType": "Type",
+  "globalLibrary.detail.openSource": "Open source page",
+  "globalLibrary.detail.openLicense": "Open license",
+  "globalLibrary.detail.verifiedAt": "Verified",
+  "globalLibrary.detail.source.auto": "Tagged automatically",
+  "globalLibrary.detail.source.edited": "Edited by you",
+  "globalLibrary.detail.save": "Save changes",
+  "globalLibrary.detail.saved": "Saved.",
+  "globalLibrary.detail.invalidFields": "Check these fields: {fields}",
+  "globalLibrary.detail.hide": "Hide",
+  "globalLibrary.detail.unhide": "Unhide",
+  "globalLibrary.delete.open": "Delete",
+  "globalLibrary.delete.confirmText": "Delete this asset from the library?",
+  "globalLibrary.delete.confirm": "Delete",
+  "globalLibrary.picker.title": "Global library",
+  "globalLibrary.picker.pick": "Use this",
+  "globalLibrary.picker.pickFor": "Use {title}",
+  "globalLibrary.picker.emptyTitle": "Nothing ready here yet",
+  "globalLibrary.picker.emptyBody": "Add assets from Library → Global library.",
+  /* ------------------------------ What Blitz learned · sprint 9 (Q), D-22 */
+  // Todo `nuevo`: la pantalla no existe en el PRD. Las frases se arman por
+  // código con estas plantillas (`components/preferences/phrases.ts`).
+  "learned.title": "What Blitz learned", // nuevo
+  "learned.intro":
+    "Every accept, discard and edit in Blitz teaches it your taste. New suggestions lean toward what you keep, with room to surprise you.", // nuevo
+  "learned.scope.label": "Show what Blitz learned for", // nuevo
+  "learned.scope.brand": "This brand", // nuevo
+  "learned.scope.owner": "All my brands", // nuevo
+  "learned.loading": "Loading what Blitz learned…", // nuevo
+  "learned.empty.title": "Nothing learned yet", // nuevo
+  "learned.empty.body":
+    "Accept, discard or edit a few suggestions in Blitz. After 3 similar decisions, Blitz starts leaning your way.", // nuevo
+  "learned.decisions.one": "1 decision so far", // nuevo
+  "learned.decisions.other": "{count} decisions so far", // nuevo
+  "learned.likes": "You accept {thing}", // nuevo
+  "learned.avoids": "You usually skip {thing}", // nuevo
+  "learned.avoidsEditable": "You usually skip or swap {thing}", // nuevo
+  "learned.evidence": "{count} of {total}", // nuevo
+  "learned.fromOtherBrands": "from your other brands", // nuevo
+  "learned.settings.heading": "How Blitz uses it", // nuevo
+  "learned.settings.enabled": "Use what Blitz learned for this brand", // nuevo
+  "learned.settings.exploration": "Try something different", // nuevo
+  "learned.settings.explorationHint":
+    "How often Blitz ignores your taste on purpose, so it keeps discovering. Default 15%.", // nuevo
+  "learned.settings.memory": "Remember decisions for", // nuevo
+  "learned.settings.memoryHint": "After this long, a decision counts half as much.", // nuevo
+  "learned.settings.percent": "{value}%", // nuevo
+  "learned.settings.days": "{days} days", // nuevo
+  "learned.settings.default": "My default ({value})", // nuevo
+  "learned.settings.saveFailed": "Couldn't save that. Try again.", // nuevo
+  "learned.reset.brand": "Forget this brand's learning", // nuevo
+  "learned.reset.owner": "Forget the shared learning", // nuevo
+  "learned.reset.titleBrand": "Forget what Blitz learned for this brand?", // nuevo
+  "learned.reset.titleOwner": "Forget what Blitz learned across your brands?", // nuevo
+  "learned.reset.bodyBrand":
+    "Blitz deletes this brand's decisions and starts over. Your settings stay. This can't be undone.", // nuevo
+  "learned.reset.bodyOwner":
+    "Blitz stops using your past decisions as a shared default for new brands. Each brand keeps its own learning.", // nuevo
+  "learned.reset.confirm": "Forget", // nuevo
+  "learned.reset.failed": "Couldn't reset. Try again.", // nuevo
+  "learned.thing.format.slideshow": "slideshows", // nuevo
+  "learned.thing.format.wallOfText": "wall-of-text videos", // nuevo
+  "learned.thing.format.greenScreen": "green-screen memes", // nuevo
+  "learned.thing.format.videoHook": "video hooks", // nuevo
+  "learned.thing.format.custom": "your own videos", // nuevo
+  "learned.thing.clipKind": "{kind} memes", // nuevo
+  "learned.kind.reaction": "reaction", // nuevo
+  "learned.kind.laugh": "laughing", // nuevo
+  "learned.kind.shock": "shocked", // nuevo
+  "learned.kind.facepalm": "facepalm", // nuevo
+  "learned.kind.cringe": "cringe", // nuevo
+  "learned.kind.celebrate": "celebration", // nuevo
+  "learned.kind.sad": "sad", // nuevo
+  "learned.kind.angry": "angry", // nuevo
+  "learned.kind.confused": "confused", // nuevo
+  "learned.kind.smug": "smug", // nuevo
+  "learned.kind.dance": "dance", // nuevo
+  "learned.kind.animal": "animal", // nuevo
+  "learned.kind.sports": "sports", // nuevo
+  "learned.kind.movie": "movie-scene", // nuevo
+  "learned.kind.cartoon": "cartoon", // nuevo
+  "learned.thing.bgTone.dark": "dark backgrounds", // nuevo
+  "learned.thing.bgTone.light": "light backgrounds", // nuevo
+  "learned.thing.bgType.image": "image backgrounds", // nuevo
+  "learned.thing.bgType.video": "video backgrounds", // nuevo
+  "learned.thing.bgSource.upload": "backgrounds you uploaded", // nuevo
+  "learned.thing.bgSource.generated": "AI-generated backgrounds", // nuevo
+  "learned.thing.bgSource.brand": "brand-kit backgrounds", // nuevo
+  "learned.thing.bgSource.library": "library backgrounds", // nuevo
+  "learned.thing.bgSource.imported": "backgrounds from your own posts", // nuevo
+  "learned.thing.clipType.image": "image clips", // nuevo
+  "learned.thing.clipType.video": "video clips", // nuevo
+  "learned.thing.clipSource.upload": "clips you uploaded", // nuevo
+  "learned.thing.clipSource.generated": "AI-generated clips", // nuevo
+  "learned.thing.clipSource.brand": "brand-kit clips", // nuevo
+  "learned.thing.clipSource.library": "library clips", // nuevo
+  "learned.thing.clipSource.imported": "clips imported by link", // nuevo
+  "learned.thing.music.none": "pieces without music", // nuevo
+  "learned.thing.music.track": "pieces with music", // nuevo
+  "learned.thing.musicTrack": "the track “{label}”", // nuevo
+  "learned.thing.musicTrackUnknown": "one of your tracks", // nuevo
+  "learned.thing.musicSource.upload": "music you uploaded", // nuevo
+  "learned.thing.musicSource.import": "music imported by link", // nuevo
+  "learned.thing.musicSource.extracted": "audio taken from your videos", // nuevo
+  "learned.thing.musicSource.library": "library music", // nuevo
+  "learned.thing.textPreset": "the {label} caption style", // nuevo
+  "learned.thing.textFont": "the {label} font", // nuevo
+  "learned.thing.textSize.small": "small text", // nuevo
+  "learned.thing.textSize.medium": "medium-size text", // nuevo
+  "learned.thing.textSize.large": "big text", // nuevo
+  "learned.thing.textBox.yes": "text on a box", // nuevo
+  "learned.thing.textBox.no": "text without a box", // nuevo
+  "learned.thing.textAnim": "the {label} text animation", // nuevo
+  "learned.thing.textAnimNone": "text without animation", // nuevo
+  "learned.thing.textLen.short": "short texts", // nuevo
+  "learned.thing.textLen.medium": "medium-length texts", // nuevo
+  "learned.thing.textLen.long": "long texts", // nuevo
+  "learned.thing.duration.short": "short pieces", // nuevo
+  "learned.thing.duration.medium": "medium-length pieces", // nuevo
+  "learned.thing.duration.long": "long pieces", // nuevo
+  "learned.thing.angle": "the “{label}” angle", // nuevo
+  "learned.thing.angleUnknown": "one of your angles", // nuevo
+  "learned.thing.influencer": "pieces with {label}", // nuevo
+  "learned.thing.influencerNone": "pieces without an influencer", // nuevo
+  "learned.thing.influencerUnknown": "one of your influencers", // nuevo
+  "learned.thing.model": "pieces with {label}", // nuevo
+  "learned.thing.modelUnknown": "one of your models", // nuevo
+  "learned.thing.origin.refill": "Blitz's own ideas", // nuevo
+  "learned.thing.origin.prompt": "pieces you asked for", // nuevo
+  "learned.thing.origin.remix": "remixes", // nuevo
+
+  /* ------------------------------------------------- ads · sprint 9 (R), D-21 */
+  "nav.ads": "Ads", // nuevo
+  "ads.title": "Ads", // nuevo
+  "ads.subtitle":
+    "Paid campaigns on Meta for this brand. Everything is created paused; spending needs your confirmation.", // nuevo
+  "ads.tab.campaigns": "Campaigns", // nuevo
+  "ads.tab.dashboard": "Marketing dashboard", // nuevo
+  "ads.new": "New campaign", // nuevo
+  "ads.retry": "Try again", // nuevo
+  "ads.activate": "Activate", // nuevo
+  "ads.pause": "Pause", // nuevo
+  "ads.sync": "Sync now", // nuevo
+  "ads.sync.result": "Synced {synced} campaign(s). Paused at cap: {paused}.", // nuevo
+  "ads.syncIssue": "Sync issue", // nuevo
+  "ads.testReel": "Test reel", // nuevo
+  "ads.demo.badge": "Demo · no real spend", // nuevo
+  "ads.status.active": "Active", // nuevo
+  "ads.status.paused": "Paused", // nuevo
+  "ads.status.draft": "Paused · never activated", // nuevo
+  "ads.status.pausedDaily": "Paused · daily cap reached", // nuevo
+  "ads.status.pausedTotal": "Paused · total cap reached", // nuevo
+  "ads.status.archived": "Archived", // nuevo
+  "ads.spend.today": "Today", // nuevo
+  "ads.spend.total": "Total", // nuevo
+  "ads.list.label": "Ad campaigns", // nuevo
+  "ads.list.error": "Couldn't load your campaigns.", // nuevo
+  "ads.empty.title": "No campaigns yet", // nuevo
+  "ads.empty.description":
+    "Promote a piece from your Library. It's created paused, with a daily and a total cap.", // nuevo
+  "ads.connection.error": "Couldn't load the ad account connection.", // nuevo
+  "ads.connect.title": "Connect a Meta ad account", // nuevo
+  "ads.connect.expiredTitle": "Your ad account connection expired", // nuevo
+  "ads.connect.description":
+    "Ads use a separate, optional Facebook Login with ad permissions. Your publishing connections don't change.", // nuevo
+  "ads.connect.cta": "Connect with Facebook", // nuevo
+  "ads.connect.demo": "Try demo mode", // nuevo
+  "ads.connect.demoNote":
+    "Demo mode uses a simulated ad account: you can try the whole flow and nothing can be spent.", // nuevo
+  "ads.connect.noApp":
+    "Add your Meta app's App ID and secret in Settings → Integrations → Facebook first.", // nuevo
+  "ads.connect.redirect": "Add this URL to Valid OAuth Redirect URIs in your Meta app:", // nuevo
+  "ads.connect.permissions":
+    "It asks for ads_management, ads_read, business_management, pages_show_list, pages_read_engagement, pages_manage_ads and instagram_basic.", // nuevo
+  "ads.connect.disconnect": "Disconnect", // nuevo
+  "ads.pick.title": "Choose the ad account and Page", // nuevo
+  "ads.pick.loading": "Loading your ad accounts…", // nuevo
+  "ads.pick.account": "Ad account", // nuevo
+  "ads.pick.accountPlaceholder": "Choose an ad account", // nuevo
+  "ads.pick.page": "Facebook Page (and its Instagram account)", // nuevo
+  "ads.pick.pagePlaceholder": "Choose a Page", // nuevo
+  "ads.pick.inactive": "not active", // nuevo
+  "ads.pick.save": "Use these", // nuevo
+  "ads.pick.noneTitle": "No ad account or Page found", // nuevo
+  "ads.pick.noneDescription":
+    "The login didn't return an ad account and a Page you manage. Create them in Meta Business Suite and connect again.", // nuevo
+  "ads.confirm.titleActivate": "Confirm spend and activate", // nuevo
+  "ads.confirm.titleBudget": "Confirm the new caps", // nuevo
+  "ads.confirm.calculating": "Calculating the maximum possible spend…", // nuevo
+  "ads.confirm.maxLabel": "This campaign can spend at most", // nuevo
+  "ads.confirm.caps": "Daily cap {daily} · total cap {total}", // nuevo
+  "ads.confirm.spent": "Already spent: {spent}", // nuevo
+  "ads.confirm.daysLeft": "Days left until the end date: {days}", // nuevo
+  "ads.confirm.guard":
+    "FastGram checks spend every {minutes} minutes and pauses at the cap. Meta reports spend with a delay, so the real stop can land a little above it.", // nuevo
+  "ads.confirm.demo": "Demo account: nothing will be spent.", // nuevo
+  "ads.confirm.cta": "Confirm", // nuevo
+  "ads.confirm.ctaWithMax": "Confirm up to {max}", // nuevo
+  "ads.budget.title": "Spend caps", // nuevo
+  "ads.budget.daily": "Daily cap ({currency})", // nuevo
+  "ads.budget.total": "Total cap ({currency})", // nuevo
+  "ads.budget.save": "Save caps", // nuevo
+  "ads.budget.needsConfirmation":
+    "Raising a cap of an active campaign asks for confirmation.", // nuevo
+  "ads.detail.notFound": "Campaign not found", // nuevo
+  "ads.detail.error": "Couldn't load this campaign.", // nuevo
+  "ads.detail.capPaused":
+    "FastGram paused this campaign because it reached a cap. Resuming asks for your confirmation.", // nuevo
+  "ads.detail.caps": "Today {today} of {daily} · total {total} of {cap}.", // nuevo
+  "ads.detail.guard": "Checked every {minutes} minutes.", // nuevo
+  "ads.detail.ads": "Ads", // nuevo
+  "ads.detail.history": "History", // nuevo
+  "ads.detail.noHistory": "Nothing yet.", // nuevo
+  "ads.detail.maxShown": "max shown {max}", // nuevo
+  "ads.detail.byGuard": "by the spend guard", // nuevo
+  "ads.metric.spend": "Spend", // nuevo
+  "ads.metric.impressions": "Impressions", // nuevo
+  "ads.metric.clicks": "Clicks", // nuevo
+  "ads.metric.ctr": "CTR", // nuevo
+  "ads.metric.cpc": "CPC", // nuevo
+  "ads.metric.cpm": "CPM", // nuevo
+  "ads.metric.results": "Results", // nuevo
+  "ads.metric.cpa": "CPA", // nuevo
+  "ads.metric.roas": "ROAS", // nuevo
+  "ads.ab.title": "A/B tests", // nuevo
+  "ads.ab.badge": "A/B", // nuevo
+  "ads.ab.variant": "Variant", // nuevo
+  "ads.ab.winner": "Winner: variant {label}", // nuevo
+  "ads.ab.winnerBadge": "Winner", // nuevo
+  "ads.ab.noWinner": "No winner yet: the difference isn't significant.", // nuevo
+  "ads.ab.insufficient": "Not enough data yet.", // nuevo
+  "ads.ab.rule":
+    "A winner needs {impressions}+ impressions and {events}+ events per variant, and a 95% significant {metric} difference.", // nuevo
+  "ads.ab.noStudy": "Meta didn't accept a split test, so audiences may overlap.", // nuevo
+  "ads.dashboard.period": "Period", // nuevo
+  "ads.dashboard.days": "Last {days} days", // nuevo
+  "ads.dashboard.error": "Couldn't load the marketing dashboard.", // nuevo
+  "ads.dashboard.organic": "Organic", // nuevo
+  "ads.dashboard.paid": "Paid", // nuevo
+  "ads.dashboard.posts": "Posts", // nuevo
+  "ads.dashboard.views": "Views", // nuevo
+  "ads.dashboard.likes": "Likes", // nuevo
+  "ads.dashboard.comments": "Comments", // nuevo
+  "ads.dashboard.shares": "Shares", // nuevo
+  "ads.dashboard.engagement": "Engagement rate", // nuevo
+  "ads.dashboard.noPaidTitle": "No paid data", // nuevo
+  "ads.dashboard.noPaidDescription":
+    "Connect a Meta ad account (or try demo mode) to see paid results next to organic.", // nuevo
+  "ads.dashboard.byDay": "Paid results by day", // nuevo
+  "ads.dashboard.day": "Day", // nuevo
+  "ads.dashboard.noExperiments": "No A/B tests in this brand.", // nuevo
+  "ads.wizard.subtitle":
+    "Created paused. You'll confirm the maximum spend before anything runs.", // nuevo
+  "ads.wizard.loadError": "Couldn't load what the form needs.", // nuevo
+  "ads.wizard.needsConnection":
+    "Connect an ad account (or try demo mode) from Ads first.", // nuevo
+  "ads.wizard.name": "Campaign name", // nuevo
+  "ads.wizard.objective": "Objective", // nuevo
+  "ads.objective.awareness": "Awareness", // nuevo
+  "ads.objective.traffic": "Traffic", // nuevo
+  "ads.objective.engagement": "Engagement", // nuevo
+  "ads.wizard.isTest": "Test reel (small budget, one-off)", // nuevo
+  "ads.wizard.pieces": "Pieces from your Library", // nuevo
+  "ads.wizard.piecesHint": "Pick up to {max}. With an A/B test, each piece is a variant.", // nuevo
+  "ads.wizard.noPieces": "No finished pieces in your Library yet.", // nuevo
+  "ads.wizard.abTest": "A/B test the pieces", // nuevo
+  "ads.wizard.abMetric": "Decide the winner by", // nuevo
+  "ads.wizard.abMetric.ctr": "Click-through rate", // nuevo
+  "ads.wizard.abMetric.cvr": "Results per impression", // nuevo
+  "ads.wizard.message": "Ad text", // nuevo
+  "ads.wizard.destination": "Destination URL", // nuevo
+  "ads.wizard.audience": "Audience", // nuevo
+  "ads.wizard.countries": "Countries (2-letter codes)", // nuevo
+  "ads.wizard.ageMin": "Min age", // nuevo
+  "ads.wizard.ageMax": "Max age", // nuevo
+  "ads.wizard.interestsNote": "Interest targeting isn't available here yet.", // nuevo
+  "ads.wizard.budget": "Budget", // nuevo
+  "ads.wizard.endDate": "End date (optional)", // nuevo
+  "ads.wizard.budgetNote":
+    "The daily cap is split evenly between A/B variants. The total cap is enforced by FastGram, which pauses the campaign when it's reached.", // nuevo
+  "ads.wizard.create": "Create paused campaign", // nuevo
+  "ads.wizard.createNote": "Nothing is spent until you activate it.", // nuevo
+  "ads.wizard.problem.name": "Give the campaign a name.", // nuevo
+  "ads.wizard.problem.pieces": "Pick at least one piece.", // nuevo
+  "ads.wizard.problem.countries": "Add at least one 2-letter country code, like AR.", // nuevo
+  "ads.wizard.problem.caps": "Enter a daily and a total cap above zero.", // nuevo
+  "ads.wizard.problem.age": "Ages go from 18 to 65, and min can't be above max.", // nuevo
+  "ads.error.generic": "Something went wrong. Try again.", // nuevo
+  "ads.error.connect": "The ad account couldn't be connected. Try again.", // nuevo
+  "ads.reason.notConnected": "Connect an ad account first.", // nuevo
+  "ads.reason.integration":
+    "Add your Meta app credentials in Settings → Integrations → Facebook.", // nuevo
+  "ads.reason.publicMedia":
+    "Meta downloads the video from a public URL: start FastGram with the tunnel (pnpm start --tunnel).", // nuevo
+  "ads.reason.previewRequired": "Confirm the maximum spend first.", // nuevo
+  "ads.reason.previewExpired": "The confirmation expired. Open it again.", // nuevo
+  "ads.reason.previewUsed": "That confirmation was already used. Open it again.", // nuevo
+  "ads.reason.previewMismatch": "The caps changed since you confirmed. Confirm again.", // nuevo
+  "ads.reason.totalCapReached":
+    "This campaign already spent its total cap. Raise it first.", // nuevo
+  "ads.reason.budgetLimit": "Meta allows 4 budget changes per hour. Try again later.", // nuevo
+  "ads.reason.budgetTooLow": "The budget is below Meta's minimum for this account.", // nuevo
+  "ads.reason.destinationRequired": "Add a destination URL.", // nuevo
+  "ads.reason.abTwoPieces": "An A/B test needs at least two pieces.", // nuevo
+  "ads.reason.dailyExceedsTotal": "The daily cap can't be above the total cap.", // nuevo
+  "ads.reason.dailyTooSmall": "The daily cap is too small to split between the variants.", // nuevo
+  "ads.reason.unauthorized": "The ad account connection expired. Connect it again.", // nuevo
+  "ads.reason.permissionMissing":
+    "The connection is missing a permission. Connect it again and approve everything.", // nuevo
+  "ads.reason.accountDisabled": "The ad account is disabled or restricted in Meta.", // nuevo
+  "ads.reason.rateLimited": "Meta asked to slow down. Try again in a few minutes.", // nuevo
+  "ads.reason.activeCampaigns": "Pause every active campaign before disconnecting.", // nuevo
+  "ads.reason.oauthDenied": "You declined the ad permissions.", // nuevo
+  "ads.reason.oauthState":
+    "The login link expired or came from another brand. Try again.", // nuevo
+  // Sprint 9 (M): design system por marca (`PU-S9-001…004`).
+  "designSystem.title": "Design system", // nuevo
+  "designSystem.subtitle":
+    "Import a design system exported from Claude Design (.zip). Its palette, fonts and voice shape the backgrounds, the text boxes and the copy of new pieces.", // nuevo
+  "designSystem.source.zip": "{name} · version {version}", // nuevo
+  "designSystem.source.derived": "{name} · derived · version {version}", // nuevo
+  "designSystem.empty.body":
+    "No design system yet. Import a Claude Design export, or derive a starter one from your brand analysis (colors, logo and images you already have).", // nuevo
+  "designSystem.import.drop": "Drop the .zip here", // nuevo
+  "designSystem.import.choose": "Choose a .zip", // nuevo
+  "designSystem.import.uploading": "Uploading… {percent}%", // nuevo
+  "designSystem.import.processing":
+    "Importing: reading tokens, fonts and assets and summarizing the voice. This takes a minute or two.", // nuevo
+  "designSystem.import.replace": "Import a new version", // nuevo
+  "designSystem.import.notZip": "That file is not a .zip.", // nuevo
+  "designSystem.import.tooLarge": "The .zip is larger than 100 MB.", // nuevo
+  "designSystem.import.empty": "That file is empty.", // nuevo
+  "designSystem.failure.zip_too_large":
+    "The import failed: the .zip is larger than 100 MB.", // nuevo
+  "designSystem.failure.too_many_entries":
+    "The import failed: the .zip has too many files.", // nuevo
+  "designSystem.failure.unsafe_path":
+    "The import failed: the .zip has a file path that points outside of it. Export it again from Claude Design.", // nuevo
+  "designSystem.failure.zip_bomb":
+    "The import failed: a file in the .zip unpacks to far more than its size. Export it again from Claude Design.", // nuevo
+  "designSystem.failure.not_a_zip": "The import failed: the file is not a valid .zip.", // nuevo
+  "designSystem.failure.empty_design_system":
+    "The import failed: the .zip has no color or font tokens and no readme.", // nuevo
+  "designSystem.failure.storage_failed":
+    "The import failed while saving the files. Try again.", // nuevo
+  "designSystem.failure.generic": "The last import failed. Try again.", // nuevo
+  "designSystem.derive": "Derive from brand analysis", // nuevo
+  "designSystem.delete": "Remove design system", // nuevo
+  "designSystem.delete.confirm":
+    "Remove this design system? New pieces go back to the default style. Imported assets stay in the Media Bank.", // nuevo
+  "designSystem.warnings": "{count} notes from the import", // nuevo
+  "designSystem.save": "Save", // nuevo
+  "designSystem.cancel": "Cancel", // nuevo
+  "designSystem.palette.title": "Palette", // nuevo
+  "designSystem.palette.surfaceDark": "Dark surface", // nuevo
+  "designSystem.palette.surfaceLight": "Light surface", // nuevo
+  "designSystem.palette.textOnDark": "Text on dark", // nuevo
+  "designSystem.palette.accents": "Accents", // nuevo
+  "designSystem.palette.none": "—", // nuevo
+  "designSystem.palette.edit": "Edit palette", // nuevo
+  "designSystem.palette.colorOf": "Color {name}", // nuevo
+  "designSystem.palette.remove": "Remove {name}", // nuevo
+  "designSystem.palette.add": "Add color", // nuevo
+  "designSystem.type.title": "Typography", // nuevo
+  "designSystem.type.defaults":
+    "New pieces: titles and hooks in {title}, the rest in {body}.", // nuevo
+  "designSystem.type.none": "This design system names no fonts.", // nuevo
+  "designSystem.type.origin.file": "Font files included", // nuevo
+  "designSystem.type.origin.google": "Google Fonts", // nuevo
+  "designSystem.type.origin.stack": "System font", // nuevo
+  "designSystem.type.loading": "Loading the font…", // nuevo
+  "designSystem.type.loadError": "The font file could not be loaded.", // nuevo
+  "designSystem.type.rendersAs": "Renders as {name}", // nuevo
+  "designSystem.type.license": "I have a license to use this font", // nuevo
+  "designSystem.style.title": "Voice and rules", // nuevo
+  "designSystem.style.values": "Values", // nuevo
+  "designSystem.style.rules": "Composition rules", // nuevo
+  "designSystem.style.dos": "Do", // nuevo
+  "designSystem.style.donts": "Don't", // nuevo
+  "designSystem.style.voice": "Voice", // nuevo
+  "designSystem.style.tagline": "Tagline", // nuevo
+  "designSystem.style.onePerLine": "one per line", // nuevo
+  "designSystem.style.edit": "Edit voice and rules", // nuevo
+  "designSystem.style.none": "No voice summary yet.", // nuevo
+  "designSystem.style.origin.model": "Summarized by your text model from the readme.", // nuevo
+  "designSystem.style.origin.heuristic":
+    "Read from the readme without a model. Review it: it can be rough.", // nuevo
+  "designSystem.style.origin.owner": "Edited by you.", // nuevo
+  "designSystem.assets.title": "Assets", // nuevo
+  "designSystem.assets.none": "No assets yet.", // nuevo
+  "designSystem.assets.kind.logo": "Logo", // nuevo
+  "designSystem.assets.kind.imagery": "Image", // nuevo
+  "designSystem.assets.kind.motif": "Motif", // nuevo
+  "designSystem.assets.kind.generated": "Generated", // nuevo
+  "designSystem.generate.title": "New backgrounds", // nuevo
+  "designSystem.generate.body":
+    "Generate backgrounds with the palette. They wait here until you approve them; approved ones go to the Media Bank.", // nuevo
+  "designSystem.generate.local": "Generate 4 backgrounds", // nuevo
+  "designSystem.generate.withModel": "Generate with the image model", // nuevo
+  "designSystem.generate.queued": "Generating {count} backgrounds…", // nuevo
+  "designSystem.generate.queuedNoModel":
+    "Generating {count} local backgrounds. No image model is configured (Settings → Models), so none come from a model.", // nuevo
+  "designSystem.pending.title": "Waiting for approval ({count})", // nuevo
+  "designSystem.pending.local": "Local", // nuevo
+  "designSystem.pending.model": "Image model", // nuevo
+  "designSystem.pending.approve": "Approve", // nuevo
+  "designSystem.pending.discard": "Discard", // nuevo
 } as const;
 
 export type WebMessageKey = keyof typeof webEn;

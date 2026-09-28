@@ -27,7 +27,7 @@ describe("JsonFileDocument", () => {
   });
 
   it("cien incrementos concurrentes no pierden ninguno (el lock serializa)", async () => {
-    const doc = new JsonFileDocument(join(dir, "n.json"));
+    const doc = new JsonFileDocument(join(dir, "n.json"), { lockWaitMs: 25_000 });
     await Promise.all(
       Array.from({ length: 100 }, () =>
         doc.update((cur) => {
@@ -39,7 +39,8 @@ describe("JsonFileDocument", () => {
     );
     expect(await doc.read()).toEqual({ n: 100 });
     // 100 vueltas de lock por disco: solo tarda ~1 s, pero bajo `pnpm verify`
-    // (turbo con todo en paralelo) pasó los 5 s del default (2026-09-24).
+    // (turbo con todo en paralelo) pasó los 5 s del default (2026-09-24), y en
+    // el sprint 9 el último escritor pasó los 10 s de espera del lock.
   }, 30_000);
 
   it("un JSON roto no se pisa: provider_contract_violation", async () => {

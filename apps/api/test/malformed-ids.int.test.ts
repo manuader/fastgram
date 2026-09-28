@@ -34,7 +34,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildOpenApiDocument } from "@fastgram/contracts";
+import { REEL_DEFAULT_THEME, buildOpenApiDocument } from "@fastgram/contracts";
 
 import { API_V1_PREFIX } from "../src/server/app.js";
 import { startApi, type ApiHarness, type Response } from "./helpers/harness.js";
@@ -176,6 +176,50 @@ const BODIES: Readonly<Record<string, () => unknown>> = {
     sourceMediaId: randomUUID(),
     texts: ["hola"],
   }),
+  // Sprint 9 (M): design system por marca.
+  "PATCH /design-system/{designSystemId}": () => ({ name: "FOCUS" }),
+  "POST /design-system/{designSystemId}/generate": () => ({ localImages: 1 }),
+  // Sprint 9 (N): biblioteca global. `{source}` también recibe el id: una fuente
+  // basura es 404, igual que una inexistente.
+  "PATCH /library/assets/{id}": () => ({ title: "otro título" }),
+  "PUT /library/sources/{source}/key": () => ({ apiKey: "una-key-de-prueba" }),
+  "POST /library/sources/{source}/import": () => ({ externalIds: ["x"] }),
+  // Sprint 9 (R): ads. Pasan el schema; la campaña inexistente es 404.
+  "POST /ads/campaigns/{id}/activation-preview": () => ({ action: "activate" }),
+  "POST /ads/campaigns/{id}/activate": () => ({ confirmationToken: "token" }),
+  "PATCH /ads/campaigns/{id}/budget": () => ({ dailyCapMinor: 100, totalCapMinor: 1000 }),
+  // Sprint 9 (P): el spec más chico que pasa el schema.
+  "PUT /content/{id}/reel": () => ({
+    revision: 1,
+    reel: {
+      version: 1,
+      durationSec: 5,
+      canvas: { width: 1080, height: 1920 },
+      fps: 30,
+      language: "en",
+      theme: REEL_DEFAULT_THEME,
+      mix: { duckMusic: false, duckLevel: 0.3 },
+      layers: [
+        {
+          id: "bg",
+          kind: "background",
+          start: 0,
+          end: 5,
+          z: 0,
+          fill: { type: "color", color: "#000000" },
+          transitionIn: { kind: "cut", durationSec: 0.3 },
+        },
+      ],
+    },
+  }),
+};
+
+/**
+ * La query que una operación `GET` necesita para pasar el schema, por la misma
+ * razón que {@link BODIES}: sin ella responde 400 antes del handler.
+ */
+const QUERIES: Readonly<Record<string, string>> = {
+  "GET /library/sources/{source}/search": "q=facepalm",
 };
 
 interface Operation {
@@ -204,7 +248,9 @@ function send(op: Operation, id: string): Promise<Response> {
     method: op.method,
     // Todos los parámetros de ruta de la v1 son ids; si mañana aparece uno que
     // no lo es, este reemplazo lo va a tratar como id y el test lo dirá.
-    path: `${API_V1_PREFIX}${op.path.replace(/\{[^}]+\}/g, encodeURIComponent(id))}`,
+    path:
+      `${API_V1_PREFIX}${op.path.replace(/\{[^}]+\}/g, encodeURIComponent(id))}` +
+      (QUERIES[opKey(op)] === undefined ? "" : `?${QUERIES[opKey(op)] ?? ""}`),
     // Una key nueva en cada petición: las rutas que la exigen la necesitan para
     // llegar al handler, y las que no la ignoran.
     idempotencyKey: randomUUID(),

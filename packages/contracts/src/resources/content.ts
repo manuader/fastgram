@@ -29,6 +29,7 @@ import {
   uploadIdSchema,
 } from "../primitives/ids.js";
 import { cursorQuerySchema } from "../primitives/pagination.js";
+import { reelBuildPayloadSchema } from "./reel.js";
 
 // --- Números del PRD ---------------------------------------------------------
 
@@ -258,6 +259,7 @@ export const contentBuildPayloadSchema = z.union([
   greenScreenBuildPayloadSchema,
   videoHookBuildPayloadSchema,
   slideshowBuildPayloadSchema,
+  reelBuildPayloadSchema, // sprint 9 (reels): la clave `reel` lo distingue por forma
 ]);
 export type ContentBuildPayload = z.infer<typeof contentBuildPayloadSchema>;
 

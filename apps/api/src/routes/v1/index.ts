@@ -23,9 +23,13 @@ import { registerCatalogRoutes } from "./catalog.js";
 import { registerEngagementRoutes } from "./engagement.js";
 import { registerConnectionRoutes } from "./connections.js";
 import { registerContentRoutes } from "./content.js";
+import { registerReelRoutes } from "./reels.js";
 import { registerContentStudioRoutes } from "./content-studio.js";
 import { registerInfluencerRoutes } from "./influencers.js";
 import { registerCharacterModelRoutes } from "./character-models.js";
+import { registerAdsRoutes } from "./ads.js";
+import { registerLibraryRoutes } from "./library.js";
+import { registerPreferenceRoutes } from "./preferences.js";
 import { registerInspirationRoutes } from "./inspiration.js";
 import { registerMediaRoutes } from "./media.js";
 import { registerNotificationRoutes } from "./notifications.js";
@@ -34,11 +38,14 @@ import { registerOnboardingRoutes } from "./onboarding.js";
 import { registerPostRoutes } from "./posts.js";
 import { registerStrategyRoutes } from "./strategy.js";
 import { registerWorkspaceRoutes } from "./workspaces.js";
+import { registerDesignSystemRoutes } from "./design-system.js";
 
 export async function registerV1Routes(app: ZodApp): Promise<void> {
   registerBlitzRoutes(app);
   registerAngleRoutes(app);
   registerContentRoutes(app);
+  // Sprint 9 (P): reels — editor por capas, preview y «Create from prompt».
+  registerReelRoutes(app);
   // Sprint 7 (F): «Create New» del Content Studio (`POST /content/studio`).
   registerContentStudioRoutes(app);
   registerMediaRoutes(app);
@@ -84,5 +91,13 @@ export async function registerV1Routes(app: ZodApp): Promise<void> {
   registerNotificationRoutes(app);
   // Sprint 8 (K): biblioteca de modelos del dueño (owner-level, `server/app.ts`).
   registerCharacterModelRoutes(app);
+  // Sprint 9 (N): biblioteca global de assets (owner-level salvo use-in-brand, D-19).
+  registerLibraryRoutes(app);
+  // Sprint 9 (Q): preferencias aprendidas desde Blitz (`/preferences/owner` es owner-level).
+  registerPreferenceRoutes(app);
+  // Sprint 9 (R): anuncios pagos con Meta, todo pausado y con confirmación (D-21).
+  registerAdsRoutes(app);
+  // Sprint 9 (M): design system por marca (`PU-S9-001…004`).
+  registerDesignSystemRoutes(app);
   await Promise.resolve();
 }

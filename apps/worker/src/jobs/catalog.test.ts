@@ -9,8 +9,8 @@ import {
 const jobs = Object.values(JOB_CATALOG) as readonly JobPolicy[];
 
 describe("catálogo de jobs — PRD §9.5", () => {
-  it("están los 21 del PRD, más brand-backgrounds (PU-MEDIA-002), media-import (PU-MEME-001) y publishing-sweep (PU-PUB-008) y audio-extract (sprint 7, H)", () => {
-    expect(jobs).toHaveLength(25);
+  it("están los 21 del PRD, más brand-backgrounds (PU-MEDIA-002), media-import (PU-MEME-001), publishing-sweep (PU-PUB-008), audio-extract (sprint 7, H) y los tres del sprint 9: library-import, design-system y ads-sync", () => {
+    expect(jobs).toHaveLength(28);
   });
 
   it("ningún nombre de cola repetido", () => {
@@ -22,9 +22,16 @@ describe("catálogo de jobs — PRD §9.5", () => {
 
   it("cada job dice dónde lo especifica el PRD", () => {
     // `brand-backgrounds`, `media-import` y `publishing-sweep` salen del plan de
-    // uso personal, no de §9.5.
-    for (const j of jobs)
-      expect(j.prd, j.name).toMatch(/§9\.5|PU-MEDIA-002|PU-MEME-001|PU-PUB-008/);
+    // uso personal, y los del sprint 9 de `PU-S9-*`, no de §9.5. Ojo: los de
+    // fuera de §9.5 dicen "(fuera de §9.5)" y matchearían `§9\.5` solos; por
+    // eso el id de la tarea se exige aparte.
+    for (const j of jobs) {
+      expect(j.prd, j.name).toMatch(
+        /§9\.5|PU-MEDIA-002|PU-MEME-001|PU-PUB-008|PU-S9-\d{3}/,
+      );
+      if (j.prd.includes("fuera de §9.5"))
+        expect(j.prd, j.name).toMatch(/PU-[A-Z0-9]+-\d{3}/);
+    }
   });
 });
 

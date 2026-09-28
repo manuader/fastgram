@@ -49,7 +49,12 @@ import * as automations from "./resources/automations.js";
 import * as notifications from "./resources/notifications.js";
 import * as brandFlow from "./resources/brand-flow.js";
 import * as characterModels from "./resources/character-models.js";
+import * as adsApi from "./resources/ads.js";
+import * as library from "./resources/library.js";
+import * as preferences from "./resources/preferences.js";
+import * as designSystem from "./resources/design-system.js";
 import * as speaking from "./resources/speaking.js";
+import * as reel from "./resources/reel.js";
 import {
   imageUploadReservationRequestSchema,
   mediaUploadReservationRequestSchema,
@@ -1639,6 +1644,71 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           },
         },
       },
+      // Sprint 9 (agente P, `PU-S9-010`): reels — editor por capas y preview.
+      "/content/{id}/reel": {
+        get: {
+          operationId: "getEditableReel",
+          summary: "El spec del reel vigente (el editado si hay) con su revisión",
+          parameters: [pathParam("id")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(reel.editableReelSchema))),
+            "404": errorResponse("not_found — no existe o es de otra marca"),
+            "422": errorResponse("content_not_editable — no es un reel"),
+          },
+        },
+        put: {
+          operationId: "updateReel",
+          summary:
+            "Reemplaza el spec (minor edit de FR-051) y reconstruye. Requiere Idempotency-Key.",
+          parameters: [pathParam("id"), idempotencyParam],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(reel.updateReelRequestSchema)),
+          },
+          responses: {
+            "200": ok("Rebuild encolado", dataOf(contentJs)),
+            "400": errorResponse("bad_request — details.invalidAssets"),
+            "404": errorResponse("not_found"),
+            "409": errorResponse(
+              "stale_revision | unsupported_content_state | content_has_linked_posts",
+            ),
+            "422": errorResponse("content_not_editable — no es un reel"),
+          },
+        },
+      },
+      "/reels/preview": {
+        post: {
+          operationId: "previewReel",
+          summary:
+            "La composición HTML del reel, la misma que renderiza el motor (HyperFrames)",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(reel.reelPreviewRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(reel.reelPreviewResponseSchema))),
+            "400": errorResponse("bad_request — details.invalidAssets"),
+            "503": errorResponse("reel_preview_unavailable — sin servicio de render"),
+          },
+        },
+      },
+      "/reels/from-prompt": {
+        post: {
+          operationId: "createReelFromPrompt",
+          summary:
+            "«Create from prompt» con formato reel: plan idea→spec con la media de la marca. Requiere Idempotency-Key.",
+          parameters: [idempotencyParam],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(reel.reelFromPromptRequestSchema)),
+          },
+          responses: {
+            "201": ok("Creado; build encolado", dataOf(contentJs)),
+            "400": errorResponse("bad_request"),
+            "402": errorResponse("payment_required"),
+          },
+        },
+      },
       "/content/{id}/regenerate": {
         post: {
           operationId: "regenerateContent",
@@ -2422,6 +2492,212 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           responses: {
             "204": { description: "Borrado" },
             "404": errorResponse("not_found"),
+          },
+        },
+      },
+      // Sprint 9 (M): design system por marca (`PU-S9-001…004`). Ver
+      // `resources/design-system.ts`.
+      "/design-system": {
+        get: {
+          operationId: "getDesignSystem",
+          summary:
+            "El design system activo de la marca y el último import si está en curso o falló",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(designSystem.designSystemStateSchema))),
+          },
+        },
+      },
+      "/design-system/upload-url": {
+        post: {
+          operationId: "reserveDesignSystemUpload",
+          summary: "Reserva de subida del zip de Claude Design (≤100 MB)",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(designSystem.designSystemUploadRequestSchema)),
+          },
+          responses: {
+            "200": ok("Reserva creada", dataOf(reservationJs)),
+            "400": errorResponse("bad_request"),
+          },
+        },
+      },
+      "/design-system/import": {
+        post: {
+          operationId: "importDesignSystem",
+          summary:
+            "Confirma la subida y encola el import (versión nueva, inactiva hasta terminar)",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(designSystem.designSystemImportRequestSchema)),
+          },
+          responses: {
+            "202": ok(
+              "Import encolado",
+              dataOf(toJsonSchema(designSystem.designSystemSchema)),
+            ),
+            "404": errorResponse("not_found — reserva ajena o de otro prefijo"),
+            "503": errorResponse("service_unavailable — sin cola"),
+          },
+        },
+      },
+      "/design-system/derive": {
+        post: {
+          operationId: "deriveDesignSystem",
+          summary: "Design system mínimo derivado del análisis de marca (queda activo)",
+          responses: {
+            "201": ok("Creado", dataOf(toJsonSchema(designSystem.designSystemSchema))),
+          },
+        },
+      },
+      "/design-system/{designSystemId}": {
+        patch: {
+          operationId: "updateDesignSystem",
+          summary: "Paleta, licencias de fuentes, reemplazos, resumen de estilo o nombre",
+          parameters: [pathParam("designSystemId")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(designSystem.designSystemUpdateRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(designSystem.designSystemSchema))),
+            "400": errorResponse("bad_request"),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — todavía importa"),
+          },
+        },
+        delete: {
+          operationId: "deleteDesignSystem",
+          summary: "Borra la versión; los assets quedan en el Media Bank",
+          parameters: [pathParam("designSystemId")],
+          responses: {
+            "204": { description: "Borrado" },
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/design-system/{designSystemId}/generate": {
+        post: {
+          operationId: "generateDesignSystemAssets",
+          summary:
+            "Genera fondos con la paleta (locales y, si hay modelo image, con el modelo); quedan pendientes",
+          parameters: [pathParam("designSystemId")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(designSystem.designSystemGenerateRequestSchema)),
+          },
+          responses: {
+            "202": ok(
+              "Encolado",
+              dataOf(toJsonSchema(designSystem.designSystemGenerateResponseSchema)),
+            ),
+            "400": errorResponse("bad_request — no_image_model"),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — todavía importa"),
+          },
+        },
+      },
+      "/design-system/{designSystemId}/pending/{assetRef}/approve": {
+        post: {
+          operationId: "approveDesignSystemAsset",
+          summary: "Aprueba un generado: entra al Media Bank con el tag design-system",
+          parameters: [pathParam("designSystemId"), pathParam("assetRef")],
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(designSystem.designSystemApproveResponseSchema)),
+            ),
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/design-system/{designSystemId}/pending/{assetRef}": {
+        delete: {
+          operationId: "discardDesignSystemAsset",
+          summary: "Descarta un generado pendiente (borra el objeto)",
+          parameters: [pathParam("designSystemId"), pathParam("assetRef")],
+          responses: {
+            "204": { description: "Descartado" },
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/design-system/{designSystemId}/font-files/{fileRef}": {
+        get: {
+          operationId: "getDesignSystemFontFile",
+          summary: "Los bytes de una cara (data URL) para el specimen de la pantalla",
+          parameters: [pathParam("designSystemId"), pathParam("fileRef")],
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf(toJsonSchema(designSystem.designSystemFontFileSchema)),
+            ),
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      // Sprint 9 (Q): preferencias aprendidas desde Blitz (D-22). Ver
+      // `resources/preferences.ts`.
+      "/preferences": {
+        get: {
+          operationId: "getPreferences",
+          summary: "Lo que Blitz aprendió de las decisiones en la marca activa",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(preferences.preferencesViewSchema))),
+          },
+        },
+        patch: {
+          operationId: "updatePreferenceSettings",
+          summary:
+            "On/off, exploración y vida media de la marca (null = hereda del dueño)",
+          requestBody: {
+            required: true,
+            content: json(
+              toJsonSchema(preferences.updatePreferenceSettingsRequestSchema),
+            ),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(preferences.preferencesViewSchema))),
+            "400": errorResponse("bad_request"),
+          },
+        },
+      },
+      "/preferences/reset": {
+        post: {
+          operationId: "resetPreferences",
+          summary:
+            "Olvida lo aprendido en la marca o en el nivel del dueño (confirm: true)",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(preferences.resetPreferencesRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(preferences.preferencesViewSchema))),
+            "400": errorResponse("bad_request — falta la confirmación"),
+          },
+        },
+      },
+      "/preferences/owner": {
+        get: {
+          operationId: "getOwnerPreferences",
+          summary: "El nivel del dueño: todas sus marcas (owner-level)",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(preferences.preferencesViewSchema))),
+            "404": errorResponse("not_found — fuera del modo personal"),
+          },
+        },
+        patch: {
+          operationId: "updateOwnerPreferenceSettings",
+          summary: "Exploración y vida media por defecto del dueño",
+          requestBody: {
+            required: true,
+            content: json(
+              toJsonSchema(preferences.updateOwnerPreferenceSettingsRequestSchema),
+            ),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(preferences.preferencesViewSchema))),
+            "400": errorResponse("bad_request"),
+            "404": errorResponse("not_found — fuera del modo personal"),
           },
         },
       },
@@ -3508,6 +3784,390 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
               "OK",
               dataOf(toJsonSchema(notifications.notificationTestResultSchema)),
             ),
+          },
+        },
+      },
+      /**
+       * Sprint 9 (N): biblioteca global de assets (D-19). Owner-level salvo
+       * `use-in-brand`, que escribe en la marca activa. 404 fuera del modo
+       * personal. Ver `resources/library.ts`.
+       */
+      "/library/assets": {
+        get: {
+          operationId: "listLibraryAssets",
+          summary:
+            "Busca y filtra la biblioteca global (texto, tipo, meme, emoción, duración, aspecto, licencia)",
+          parameters: queryParams(library.listLibraryAssetsQuerySchema),
+          responses: {
+            "200": ok("OK", toJsonSchema(library.libraryAssetPageSchema)),
+            "404": errorResponse("not_found — modo standard"),
+          },
+        },
+      },
+      "/library/assets/{id}": {
+        get: {
+          operationId: "getLibraryAsset",
+          summary: "Un asset de la biblioteca global con su JSON y su licencia",
+          parameters: [pathParam("id")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(library.libraryAssetSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+        patch: {
+          operationId: "updateLibraryAsset",
+          summary:
+            "Corrige el JSON (se revalida; metadataSource = edited) u oculta el asset",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(library.updateLibraryAssetRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(library.libraryAssetSchema))),
+            "400": errorResponse(
+              "bad_request — details.issues con los paths que no validan",
+            ),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — todavía procesa"),
+          },
+        },
+        delete: {
+          operationId: "deleteLibraryAsset",
+          summary: "Soft delete; el objeto y las copias en las marcas quedan",
+          parameters: [pathParam("id")],
+          responses: {
+            "204": { description: "Borrado" },
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/library/assets/uploads": {
+        post: {
+          operationId: "reserveLibraryUpload",
+          summary: "Reserva una subida con la declaración de licencia obligatoria",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(library.libraryUploadRequestSchema)),
+          },
+          responses: {
+            "201": ok(
+              "Reservada",
+              dataOf(toJsonSchema(library.libraryUploadReservationSchema)),
+            ),
+            "400": errorResponse("bad_request — licencia incompleta o archivo inválido"),
+          },
+        },
+      },
+      "/library/assets/uploads/{upload}/complete": {
+        post: {
+          operationId: "completeLibraryUpload",
+          summary:
+            "Confirma la subida: crea el asset `processing` y encola library-import",
+          parameters: [pathParam("upload")],
+          responses: {
+            "202": ok("Encolado", dataOf(toJsonSchema(library.libraryAssetSchema))),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — el objeto no llegó o la fuente ya está"),
+            "410": errorResponse("gone — reserva vencida"),
+            "503": errorResponse("service_unavailable — sin cola"),
+          },
+        },
+      },
+      "/library/assets/{id}/use-in-brand": {
+        post: {
+          operationId: "useLibraryAssetInBrand",
+          summary:
+            "Copia el asset al Media Bank (o al audio) de la marca activa, con su licencia",
+          parameters: [pathParam("id")],
+          responses: {
+            "201": ok(
+              "Copiado",
+              dataOf(toJsonSchema(library.libraryUseInBrandResultSchema)),
+            ),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — no está listo"),
+          },
+        },
+      },
+      "/library/sources": {
+        get: {
+          operationId: "listLibrarySources",
+          summary: "Fuentes con licencia explícita y si están habilitadas (nunca la key)",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(library.librarySourceStatusListSchema))),
+          },
+        },
+      },
+      "/library/sources/{source}/key": {
+        put: {
+          operationId: "setLibrarySourceKey",
+          summary: "Guarda la key de Pexels o Pixabay en FASTGRAM_HOME (0600)",
+          parameters: [pathParam("source")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(library.setLibrarySourceKeyRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(library.librarySourceStatusSchema))),
+            "400": errorResponse("bad_request — la fuente no usa key"),
+            "404": errorResponse("not_found"),
+          },
+        },
+        delete: {
+          operationId: "deleteLibrarySourceKey",
+          summary: "Borra la key guardada",
+          parameters: [pathParam("source")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(library.librarySourceStatusSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/library/sources/{source}/search": {
+        get: {
+          operationId: "searchLibrarySource",
+          summary:
+            "Busca en la fuente; cada resultado trae su licencia verificada o el motivo",
+          parameters: [
+            pathParam("source"),
+            ...queryParams(library.librarySearchQuerySchema),
+          ],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(library.librarySearchPageSchema))),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — falta la key"),
+            "503": errorResponse("service_unavailable — la fuente no contestó"),
+          },
+        },
+      },
+      "/library/sources/{source}/import": {
+        post: {
+          operationId: "importFromLibrarySource",
+          summary:
+            "Importa por id: el servidor re-verifica la licencia y encola cada archivo",
+          parameters: [pathParam("source")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(library.librarySourceImportRequestSchema)),
+          },
+          responses: {
+            "202": ok(
+              "Encolados",
+              dataOf(toJsonSchema(library.librarySourceImportResultSchema)),
+            ),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — falta la key"),
+            "503": errorResponse(
+              "service_unavailable — sin cola o la fuente no contestó",
+            ),
+          },
+        },
+      },
+      /**
+       * Sprint 9 (R): anuncios pagos con Meta (`D-21`). Todo nace pausado;
+       * activar o subir un tope de una campaña activa exige el token de
+       * `activation-preview` (409 con `details.reason` si falta, venció, se
+       * usó o los topes cambiaron). Ver `resources/ads.ts`.
+       */
+      "/ads/connection": {
+        get: {
+          operationId: "getAdsConnection",
+          summary: "Estado de la conexión de anuncios de la marca (sin token)",
+          responses: { "200": ok("OK", dataOf(toJsonSchema(adsApi.adConnectionSchema))) },
+        },
+        put: {
+          operationId: "selectAdAccount",
+          summary: "Elige cuenta publicitaria y Página (validadas contra Meta)",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(adsApi.selectAdAccountRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(adsApi.adConnectionSchema))),
+            "404": errorResponse(
+              "not_found — la cuenta o la Página no las alcanza el token",
+            ),
+            "409": errorResponse("conflict — details.reason = ads_not_connected"),
+          },
+        },
+        delete: {
+          operationId: "disconnectAds",
+          summary: "Desconecta (borra el token). Con campañas activas → 409",
+          responses: {
+            "204": { description: "Desconectada" },
+            "409": errorResponse("conflict — details.reason = active_campaigns"),
+          },
+        },
+      },
+      "/ads/connection/authorize": {
+        get: {
+          operationId: "authorizeAds",
+          summary: "URL de Facebook Login con los permisos de anuncios",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(adsApi.adsAuthorizeResponseSchema))),
+            "409": errorResponse("conflict — integration_not_configured"),
+          },
+        },
+      },
+      "/ads/connection/callback": {
+        post: {
+          operationId: "adsConnectionCallback",
+          summary: "Cambia el code por un token de usuario largo (cifrado)",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(adsApi.adsCallbackRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(adsApi.adConnectionSchema))),
+            "400": errorResponse("bad_request — oauth_state_invalid, oauth_denied…"),
+          },
+        },
+      },
+      "/ads/connection/options": {
+        get: {
+          operationId: "listAdConnectionOptions",
+          summary: "Cuentas publicitarias y Páginas (con su IG) que alcanza el token",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(adsApi.adConnectionOptionsSchema))),
+            "409": errorResponse("conflict — ads_not_connected"),
+          },
+        },
+      },
+      "/ads/connection/demo": {
+        post: {
+          operationId: "connectAdsDemo",
+          summary: "Modo demo: adaptador en memoria, ningún gasto posible",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(adsApi.adConnectionSchema))),
+            "409": errorResponse("conflict — ya hay una cuenta real"),
+          },
+        },
+      },
+      "/ads/campaigns": {
+        get: {
+          operationId: "listAdCampaigns",
+          summary: "Campañas de la marca con gasto de hoy y total contra sus topes",
+          responses: {
+            "200": ok(
+              "OK",
+              dataOf({
+                type: "array",
+                items: toJsonSchema(adsApi.adCampaignSummarySchema),
+              }),
+            ),
+          },
+        },
+        post: {
+          operationId: "createAdCampaign",
+          summary: "Crea campaña, conjuntos y anuncios en Meta, siempre PAUSED",
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(adsApi.createAdCampaignRequestSchema)),
+          },
+          responses: {
+            "201": ok(
+              "Creada (pausada)",
+              dataOf(toJsonSchema(adsApi.adCampaignDetailSchema)),
+            ),
+            "400": errorResponse("bad_request — details.reason"),
+            "404": errorResponse("not_found — una pieza no es de la marca"),
+            "409": errorResponse(
+              "conflict — ads_not_connected, public_media_unavailable",
+            ),
+          },
+        },
+      },
+      "/ads/campaigns/{id}": {
+        get: {
+          operationId: "getAdCampaign",
+          summary: "Detalle con métricas derivadas, por día, A/B y auditoría",
+          parameters: [pathParam("id")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(adsApi.adCampaignDetailSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/ads/campaigns/{id}/activation-preview": {
+        post: {
+          operationId: "previewAdActivation",
+          summary: "Gasto máximo posible + token de confirmación (5 min, un uso)",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(adsApi.activationPreviewRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(adsApi.activationPreviewSchema))),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — not_paused, total_cap_reached…"),
+          },
+        },
+      },
+      "/ads/campaigns/{id}/activate": {
+        post: {
+          operationId: "activateAdCampaign",
+          summary: "Prende la campaña con un token de preview válido",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(adsApi.activateAdCampaignRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(adsApi.adCampaignDetailSchema))),
+            "404": errorResponse("not_found"),
+            "409": errorResponse(
+              "conflict — preview_required, preview_expired, preview_used, preview_mismatch",
+            ),
+          },
+        },
+      },
+      "/ads/campaigns/{id}/pause": {
+        post: {
+          operationId: "pauseAdCampaign",
+          summary: "Pausa en Meta y después en la base",
+          parameters: [pathParam("id")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(adsApi.adCampaignDetailSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+      },
+      "/ads/campaigns/{id}/budget": {
+        patch: {
+          operationId: "updateAdBudget",
+          summary: "Cambia los topes; subir uno de una campaña activa exige token",
+          parameters: [pathParam("id")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(adsApi.updateAdBudgetRequestSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(adsApi.adCampaignDetailSchema))),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — preview_*"),
+            "429": errorResponse("rate_limited — budget_change_limit (4 por hora)"),
+          },
+        },
+      },
+      "/ads/sync": {
+        post: {
+          operationId: "syncAds",
+          summary: "Trae insights y corre la guardia de topes ya",
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(adsApi.adsSyncResultSchema))),
+            "409": errorResponse("conflict — ads_not_connected"),
+          },
+        },
+      },
+      "/ads/dashboard": {
+        get: {
+          operationId: "getAdsDashboard",
+          summary: "Dashboard de marketing: orgánico + pago por período, y cada A/B",
+          parameters: queryParams(adsApi.adsDashboardQuerySchema),
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(adsApi.adsDashboardSchema))),
           },
         },
       },

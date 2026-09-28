@@ -19,9 +19,22 @@
  */
 import sharp from "sharp";
 import type { Canvas } from "../domain/canvas.js";
+import {
+  brandFontIdOf,
+  isBrandFamilyRef,
+  pickBrandFace,
+  type FontFamilyField,
+} from "../domain/fonts.js";
 import { editorUnitsToCanvasPx, type TextObject } from "../domain/text.js";
+import { RenderError } from "../errors.js";
+import { renderBrandGlyphs, type LocalBrandFont } from "./brandText.js";
 import { noteTextEngineUse } from "./fontActivation.js";
-import { resolveFont, type FontLoaderOptions, type ResolvedFont } from "./fontLoader.js";
+import {
+  PANGO_WEIGHT_WORDS,
+  pangoDescription,
+  resolveFont,
+  type FontLoaderOptions,
+} from "./fontLoader.js";
 
 /** Padding del fondo, en múltiplos del tamaño de fuente. Elección del servicio. */
 export const BACKGROUND_PADDING_RATIO = 0.35;
@@ -31,7 +44,26 @@ export const BACKGROUND_PADDING_RATIO = 0.35;
  * Una opción por llamada no entraría en la clave de cache (`domain/hash.ts`) y
  * dos procesos podrían servirse frames de escalas distintas bajo la misma clave.
  */
-export type TextLayerOptions = FontLoaderOptions;
+export type TextLayerOptions = FontLoaderOptions & {
+  /**
+   * Sprint 9 (M): las caras de marca del request, ya bajadas y validadas
+   * (`brandText.ts`). Una caja con `family: "brand:<id>"` se dibuja con la
+   * cara de ese id de peso más cercano, en un proceso hijo.
+   */
+  readonly brandFonts?: readonly LocalBrandFont[];
+};
+
+/**
+ * La fuente con la que se dibujó una caja: una de las 12 (`ResolvedFont` de
+ * `fontLoader.ts`) o una de marca (`family: "brand:<id>"`).
+ */
+export interface LayerFont {
+  readonly family: FontFamilyField;
+  readonly weight: number;
+  readonly pangoDescription: string;
+  readonly fontFile: string | null;
+  readonly verified: boolean;
+}
 
 export interface TextLayerGeometry {
   /** Ancho de la caja en píxeles de canvas (`widthPercent` resuelto). */
@@ -49,7 +81,7 @@ export interface RenderedTextLayer {
   readonly id: string;
   readonly png: Buffer;
   readonly geometry: TextLayerGeometry;
-  readonly font: ResolvedFont;
+  readonly font: LayerFont;
 }
 
 /** Escape de markup Pango. El texto del usuario NUNCA se interpola crudo. */
@@ -98,7 +130,7 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
 
 async function renderGlyphs(
   markupText: string,
-  font: ResolvedFont,
+  font: LayerFont,
   colorHex: string,
   wrapWidth: number,
   align: TextObject["align"],
@@ -128,6 +160,104 @@ async function renderGlyphs(
   return { buffer: data, width: info.width, height: info.height };
 }
 
+interface Glyphs {
+  readonly buffer: Buffer;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** Descripción Pango de una cara de marca: familia del archivo, peso y estilo. */
+export function brandPangoDescription(face: LocalBrandFont, sizePx: number): string {
+  if (face.style !== "italic")
+    return pangoDescription(face.pangoFamily, face.weight, sizePx);
+  const word = PANGO_WEIGHT_WORDS[face.weight] ?? "";
+  return `${face.pangoFamily}, ${word === "" ? "" : `${word} `}Italic ${String(sizePx)}px`;
+}
+
+/**
+ * Los glifos de relleno y de contorno de una caja. Las 12 familias se dibujan
+ * acá (activadas al arrancar); una de marca, en el proceso hijo
+ * (`brandText.ts`), con las dos pasadas en **un** arranque.
+ */
+async function glyphsForBox(
+  box: TextObject,
+  markup: string,
+  fontSizePx: number,
+  wrapWidth: number,
+  withStroke: boolean,
+  options: TextLayerOptions,
+): Promise<{ font: LayerFont; fill: Glyphs; stroke: Glyphs | null }> {
+  const family = box.font.family;
+  if (!isBrandFamilyRef(family)) {
+    const font = await resolveFont(family, box.font.weight, fontSizePx, options);
+    const fill = await renderGlyphs(markup, font, box.color, wrapWidth, box.align);
+    const stroke = withStroke
+      ? await renderGlyphs(markup, font, box.stroke.color, wrapWidth, box.align)
+      : null;
+    return { font, fill, stroke };
+  }
+
+  const face = pickBrandFace(
+    options.brandFonts ?? [],
+    brandFontIdOf(family),
+    box.font.weight,
+  );
+  if (face === null) {
+    throw new RenderError(
+      "font_unavailable",
+      "la caja pide una fuente de marca que no vino en el request",
+      {
+        details: { family, hint: "mandá sus caras en brandFonts" },
+      },
+    );
+  }
+  const description = brandPangoDescription(face, fontSizePx);
+  const span = (color: string) => `<span foreground="${color}">${markup}</span>`;
+  const align = pangoAlign(box.align);
+  const jobs = [
+    { text: span(box.color), font: description, width: wrapWidth, align },
+    ...(withStroke
+      ? [{ text: span(box.stroke.color), font: description, width: wrapWidth, align }]
+      : []),
+  ];
+  const rendered = await renderBrandGlyphs({
+    fonts: (options.brandFonts ?? []).filter((f) => f.id === face.id).map((f) => f.file),
+    jobs,
+    probe: {
+      family: face.pangoFamily,
+      weightWord: PANGO_WEIGHT_WORDS[face.weight] ?? "",
+      styleWord: face.style === "italic" ? "Italic" : "",
+    },
+  });
+  if (!rendered.verified && options.strict) {
+    throw new RenderError(
+      "font_unavailable",
+      "la fuente de marca no cargó en el motor de texto",
+      {
+        details: { family, weight: face.weight, pangoFamily: face.pangoFamily },
+      },
+    );
+  }
+  const [fill, stroke] = rendered.results;
+  if (fill === undefined) {
+    throw new RenderError(
+      "render_failed",
+      "el proceso de texto de marca no devolvió glifos",
+    );
+  }
+  return {
+    font: {
+      family,
+      weight: face.weight,
+      pangoDescription: description,
+      fontFile: face.file,
+      verified: rendered.verified,
+    },
+    fill,
+    stroke: withStroke ? (stroke ?? null) : null,
+  };
+}
+
 /**
  * Renderiza una caja. Devuelve `null` cuando la caja no dibuja nada: `FR-051`
  * permite texto vacío, y una caja vacía no es un error.
@@ -148,10 +278,15 @@ export async function renderTextBox(
   // El contorno crece hacia afuera: el wrap usa el ancho útil.
   const wrapWidth = Math.max(1, boxWidth - strokeWidthPx * 2);
 
-  const font = await resolveFont(box.font.family, box.font.weight, fontSizePx, options);
   const markup = escapePango(box.text);
-
-  const fill = await renderGlyphs(markup, font, box.color, wrapWidth, box.align);
+  const { font, fill, stroke } = await glyphsForBox(
+    box,
+    markup,
+    fontSizePx,
+    wrapWidth,
+    strokeWidthPx > 0,
+    options,
+  );
 
   const pad = strokeWidthPx;
   const glyphLeft = pad;
@@ -222,14 +357,8 @@ export async function renderTextBox(
   const contentTop =
     box.background === null ? 0 : Math.round((layerHeight - fill.height - pad * 2) / 2);
 
-  if (strokeWidthPx > 0) {
-    const strokeGlyphs = await renderGlyphs(
-      markup,
-      font,
-      box.stroke.color,
-      wrapWidth,
-      box.align,
-    );
+  if (strokeWidthPx > 0 && stroke !== null) {
+    const strokeGlyphs = stroke;
     for (const [dx, dy] of strokeOffsets(strokeWidthPx)) {
       composites.push({
         input: strokeGlyphs.buffer,

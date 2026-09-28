@@ -155,6 +155,7 @@ import {
   type CopyLlmProvider,
 } from "./regenerate.js";
 import { toEditedRenderJob, toRenderJob } from "./render-job.js";
+import { isReelRenderer, reelSpecOf } from "./reel-job.js";
 import {
   buildCustomVideo,
   parseCustomVideoPayload,
@@ -921,7 +922,89 @@ export function createContentRenderHandler(
       }
     }
 
-    if (outcome.kind === "build" && failure === null) {
+    // El thumbnail es IMPL §5 —«nunca servir el master para un preview»— y
+    // **no** puede hundir el build: la pieza es utilizable sin miniatura, y
+    // fallarla por eso reembolsaría un save por un preview. Se loguea y sigue.
+    // Compartido con la rama de reels.
+    const makeThumbnail = async (): Promise<void> => {
+      try {
+        // La autorización del thumbnail NO es la del render: su fuente es el
+        // artefacto **recién subido**, no la media de entrada. Pasar `auth` acá
+        // lo haría rechazar con `url_no_listada_en_grant`, dentro del `catch`
+        // que loguea y sigue — o sea, todas las piezas sin miniatura.
+        // La portada es el primer artefacto: en un slideshow, la miniatura de la
+        // pieza es la del slide 1, no la de uno cualquiera.
+        const portada = files[0];
+        if (portada === undefined) throw new Error("build sin artefactos");
+
+        const thumb = await deps.renderer.thumbnail(
+          { url: portada, maxWidth: 480 },
+          await workspaceMediaAuthorization(deps.storage, {
+            companyId: job.companyId,
+            objectPrefix: prefix,
+            urls: [portada],
+          }),
+        );
+        const key = `${prefix}/${job.companyId}/${job.contentId}/${String(job.revision)}/thumb`;
+        const stored = await deps.storage.put({
+          key,
+          body: thumb.body,
+          contentType: thumb.contentType,
+        });
+        uploaded.push(stored.key);
+        thumbnailUrl = await canonicalObjectUrl(deps.storage, stored.key);
+      } catch (error: unknown) {
+        deps.logger.warn({ ...base, error }, "no se pudo generar el thumbnail");
+      }
+    };
+
+    // Sprint 9 (`PU-S9-010`): el reel se renderiza con HyperFrames por su
+    // propio puerto; no tiene cajas de `FR-051` ni pasa por `toRenderJob`.
+    if (
+      outcome.kind === "build" &&
+      failure === null &&
+      outcome.subject.contentType === "reel"
+    ) {
+      const reel = reelSpecOf(
+        outcome.subject.buildPayload,
+        outcome.subject.studioState ?? null,
+      );
+      if (!reel.ok) {
+        failure = permanent(reel.reason, reel.code);
+      } else if (!isReelRenderer(deps.renderer)) {
+        failure = permanent(
+          "el renderer montado no sabe hacer reels",
+          "reel_renderer_unavailable",
+        );
+      } else {
+        try {
+          const auth = await workspaceMediaAuthorization(deps.storage, {
+            companyId: job.companyId,
+            objectPrefix: prefix,
+            urls: reel.urls,
+          });
+          const build = await deps.renderer.renderReel(
+            {
+              spec: reel.spec as unknown as Readonly<Record<string, unknown>>,
+              quality: "delivery",
+            },
+            auth,
+          );
+          if (build.warnings.length > 0) {
+            deps.logger.warn(
+              { ...base, warnings: build.warnings },
+              "reel con avisos del motor",
+            );
+          }
+          const artifact = await upload(job, await build.artifact.open(), 0);
+          uploaded.push(artifact.key);
+          files.push(artifact.url);
+          await makeThumbnail();
+        } catch (error: unknown) {
+          failure = classify(error);
+        }
+      }
+    } else if (outcome.kind === "build" && failure === null) {
       const boxes = regenerated ?? outcome.subject.textBoxes ?? [];
       const studioState = outcome.subject.studioState ?? null;
       // Un rebuild pasa por el camino editado si hay cajas **o** swaps de
@@ -979,40 +1062,7 @@ export function createContentRenderHandler(
           // testear por separado, y el test termina midiendo «que alguna
           // funcione».
 
-          // El thumbnail es IMPL §5 —«nunca servir el master para un
-          // preview»— y **no** puede hundir el build: la pieza es utilizable
-          // sin miniatura, y fallarla por eso reembolsaría un save por un
-          // preview. Se loguea y sigue.
-          try {
-            // La autorización del thumbnail NO es la del render: su fuente
-            // es el artefacto **recién subido**, no la media de entrada. Pasar
-            // `auth` acá lo haría rechazar con `url_no_listada_en_grant`,
-            // dentro del `catch` que loguea y sigue — o sea, todas las piezas
-            // sin miniatura y una línea de warning por build.
-            // La portada es el primer artefacto: en un slideshow, la
-            // miniatura de la pieza es la del slide 1, no la de uno cualquiera.
-            const portada = files[0];
-            if (portada === undefined) throw new Error("build sin artefactos");
-
-            const thumb = await deps.renderer.thumbnail(
-              { url: portada, maxWidth: 480 },
-              await workspaceMediaAuthorization(deps.storage, {
-                companyId: job.companyId,
-                objectPrefix: prefix,
-                urls: [portada],
-              }),
-            );
-            const key = `${prefix}/${job.companyId}/${job.contentId}/${String(job.revision)}/thumb`;
-            const stored = await deps.storage.put({
-              key,
-              body: thumb.body,
-              contentType: thumb.contentType,
-            });
-            uploaded.push(stored.key);
-            thumbnailUrl = await canonicalObjectUrl(deps.storage, stored.key);
-          } catch (error: unknown) {
-            deps.logger.warn({ ...base, error }, "no se pudo generar el thumbnail");
-          }
+          await makeThumbnail();
         } catch (error: unknown) {
           failure = classify(error);
         }

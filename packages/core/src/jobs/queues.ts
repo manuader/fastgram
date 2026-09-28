@@ -88,6 +88,24 @@ export const JOB_QUEUES = {
    * personal, no de §9.5.
    */
   audioExtract: "audio-extract",
+  /**
+   * Sprint 9 (N) — importar un asset a la biblioteca **global** (subida
+   * manual o fuente con licencia explícita): normalizar, medir croma y
+   * etiquetar el JSON (`../library/job.ts`). D-19, no de §9.5.
+   */
+  libraryImport: "library-import",
+  /**
+   * Sprint 9 (M) — design system de una marca: importar el zip de Claude
+   * Design y generar assets nuevos, despachados por `kind`
+   * (`../design-system/jobs.ts`). Del plan de uso personal, no de §9.5.
+   */
+  designSystem: "design-system",
+  /**
+   * Sprint 9 (R) — anuncios: insights de Meta y guardia de topes (pausa lo
+   * que llegó al tope y avisa), `D-21`. Cron cada 30 min
+   * (`../ads/guard.ts`, `ADS_SYNC_CRON`). No de §9.5.
+   */
+  adsSync: "ads-sync",
 } as const;
 
 export type JobQueueKey = keyof typeof JOB_QUEUES;

@@ -65,6 +65,7 @@ import {
 } from "@fastgram/ports";
 
 import type { BuildLogger } from "../content/build-handler.js";
+import { readActiveDesignSystem } from "../design-system/blitz.js";
 
 export interface BrandBackgroundsDeps {
   readonly db: Database;
@@ -77,7 +78,7 @@ export interface BrandBackgroundsDeps {
 
 interface KitSubject {
   readonly palette: readonly string[];
-  readonly paletteSource: "profile" | "default";
+  readonly paletteSource: "design_system" | "profile" | "default";
   readonly pending: readonly BrandKitItem[];
   readonly total: number;
 }
@@ -111,8 +112,11 @@ export function createBrandBackgroundsHandler(
       // `company_profiles` tiene un único índice por `companyId`.
       const profile = (await companyProfileRepository.list(tx, scope, { limit: 1 }))
         .items[0];
+      // Sprint 9 (M, `PU-S9-003`): con design system activo, manda su paleta.
+      const designSystem = await readActiveDesignSystem(tx, scope);
       const { palette, source } = resolveBrandPalette({
         companyId: job.companyId,
+        designSystemPalette: designSystem?.palette ?? null,
         profileTexts:
           profile === undefined
             ? []

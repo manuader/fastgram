@@ -29,7 +29,7 @@ afterAll(async () => {
 });
 
 describe("migraciones", () => {
-  it("crean las 48 tablas del modelo de datos (33 + blitz_prompt_requests, 0012 + brand_strategies y planned_slots, 0014 + autopilot_decisions y autopilot_runs, 0017 + content_mix_autotune y format_mix_adjustments, 0018 + influencer_generations, 0020 + engagement_settings, reddit_accounts y engagement_replies, 0021 + brand_audio_tracks, 0025 + notifications, 0028 + own_post_imports, 0029 + character_models, 0033)", async () => {
+  it("crean las 61 tablas del modelo de datos (33 + blitz_prompt_requests, 0012 + brand_strategies y planned_slots, 0014 + autopilot_decisions y autopilot_runs, 0017 + content_mix_autotune y format_mix_adjustments, 0018 + influencer_generations, 0020 + engagement_settings, reddit_accounts y engagement_replies, 0021 + brand_audio_tracks, 0025 + notifications, 0028 + own_post_imports, 0029 + character_models, 0033 + sprint 9: brand_design_systems 0035, library_assets 0036, asset_decisions 0037, preference_signals, preference_weights y owner_preferences 0039, ad_accounts, ad_campaigns, ad_sets, ads, ad_experiments, ad_insights_daily y ad_actions 0040)", async () => {
     const rows = await ctx.db.execute<{ table_name: string }>(sql`
       select table_name
         from information_schema.tables
@@ -48,8 +48,8 @@ describe("migraciones", () => {
     for (const name of expected) {
       expect(present.has(name), `falta la tabla ${name}`).toBe(true);
     }
-    expect(expected).toHaveLength(48);
-    expect(present.size).toBe(48);
+    expect(expected).toHaveLength(61);
+    expect(present.size).toBe(61);
   });
 
   it("son idempotentes: volver a correrlas no hace nada", async () => {

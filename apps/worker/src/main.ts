@@ -26,7 +26,9 @@ import {
   createPgBossQueue,
   drizzleTransactionToExecutor,
   FileModelRegistry,
+  JsonFileDocument,
   modelRegistryPath,
+  spendLedgerPath,
   notificationSettingsFile,
   sendNtfy,
   sendTelegram,
@@ -69,6 +71,8 @@ import {
 import { createLlmSource, createResolvingLlm } from "./llm/registry-llm.js";
 import { JOB_CATALOG, type JobPolicy } from "./jobs/catalog.js";
 import { mountMediaImport } from "./media-import/mount.js";
+import { mountLibraryImport } from "./library/mount.js";
+import { mountAdsSync } from "./ads/mount.js";
 import { mountAudioExtract } from "./audio-extract/ffmpeg.js";
 import { mountInspiration } from "./inspiration/mount.js";
 import { mountPublishing } from "./publishing/mount.js";
@@ -316,6 +320,20 @@ const { handlers: HANDLERS, unmounted } = createHandlers({
   mediaImport,
   // Sprint 7, segunda tanda (H): "Extract from a video" con FFmpeg local.
   audioExtract: await mountAudioExtract(process.env),
+  // Sprint 9 (N): biblioteca global de assets con FFmpeg local y el modelo `vision`.
+  libraryImport: await mountLibraryImport({
+    env: process.env,
+    registry: new FileModelRegistry({ path: registryPath }),
+    logger,
+  }),
+  // Sprint 9 (M): design system por marca (import del zip, generar assets).
+  designSystem: {
+    textLlm: async () => (await llmSource.current("text"))?.llm ?? null,
+    renderBaseUrl: renderServiceFromEnv(env)?.baseUrl ?? null,
+    registry: new FileModelRegistry({ path: registryPath }),
+    ledger: new JsonFileDocument(spendLedgerPath(process.env)),
+    env: process.env,
+  },
   // Sprint 7 (`JV-6`): el juicio que elige meme, fondo, influencer y remix.
   jv6Judgment: createJv6Judgment({ llmSource, db: handle.db, appRole, logger }),
   // Inspiration: lectura sin login de referencias, sobre la misma cola y el mismo yt-dlp.
@@ -390,6 +408,15 @@ const { handlers: HANDLERS, unmounted } = createHandlers({
   // `PU-AUTO-004`: métricas de vuelta (IG, Threads, FB; X sólo con
   // `METRICS_X_ENABLED=true` porque leer cuesta) y auto-tune del mix.
   metrics: createMetricsAdapters(process.env),
+  // Sprint 9 (R): el notifier se crea más abajo; el cierre lo lee al correr.
+  adsSync: mountAdsSync({
+    db: handle.db,
+    appRole,
+    clock,
+    logger,
+    env: process.env,
+    notify: (companyId, draft) => notifier.write(companyId, draft),
+  }),
   // `P4-ENGAGE-001…012`: Engagement de Reddit — descubrimiento, juicio JV-2,
   // borradores, seguimiento de hilos y ban meter (JV-5 etiqueta, el código
   // cuenta). Nunca publica: "Send" es de la API, con confirmación humana.

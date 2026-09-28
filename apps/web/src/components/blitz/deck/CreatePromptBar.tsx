@@ -23,6 +23,7 @@ import {
   type FormatRunRequest,
 } from "@fastgram/contracts";
 import { editorHref } from "@/components/editor/ContentEditor";
+import { useCreateReelFromPrompt } from "@/components/editor/reel/api";
 import {
   formatKeys,
   isRunInFlight,
@@ -65,7 +66,16 @@ const FORMATS: readonly BlitzContentType[] = [
  */
 const GEN_PREFIX = "gen:";
 
-type FormatChoice = BlitzContentType | "" | `${typeof GEN_PREFIX}${string}`;
+/**
+ * Sprint 9 (`PU-S9-010`): `reel` no es un formato de Blitz (no hay sugerencias
+ * de reel hasta el planificador semanal): arma el reel directo con el plan
+ * idea→spec (`POST /reels/from-prompt`) y la pieza va a la Library, como los
+ * formatos IA.
+ */
+const REEL_CHOICE = "reel";
+
+type FormatChoice =
+  BlitzContentType | "" | typeof REEL_CHOICE | `${typeof GEN_PREFIX}${string}`;
 
 function generativeIdOf(choice: FormatChoice): string | null {
   return choice.startsWith(GEN_PREFIX) ? choice.slice(GEN_PREFIX.length) : null;
@@ -137,8 +147,13 @@ export function CreatePromptBar() {
   const generative = useGenerativeFormats();
   const genId = generativeIdOf(format);
   const gen = useGenerativeRun();
+  const reel = useCreateReelFromPrompt();
+  const reelKey = useRef<string | null>(null);
+  const { toast: reelToast } = useToast();
+  const router = useRouter();
   const busy =
     gen.busy ||
+    reel.isPending ||
     generate.isPending ||
     (requestId !== null && (current === undefined || isOpenPrompt(current)));
 
@@ -180,6 +195,31 @@ export function CreatePromptBar() {
     if (genId !== null) {
       setRequestId(null);
       gen.estimate(genId, formatRunBody(prompt));
+      return;
+    }
+    if (format === REEL_CHOICE) {
+      setRequestId(null);
+      reelKey.current ??= newIdempotencyKey();
+      reel.mutate(
+        { prompt: prompt.trim(), idempotencyKey: reelKey.current },
+        {
+          onSuccess: (content) => {
+            reelKey.current = null;
+            reelToast({
+              title: tw("prompt.reel.started"),
+              tone: "success",
+              action: {
+                label: tw("formats.run.openEditor"),
+                onClick: () => router.push(editorHref(content._id)),
+              },
+            });
+          },
+          onError: () => {
+            reelKey.current = null;
+            reelToast({ title: tw("prompt.reel.failed"), tone: "danger" });
+          },
+        },
+      );
       return;
     }
     gen.reset();
@@ -256,14 +296,15 @@ export function CreatePromptBar() {
           options={[
             { value: "", label: td("prompt.format.any") },
             ...FORMATS.map((f) => ({ value: f, label: tw(BLITZ_TYPE_COPY[f]) })),
+            { value: REEL_CHOICE, label: tw("prompt.format.reel") },
             ...genOptions,
           ]}
         />
         <Select
           aria-label={td("prompt.count")}
           // Una corrida de formato IA hace una pieza: la cantidad no aplica.
-          disabled={genId !== null}
-          value={genId !== null ? "1" : String(count)}
+          disabled={genId !== null || format === REEL_CHOICE}
+          value={genId !== null || format === REEL_CHOICE ? "1" : String(count)}
           onChange={(event) => {
             setCount(Number(event.target.value));
             edited();
