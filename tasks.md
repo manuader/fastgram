@@ -163,21 +163,21 @@ La sección **PU** usa `PU-<ÉPICA>-<nnn>` y **va primero en el orden de trabajo
 > Pedido del dueño (feedback de cliente, 2026-09-28). Decisiones `D-18`…`D-22` en PRD §2.7. Zip de
 > referencia: el export de Claude Design de FOCUS (`~/Downloads/FOCUS Design System.zip`, fuera del repo).
 
-- [~] **PU-S9-001** Importar un design system de Claude (zip) a una marca: tokens (paleta, tipos, espaciado), fuentes, logos, imágenes y motivos al Media Bank (`design-system`), resumen de voz y reglas de composición para el copy · agente M · 2026-09-28
-- [~] **PU-S9-002** Sin zip: design system mínimo derivado del análisis de marca (colores, logo, imágenes), editable · agente M · 2026-09-28
-- [~] **PU-S9-003** Blitz y Studio usan el design system: paleta en los fondos, tipografía y colores en las cajas de texto, logo opcional, estilo en el prompt del copy · agente M · 2026-09-28
-- [~] **PU-S9-004** Generar assets nuevos para el design system (fondos, patrones, texturas; local + `ImageGen`) con aprobación antes de sumarlos · agente M · 2026-09-28
-- [~] **PU-S9-005** Biblioteca **global** de assets (instalación, todas las marcas; lista para multiusuario) con JSON de metadatos versionado y **licencia obligatoria**; sólo licencias verificables · `D-19` · agente N · 2026-09-28
-- [~] **PU-S9-006** Fuentes de clips con licencia explícita y API documentada + etiquetado automático del JSON con el modelo de visión, corregible · agente N · 2026-09-28
-- [~] **PU-S9-007** Adaptador `Judgment` SystemOne (protocolo Jev: Laya local o Jev de TypeSafe) + Laya en `pnpm start` · `D-18` · agente O · 2026-09-28
-- [~] **PU-S9-008** Decisor de assets: candidatos filtrados en código, juicios tipados por candidato, ponderación en código, fallback determinístico, decisiones guardadas · agente O · 2026-09-28
-- [~] **PU-S9-009** Motor de reels HyperFrames en el render (capas, chroma, texto animado, subtítulos, música) + ADR con números frente a FFmpeg y Remotion · `D-20` · agente P · 2026-09-28
-- [~] **PU-S9-010** Formato `reel` de punta a punta y editor que cambia cualquier capa (clip, imagen, fondo, música, texto con tipografía y animación), preview = render · agente P · 2026-09-28
-- [~] **PU-S9-011** Señales de preferencia de Blitz (aceptar, descartar, editar) por marca y a nivel dueño, pesos aprendidos con exploración configurable, pantalla "qué aprendió" con reset · `D-22` · agente Q · 2026-09-28
-- [~] **PU-S9-012** Ads con la Marketing API de Meta: campañas, conjuntos, anuncios desde la Library, A/B, topes y corte automático; todo se crea **pausado** y gastar exige confirmación · `D-21` · agente R · 2026-09-28
-- [~] **PU-S9-013** Dashboard de marketing por marca: orgánico + pago (gasto, CPM, CTR, CPA, ROAS) y resultado de cada A/B · agente R · 2026-09-28
-- [ ] **PU-S9-014** Planificador semanal de reels por marca (estrategia + decisor + preferencias + design system) que los genera en Blitz o piloto · dep: PU-S9-003, 005, 008, 010, 011
-- [ ] **PU-S9-015** Preferencias y decisor aplicados al refill y a "crear desde prompt" · dep: PU-S9-008, 011
+- [x] **PU-S9-001** Importar un design system de Claude (zip) a una marca: tokens (paleta, tipos, espaciado), fuentes, logos, imágenes y motivos al Media Bank (`design-system`), resumen de voz y reglas de composición para el copy · agente M
+- [x] **PU-S9-002** Sin zip: design system mínimo derivado del análisis de marca (colores, logo, imágenes), editable · agente M
+- [~] **PU-S9-003** Blitz y Studio usan el design system: paleta en los fondos, tipografía y colores en las cajas de texto, logo opcional, estilo en el prompt del copy · paleta hecha (M); copy, fuentes en los builds y logo → tanda 2 (agente S) · 2026-09-28
+- [x] **PU-S9-004** Generar assets nuevos para el design system (fondos, patrones, texturas; local + `ImageGen`) con aprobación antes de sumarlos · agente M
+- [x] **PU-S9-005** Biblioteca **global** de assets (instalación, todas las marcas; lista para multiusuario) con JSON de metadatos versionado y **licencia obligatoria**; sólo licencias verificables · `D-19` · agente N
+- [x] **PU-S9-006** Fuentes de clips con licencia explícita y API documentada + etiquetado automático del JSON con el modelo de visión, corregible · agente N · ⚠️ Commons dio 5 clips reales (no 10); Pexels/Pixabay necesitan key del dueño; sin modelo de visión el JSON queda para revisar
+- [x] **PU-S9-007** Adaptador `Judgment` SystemOne (protocolo Jev: Laya local o Jev de TypeSafe) + Laya en `pnpm start` · `D-18` · agente O
+- [x] **PU-S9-008** Decisor de assets: candidatos filtrados en código, juicios tipados por candidato, ponderación en código, fallback determinístico, decisiones guardadas · agente O
+- [x] **PU-S9-009** Motor de reels HyperFrames en el render (capas, chroma, texto animado, subtítulos, música) + ADR con números frente a FFmpeg y Remotion · `D-20` · agente P
+- [x] **PU-S9-010** Formato `reel` de punta a punta y editor que cambia cualquier capa (clip, imagen, fondo, música, texto con tipografía y animación), preview = render · agente P
+- [x] **PU-S9-011** Señales de preferencia de Blitz (aceptar, descartar, editar) por marca y a nivel dueño, pesos aprendidos con exploración configurable, pantalla "qué aprendió" con reset · `D-22` · agente Q
+- [x] **PU-S9-012** Ads con la Marketing API de Meta: campañas, conjuntos, anuncios desde la Library, A/B, topes y corte automático; todo se crea **pausado** y gastar exige confirmación · `D-21` · agente R
+- [x] **PU-S9-013** Dashboard de marketing por marca: orgánico + pago (gasto, CPM, CTR, CPA, ROAS) y resultado de cada A/B · agente R
+- [~] **PU-S9-014** Planificador semanal de reels por marca (estrategia + decisor + preferencias + design system) que los genera en Blitz o piloto · dep: PU-S9-003, 005, 008, 010, 011 · agente U · 2026-09-28
+- [~] **PU-S9-015** Preferencias y decisor aplicados al refill y a "crear desde prompt" (incluye la biblioteca global como candidatos) · dep: PU-S9-008, 011 · agente T · 2026-09-28
 - [ ] **PU-S9-016** Prueba de punta a punta en la app real: importar FOCUS → reel desde una idea → editar una capa → re-render · dep: todas
 
 ---
