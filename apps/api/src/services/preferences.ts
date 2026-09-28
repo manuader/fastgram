@@ -23,9 +23,14 @@
  *   la editada (swaps de `studioState` + cajas guardadas), **por aspecto**.
  *   Una fila por aspecto (upsert): editar dos veces el fondo deja la última,
  *   y volver al original borra la señal.
- * - `edit_before_accept`: el vocabulario y el modelo la soportan, pero **hoy
- *   ninguna ruta la produce**: Blitz no tiene edición antes de aceptar (el
- *   botón «Edit» del deck acepta y abre el editor). Ver el reporte.
+ * - `edit_before_accept` (sprint 9, T): el botón «Edit» del deck acepta y abre
+ *   el editor, y manda `via: "edit"` en `POST /blitz`. Esa aceptación **no** es
+ *   un «sí» a secas —el dueño la quiso, pero distinta—, así que se guarda como
+ *   `edit_before_accept` con todos sus rasgos en `added` y peso 0,5
+ *   (`PREFERENCE_SIGNAL_WEIGHTS`): media aceptación. Las ediciones que siguen
+ *   en el editor sobre esa pieza son **las correcciones que el dueño quería
+ *   antes de aceptar**: van también como `edit_before_accept` (0,5, no el 0,3
+ *   de `edit_after_accept`), por aspecto, igual que las otras.
  *
  * Aceptar desde el piloto automático **no** es una señal: no la decidió el
  * dueño. Sólo cuentan las rutas que llama la persona.
@@ -59,11 +64,11 @@ import {
   parsePreferenceStats,
   parseSuggestionBuildPlan,
   preferencesFromSnapshot,
+  prefMediaSourceOf,
+  prefMusicSourceOf,
   readAssetSwaps,
   type AssetBuildPayload,
   type ContentAssets,
-  type PrefMediaSource,
-  type PrefMusicSource,
   type PreferenceInsight,
   type PreferenceMediaInput,
   type PreferenceSignal,
@@ -104,25 +109,16 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // De la base a un `PreferenceSubject`
 // ───────────────────────────────────────────────────────────────────────────
 
-/** `media.origin` → de dónde es la media, en el vocabulario de `core`. */
-const MEDIA_SOURCE: Readonly<Record<string, PrefMediaSource>> = {
-  manual_upload: "upload",
-  generated: "generated",
-  brand_kit: "brand",
-  demo: "library",
-  internal: "library",
-  imported: "imported",
-};
-
-const AUDIO_SOURCE: Readonly<Record<string, PrefMusicSource>> = {
-  upload: "upload",
-  import: "import",
-  extracted: "extracted",
-};
-
 function mediaInput(m: PreferenceMediaFacts | undefined): PreferenceMediaInput | null {
   if (m === undefined) return null;
-  return { mediaType: m.mediaType, source: MEDIA_SOURCE[m.origin] ?? null, tags: m.tags };
+  // Sprint 9 (T): la misma tabla que usa el decisor al puntuar
+  // (`prefMediaSourceOf`), que además reconoce las copias de la biblioteca
+  // global (`media/{companyId}/library/…`) como `library`.
+  return {
+    mediaType: m.mediaType,
+    source: prefMediaSourceOf({ origin: m.origin, location: m.url }),
+    tags: m.tags,
+  };
 }
 
 function originOf(s: SuggestionRow): PrefSuggestionOrigin {
@@ -197,7 +193,10 @@ export async function suggestionSubject(
     const [track] = await preferenceLookups.audioByIds(tx, scope, [plan.audio.audioId]);
     music = {
       trackId: plan.audio.audioId,
-      source: track === undefined ? null : (AUDIO_SOURCE[track.origin] ?? null),
+      source:
+        track === undefined
+          ? null
+          : prefMusicSourceOf({ origin: track.origin, location: track.url }),
     };
   }
 
@@ -293,7 +292,10 @@ async function contentSide(
       music =
         track === undefined
           ? { source: "library" }
-          : { trackId: track.id, source: AUDIO_SOURCE[track.origin] ?? null };
+          : {
+              trackId: track.id,
+              source: prefMusicSourceOf({ origin: track.origin, location: track.url }),
+            };
     }
   }
 
@@ -454,6 +456,8 @@ export interface AcceptedInput {
   readonly suggestion: SuggestionRow;
   readonly contentId: string;
   readonly nowMs: number;
+  /** Sprint 9 (T): `edit` = aceptó para editar (ver la cabecera). */
+  readonly via?: "edit" | undefined;
 }
 
 /** `POST /blitz`: el dueño aceptó esta sugerencia y salió esta pieza. */
@@ -462,25 +466,44 @@ export function capturePreferenceAccept(
   input: AcceptedInput,
   log?: PreferenceLog,
 ): Promise<boolean> {
+  const viaEdit = input.via === "edit";
   return bestEffort(
     tx,
     log,
-    { signal: "accept", suggestionId: input.suggestion.id },
+    {
+      signal: viaEdit ? "edit_before_accept" : "accept",
+      suggestionId: input.suggestion.id,
+    },
     async (sp) => {
       const subject = await suggestionSubject(sp, input.companyId, input.suggestion);
+      const features = extractPreferenceFeatures(subject);
       await preferenceSignalStore.upsert(
         sp,
         { companyId: input.companyId },
-        {
-          suggestionId: input.suggestion.id,
-          contentId: input.contentId,
-          kind: "accept",
-          aspect: "",
-          features: extractPreferenceFeatures(subject),
-          weight: PREFERENCE_SIGNAL_WEIGHTS.accept,
-          vocabularyVersion: PREFERENCE_VOCABULARY_VERSION,
-          occurredAt: new Date(input.nowMs),
-        },
+        viaEdit
+          ? {
+              suggestionId: input.suggestion.id,
+              contentId: input.contentId,
+              kind: "edit_before_accept",
+              // `""` = la aceptación en sí; las ediciones van por aspecto.
+              aspect: "",
+              features,
+              // Sin `added`, una señal de edición no suma nada (`model.ts`).
+              added: features,
+              weight: PREFERENCE_SIGNAL_WEIGHTS.edit_before_accept,
+              vocabularyVersion: PREFERENCE_VOCABULARY_VERSION,
+              occurredAt: new Date(input.nowMs),
+            }
+          : {
+              suggestionId: input.suggestion.id,
+              contentId: input.contentId,
+              kind: "accept",
+              aspect: "",
+              features,
+              weight: PREFERENCE_SIGNAL_WEIGHTS.accept,
+              vocabularyVersion: PREFERENCE_VOCABULARY_VERSION,
+              occurredAt: new Date(input.nowMs),
+            },
       );
       await recomputePreferences(sp, input.companyId, input.nowMs);
     },
@@ -523,6 +546,40 @@ export function capturePreferenceDiscard(
   );
 }
 
+/**
+ * Sprint 9 (T): la aceptación por «Edit» de esta pieza (`edit_before_accept`
+ * sin aspecto), o `null`. `findAcceptByContent` (Q, `@fastgram/db`) sólo busca
+ * `accept`, y `apps/api` no puede armar la consulta (no alcanza `drizzle-orm`):
+ * se busca entre las {@link EDIT_ACCEPT_LOOKBACK} señales más nuevas de la
+ * marca. «Edit» abre el editor en el acto, así que la aceptación está arriba
+ * de todo; una pieza editada después de cientos de decisiones pierde la
+ * marca y sus ediciones cuentan como `edit_after_accept` (0,3 en vez de 0,5).
+ *
+ * No se filtra por fecha (`since` = alta de la pieza): la señal lleva la hora
+ * del reloj de la app y la pieza la de la base, y con relojes distintos la
+ * búsqueda fallaba (lo mostró el test de integración, con reloj fijo).
+ */
+async function findEditAcceptByContent(
+  tx: Executor,
+  companyId: string,
+  contentId: string,
+): Promise<PreferenceSignalRow | null> {
+  const rows = await preferenceSignalStore.listRecent(
+    tx,
+    { companyId },
+    { limit: EDIT_ACCEPT_LOOKBACK },
+  );
+  return (
+    rows.find(
+      (r) =>
+        r.contentId === contentId && r.kind === "edit_before_accept" && r.aspect === "",
+    ) ?? null
+  );
+}
+
+/** Cuántas señales recientes mira {@link findEditAcceptByContent}. */
+const EDIT_ACCEPT_LOOKBACK = 500;
+
 export interface EditedInput {
   readonly companyId: string;
   /** La pieza editada. Se relee dentro de la transacción: ve la edición. */
@@ -545,17 +602,21 @@ export function capturePreferenceEdit(
   return bestEffort(
     tx,
     log,
-    { signal: "edit_after_accept", contentId: input.contentId },
+    { signal: "edit", contentId: input.contentId },
     async (sp) => {
       const scope = { companyId: input.companyId };
-      const accepted = await preferenceSignalStore.findAcceptByContent(
-        sp,
-        scope,
-        input.contentId,
-      );
-      if (accepted === null) return;
+      // Sprint 9 (T): la pieza salió de un «Edit» del deck si su aceptación es
+      // un `edit_before_accept` sin aspecto; entonces sus ediciones también.
       const content = await contentRepository.findById(sp, scope, input.contentId);
       if (content === null) return;
+      const accepted =
+        (await preferenceSignalStore.findAcceptByContent(sp, scope, input.contentId)) ??
+        (await findEditAcceptByContent(sp, input.companyId, content.id));
+      if (accepted === null) return;
+      const kind =
+        accepted.kind === "edit_before_accept"
+          ? "edit_before_accept"
+          : "edit_after_accept";
       const sides = await contentSubjects(sp, input.companyId, content);
       if (sides === null) return;
 
@@ -575,12 +636,12 @@ export function capturePreferenceEdit(
         await preferenceSignalStore.upsert(sp, scope, {
           suggestionId: accepted.suggestionId,
           contentId: input.contentId,
-          kind: "edit_after_accept",
+          kind,
           aspect: change.aspect,
           features: after,
           removed: change.removed,
           added: change.added,
-          weight: PREFERENCE_SIGNAL_WEIGHTS.edit_after_accept,
+          weight: PREFERENCE_SIGNAL_WEIGHTS[kind],
           vocabularyVersion: PREFERENCE_VOCABULARY_VERSION,
           occurredAt: new Date(input.nowMs),
         });
@@ -595,7 +656,7 @@ export function capturePreferenceEdit(
           sp,
           scope,
           accepted.suggestionId,
-          "edit_after_accept",
+          kind,
           reverted,
         );
       }

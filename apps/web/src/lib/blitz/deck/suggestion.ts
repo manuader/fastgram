@@ -22,8 +22,8 @@
  */
 import {
   aspectRatioSchema,
-  blitzContentTypeSchema,
-  type BlitzContentType,
+  blitzQueueContentTypeSchema,
+  type BlitzQueueContentType,
 } from "@fastgram/contracts";
 import { z } from "zod";
 
@@ -46,6 +46,14 @@ const previewSchema = z.object({
   backgroundUrl: z.string().url().nullable().optional(),
   /** Green screen: el clip de meme, recortado en el cliente (sprint 7). */
   overlayVideoUrl: z.string().url().nullable().optional(),
+  /** Sprint 9 (T): el croma del clip, si se conoce. Sin él, verde. */
+  overlayChroma: z
+    .object({
+      type: z.enum(["green", "blue", "alpha", "none"]),
+      keyColor: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
   audioUrl: z.string().url().nullable().optional(),
   aspectRatio: aspectRatioSchema.nullable().optional(),
   /**
@@ -55,8 +63,11 @@ const previewSchema = z.object({
    */
   reel: z
     .object({
-      videoUrl: z.string().url(),
+      // Sprint 9 (U): los reels del planificador traen el póster (un cuadro
+      // compuesto por el motor) y todavía no el video: se renderiza al aceptar.
+      videoUrl: z.string().url().nullable().optional(),
       posterUrl: z.string().url().nullable().optional(),
+      durationSec: z.number().positive().nullable().optional(),
     })
     .nullable()
     .optional(),
@@ -64,7 +75,8 @@ const previewSchema = z.object({
 
 export const deckSuggestionSchema = z.object({
   id: z.string().min(1),
-  contentType: blitzContentTypeSchema,
+  // Sprint 9 (U): la cola también trae reels del planificador semanal.
+  contentType: blitzQueueContentTypeSchema,
   generatedText: z.string().nullable().optional(),
   /** FR-050 criterio 3: el racional **almacenado**, nunca uno generado al vuelo. */
   aiExplanation: z.string().nullable().optional(),
@@ -199,15 +211,17 @@ export function pendingSuggestions(
 /** Tipo de Blitz → la clave de copy del chip (F-053), la misma que usa la Library. */
 export const BLITZ_TYPE_COPY: Readonly<
   Record<
-    BlitzContentType,
+    BlitzQueueContentType,
     | "library.type.slideshow"
     | "library.type.wallOfText"
     | "library.type.greenScreen"
     | "library.type.videoHook"
+    | "library.type.reel"
   >
 > = {
   slideshow: "library.type.slideshow",
   "wall-of-text": "library.type.wallOfText",
   "green-screen": "library.type.greenScreen",
   "video-hook": "library.type.videoHook",
+  reel: "library.type.reel",
 };

@@ -1,6 +1,6 @@
 "use client";
 
-import type { ContentTextBox, FontFamily } from "@fastgram/contracts";
+import { isBrandFontFamily, type ContentTextBox } from "@fastgram/contracts";
 import {
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
@@ -13,7 +13,15 @@ import {
 import { Checkbox, Input, Select, Textarea, cn } from "@fastgram/ui";
 import { useId, useState, type ReactNode } from "react";
 import { tw, type CopyKey } from "@/lib/i18n/t";
-import { EDITOR_FONTS, closestWeight, cssFontFamily, fontSpec } from "@/lib/editor/fonts";
+import { EDITOR_FONTS, fontSpec } from "@/lib/editor/fonts";
+import {
+  brandFamilyOf,
+  editorClosestWeight,
+  editorCssFamily,
+  editorWeights,
+  useBrandLook,
+  type EditorBrandLook,
+} from "./brandLook";
 
 export interface TextInspectorProps {
   readonly box: ContentTextBox | null;
@@ -47,6 +55,11 @@ const HEX = /^#[0-9a-fA-F]{6}$/;
  *
  * `Apply to all text boxes` aplica **estilo**, no contenido: copiar el texto
  * de una caja en todas no es lo que nadie quiere al tildar eso.
+ *
+ * Sprint 9 (S): el selector de fuente ofrece primero las familias de la marca
+ * (`brand:<id>`, del design system activo) con su nombre real y la marca de
+ * licencia; las que esperan la licencia aparecen deshabilitadas (la API las
+ * rechazaría con `brand_font_unavailable`).
  */
 export function TextInspector({
   box,
@@ -56,6 +69,7 @@ export function TextInspector({
 }: TextInspectorProps) {
   const [applyAll, setApplyAll] = useState(false);
   const ids = useId();
+  const look = useBrandLook();
 
   if (box === null) {
     return <p className="text-sm text-text-muted">{tw("editor.text.noSelection")}</p>;
@@ -63,8 +77,10 @@ export function TextInspector({
 
   const style = (patch: (b: ContentTextBox) => ContentTextBox) =>
     onChange(patch, canApplyToAll && applyAll);
-  const spec = fontSpec(box.font.family);
-  const weightIndex = Math.max(0, spec.weights.indexOf(box.font.weight));
+  const family = box.font.family;
+  const weights = editorWeights(family, look);
+  const weightIndex = Math.max(0, weights.indexOf(box.font.weight));
+  const brand = brandFamilyOf(family, look);
 
   return (
     <fieldset className="grid gap-4" disabled={disabled}>
@@ -95,37 +111,60 @@ export function TextInspector({
       <Field id={`${ids}-font`} label={tw("editor.text.font")}>
         <Select
           id={`${ids}-font`}
-          value={box.font.family}
-          style={{ fontFamily: cssFontFamily(box.font.family) }}
+          value={family}
+          style={{ fontFamily: editorCssFamily(family, look) }}
           onChange={(e) => {
-            const family = e.target.value as FontFamily;
+            const next = e.target.value as ContentTextBox["font"]["family"];
             style((b) => ({
               ...b,
-              font: { ...b.font, family, weight: closestWeight(family, b.font.weight) },
+              font: {
+                ...b.font,
+                family: next,
+                weight: editorClosestWeight(next, b.font.weight, look),
+              },
             }));
           }}
-          options={EDITOR_FONTS.map((f) => ({ value: f.key, label: f.label }))}
+          options={fontOptions(family, look)}
         />
-        {spec.googleFamily === null && (
-          <p className="mt-1 text-xs text-text-muted">{tw("editor.text.fontFallback")}</p>
+        {isBrandFontFamily(family) ? (
+          <p className="mt-1 text-xs text-text-muted">
+            {tw(
+              brand?.usable === true
+                ? "editor.text.brandNote"
+                : "editor.text.brandUnavailable",
+            )}
+          </p>
+        ) : (
+          fontSpec(family).googleFamily === null && (
+            <p className="mt-1 text-xs text-text-muted">
+              {tw("editor.text.fontFallback")}
+            </p>
+          )
         )}
       </Field>
 
       <Slider
         id={`${ids}-weight`}
         label={tw("editor.text.weight", {
-          weight: tw(WEIGHT_KEYS[box.font.weight] ?? "editor.weight.400"),
+          // Una cara de marca puede ser 100, 200, 800 o 900: sin nombre, el número.
+          weight:
+            WEIGHT_KEYS[box.font.weight] === undefined
+              ? String(box.font.weight)
+              : tw(WEIGHT_KEYS[box.font.weight] as CopyKey),
         })}
         min={0}
-        max={spec.weights.length - 1}
+        max={weights.length - 1}
         step={1}
         value={weightIndex}
-        disabled={spec.weights.length < 2}
+        disabled={weights.length < 2}
         onChange={(i) => {
-          const weight = spec.weights[i] ?? box.font.weight;
+          const weight = weights[i] ?? box.font.weight;
           style((b) => ({
             ...b,
-            font: { ...b.font, weight: closestWeight(b.font.family, weight) },
+            font: {
+              ...b.font,
+              weight: editorClosestWeight(b.font.family, weight, look),
+            },
           }));
         }}
       />
@@ -177,6 +216,39 @@ export function TextInspector({
       <BackgroundField id={`${ids}-bg`} box={box} onChange={style} />
     </fieldset>
   );
+}
+
+/**
+ * Las opciones del selector: las familias de la marca primero (las que
+ * esperan licencia, deshabilitadas), después las 12. Una familia de marca que
+ * ya no está en el design system se conserva como opción deshabilitada para
+ * que el `<select>` no mienta sobre lo que tiene la caja.
+ */
+export function fontOptions(
+  current: string,
+  look: EditorBrandLook,
+): { value: string; label: string; disabled?: boolean }[] {
+  const brand = look.families.map((f) => ({
+    value: f.family,
+    label: tw(
+      !f.usable
+        ? "editor.text.brandNeedsLicense"
+        : f.license === "open"
+          ? "editor.text.brandOpen"
+          : "editor.text.brandLicensed",
+      { name: f.name },
+    ),
+    ...(f.usable ? {} : { disabled: true }),
+  }));
+  const missing =
+    isBrandFontFamily(current) && brandFamilyOf(current, look) === null
+      ? [{ value: current, label: tw("editor.text.brandMissing"), disabled: true }]
+      : [];
+  return [
+    ...missing,
+    ...brand,
+    ...EDITOR_FONTS.map((f) => ({ value: f.key as string, label: f.label })),
+  ];
 }
 
 function Field({

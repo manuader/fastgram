@@ -10,6 +10,7 @@
 import type { JudgmentState } from "@fastgram/ports";
 
 import { shortlistCandidates, type FilterResult } from "./filter.js";
+import { assetPreferenceMultipliers, type AssetPreferenceInput } from "./preferences.js";
 import { roleNeeds, type AssetRole, type DecisionFormat } from "./formats.js";
 import {
   assetQuestions,
@@ -27,6 +28,11 @@ export interface AssetDecisionInput {
   readonly candidates: readonly AssetCandidate[];
   readonly recentIds?: ReadonlySet<string> | undefined;
   readonly shortlistSize?: number | undefined;
+  /**
+   * Sprint 9 (T): el gusto aprendido del dueño y si esta decisión explora.
+   * Ausente = sin preferencias (todos ×1), como antes.
+   */
+  readonly preferences?: AssetPreferenceInput | null | undefined;
 }
 
 export interface CandidateRequests {
@@ -38,6 +44,8 @@ export interface CandidateRequests {
 export interface AssetDecisionPlan extends FilterResult {
   readonly questions: readonly AssetFitQuestion[];
   readonly requests: readonly CandidateRequests[];
+  /** Sprint 9 (T): id → multiplicador del gusto (sólo los ≠ 1). */
+  readonly preference: ReadonlyMap<string, number>;
 }
 
 /** `null` si el formato no tiene ese rol (p. ej. música en `static`). */
@@ -54,6 +62,11 @@ export function planAssetDecision(input: AssetDecisionInput): AssetDecisionPlan 
   return {
     ...filtered,
     questions: assetQuestions(input.role),
+    preference: assetPreferenceMultipliers(
+      filtered.shortlist.map((e) => e.candidate),
+      input.role,
+      input.preferences,
+    ),
     requests: filtered.shortlist.map(({ candidate }) => ({
       id: candidate.id,
       fitState: assetState({

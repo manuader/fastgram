@@ -35,6 +35,8 @@ export * from "./ads.js";
 export * from "./asset-decisions.js";
 // Sprint 9 (M): design system por marca (migración 0035).
 export * from "./design-system.js";
+// Sprint 9 (U): planificador semanal de reels (migración 0041).
+export * from "./reels.js";
 
 export { tsColumn, timestamps, createdAtOnly, softDelete } from "./_shared.js";
 
@@ -73,6 +75,7 @@ import {
 import { preferenceSignals, preferenceWeights } from "./preferences.js";
 import { assetDecisions } from "./asset-decisions.js";
 import { brandDesignSystems } from "./design-system.js";
+import { reelPlanItems, reelPlans } from "./reels.js";
 import { brandAudioTracks, media, mediaSets, ownPostImports } from "./media.js";
 import {
   apiKeys,
@@ -153,6 +156,9 @@ export const COMPANY_SCOPED_TABLES = [
   assetDecisions,
   // Sprint 9 (M): 0035.
   brandDesignSystems,
+  // Sprint 9 (U): 0041.
+  reelPlans,
+  reelPlanItems,
 ] as const;
 
 /** La raíz de la tenencia. Su política compara `id`, no `company_id`. */

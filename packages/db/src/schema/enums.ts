@@ -67,10 +67,11 @@ export const SUGGESTION_CONTENT_TYPE = [
   "wall-of-text",
   "green-screen",
   "video-hook",
-  // `reel` YA existe en Postgres (0038 lo agrega a los dos enums) pero no acá
-  // todavía: ninguna sugerencia es un reel hasta el planificador semanal (segunda
-  // tanda del sprint 9). Sumarlo acá antes ensancha el tipo de las filas de la
-  // cola y obliga a tocar todo Blitz para un valor que nadie escribe.
+  // Sprint 9 (U, `PU-S9-014`): los reels del planificador semanal. El valor ya
+  // existía en Postgres (0038 lo agregó a los dos enums); desde acá las filas
+  // de la cola lo tipan. `POST /blitz` no lo acepta como `contentType` forzado
+  // (`blitzContentTypeSchema` sigue en cuatro): un reel sale del plan.
+  "reel",
 ] as const;
 export const suggestionContentTypeEnum = pgEnum(
   "suggestion_content_type",

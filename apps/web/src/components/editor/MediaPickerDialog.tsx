@@ -1,6 +1,11 @@
 "use client";
 
-import type { Media, MediaCategory, MediaType } from "@fastgram/contracts";
+import type {
+  LibraryAssetKind,
+  Media,
+  MediaCategory,
+  MediaType,
+} from "@fastgram/contracts";
 import { imageMediaCategorySchema, videoMediaCategorySchema } from "@fastgram/contracts";
 import {
   Button,
@@ -11,6 +16,7 @@ import {
   DialogTitle,
   EmptyState,
   Skeleton,
+  Spinner,
   Tabs,
   TabsContent,
   TabsList,
@@ -20,6 +26,8 @@ import {
 import { useMemo, useState } from "react";
 import { tw, type CopyKey } from "@/lib/i18n/t";
 import { flattenItems, useMediaPicker } from "@/lib/editor/api";
+import { GlobalLibraryPicker } from "@/components/library/global/GlobalLibraryPicker";
+import { useGlobalLibraryPick } from "./useGlobalLibraryPick";
 
 export interface MediaPickerDialogProps {
   readonly open: boolean;
@@ -30,6 +38,12 @@ export interface MediaPickerDialogProps {
   readonly onCancel: () => void;
   readonly onPick: (url: string) => void;
 }
+
+/** Qué tipos de la biblioteca global sirven para cada hueco del editor. */
+const GLOBAL_KINDS: Readonly<Record<MediaType, readonly LibraryAssetKind[]>> = {
+  image: ["background_image", "image"],
+  video: ["green_screen_video", "background_video"],
+};
 
 const CATEGORY_COPY: Readonly<Record<MediaCategory, CopyKey>> = {
   "slideshow-image": "editor.picker.category.slideshowImage",
@@ -45,10 +59,10 @@ const CATEGORY_COPY: Readonly<Record<MediaCategory, CopyKey>> = {
  *
  * Diferencias con el PRD, todas por lo que existe hoy:
  *
- * - **`Library` / `Theme Images` va vacío.** El catálogo compartido de
- *   Fastlane no existe en este producto (ver la cabecera de
- *   `routes/v1/content.ts`): la pestaña está, con su estado vacío, para que el
- *   usuario sepa que no se perdió nada.
+ * - **`Library` es la biblioteca global** (sprint 9, T; D-19): abre el
+ *   `GlobalLibraryPicker` de N y lo elegido se **copia** a la marca
+ *   (`use-in-brand`), porque el editor y el render sólo aceptan media de la
+ *   marca. Ver `useGlobalLibraryPick`.
  * - **Los filtros son las categorías del Media Bank**, no `Activity` /
  *   `Reaction` / `Man` / `Woman`: esas etiquetas no están en el modelo
  *   (DATA-010). Mismo comportamiento: OR dentro de la fila, `Clear` resetea.
@@ -68,6 +82,11 @@ export function MediaPickerDialog({
 }: MediaPickerDialogProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [filters, setFilters] = useState<ReadonlySet<MediaCategory>>(new Set());
+  const [tab, setTab] = useState("mine");
+  const global = useGlobalLibraryPick((url) => {
+    setSelected(null);
+    onPick(url);
+  });
   const query = useMediaPicker(type, open);
   const categories: readonly MediaCategory[] =
     type === "image"
@@ -91,143 +110,179 @@ export function MediaPickerDialog({
   const chosen = selected !== null && selected !== currentUrl ? selected : null;
 
   return (
-    <Dialog open={open} onClose={close} size="xl">
-      <DialogHeader>
-        <DialogTitle>{title}</DialogTitle>
-      </DialogHeader>
-      <DialogBody>
-        <Tabs defaultValue="mine">
-          <TabsList>
-            <TabsTrigger value="mine">
-              {tw(type === "image" ? "editor.picker.myImages" : "editor.picker.myVideos")}
-            </TabsTrigger>
-            <TabsTrigger value="library">{tw("editor.picker.library")}</TabsTrigger>
-          </TabsList>
+    <>
+      <GlobalLibraryPicker
+        open={open && global.browsing}
+        onOpenChange={(next) => {
+          if (!next) global.close();
+        }}
+        kinds={GLOBAL_KINDS[type]}
+        onPick={global.pick}
+      />
+      <Dialog open={open && !global.browsing} onClose={close} size="xl">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <DialogBody>
+          <Tabs defaultValue="mine" value={tab} onValueChange={setTab}>
+            <TabsList>
+              <TabsTrigger value="mine">
+                {tw(
+                  type === "image" ? "editor.picker.myImages" : "editor.picker.myVideos",
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="library">{tw("editor.picker.library")}</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="mine">
-            <div className="my-3 flex flex-wrap items-center gap-2 text-xs">
-              <span className="text-text-muted">{tw("editor.picker.filter")}</span>
-              {categories.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  aria-pressed={filters.has(c)}
-                  className={cn(
-                    "fg-focusable rounded-full border px-2.5 py-1",
-                    filters.has(c)
-                      ? "border-accent bg-accent-subtle text-text"
-                      : "border-border text-text-muted hover:border-border-strong",
-                  )}
-                  onClick={() =>
-                    setFilters((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(c)) next.delete(c);
-                      else next.add(c);
-                      return next;
-                    })
-                  }
-                >
-                  {tw(CATEGORY_COPY[c])}
-                </button>
-              ))}
-              {filters.size > 0 && (
-                <button
-                  type="button"
-                  className="fg-focusable text-accent underline"
-                  onClick={() => setFilters(new Set())}
-                >
-                  {tw("editor.picker.clear")}
-                </button>
-              )}
-            </div>
-
-            {query.isPending ? (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-busy="true">
-                {Array.from({ length: 8 }, (_, i) => (
-                  <Skeleton key={i} className="aspect-[9/16] w-full" />
+            <TabsContent value="mine">
+              <div className="my-3 flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-text-muted">{tw("editor.picker.filter")}</span>
+                {categories.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    aria-pressed={filters.has(c)}
+                    className={cn(
+                      "fg-focusable rounded-full border px-2.5 py-1",
+                      filters.has(c)
+                        ? "border-accent bg-accent-subtle text-text"
+                        : "border-border text-text-muted hover:border-border-strong",
+                    )}
+                    onClick={() =>
+                      setFilters((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(c)) next.delete(c);
+                        else next.add(c);
+                        return next;
+                      })
+                    }
+                  >
+                    {tw(CATEGORY_COPY[c])}
+                  </button>
                 ))}
+                {filters.size > 0 && (
+                  <button
+                    type="button"
+                    className="fg-focusable text-accent underline"
+                    onClick={() => setFilters(new Set())}
+                  >
+                    {tw("editor.picker.clear")}
+                  </button>
+                )}
               </div>
-            ) : query.isError ? (
-              <EmptyState
-                bordered
-                title={tw("editor.picker.error")}
-                action={
-                  <Button variant="secondary" onClick={() => void query.refetch()}>
-                    {tw("editor.picker.retry")}
-                  </Button>
-                }
-              />
-            ) : items.length === 0 ? (
-              <EmptyState
-                bordered
-                // P5-ERR-001: ERR-E06 literal para imágenes sin filtro.
-                title={tw(
-                  filters.size > 0
-                    ? "editor.picker.filteredEmpty"
-                    : type === "image"
-                      ? "empty.imagePicker.title"
-                      : "editor.picker.empty",
-                )}
-                {...(filters.size === 0 && type === "image"
-                  ? { description: tw("editor.picker.empty") }
-                  : {})}
-              />
-            ) : (
-              <>
-                <ul
-                  className="grid max-h-[55vh] grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-4"
-                  aria-label={title}
-                >
-                  {items.map((m) => (
-                    <MediaTile
-                      key={m.mediaId}
-                      media={m}
-                      selected={(selected ?? currentUrl) === m.r2Url}
-                      onSelect={() => setSelected(m.r2Url)}
-                    />
-                  ))}
-                </ul>
-                {query.hasNextPage && (
-                  <div className="mt-3 flex justify-center">
-                    <Button
-                      variant="ghost"
-                      loading={query.isFetchingNextPage}
-                      onClick={() => void query.fetchNextPage()}
-                    >
-                      {tw("editor.picker.loadMore")}
-                    </Button>
-                  </div>
-                )}
-              </>
-            )}
-          </TabsContent>
 
-          <TabsContent value="library">
-            <div className="mt-3">
-              <EmptyState bordered title={tw("editor.picker.libraryEmpty")} />
-            </div>
-          </TabsContent>
-        </Tabs>
-      </DialogBody>
-      <DialogFooter>
-        <span className="mr-auto text-xs text-text-muted" aria-live="polite">
-          {chosen !== null ? tw("editor.picker.selected") : ""}
-        </span>
-        <Button variant="ghost" onClick={close}>
-          {tw("editor.picker.cancel")}
-        </Button>
-        <Button
-          disabled={chosen === null}
-          onClick={() => {
-            if (chosen === null) return;
-            setSelected(null);
-            onPick(chosen);
-          }}
-        >
-          {tw("editor.picker.swap")}
-        </Button>
-      </DialogFooter>
-    </Dialog>
+              {query.isPending ? (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-busy="true">
+                  {Array.from({ length: 8 }, (_, i) => (
+                    <Skeleton key={i} className="aspect-[9/16] w-full" />
+                  ))}
+                </div>
+              ) : query.isError ? (
+                <EmptyState
+                  bordered
+                  title={tw("editor.picker.error")}
+                  action={
+                    <Button variant="secondary" onClick={() => void query.refetch()}>
+                      {tw("editor.picker.retry")}
+                    </Button>
+                  }
+                />
+              ) : items.length === 0 ? (
+                <EmptyState
+                  bordered
+                  // P5-ERR-001: ERR-E06 literal para imágenes sin filtro.
+                  title={tw(
+                    filters.size > 0
+                      ? "editor.picker.filteredEmpty"
+                      : type === "image"
+                        ? "empty.imagePicker.title"
+                        : "editor.picker.empty",
+                  )}
+                  {...(filters.size === 0 && type === "image"
+                    ? { description: tw("editor.picker.empty") }
+                    : {})}
+                />
+              ) : (
+                <>
+                  <ul
+                    className="grid max-h-[55vh] grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-4"
+                    aria-label={title}
+                  >
+                    {items.map((m) => (
+                      <MediaTile
+                        key={m.mediaId}
+                        media={m}
+                        selected={(selected ?? currentUrl) === m.r2Url}
+                        onSelect={() => setSelected(m.r2Url)}
+                      />
+                    ))}
+                  </ul>
+                  {query.hasNextPage && (
+                    <div className="mt-3 flex justify-center">
+                      <Button
+                        variant="ghost"
+                        loading={query.isFetchingNextPage}
+                        onClick={() => void query.fetchNextPage()}
+                      >
+                        {tw("editor.picker.loadMore")}
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+            </TabsContent>
+
+            <TabsContent value="library">
+              <div className="mt-3">
+                {global.copying ? (
+                  <div
+                    role="status"
+                    className="flex items-center justify-center gap-2 py-10 text-sm text-text-muted"
+                  >
+                    <Spinner size="sm" />
+                    {tw("globalLibrary.picker.copying")}
+                  </div>
+                ) : (
+                  <EmptyState
+                    bordered
+                    title={tw("globalLibrary.picker.title")}
+                    description={tw("globalLibrary.picker.editorIntro")}
+                    action={
+                      <Button variant="secondary" onClick={global.open}>
+                        {tw("globalLibrary.picker.editorBrowse")}
+                      </Button>
+                    }
+                  />
+                )}
+                {global.failed && (
+                  <p role="alert" className="mt-2 text-xs text-danger">
+                    {tw("globalLibrary.picker.copyFailed")}
+                  </p>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
+        </DialogBody>
+        <DialogFooter>
+          <span className="mr-auto text-xs text-text-muted" aria-live="polite">
+            {chosen !== null ? tw("editor.picker.selected") : ""}
+          </span>
+          <Button variant="ghost" onClick={close}>
+            {tw("editor.picker.cancel")}
+          </Button>
+          <Button
+            disabled={chosen === null}
+            onClick={() => {
+              if (chosen === null) return;
+              setSelected(null);
+              onPick(chosen);
+            }}
+          >
+            {tw("editor.picker.swap")}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+    </>
   );
 }
 

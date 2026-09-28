@@ -1,10 +1,14 @@
 "use client";
 
-import type { ContentTextBox, ContentType, MediaElement } from "@fastgram/contracts";
+import type {
+  BuildLogo,
+  ContentTextBox,
+  ContentType,
+  MediaElement,
+} from "@fastgram/contracts";
 import { useRef, type Dispatch, type KeyboardEvent, type PointerEvent } from "react";
 import { cn } from "@fastgram/ui";
 import { tw } from "@/lib/i18n/t";
-import { cssFontFamily } from "@/lib/editor/fonts";
 import {
   boxToPreviewGeometry,
   nudgeFor,
@@ -18,6 +22,7 @@ import {
 } from "@/lib/editor/geometry";
 import { boxesOnSlide, type EditorAction, type EditorState } from "@/lib/editor/state";
 import { MediaLayer } from "./MediaLayer";
+import { editorCssFamily, logoPreviewStyle, useBrandLook } from "./brandLook";
 
 export interface EditorCanvasProps {
   readonly canvas: CanvasSize;
@@ -29,6 +34,12 @@ export interface EditorCanvasProps {
   /** Delete/Backspace sobre una caja: no se borra (el contrato no lo permite). */
   readonly onDeleteAttempt?: () => void;
   readonly readOnly?: boolean;
+  /**
+   * Sprint 9 (S): la capa de logo de la pieza (`null` = sin logo). Se dibuja
+   * la primera variante del design system; cuál sale en el video (clara u
+   * oscura) lo decide el render midiendo el fondo.
+   */
+  readonly logo?: BuildLogo | null;
 }
 
 /**
@@ -51,7 +62,10 @@ export function EditorCanvas({
   previewWidth,
   onDeleteAttempt,
   readOnly = false,
+  logo = null,
 }: EditorCanvasProps) {
+  const look = useBrandLook();
+  const logoUrl = look.logos[0];
   const height = previewHeight(previewWidth, canvas);
   const scale = previewScale(previewWidth, canvas);
   const assets = state.draft.assets;
@@ -93,6 +107,16 @@ export function EditorCanvas({
           {...(onDeleteAttempt === undefined ? {} : { onDeleteAttempt })}
         />
       ))}
+      {logo !== null && logoUrl !== undefined && (
+        // Sin `next/image`: los dominios de la media no están declarados.
+        <img
+          src={logoUrl}
+          alt={tw("editor.canvas.logo")}
+          draggable={false}
+          data-testid="editor-logo"
+          style={logoPreviewStyle(logo, previewWidth, height)}
+        />
+      )}
     </div>
   );
 }
@@ -256,6 +280,7 @@ function TextBoxView({
   readonly onDeleteAttempt?: () => void;
 }) {
   const drag = useRef<DragState | null>(null);
+  const look = useBrandLook();
   const g = boxToPreviewGeometry(box, canvas, previewWidth);
   const bg = renderedBackground(box.background);
   const empty = box.text.trim() === "";
@@ -357,7 +382,7 @@ function TextBoxView({
             boxSizing: "content-box",
             maxWidth: g.wrapWidth,
             padding: g.strokeWidth + (bg === null ? 0 : g.backgroundPadding),
-            fontFamily: cssFontFamily(box.font.family),
+            fontFamily: editorCssFamily(box.font.family, look),
             fontWeight: box.font.weight,
             fontSize: g.fontSize,
             lineHeight: "normal",

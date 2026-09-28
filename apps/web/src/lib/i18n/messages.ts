@@ -1631,6 +1631,12 @@ export const webEn = {
   "globalLibrary.picker.pickFor": "Use {title}",
   "globalLibrary.picker.emptyTitle": "Nothing ready here yet",
   "globalLibrary.picker.emptyBody": "Add assets from Library → Global library.",
+  // Sprint 9 (T): el picker global dentro del editor clásico. `nuevo`.
+  "globalLibrary.picker.editorIntro":
+    "Clips, backgrounds and music with a verified license. What you pick is copied into this brand.", // nuevo
+  "globalLibrary.picker.editorBrowse": "Browse the global library", // nuevo
+  "globalLibrary.picker.copying": "Adding it to this brand…", // nuevo
+  "globalLibrary.picker.copyFailed": "Couldn't add it to this brand. Try again.", // nuevo
   /* ------------------------------ What Blitz learned · sprint 9 (Q), D-22 */
   // Todo `nuevo`: la pantalla no existe en el PRD. Las frases se arman por
   // código con estas plantillas (`components/preferences/phrases.ts`).
@@ -2019,6 +2025,50 @@ export const webEn = {
   "designSystem.pending.model": "Image model", // nuevo
   "designSystem.pending.approve": "Approve", // nuevo
   "designSystem.pending.discard": "Discard", // nuevo
+  // Sprint 9 (U, `PU-S9-014`): el plan semanal de reels (Blitz Settings) y el editor.
+  "editor.reel.brandFont": "{name} · brand font", // nuevo
+  "reelPlan.title": "Weekly reels", // nuevo
+  "reelPlan.intro":
+    "FastGram plans this brand's reels for the week: an idea from your angles, the best assets for it, and your design system's fonts, colors and logo. Each reel shows up in Blitz on its day.", // nuevo
+  "reelPlan.share": "Reel share of your mix", // nuevo
+  "reelPlan.shareHelp":
+    "0 turns reels off. The share is of the pieces per day in your strategy.", // nuevo
+  "reelPlan.quota": "≈ {count} reels a week at your current pace", // nuevo
+  "reelPlan.saveShare": "Save share", // nuevo
+  "reelPlan.saved": "Saved. The next plan uses it.", // nuevo
+  "reelPlan.planNow": "Plan this week's reels now", // nuevo
+  "reelPlan.planning":
+    "Planning… writing each reel with your text model and rendering a poster can take a few minutes.", // nuevo
+  "reelPlan.week": "Week of {date}", // nuevo
+  "reelPlan.empty.title": "No reels planned this week", // nuevo
+  "reelPlan.empty.off": "Set a reel share above to start planning reels.", // nuevo
+  "reelPlan.empty.pending":
+    "The plan is made hourly and every Monday. Plan now to see this week's reels.", // nuevo
+  "reelPlan.item.day": "{day}", // nuevo
+  "reelPlan.item.noIdea": "Being written…", // nuevo
+  "reelPlan.item.explored": "Trying something new", // nuevo
+  "reelPlan.item.openContent": "Open in Library", // nuevo
+  "reelPlan.status.planned": "Planned", // nuevo
+  "reelPlan.status.suggested": "In Blitz", // nuevo
+  "reelPlan.status.accepted": "Accepted", // nuevo
+  "reelPlan.status.discarded": "Skipped", // nuevo
+  "reelPlan.status.built": "In Library", // nuevo
+  "reelPlan.status.failed": "Couldn't be made", // nuevo
+  "reelPlan.template.hook-reaction-punchline": "Hook → reaction → punchline", // nuevo
+  "reelPlan.template.list-beats": "List", // nuevo
+  "reelPlan.template.before-after": "Before / after", // nuevo
+  "reelPlan.note.llm_unavailable":
+    "No text model (Settings → Models): ideas come from your angle titles.", // nuevo
+  "reelPlan.note.captions_unavailable":
+    "No speech-to-text model on the render service: reels go without captions.", // nuevo
+  "reelPlan.note.decisor_fallback":
+    "No asset picker model: assets were ranked by their titles and tags.", // nuevo
+  "reelPlan.note.no_design_system":
+    "No design system for this brand: default fonts and colors, no logo.", // nuevo
+  "reelPlan.note.font_replaced": "{detail}", // nuevo
+  "reelPlan.note.no_media":
+    "No clips or backgrounds in the Media Bank: reels use a gradient of your colors.", // nuevo
+  "reelPlan.note.quota_zero": "Your strategy doesn't ask for reels this week.", // nuevo
 } as const;
 
 export type WebMessageKey = keyof typeof webEn;

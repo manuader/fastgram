@@ -17,6 +17,12 @@ import type { Canvas } from "../domain/canvas.js";
 import type { SlideshowPayload } from "../domain/payload.js";
 import { placeMedia } from "./formats.js";
 import { renderTextOverlay, type TextLayerOptions } from "./textLayer.js";
+import {
+  placeLogo,
+  regionPixels,
+  type LogoRequest,
+  type PreparedLogo,
+} from "./logoLayer.js";
 
 /** Calidad JPEG de salida. El PRD no la fija: elección del servicio. ABIERTO. */
 export const SLIDE_JPEG_QUALITY = 92;
@@ -84,12 +90,19 @@ export async function renderSlideBase(
     .toBuffer();
 }
 
-/** Compone el texto sobre una base ya resuelta y produce el JPEG final. */
+/** Sprint 9 (S): el logo de un slide — el pedido y las variantes ya medidas. */
+export interface SlideLogo {
+  readonly request: LogoRequest;
+  readonly logos: readonly PreparedLogo[];
+}
+
+/** Compone el texto (y el logo, si hay) sobre una base ya resuelta y produce el JPEG final. */
 export async function renderSlideWithText(
   payload: SlideshowPayload,
   index: number,
   basePng: Buffer,
   options: TextLayerOptions,
+  logo: SlideLogo | null = null,
 ): Promise<SlideRender> {
   const slide = payload.slides[index];
   if (slide === undefined) {
@@ -99,8 +112,16 @@ export async function renderSlideWithText(
   }
   const canvas: Canvas = { width: slide.canvas.width, height: slide.canvas.height };
   const overlay = await renderTextOverlay(slide.texts, canvas, options);
+  const layers: sharp.OverlayOptions[] = [{ input: overlay.png, left: 0, top: 0 }];
+  if (logo !== null) {
+    // El fondo se mide en la base del slide (la imagen ya recortada).
+    const placed = await placeLogo(canvas, logo.request, logo.logos, async (box) => [
+      await regionPixels(basePng, box),
+    ]);
+    layers.push(placed.overlay);
+  }
   const jpeg = await sharp(basePng)
-    .composite([{ input: overlay.png, left: 0, top: 0 }])
+    .composite(layers)
     .flatten({ background: { r: 0, g: 0, b: 0 } })
     .jpeg({ quality: SLIDE_JPEG_QUALITY, mozjpeg: true })
     .toBuffer();

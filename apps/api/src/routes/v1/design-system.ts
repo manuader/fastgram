@@ -33,6 +33,9 @@ import { z } from "zod";
 import { FileModelRegistry, modelRegistryPath } from "@fastgram/adapters";
 import {
   BYTES_PER_MB,
+  DEFAULT_BUILD_LOGO,
+  brandLogoLayerSchema,
+  type BrandLogoLayerResource,
   designSystemGenerateRequestSchema,
   designSystemImportRequestSchema,
   designSystemUpdateRequestSchema,
@@ -669,6 +672,74 @@ export function registerDesignSystemRoutes(app: ZodApp): void {
         );
       });
       return reply.status(204).send();
+    },
+  );
+
+  // ── GET|PUT /design-system/:designSystemId/logo-layer ── (sprint 9, S)
+  // Si las piezas clásicas nuevas de la marca salen con el logo del design
+  // system. Vive en `tokens.logoLayer` (ver `core/design-system/types.ts`).
+  async function logoLayerOf(
+    tx: Transaction,
+    companyId: string,
+    row: BrandDesignSystemRow,
+  ): Promise<BrandLogoLayerResource> {
+    const layer = readDesignSystemTokens(row.tokens)?.logoLayer;
+    const logoIds = readStoredAssets(row.assets)
+      .filter((a) => a.kind === "logo")
+      .map((a) => a.mediaId);
+    const live =
+      logoIds.length === 0
+        ? []
+        : await designSystemRepository.liveMediaByIds(tx, { companyId }, logoIds);
+    return {
+      enabled: layer?.enabled ?? false,
+      corner: layer?.corner ?? DEFAULT_BUILD_LOGO.corner,
+      size: layer?.size ?? DEFAULT_BUILD_LOGO.size,
+      opacity: layer?.opacity ?? DEFAULT_BUILD_LOGO.opacity,
+      available: live.length > 0,
+    };
+  }
+
+  app.get(
+    "/design-system/:designSystemId/logo-layer",
+    { schema: { params: idParams } },
+    async (request) => {
+      const companyId = request.auth.companyId;
+      return request.tx(async (tx) => {
+        const row = await loadOwned(tx, companyId, request.params.designSystemId);
+        return data(await logoLayerOf(tx, companyId, row));
+      });
+    },
+  );
+
+  app.put(
+    "/design-system/:designSystemId/logo-layer",
+    {
+      schema: { params: idParams, body: brandLogoLayerSchema },
+      preHandler: rateLimit(limiter, "restPerWorkspace"),
+    },
+    async (request) => {
+      const companyId = request.auth.companyId;
+      return request.tx(async (tx) => {
+        await lockCompanyDesignSystem(tx, { companyId });
+        const row = await loadOwned(tx, companyId, request.params.designSystemId);
+        const tokens = readDesignSystemTokens(row.tokens);
+        if (row.status !== "ready" || tokens === null) {
+          throw new ApiRejection(
+            409,
+            "conflict",
+            "This design system is not ready yet.",
+            {
+              status: row.status,
+            },
+          );
+        }
+        const updated = await designSystemRepository.update(tx, { companyId }, row.id, {
+          tokens: { ...tokens, logoLayer: request.body },
+        });
+        if (updated === null) throw crossTenant(RESOURCE, row.id, companyId);
+        return data(await logoLayerOf(tx, companyId, updated));
+      });
     },
   );
 

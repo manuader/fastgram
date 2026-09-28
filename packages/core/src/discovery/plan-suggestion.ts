@@ -27,6 +27,12 @@
 import type { Rng } from "@fastgram/ports";
 import { DomainError } from "../errors.js";
 import type { BlitzContentType } from "../content/content.js";
+import { preferenceFeatureKey } from "../preferences/features.js";
+import {
+  clampPreferenceExploration,
+  scoreCandidate,
+  type LearnedPreferences,
+} from "../preferences/model.js";
 import {
   GENDER_FILTER_TO_INFLUENCER,
   type BlitzPreferences,
@@ -255,4 +261,111 @@ function pickTextStyle(rng: Rng, preferences: BlitzPreferences): TextStylePreset
   return rng.weightedPick(
     entries.map(([preset, weight]) => ({ value: preset as TextStylePreset, weight })),
   );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Sprint 9 (T, `PU-S9-015`): las preferencias aprendidas sobre el mix
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Los pesos del mix, en el orden de la tirada (b). Mismo orden que `mix` en
+ * {@link planSuggestion}: el de la base (`blitz_preferences`, con el auto-tune
+ * ya aplicado por `metrics-sync`).
+ */
+const MIX_WEIGHT_KEYS = [
+  ["slideshow", "slideshowWeight"],
+  ["wall-of-text", "wallOfTextWeight"],
+  ["green-screen", "greenScreenWeight"],
+  ["video-hook", "videoHookWeight"],
+] as const satisfies readonly (readonly [BlitzContentType, keyof BlitzPreferences])[];
+
+export interface LearnedMixBias {
+  /** Las preferencias con las que planificar esta sugerencia. */
+  readonly preferences: BlitzPreferences;
+  /**
+   * `false` = nada aprendido toca el formato ni el ángulo (o las preferencias
+   * están apagadas): **no se tiró el dado**, y el plan es exactamente el de
+   * antes con el mismo `Rng`.
+   */
+  readonly applied: boolean;
+  /** `true` = salió la tirada de exploración: el mix tal cual, sin sesgo. */
+  readonly explored: boolean;
+  /** formato → multiplicador (1 = neutro). Para el log y los tests. */
+  readonly formatMultipliers: Readonly<Partial<Record<BlitzContentType, number>>>;
+}
+
+/**
+ * El formato y el ángulo de una sugerencia nueva, sesgados por lo que el dueño
+ * aceptó y descartó (`D-22`). Se llama **antes** de cada `planBlitzSuggestion`.
+ *
+ * ## Por qué así
+ *
+ * - **Multiplicativo sobre el mix de siempre**: el peso de cada formato (el de
+ *   la estrategia, con el auto-tune) por `scoreCandidate([format=…])`; el de
+ *   cada ángulo por `scoreCandidate([angle=…])`. Un formato en 0 sigue en 0
+ *   (`AI-012`: el dueño lo apagó, las preferencias no lo reviven), y el orden
+ *   de las seis tiradas de `AI-002` no cambia.
+ * - **Sin nada aprendido, ni una tirada de más**: si ningún multiplicador se
+ *   mueve de 1, devuelve las mismas preferencias sin tocar el `Rng`. Es lo que
+ *   hace que una marca sin señales tenga exactamente el plan de antes con la
+ *   misma semilla (lo fija `discovery/selection.test.ts`).
+ * - **Exploración**: con probabilidad `settings.exploration` (15 % por
+ *   defecto, la de la marca o la del dueño) se planifica con el mix sin sesgo.
+ *   Una tirada por sugerencia, **antes** de las de `AI-002`.
+ *
+ * El influencer y la media no se sesgan acá: el influencer lo elige `JV-6` o
+ * el decisor, y la media el decisor (`assets/decision/preferences.ts`).
+ */
+export function biasMixByPreferences(
+  rng: Rng,
+  preferences: BlitzPreferences,
+  prefs: LearnedPreferences | null,
+): LearnedMixBias {
+  const unchanged: LearnedMixBias = {
+    preferences,
+    applied: false,
+    explored: false,
+    formatMultipliers: {},
+  };
+  if (prefs === null || !prefs.settings.enabled || prefs.features.size === 0) {
+    return unchanged;
+  }
+  const multiplierOf = (family: "format" | "angle", value: string): number => {
+    const key = preferenceFeatureKey(family, value);
+    return key === null ? 1 : scoreCandidate([key], prefs).multiplier;
+  };
+
+  const formatMultipliers: Partial<Record<BlitzContentType, number>> = {};
+  let moved = false;
+  for (const [format, key] of MIX_WEIGHT_KEYS) {
+    const m = (preferences[key] as number) > 0 ? multiplierOf("format", format) : 1;
+    formatMultipliers[format] = m;
+    if (m !== 1) moved = true;
+  }
+  const angleMultipliers = new Map<string, number>();
+  for (const [id, weight] of Object.entries(preferences.angleWeights)) {
+    const m = weight > 0 ? multiplierOf("angle", id) : 1;
+    angleMultipliers.set(id, m);
+    if (m !== 1) moved = true;
+  }
+  if (!moved) return unchanged;
+
+  const exploration = clampPreferenceExploration(prefs.settings.exploration);
+  if (rng.next() < exploration) {
+    return { preferences, applied: true, explored: true, formatMultipliers };
+  }
+
+  const biased: { -readonly [K in keyof BlitzPreferences]: BlitzPreferences[K] } = {
+    ...preferences,
+  };
+  for (const [format, key] of MIX_WEIGHT_KEYS) {
+    biased[key] = (preferences[key] as number) * (formatMultipliers[format] ?? 1);
+  }
+  biased.angleWeights = Object.fromEntries(
+    Object.entries(preferences.angleWeights).map(([id, w]) => [
+      id,
+      w * (angleMultipliers.get(id) ?? 1),
+    ]),
+  );
+  return { preferences: biased, applied: true, explored: false, formatMultipliers };
 }

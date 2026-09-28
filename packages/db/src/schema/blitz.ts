@@ -133,7 +133,12 @@ export const blitzPromptRequests = pgTable(
     /** El tema, tal cual lo escribió el usuario. Dato, nunca instrucción. */
     prompt: text().notNull(),
     /** El formato forzado, o `null` = lo decide el content mix. */
-    contentType: suggestionContentTypeEnum(),
+    // Sprint 9 (U): el enum de Postgres admite `reel`, pero un pedido de «crear
+    // desde prompt» nunca lo fuerza (`blitzContentTypeSchema` son cuatro):
+    // el tipo TS queda en los cuatro para no ensanchar el prompt-handler.
+    contentType: suggestionContentTypeEnum().$type<
+      "slideshow" | "wall-of-text" | "green-screen" | "video-hook"
+    >(),
     count: integer().notNull(),
     status: text({ enum: BLITZ_PROMPT_STATUS }).notNull().default("queued"),
     failureReason: text(),

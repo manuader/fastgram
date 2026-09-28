@@ -256,6 +256,45 @@ describe("HttpMediaRenderer — el build completo contra un servicio falso", () 
     });
   });
 
+  it("sprint 9 (S): la marca viaja al lado del payload — brandFonts y logo", async () => {
+    const service = fakeService();
+    await makeRenderer(service.fetch).render(
+      {
+        ...WALL_OF_TEXT,
+        text: { ...WALL_OF_TEXT.text, fontFamily: "brand:rotis" },
+        brand: {
+          fonts: [
+            {
+              id: "rotis",
+              weight: 700,
+              style: "normal",
+              url: "https://s3/fonts/c/r.otf",
+            },
+          ],
+          logo: {
+            images: [{ url: "https://s3/media/c/logo-light.png" }],
+            corner: "top-right",
+            size: "small",
+            opacity: 0.9,
+          },
+        },
+      },
+      AUTH,
+    );
+    const sent = JSON.parse(service.calls[0]?.body ?? "{}") as Record<string, unknown>;
+    expect(sent["brandFonts"]).toEqual([
+      { id: "rotis", weight: 700, style: "normal", url: "https://s3/fonts/c/r.otf" },
+    ]);
+    expect(sent["logo"]).toEqual({
+      images: [{ url: "https://s3/media/c/logo-light.png" }],
+      corner: "top-right",
+      size: "small",
+      opacity: 0.9,
+    });
+    const texts = (sent["payload"] as { texts: { font: { family: string } }[] }).texts;
+    expect(texts[0]?.font.family).toBe("brand:rotis");
+  });
+
   it("devuelve el artefacto con su content type, tamaño y dimensiones", async () => {
     const renderer = makeRenderer(fakeService().fetch);
     const result = await renderer.render(WALL_OF_TEXT, AUTH);

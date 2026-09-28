@@ -104,6 +104,7 @@ import { signMediaGrant, type SignedMediaGrant } from "./media-grant.js";
 import { assertJobIsValid, canonicalize, canvasOf } from "./job-rules.js";
 import {
   DEFAULT_MAPPING,
+  toWireBrand,
   toWirePayload,
   type RenderMappingConfig,
   type WirePayload,
@@ -411,6 +412,8 @@ export class HttpMediaRenderer
     const response = await this.#request("POST", "/render", {
       payload,
       ...(grant === undefined ? {} : { grant }),
+      // Sprint 9 (S): fuentes de marca y logo, al lado del payload.
+      ...toWireBrand(job),
     });
 
     if (!response.ok) throw await translateHttp(response, "render");

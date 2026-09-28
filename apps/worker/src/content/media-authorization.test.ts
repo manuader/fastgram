@@ -80,3 +80,74 @@ describe("mediaUrlsOf · la música entra en la lista exacta", () => {
     expect(mediaUrlsOf(wall)).toContain(audio.url);
   });
 });
+
+describe("sprint 9 (S) · fuentes de marca, logo y biblioteca global en el grant", () => {
+  const job: RenderJob = {
+    format: "green-screen",
+    canvas,
+    image: { url: "https://bucket.test/media/co/bg.jpg", ...box },
+    video: { url: "https://bucket.test/media/co/meme.mp4", ...box },
+    text: { ...text, fontFamily: "brand:rotis" },
+    brand: {
+      fonts: [
+        {
+          id: "rotis",
+          weight: 700,
+          style: "normal",
+          url: "https://bucket.test/fonts/co/r.otf",
+        },
+      ],
+      logo: {
+        images: [{ url: "https://bucket.test/media/co/design-system/d/logo/a.png" }],
+        corner: "top-right",
+        size: "small",
+        opacity: 1,
+      },
+    },
+  };
+
+  it("mediaUrlsOf lista las caras y las variantes del logo", () => {
+    expect(mediaUrlsOf(job)).toEqual([
+      "https://bucket.test/media/co/bg.jpg",
+      "https://bucket.test/media/co/meme.mp4",
+      "https://bucket.test/fonts/co/r.otf",
+      "https://bucket.test/media/co/design-system/d/logo/a.png",
+    ]);
+  });
+
+  it("el grant cubre `fonts/{companyId}/` (y no el de otra marca)", async () => {
+    const storage = new MemoryStorage(new FixedClock());
+    const grant = await workspaceMediaAuthorization(storage, {
+      companyId: CO,
+      objectPrefix: "content",
+      urls: [],
+    });
+    const fonts = await canonicalObjectUrl(storage, `fonts/${CO}/`);
+    expect(grant.mediaPrefixes).toContain(fonts);
+    expect(grant.mediaPrefixes).not.toContain(
+      await canonicalObjectUrl(storage, "fonts/"),
+    );
+  });
+
+  it("con un asset `library/…` suma la biblioteca global; sin él, no", async () => {
+    const storage = new MemoryStorage(new FixedClock());
+    const library = await canonicalObjectUrl(storage, "library/");
+    const mine = await canonicalObjectUrl(storage, `media/${CO}/a.jpg`);
+    const without = await workspaceMediaAuthorization(storage, {
+      companyId: CO,
+      objectPrefix: "content",
+      urls: [mine],
+    });
+    expect(without.sharedPrefixes).not.toContain(library);
+
+    const clip = await canonicalObjectUrl(storage, "library/commons/clip.mp4");
+    const withLib = await workspaceMediaAuthorization(storage, {
+      companyId: CO,
+      objectPrefix: "content",
+      urls: [mine, clip],
+    });
+    expect(withLib.sharedPrefixes).toContain(library);
+    // La URL exacta sigue siendo el cierre: el grant no abre la biblioteca entera.
+    expect(withLib.urls).toEqual([mine, clip]);
+  });
+});

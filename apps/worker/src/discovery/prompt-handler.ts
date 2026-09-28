@@ -111,6 +111,9 @@ import {
 } from "@fastgram/ports";
 
 import type { BuildLogger } from "../content/build-handler.js";
+import { withDesignSystemStyle } from "../design-system/blitz.js";
+import { withLearnedPreferences } from "../judgment/asset-decider.js";
+import { createLibrarySource } from "../judgment/library-source.js";
 import type { SuggestionCopywriter } from "./copywriter.js";
 import { applyJv6, type Jv6JudgmentProvider } from "./jv6.js";
 import { AUTO_FOUND_TAG } from "./media-descriptors.js";
@@ -484,7 +487,7 @@ export function createBlitzPromptHandler(deps: BlitzPromptDeps): JobHandler<unkn
             })
             .catch(() => null);
     // Sprint 9 (O): el decisor por candidato, si `judgment.assets` es SystemOne.
-    const assets =
+    const judge =
       deps.judgment?.assets === undefined
         ? null
         : await deps.judgment
@@ -494,8 +497,27 @@ export function createBlitzPromptHandler(deps: BlitzPromptDeps): JobHandler<unkn
               subjectId: job.promptRequestId,
             })
             .catch(() => null);
+    // Sprint 9 (T): el formato lo eligió el dueño; su gusto pesa sólo en los
+    // assets (el decisor), no en el formato ni el ángulo.
+    const assets =
+      judge === null
+        ? null
+        : withLearnedPreferences(judge, refill.learned ?? null, deps.rng);
     const recentIds = new Set<string>();
     const autoMeme = meme.kind === "found" ? meme : null;
+    // Sprint 9 (T): la biblioteca global compite con el Media Bank. Con un
+    // meme recién importado para este pedido no: se buscó **porque** no había
+    // uno para el tema, y es el de este pedido.
+    const library =
+      deps.storage === undefined || autoMeme !== null
+        ? null
+        : createLibrarySource({
+            db: deps.db,
+            storage: deps.storage,
+            companyId: job.companyId,
+            appRole: deps.appRole,
+            logger: deps.logger,
+          });
 
     const drafts: QueuedSuggestionDraft[] = [];
     let lastPortError: PortError | null = null;
@@ -512,6 +534,8 @@ export function createBlitzPromptHandler(deps: BlitzPromptDeps): JobHandler<unkn
         influencerProfiles: refill.influencerProfiles,
         assets,
         recentIds,
+        library,
+        mediaSources: refill.mediaSources,
       });
       const memeId = p.media.format === "green-screen" ? p.media.video.mediaId : null;
       if (autoMeme !== null && memeId === autoMeme.media.id) {
@@ -577,13 +601,25 @@ export function createBlitzPromptHandler(deps: BlitzPromptDeps): JobHandler<unkn
       return;
     }
 
+    // Sprint 9 (T, parche de M): el estilo de caption del design system activo.
+    const styled = await withDesignSystemStyle(
+      drafts,
+      (fn) => inCompany(job.companyId, fn),
+      { companyId: job.companyId },
+      (error) =>
+        deps.logger.warn(
+          { ...base, error: error instanceof Error ? error.message : String(error) },
+          "no se pudo leer el design system: las piezas salen con el preset",
+        ),
+    );
+
     // Cerrar: con el pedido bloqueado, y sólo si sigue abierto. Es la guarda
     // contra la reentrega (ver `db/repositories/blitz-prompt.ts`).
     const ids = await inCompany(job.companyId, async (tx) => {
       const scope = { companyId: job.companyId };
       const row = await lockPromptRequest(tx, scope, job.promptRequestId);
       if (row === null || !isOpenPromptRequest(row)) return null;
-      return completePromptRequest(tx, scope, job.promptRequestId, drafts);
+      return completePromptRequest(tx, scope, job.promptRequestId, styled);
     });
 
     deps.logger.info(

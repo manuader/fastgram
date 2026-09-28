@@ -116,8 +116,15 @@
  */
 
 import {
+  brandDefaultLogo,
+  brandTextFamilies,
+  effectiveLogo,
   isBlitzContentType,
   parseContentBuildJob,
+  readDesignSystemTokens,
+  readStoredAssets,
+  readStoredFontFiles,
+  stampBrandLook,
   type BlitzContentType,
   type ContentBuildJob,
   type ContentTextBox,
@@ -131,6 +138,7 @@ import {
   contentBuildStore,
   contentRepository,
   contentTextBoxRepository,
+  designSystemRepository,
   withCompany,
   type Database,
   type Transaction,
@@ -154,8 +162,14 @@ import {
   regenerationBoxesOf,
   type CopyLlmProvider,
 } from "./regenerate.js";
-import { toEditedRenderJob, toRenderJob } from "./render-job.js";
-import { isReelRenderer, reelSpecOf } from "./reel-job.js";
+import { contentBuildPayloadSchema } from "@fastgram/contracts";
+import {
+  toEditedRenderJob,
+  toRenderJob,
+  withBrandLook,
+  type ActiveBrandLook,
+} from "./render-job.js";
+import { isReelRenderer, reelMediaAuthorization, reelSpecOf } from "./reel-job.js";
 import {
   buildCustomVideo,
   parseCustomVideoPayload,
@@ -316,8 +330,22 @@ interface BuildSubject {
   };
 }
 
+/**
+ * Sprint 9 (S): lo que el build clásico lleva de la marca. `look` = el design
+ * system activo (fuentes y logo para el render); `stamped` = el payload con la
+ * marca estampada en el primer build, que el commit persiste.
+ */
+interface BrandContext {
+  readonly look: ActiveBrandLook | null;
+  readonly stamped: Record<string, unknown> | null;
+}
+
 type ReadOutcome =
-  | { readonly kind: "build"; readonly subject: BuildSubject }
+  | {
+      readonly kind: "build";
+      readonly subject: BuildSubject;
+      readonly brand?: BrandContext;
+    }
   /** Una pieza `custom` con su archivo localizado: normalización, no render. */
   | {
       readonly kind: "custom";
@@ -395,6 +423,57 @@ async function listAllTextBoxes(
   }
 }
 
+/**
+ * Sprint 9 (S), `PU-S9-003`: el design system activo de la marca en la forma
+ * que usa el build. `null` sin design system. Los logos son media viva de la
+ * marca (`media/{companyId}/design-system/…`); uno borrado del Media Bank ya no
+ * se ofrece.
+ */
+async function readActiveBrandLook(
+  tx: Transaction,
+  companyId: string,
+): Promise<ActiveBrandLook | null> {
+  const scope = { companyId };
+  const row = await designSystemRepository.findActive(tx, scope);
+  if (row === null) return null;
+  const logoIds = readStoredAssets(row.assets)
+    .filter((a) => a.kind === "logo")
+    .map((a) => a.mediaId);
+  const live = await designSystemRepository.liveMediaByIds(tx, scope, logoIds);
+  const byId = new Map(live.map((m) => [m.mediaId, m.r2Url]));
+  const logoUrls = [
+    ...new Set(logoIds.map((id) => byId.get(id)).filter((u): u is string => !!u)),
+  ].slice(0, 4);
+  return {
+    tokens: readDesignSystemTokens(row.tokens),
+    fontFiles: readStoredFontFiles(row.fonts).filter((f) =>
+      // Una fila editada a mano no puede hacer leer fuentes de otra marca.
+      f.storageKey.startsWith(`fonts/${companyId}/`),
+    ),
+    logoUrls,
+  };
+}
+
+/**
+ * El payload de una pieza nueva con la marca estampada (familias por defecto
+ * del design system y logo si la marca lo pidió), o `null` si no cambia nada.
+ * Ver `core/content/brand-look.ts`: por qué en el primer build y persistido.
+ */
+function stampedPayloadOf(
+  raw: unknown,
+  look: ActiveBrandLook | null,
+): Record<string, unknown> | null {
+  if (look === null || look.tokens === null) return null;
+  const parsed = contentBuildPayloadSchema.safeParse(raw);
+  if (!parsed.success || "reel" in parsed.data) return null;
+  const tokens = look.tokens;
+  const { payload, changed } = stampBrandLook(parsed.data, {
+    families: brandTextFamilies(tokens),
+    logo: brandDefaultLogo(tokens, look.logoUrls.length > 0),
+  });
+  return changed ? (payload as Record<string, unknown>) : null;
+}
+
 export function createContentBuildHandler(deps: ContentBuildDeps): JobHandler<unknown> {
   return createContentRenderHandler(deps, "build");
 }
@@ -465,10 +544,17 @@ export function createContentRenderHandler(
         };
       }
 
+      // Sprint 9 (S): la marca. En el primer build se estampa (y el commit lo
+      // persiste); en un rebuild sólo se lee, para las fuentes y el logo.
+      const look = await readActiveBrandLook(tx, job.companyId);
+      const stamped = mode === "build" ? stampedPayloadOf(row.buildPayload, look) : null;
+      const brand: BrandContext = { look, stamped };
+      const buildPayload: unknown = stamped ?? row.buildPayload;
+
       // Content Studio (`POST /content/studio` con `ai`): el copy lo escribe
       // el modelo antes del primer render. Mismo armado que `regenerate`.
       if (mode === "build" && job.reason === "create" && job.prompt !== undefined) {
-        const current = regenerationBoxesOf([], row.buildPayload);
+        const current = regenerationBoxesOf([], buildPayload);
         if (current.length === 0 || !isBlitzContentType(row.type))
           return {
             kind: "fail",
@@ -483,8 +569,9 @@ export function createContentRenderHandler(
           .items[0];
         return {
           kind: "build",
+          brand,
           subject: {
-            buildPayload: row.buildPayload,
+            buildPayload,
             contentType: row.type,
             revision: row.revision,
             textBoxes: current,
@@ -524,6 +611,7 @@ export function createContentRenderHandler(
             .items[0];
           return {
             kind: "build",
+            brand,
             subject: {
               buildPayload: row.buildPayload,
               contentType: row.type,
@@ -545,6 +633,7 @@ export function createContentRenderHandler(
 
         return {
           kind: "build",
+          brand,
           subject: {
             buildPayload: row.buildPayload,
             contentType: row.type,
@@ -557,8 +646,9 @@ export function createContentRenderHandler(
 
       return {
         kind: "build",
+        brand,
         subject: {
-          buildPayload: row.buildPayload,
+          buildPayload,
           contentType: row.type,
           revision: row.revision,
         },
@@ -978,10 +1068,12 @@ export function createContentRenderHandler(
         );
       } else {
         try {
-          const auth = await workspaceMediaAuthorization(deps.storage, {
+          // Sprint 9 (U): fuentes de marca y biblioteca global en el grant.
+          const auth = await reelMediaAuthorization(deps.storage, {
             companyId: job.companyId,
             objectPrefix: prefix,
             urls: reel.urls,
+            fontUrls: reel.fontUrls,
           });
           const build = await deps.renderer.renderReel(
             {
@@ -1026,10 +1118,21 @@ export function createContentRenderHandler(
           // El grant se acuña **por build** y autoriza exactamente la media de
           // este job: sin él, `services/render` no puede distinguir el
           // workspace 42 del 43 (`NFR-006`). Ver `media-authorization.ts`.
+          // Sprint 9 (S): fuentes de marca (o sus reemplazos) y el logo. La capa
+          // de logo vigente es la del editor si la tocó, si no la del payload.
+          const brandLook = outcome.brand?.look ?? null;
+          const renderJob = withBrandLook(
+            mapped.job,
+            brandLook,
+            effectiveLogo(
+              (outcome.subject.buildPayload as { logo?: unknown } | null)?.logo,
+              studioState,
+            ),
+          );
           const auth = await workspaceMediaAuthorization(deps.storage, {
             companyId: job.companyId,
             objectPrefix: prefix,
-            urls: mediaUrlsOf(mapped.job),
+            urls: mediaUrlsOf(renderJob),
           });
 
           // **`renderAll` y no `render`.** Un slideshow de N slides son N
@@ -1038,7 +1141,7 @@ export function createContentRenderHandler(
           // adaptador lanzaba `provider_contract_violation` en vez de devolver
           // el primero, porque devolver el primero publica una pieza de una
           // sola imagen sin error en ningún log.
-          const build = await deps.renderer.renderAll(mapped.job, auth);
+          const build = await deps.renderer.renderAll(renderJob, auth);
 
           // **El orden es el del slideshow, no el de llegada.** `files` se
           // persiste tal cual y es lo que se publica: dos slides
@@ -1070,8 +1173,12 @@ export function createContentRenderHandler(
     }
 
     if (failure === null) {
+      const stamped = outcome.kind === "build" ? (outcome.brand?.stamped ?? null) : null;
       const committed = await commit(job, files, thumbnailUrl, regenerated, {
         lastEdit: mode === "rebuild",
+        // Sprint 9 (S): el payload con la marca, para que el editor y los
+        // rebuilds vean la familia y el logo con que salió el video.
+        ...(stamped === null ? {} : { buildPayload: stamped }),
       });
       if (committed) {
         deps.logger.info({ ...base, files: files.length }, "build completado");

@@ -39,6 +39,17 @@ import { runFfmpeg } from "../ffmpeg/run.js";
 import type { CacheStore } from "../cache/store.js";
 import { brandFontListSchema, type BrandFontRef } from "../domain/fonts.js";
 import { brandFontsFingerprint, prepareBrandFonts } from "./brandText.js";
+import {
+  compositeOver,
+  logoFingerprint,
+  logoRequestSchema,
+  placeLogo,
+  prepareLogos,
+  regionPixels,
+  sampleVideoFrames,
+  type LogoRequest,
+  type PreparedLogo,
+} from "./logoLayer.js";
 import { engineVersion } from "./engineVersion.js";
 import { renderTextOverlay, type TextLayerOptions } from "./textLayer.js";
 import { renderSlideBase, renderSlideWithText } from "./slideshow.js";
@@ -110,6 +121,11 @@ export const renderRequestSchema = z
      * (`family: "brand:<id>"`). URLs autorizadas como una imagen.
      */
     brandFonts: brandFontListSchema.optional(),
+    /**
+     * Sprint 9 (S): la capa de logo (variantes del design system + esquina,
+     * tamaño y opacidad). Las URLs se autorizan como imágenes.
+     */
+    logo: logoRequestSchema.optional(),
   })
   .strict();
 
@@ -133,6 +149,7 @@ export function validateRequest(
   payload: BuildPayload;
   grant: VerifiedGrant | null;
   brandFonts: readonly BrandFontRef[];
+  logo: LogoRequest | null;
 } {
   const parsed = renderRequestSchema.safeParse(raw);
   if (!parsed.success) {
@@ -149,6 +166,7 @@ export function validateRequest(
     parsed.data.grant === undefined ? null : verifyGrant(parsed.data.grant, policy);
   const payload = parsed.data.payload;
   const brandFonts = parsed.data.brandFonts ?? [];
+  const logo = parsed.data.logo ?? null;
   assertAllMediaAllowed(
     [
       ...collectMediaReferences(payload),
@@ -158,11 +176,17 @@ export function validateRequest(
         role: "image" as const,
         path: ["brandFonts", index, "url"],
       })),
+      // Sprint 9 (S): el logo también, como una imagen.
+      ...(logo?.images ?? []).map((image, index) => ({
+        url: image.url,
+        role: "image" as const,
+        path: ["logo", "images", index, "url"],
+      })),
     ],
     policy,
     grant,
   );
-  return { payload, grant, brandFonts };
+  return { payload, grant, brandFonts, logo };
 }
 
 async function geometryOf(localPath: string): Promise<SourceGeometry> {
@@ -187,18 +211,19 @@ export async function renderBuild(
   raw: unknown,
   config: RenderEngineConfig,
 ): Promise<RenderOutput> {
-  const { payload, brandFonts } = validateRequest(raw, config.policy);
+  const { payload, brandFonts, logo } = validateRequest(raw, config.policy);
   const caps = config.capabilities ?? (await probeCapabilities());
   // La versión del motor entra en las tres claves: si cambia el código, ffmpeg,
   // sharp o el registro de fuentes, el artefacto viejo deja de ser válido y la
   // cache lo tiene que saber (`P2-RENDER-016`).
   const version = (await engineVersion(caps)).version;
   // Sprint 9 (M): sin fuentes de marca la clave es la de siempre.
+  // Sprint 9 (S): el logo, igual: sin logo la clave no cambia.
   const keys = computeCacheKeys(
     payload,
-    brandFonts.length === 0
-      ? version
-      : `${version}+bf:${brandFontsFingerprint(brandFonts)}`,
+    `${version}${
+      brandFonts.length === 0 ? "" : `+bf:${brandFontsFingerprint(brandFonts)}`
+    }${logo === null ? "" : `+logo:${logoFingerprint(logo)}`}`,
   );
   const warnings: string[] = [];
 
@@ -216,13 +241,36 @@ export async function renderBuild(
               ),
             },
           };
+    const logoLayer: LogoLayer | null =
+      logo === null
+        ? null
+        : {
+            request: logo,
+            // Perezoso: con la pieza en cache no hace falta bajar nada.
+            prepared: () =>
+              prepareLogos(logo, (url) => config.resolveMedia(url, "image")),
+          };
     if (payload.type === "slideshow") {
-      return await renderSlideshowBuild(payload, keys, withBrand, warnings);
+      return await renderSlideshowBuild(payload, keys, withBrand, warnings, logoLayer);
     }
-    return await renderVideoBuild(payload, keys, withBrand, caps, workDir, warnings);
+    return await renderVideoBuild(
+      payload,
+      keys,
+      withBrand,
+      caps,
+      workDir,
+      warnings,
+      logoLayer,
+    );
   } finally {
     await rm(workDir, { recursive: true, force: true });
   }
+}
+
+/** Sprint 9 (S): la capa de logo de un build, con las variantes bajadas a pedido. */
+interface LogoLayer {
+  readonly request: LogoRequest;
+  readonly prepared: () => Promise<PreparedLogo[]>;
 }
 
 async function renderSlideshowBuild(
@@ -230,7 +278,9 @@ async function renderSlideshowBuild(
   keys: CacheKeys,
   config: RenderEngineConfig,
   warnings: string[],
+  logo: LogoLayer | null = null,
 ): Promise<RenderOutput> {
+  let logos: PreparedLogo[] | null = null;
   const artifacts: RenderArtifact[] = [];
   let baseState: CacheState = "hit";
   let buildState: CacheState = "hit";
@@ -263,7 +313,14 @@ async function renderSlideshowBuild(
       await config.cache.putBuffer(baseKey, "png", basePng);
     }
 
-    const rendered = await renderSlideWithText(payload, index, basePng, config.fonts);
+    if (logo !== null && logos === null) logos = await logo.prepared();
+    const rendered = await renderSlideWithText(
+      payload,
+      index,
+      basePng,
+      config.fonts,
+      logo === null || logos === null ? null : { request: logo.request, logos },
+    );
     if (rendered.hasUnverifiedFont) {
       warnings.push(`slide ${index}: se renderizó con una fuente no verificada`);
     }
@@ -294,6 +351,7 @@ async function renderVideoBuild(
   caps: FfmpegCapabilities,
   workDir: string,
   warnings: string[],
+  logo: LogoLayer | null = null,
 ): Promise<RenderOutput> {
   const cachedFinal = await config.cache.get(keys.buildKey, "mp4");
   if (cachedFinal !== null) {
@@ -336,8 +394,22 @@ async function renderVideoBuild(
   if (overlay.hasUnverifiedFont) {
     warnings.push("el overlay se renderizó con una fuente no verificada");
   }
+  let overlayPng = overlay.png;
+  if (logo !== null) {
+    // Sprint 9 (S): el logo va sobre la capa de texto; el fondo se mide en
+    // tres frames de la base ya compuesta (lo que se ve de verdad detrás).
+    const frames = await sampleVideoFrames(
+      basePath,
+      (await probeMedia(basePath)).durationSeconds,
+      workDir,
+    );
+    const placed = await placeLogo(canvas, logo.request, await logo.prepared(), (box) =>
+      Promise.all(frames.map((frame) => regionPixels(frame, box))),
+    );
+    overlayPng = await compositeOver(overlayPng, placed.overlay);
+  }
   const overlayPath = path.join(workDir, "overlay.png");
-  await writeFile(overlayPath, overlay.png);
+  await writeFile(overlayPath, overlayPng);
 
   const finalPath = path.join(workDir, "final.mp4");
   const overlayPlan = planTextOverlayPass(

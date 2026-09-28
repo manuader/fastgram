@@ -106,6 +106,8 @@ export const JOB_QUEUES = {
    * (`../ads/guard.ts`, `ADS_SYNC_CRON`). No de §9.5.
    */
   adsSync: "ads-sync",
+  /** Sprint 9 (U) — plan semanal de reels por marca y sus sugerencias del día (`PU-S9-014`). */
+  reelPlanner: "reel-planner",
 } as const;
 
 export type JobQueueKey = keyof typeof JOB_QUEUES;

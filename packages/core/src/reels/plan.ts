@@ -10,6 +10,7 @@
  * gancho en los primeros 0,2 s, un cambio visual cada 2–3 s, remate al final
  * con aire para leerlo, música que baja cuando alguien habla.
  */
+import { REEL_DEFAULT_LOOK, type ReelBrandLook } from "./look.js";
 import type {
   ReelFont,
   ReelLayer,
@@ -18,6 +19,8 @@ import type {
   ReelTheme,
   ReelTransition,
 } from "./types.js";
+
+export type ReelCaptionStyle = "bold-pop" | "clean" | "karaoke";
 
 export const REEL_TEMPLATES = [
   "hook-reaction-punchline",
@@ -77,11 +80,29 @@ export interface ReelCopy {
   readonly punchline: string | null;
 }
 
+export interface ReelMotion {
+  readonly hook?: ReelTextAnimation;
+  readonly punchline?: ReelTextAnimation;
+  /** Una por beat, en ciclo. */
+  readonly beats?: readonly ReelTextAnimation[];
+  readonly captions?: ReelCaptionStyle;
+}
+
 export interface ReelPlan {
   readonly template: ReelTemplate;
   readonly copy: ReelCopy;
   readonly assets: ReelPlanAssets;
   readonly theme: ReelTheme;
+  /**
+   * Sprint 9 (U): fuentes, colores, logo y motivo de la marca (`look.ts`).
+   * Ausente = {@link REEL_DEFAULT_LOOK}, lo de antes.
+   */
+  readonly look?: ReelBrandLook | undefined;
+  /**
+   * Sprint 9 (U): animaciones y estilo de subtítulos elegidos por el
+   * planificador (preferencias + exploración). Ausente = los de la plantilla.
+   */
+  readonly motion?: ReelMotion | undefined;
   /** ISO 639-1 de la marca: idioma de los subtítulos. */
   readonly language: string | null;
 }
@@ -128,14 +149,19 @@ export function planReel(input: {
   readonly theme?: ReelTheme | undefined;
   readonly language?: string | null | undefined;
   readonly copy?: ReelCopy | undefined;
+  /** Sprint 9 (U): la marca (design system). Manda sobre `theme`. */
+  readonly look?: ReelBrandLook | undefined;
+  readonly motion?: ReelMotion | undefined;
 }): ReelPlan {
   const copy = input.copy ?? reelCopyFromPrompt(input.prompt);
   return {
     template: input.template ?? chooseReelTemplate(input.assets, copy),
     copy,
     assets: input.assets,
-    theme: input.theme ?? REEL_PLAN_DEFAULT_THEME,
+    theme: input.look?.theme ?? input.theme ?? REEL_PLAN_DEFAULT_THEME,
     language: input.language ?? null,
+    ...(input.look === undefined ? {} : { look: input.look }),
+    ...(input.motion === undefined ? {} : { motion: input.motion }),
   };
 }
 
@@ -143,11 +169,6 @@ export function planReel(input: {
 
 const r1 = (n: number): number => Math.round(n * 10) / 10;
 
-const HOOK_FONT: ReelFont = { family: "anton", weight: 400, size: 44 };
-const BODY_FONT: ReelFont = { family: "montserrat", weight: 700, size: 28 };
-const PUNCH_FONT: ReelFont = { family: "poppins", weight: 600, size: 30 };
-const CAPTION_FONT: ReelFont = { family: "montserrat", weight: 700, size: 28 };
-const BLACK_STROKE = { width: 3, color: "#000000" } as const;
 const NO_STROKE = { width: 0, color: "#000000" } as const;
 
 function background(
@@ -176,6 +197,7 @@ function background(
 }
 
 function text(
+  look: ReelBrandLook,
   id: string,
   start: number,
   end: number,
@@ -199,8 +221,8 @@ function text(
     z: 10,
     text: body,
     font: opts.font,
-    color: opts.color ?? "#FFFFFF",
-    stroke: opts.stroke ?? BLACK_STROKE,
+    color: opts.color ?? look.colors.text,
+    stroke: opts.stroke ?? look.colors.stroke,
     background: opts.background ?? null,
     position: { x: 50, y: opts.y },
     widthPercent: opts.width ?? 90,
@@ -232,7 +254,8 @@ function clipLayers(
   clip: ReelClipAsset,
   start: number,
   sec: number,
-  theme: ReelTheme,
+  look: ReelBrandLook,
+  captionStyle: ReelCaptionStyle,
 ): ReelLayer[] {
   const source = clip.durationSec ?? 6;
   const layers: ReelLayer[] = [
@@ -260,11 +283,11 @@ function clipLayers(
       end: r1(start + sec),
       z: 20,
       sourceLayerId: "clip",
-      style: "bold-pop",
-      font: CAPTION_FONT,
-      color: "#FFFFFF",
-      activeColor: theme.accent,
-      stroke: BLACK_STROKE,
+      style: captionStyle,
+      font: look.fonts.caption,
+      color: look.colors.caption,
+      activeColor: look.colors.captionActive,
+      stroke: look.colors.captionStroke,
       positionY: 29,
       wordsPerChunk: 3,
     });
@@ -272,11 +295,73 @@ function clipLayers(
   return layers;
 }
 
+/**
+ * El look efectivo del plan: el de la marca si hay; si no, el de siempre con
+ * el acento del tema (un `theme` suelto, sin design system, sigue pintando la
+ * caja de los beats y la palabra activa como antes).
+ */
+function lookOf(plan: ReelPlan): ReelBrandLook {
+  if (plan.look !== undefined) return plan.look;
+  const d = REEL_DEFAULT_LOOK;
+  return {
+    ...d,
+    theme: plan.theme,
+    colors: { ...d.colors, beatBox: plan.theme.accent, captionActive: plan.theme.accent },
+  };
+}
+
+/** Capa del logo: arriba, encima de todo el texto, toda la duración. */
+function logoLayer(look: ReelBrandLook, durationSec: number): ReelLayer[] {
+  if (look.logo === null) return [];
+  return [
+    {
+      id: "logo",
+      kind: "image",
+      start: 0,
+      end: durationSec,
+      z: 30,
+      url: look.logo.url,
+      fit: "contain",
+      rect: look.logo.rect,
+      animation: "none",
+      exit: "none",
+    },
+  ];
+}
+
+/**
+ * El motivo del design system como capa decorativa: en la esquina opuesta al
+ * logo, detrás del texto. Sólo `list-beats` lo pide (es la plantilla con aire
+ * alrededor de las cajas; en las otras compite con el clip o el antes/después).
+ */
+function motifLayer(look: ReelBrandLook, start: number, end: number): ReelLayer[] {
+  if (look.motif === null || end - start < 0.2) return [];
+  return [
+    {
+      id: "motif",
+      kind: "image",
+      start,
+      end,
+      z: 8,
+      url: look.motif.url,
+      fit: "contain",
+      rect: { x: 18, y: 84, width: 34, height: 19 },
+      animation: "fade-up",
+      exit: "fade",
+    },
+  ];
+}
+
 /** Arma el spec. Un plan sin gancho no se construye (no hay reel sin texto). */
 export function reelSpecFromPlan(plan: ReelPlan): ReelSpec {
   const L = REEL_PLAN_LIMITS;
   const { copy, assets, theme } = plan;
   if (copy.hook.trim() === "") throw new Error("un reel necesita al menos un gancho");
+  const look = lookOf(plan);
+  const F = look.fonts;
+  const C = look.colors;
+  const motion = plan.motion ?? {};
+  const captionStyle = motion.captions ?? "bold-pop";
   const layers: ReelLayer[] = [];
   let durationSec: number;
 
@@ -293,22 +378,26 @@ export function reelSpecFromPlan(plan: ReelPlan): ReelSpec {
     );
     layers.push(background("bg", 0, durationSec, 0, assets.backgrounds[0], theme, "cut"));
     if (assets.clip !== null)
-      layers.push(...clipLayers(assets.clip, L.clipDelaySec, clipSec, theme));
+      layers.push(
+        ...clipLayers(assets.clip, L.clipDelaySec, clipSec, look, captionStyle),
+      );
     layers.push(
-      text("hook", 0.2, r1(L.clipDelaySec + Math.min(2.8, clipSec)), copy.hook, {
-        font: HOOK_FONT,
-        y: 13,
-        animation: "kinetic-bounce",
+      text(look, "hook", 0.2, r1(L.clipDelaySec + Math.min(2.8, clipSec)), copy.hook, {
+        font: F.hook,
+        // Con logo arriba, el gancho baja lo justo para no pisarlo.
+        y: look.logo === null ? 13 : 17,
+        animation: motion.hook ?? "kinetic-bounce",
       }),
     );
     if (punch !== null) {
       layers.push(
-        text("punchline", bodyEnd, durationSec, punch, {
-          font: PUNCH_FONT,
+        text(look, "punchline", bodyEnd, durationSec, punch, {
+          font: F.punch,
           y: 50,
-          animation: "pop",
+          animation: motion.punchline ?? "pop",
+          color: C.punchText,
           stroke: NO_STROKE,
-          background: { color: "#000000", opacity: 0.6, style: "pill" },
+          background: { ...C.punchBox, style: "pill" },
           width: 80,
           exit: "none",
         }),
@@ -322,7 +411,7 @@ export function reelSpecFromPlan(plan: ReelPlan): ReelSpec {
       Math.max(L.minSec, r1(beatsEnd + (copy.punchline === null ? 0.8 : L.punchlineSec))),
     );
     const transitions: ReelTransition[] = ["slide-left", "zoom-in", "whip", "crossfade"];
-    const animations: ReelTextAnimation[] = [
+    const animations: readonly ReelTextAnimation[] = motion.beats ?? [
       "word-by-word",
       "slide-left",
       "fade-up",
@@ -359,32 +448,34 @@ export function reelSpecFromPlan(plan: ReelPlan): ReelSpec {
           assets.clip,
           L.hookSec,
           Math.max(L.clipMinSec, r1(beatsEnd - L.hookSec)),
-          theme,
+          look,
+          captionStyle,
         ),
       );
     }
     layers.push(
-      text("hook", 0.2, L.hookSec, copy.hook, {
-        font: { ...HOOK_FONT, size: 48 },
+      text(look, "hook", 0.2, L.hookSec, copy.hook, {
+        font: { ...F.hook, size: 48 },
         y: 40,
-        animation: "zoom-blur",
+        animation: motion.hook ?? "zoom-blur",
       }),
     );
     beats.forEach((beat, i) => {
       const start = r1(L.hookSec + i * L.beatSec);
       layers.push(
         text(
+          look,
           `beat-${String(i + 1)}`,
           start,
           r1(start + L.beatSec),
           `${String(i + 1)}. ${beat}`,
           {
-            font: BODY_FONT,
+            font: F.body,
             y: assets.clip === null ? 45 : 16,
             animation: animations[i % animations.length] as ReelTextAnimation,
-            color: "#111111",
+            color: C.beatText,
             stroke: NO_STROKE,
-            background: { color: theme.accent, opacity: 0.95, style: "pill" },
+            background: { color: C.beatBox, opacity: 0.95, style: "pill" },
             width: 86,
           },
         ),
@@ -392,17 +483,18 @@ export function reelSpecFromPlan(plan: ReelPlan): ReelSpec {
     });
     if (copy.punchline !== null) {
       layers.push(
-        text("punchline", beatsEnd, durationSec, copy.punchline, {
-          font: PUNCH_FONT,
+        text(look, "punchline", beatsEnd, durationSec, copy.punchline, {
+          font: F.punch,
           y: 50,
-          animation: "highlight-sweep",
-          color: "#111111",
+          animation: motion.punchline ?? "highlight-sweep",
+          color: C.beatText,
           stroke: NO_STROKE,
           width: 80,
           exit: "none",
         }),
       );
     }
+    if (assets.clip === null) layers.push(...motifLayer(look, L.hookSec, durationSec));
   } else {
     // before-after: dos escenas separadas por un `whip`.
     durationSec = 10;
@@ -417,33 +509,49 @@ export function reelSpecFromPlan(plan: ReelPlan): ReelSpec {
       end: number,
       body: string,
       color: string,
+      textColor: string,
     ): ReelLayer =>
-      text(id, start, end, body, {
-        font: { family: "anton", weight: 400, size: 30 },
-        y: 8,
+      text(look, id, start, end, body, {
+        font: F.label,
+        // Con logo arriba a la derecha, la etiqueta (centrada, 40 % de ancho)
+        // no lo toca; sí baja un poco para no quedar pegada a la barra.
+        y: look.logo === null ? 8 : 9,
         animation: "pop",
+        color: textColor,
         stroke: NO_STROKE,
         background: { color, opacity: 1, style: "pill" },
         width: 40,
       });
-    layers.push(label("before-label", 0.2, half, "BEFORE", "#E5484D"));
-    layers.push(label("after-label", r1(half + 0.3), durationSec, "AFTER", "#30A46C"));
     layers.push(
-      text("hook", 0.4, half, copy.hook, {
-        font: HOOK_FONT,
+      label("before-label", 0.2, half, "BEFORE", C.beforeLabel, C.beforeLabelText),
+    );
+    layers.push(
+      label(
+        "after-label",
+        r1(half + 0.3),
+        durationSec,
+        "AFTER",
+        C.afterLabel,
+        C.afterLabelText,
+      ),
+    );
+    layers.push(
+      text(look, "hook", 0.4, half, copy.hook, {
+        font: F.hook,
         y: 30,
-        animation: "fade-up",
+        animation: motion.hook ?? "fade-up",
       }),
     );
     const after = copy.punchline ?? copy.beats[0] ?? null;
     if (after !== null) {
       layers.push(
-        text("after-text", r1(half + 0.5), durationSec, after, {
-          font: PUNCH_FONT,
+        text(look, "after-text", r1(half + 0.5), durationSec, after, {
+          font: F.punch,
           y: 30,
-          animation: "typewriter",
+          animation: motion.punchline ?? "typewriter",
+          color: C.punchText,
           stroke: NO_STROKE,
-          background: { color: "#000000", opacity: 0.6, style: "pill" },
+          background: { ...C.punchBox, style: "pill" },
           width: 84,
           exit: "none",
         }),
@@ -451,7 +559,18 @@ export function reelSpecFromPlan(plan: ReelPlan): ReelSpec {
     }
   }
 
+  layers.push(...logoLayer(look, durationSec));
   layers.push(...music(assets, durationSec));
+  const usedBrand = new Set(
+    layers.flatMap((l) =>
+      (l.kind === "text" || l.kind === "captions") && l.font.family.startsWith("brand:")
+        ? [`${l.font.family.slice(6)}:${String(l.font.weight)}`]
+        : [],
+    ),
+  );
+  const brandFonts = look.brandFonts.filter((f) =>
+    usedBrand.has(`${f.id}:${String(f.weight)}`),
+  );
   return {
     version: 1,
     durationSec,
@@ -459,6 +578,7 @@ export function reelSpecFromPlan(plan: ReelPlan): ReelSpec {
     fps: 30,
     ...(plan.language === null ? {} : { language: plan.language }),
     theme,
+    ...(brandFonts.length === 0 ? {} : { brandFonts }),
     mix: { duckMusic: true, duckLevel: 0.3 },
     layers,
   };

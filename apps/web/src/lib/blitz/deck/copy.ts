@@ -40,6 +40,8 @@ export const deckEn = {
   "deck.unmute": "Unmute", // literal
   "deck.reel.play": "Play reel", // nuevo · sprint 9
   "deck.reel.pause": "Pause reel", // nuevo · sprint 9
+  "deck.reel.poster": "Reel · renders when you accept", // nuevo · sprint 9 (U)
+  "deck.reel.posterDuration": "Reel · {seconds}s · renders when you accept", // nuevo · sprint 9 (U)
   "deck.slide.prev": "Previous slide", // nuevo
   "deck.slide.next": "Next slide", // nuevo
   "deck.slide.position": "Slide {current} of {total}", // nuevo

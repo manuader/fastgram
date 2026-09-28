@@ -25,7 +25,7 @@
  * | `fontWeight` ausente         | 400 — el default del adaptador (`DEFAULT_MAPPING`) |
  * | stroke ausente               | `3` / `#000000` — el default del servicio de render |
  * | `backgroundColor`            | `{color, opacity: 1, style: "pill"}` — lo que el adaptador manda |
- * | (sin familia)                | `inter` — `DEFAULT_MAPPING.defaultFontFamily`      |
+ * | `fontFamily` (sprint 9)      | tal cual; ausente → `inter` (`DEFAULT_MAPPING`)    |
  *
  * **Por qué 6 decimales y no el número crudo**: el adaptador (`render-wire.ts`)
  * redondea el porcentaje a 6 decimales y `apply` redondea los px a 4. Con 6
@@ -66,7 +66,7 @@
  *
  * Función pura: no lanza y no muta.
  */
-import { FONT_WEIGHTS, TEXT_BOX_LIMITS, type ContentTextBox } from "./text-boxes.js";
+import { TEXT_BOX_LIMITS, allowedWeightsOf, type ContentTextBox } from "./text-boxes.js";
 import type {
   EditableBuildPayload,
   EditableBuildText,
@@ -104,7 +104,7 @@ function percentOf(
 
 /** El peso permitido de `family` más cercano a `weight`; empate → el menor. */
 export function nearestAllowedWeight(family: string, weight: number): number {
-  const allowed = FONT_WEIGHTS[family] ?? [DERIVED_FONT_WEIGHT];
+  const allowed = allowedWeightsOf(family) ?? [DERIVED_FONT_WEIGHT];
   let best = allowed[0] ?? DERIVED_FONT_WEIGHT;
   for (const w of allowed) {
     if (Math.abs(w - weight) < Math.abs(best - weight)) best = w;
@@ -123,6 +123,13 @@ export function buildTextToTextBox(
   slideIndex: number,
 ): ContentTextBox {
   const L = TEXT_BOX_LIMITS;
+  // Sprint 9 (S): el payload ya puede traer la familia (`fontFamily`, una de
+  // las 12 o `brand:<id>`). Una que no se reconoce cae al default del render,
+  // que es lo que el render iba a dibujar igual.
+  const family =
+    text.fontFamily !== undefined && allowedWeightsOf(text.fontFamily) !== undefined
+      ? text.fontFamily
+      : DERIVED_FONT_FAMILY;
   const background =
     text.backgroundColor !== undefined && HEX_COLOR.test(text.backgroundColor)
       ? { color: text.backgroundColor, opacity: 1, style: "pill" as const }
@@ -143,11 +150,8 @@ export function buildTextToTextBox(
       80,
     ),
     font: {
-      family: DERIVED_FONT_FAMILY,
-      weight: nearestAllowedWeight(
-        DERIVED_FONT_FAMILY,
-        text.fontWeight ?? DERIVED_FONT_WEIGHT,
-      ),
+      family,
+      weight: nearestAllowedWeight(family, text.fontWeight ?? DERIVED_FONT_WEIGHT),
       size: clamp(text.fontSize, L.fontSizeMin, L.fontSizeMax, 18),
     },
     color: hexOr(text.color, DEFAULT_TEXT_COLOR),

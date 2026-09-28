@@ -29,9 +29,16 @@ import {
   reelBuildPayloadSchema,
   reelFromPromptRequestSchema,
   reelMediaUrls,
+  reelPlanNoteSchema,
+  reelPlanRequestSchema,
+  reelPlanViewSchema,
   reelPreviewRequestSchema,
   reelSpecSchema,
+  reelTemplateSchema,
   updateReelRequestSchema,
+  type ReelBuildPayload,
+  type ReelPlanItem,
+  type ReelPlanView,
   type ReelSpec,
 } from "@fastgram/contracts";
 import {
@@ -39,18 +46,29 @@ import {
   brandStrategyRepository,
   contentBuildStore,
   contentRepository,
+  lockLiveMedia,
+  reelPlanStore,
   searchMedia,
+  type ReelPlanItemRow,
+  type SuggestionRow,
   type Transaction,
 } from "@fastgram/db";
 import {
+  JOB_QUEUES,
   planReel,
   reelLanguageOf,
+  reelLocalDateOf,
+  reelPlannerJobKey,
   reelSpecFromPlan,
+  reelSuggestionPlanOf,
+  reelWeekStartOf,
+  reelWeeklyQuota,
+  type ReelPlannerMode,
   type ReelPlanAssets,
   type ReelTemplate,
 } from "@fastgram/core";
 import { HttpMediaRenderer } from "@fastgram/adapters";
-import type { MediaAuthorization, ReelRenderer, Storage } from "@fastgram/ports";
+import type { MediaAuthorization, Queue, ReelRenderer, Storage } from "@fastgram/ports";
 import { createHash } from "node:crypto";
 
 import { rateLimit } from "../../plugins/rate-limit.js";
@@ -59,6 +77,7 @@ import { toContent } from "../../support/serializers.js";
 import { capturePreferenceEdit } from "../../services/preferences.js";
 import { consumeContentSave, quotaPolicyFor } from "../../support/quota.js";
 import { crossTenant, data, idempotencyKeyOf, withIdempotency } from "./shared.js";
+import { loadStrategy } from "./strategy.js";
 import type { ZodApp } from "../../server/types.js";
 import {
   ContentRejection,
@@ -212,6 +231,175 @@ async function pickReelAssets(
           },
     music: track === null || track === undefined ? null : { url: track.url },
   };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Sprint 9 (U, `PU-S9-014`): reels del planificador en Blitz y el plan semanal
+// ───────────────────────────────────────────────────────────────────────────
+
+export type PreparedReelSuggestion =
+  | { readonly ok: true; readonly payload: ReelBuildPayload; readonly planItemId: string }
+  | {
+      readonly ok: false;
+      readonly reason: "invalid_build_plan" | "media_unavailable";
+      readonly detail: string;
+    };
+
+/**
+ * El payload de una sugerencia `reel` de la cola (`POST /blitz`): su spec,
+ * validado contra el contrato, y la media del Media Bank que usa **viva y
+ * retenida** hasta el commit (`lockLiveMedia`). Corre antes de cobrar; lo mismo
+ * hace el piloto en el worker (`apps/worker/src/reels/accept.ts`).
+ */
+export async function prepareReelSuggestion(
+  tx: Transaction,
+  companyId: string,
+  claimed: Pick<SuggestionRow, "buildPlan">,
+): Promise<PreparedReelSuggestion> {
+  const plan = reelSuggestionPlanOf(claimed.buildPlan);
+  if (plan === null) {
+    return { ok: false, reason: "invalid_build_plan", detail: "not a reel build_plan" };
+  }
+  const spec = reelSpecSchema.safeParse(plan.spec);
+  if (!spec.success) {
+    return {
+      ok: false,
+      reason: "invalid_build_plan",
+      detail: spec.error.issues
+        .slice(0, 3)
+        .map((i) => `${i.path.join(".")}: ${i.message}`)
+        .join("; "),
+    };
+  }
+  const ids = [...new Set(plan.mediaIds)];
+  const live = new Set((await lockLiveMedia(tx, { companyId }, ids)).map((m) => m.mediaId));
+  const lost = ids.filter((id) => !live.has(id));
+  if (lost.length > 0) {
+    return {
+      ok: false,
+      reason: "media_unavailable",
+      detail: `media ${lost.join(", ")} deleted or not ready`,
+    };
+  }
+  return { ok: true, payload: { reel: spec.data }, planItemId: plan.planItemId };
+}
+
+/** El ítem del plan pasa a `accepted` con su pieza, en la transacción del cobro. */
+export async function markReelItemAccepted(
+  tx: Transaction,
+  companyId: string,
+  planItemId: string,
+  contentId: string,
+): Promise<void> {
+  await reelPlanStore.updateReelPlanItem(tx, { companyId }, planItemId, {
+    status: "accepted",
+    contentId,
+  });
+}
+
+/** La preview de la tarjeta de un reel: su póster (URL canónica, como los `files`). */
+export async function reelSuggestionPreview(
+  storage: Storage,
+  row: Pick<SuggestionRow, "contentType" | "buildPlan">,
+): Promise<{ posterUrl: string; durationSec?: number } | undefined> {
+  if (row.contentType !== "reel") return undefined;
+  const plan = reelSuggestionPlanOf(row.buildPlan);
+  if (plan === null || plan.posterKey === null) return undefined;
+  const posterUrl = await canonicalObjectUrl(storage, plan.posterKey);
+  return plan.durationSec > 0 ? { posterUrl, durationSec: plan.durationSec } : { posterUrl };
+}
+
+/**
+ * Pide una corrida del planificador para la marca (`tick`: la cola acaba de
+ * tener un hueco; `replan`: «Plan this week's reels now»). Nunca tira: si la
+ * cola no responde, el barrido de cada hora la cubre.
+ */
+export async function requestReelPlanner(
+  queue: Queue | undefined,
+  companyId: string,
+  mode: ReelPlannerMode,
+  nowMs: number,
+  log: { warn: (obj: object, msg: string) => void },
+): Promise<boolean> {
+  if (queue === undefined) return false;
+  try {
+    await queue.enqueue({
+      queue: JOB_QUEUES.reelPlanner,
+      payload: { companyId, mode },
+      options: {
+        singletonKey: reelPlannerJobKey(JOB_QUEUES.reelPlanner, companyId, mode, nowMs),
+      },
+    });
+    return true;
+  } catch (error: unknown) {
+    log.warn({ companyId, error, queue: JOB_QUEUES.reelPlanner }, "no se pudo pedir el planificador de reels");
+    return false;
+  }
+}
+
+function picksOf(assets: unknown): string[] {
+  const picks = (assets as { picks?: unknown } | null)?.picks;
+  return Array.isArray(picks) ? picks.filter((p): p is string => typeof p === "string") : [];
+}
+
+async function toPlanItem(storage: Storage, row: ReelPlanItemRow): Promise<ReelPlanItem> {
+  const template = reelTemplateSchema.safeParse(row.template);
+  return {
+    id: row.id,
+    day: row.day,
+    status: row.status,
+    template: template.success ? template.data : "list-beats",
+    idea: row.idea,
+    hook: row.hook,
+    angle:
+      row.angleId === null || row.angleTitle === null
+        ? null
+        : { id: row.angleId, title: row.angleTitle },
+    durationSec: row.durationSec,
+    picks: picksOf(row.assets),
+    posterUrl: row.posterKey === null ? null : await canonicalObjectUrl(storage, row.posterKey),
+    suggestionId: row.suggestionId,
+    contentId: row.contentId,
+    failureReason: row.failureReason,
+    explored: row.explored,
+  };
+}
+
+/** `GET /reels/plan`: el plan de la semana en curso de la marca, y el cupo de hoy. */
+export async function reelPlanView(
+  tx: Transaction,
+  storage: Storage,
+  companyId: string,
+  nowMs: number,
+): Promise<ReelPlanView> {
+  const strategy = await loadStrategy(tx, companyId);
+  const weeklyQuota = strategy.isDefault
+    ? 0
+    : reelWeeklyQuota({ networks: strategy.networks, formatMix: strategy.formatMix });
+  const today = reelLocalDateOf(nowMs, strategy.timezone);
+  const plan = await reelPlanStore.findReelPlan(tx, { companyId }, reelWeekStartOf(today));
+  const reelWeight = Math.max(0, Math.min(100, strategy.formatMix["reel"] ?? 0));
+  if (plan === null) return { plan: null, weeklyQuota, reelWeight };
+  const items = await reelPlanStore.listReelPlanItems(tx, { companyId }, plan.id);
+  const notes = Array.isArray(plan.notes)
+    ? (plan.notes as unknown[]).flatMap((n) => {
+        const parsed = reelPlanNoteSchema.safeParse(n);
+        return parsed.success ? [parsed.data] : [];
+      })
+    : [];
+  return reelPlanViewSchema.parse({
+    plan: {
+      id: plan.id,
+      weekStart: plan.weekStart,
+      timezone: plan.timezone,
+      quota: plan.quota,
+      notes,
+      items: await Promise.all(items.map((i) => toPlanItem(storage, i))),
+      updatedAt: plan.updatedAt.toISOString(),
+    },
+    weeklyQuota,
+    reelWeight,
+  });
 }
 
 export function registerReelRoutes(app: ZodApp): void {
@@ -440,6 +628,34 @@ export function registerReelRoutes(app: ZodApp): void {
         if (rejected !== null) return rejected;
         throw e;
       }
+    },
+  );
+
+  // ── GET /reels/plan ── (sprint 9, U: el plan de reels de esta semana)
+  app.get(
+    "/reels/plan",
+    { preHandler: [rateLimit(limiter, "restPerWorkspace")] },
+    async (request) => {
+      const companyId = request.auth.companyId;
+      return data(
+        await request.tx((tx) => reelPlanView(tx, storage, companyId, clock.nowMs())),
+      );
+    },
+  );
+
+  // ── POST /reels/plan ── («Plan this week's reels now»: rehace lo que no salió)
+  app.post(
+    "/reels/plan",
+    {
+      schema: { body: reelPlanRequestSchema },
+      preHandler: [rateLimit(limiter, "restPerWorkspace")],
+    },
+    async (request, reply) => {
+      if (queue === undefined) return queueUnavailable(reply);
+      const companyId = request.auth.companyId;
+      const ok = await requestReelPlanner(queue, companyId, "replan", clock.nowMs(), request.log);
+      if (!ok) return queueUnavailable(reply);
+      return reply.status(202).send(data({ requested: true as const }));
     },
   );
 }

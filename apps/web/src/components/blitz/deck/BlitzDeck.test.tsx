@@ -332,6 +332,8 @@ describe("BlitzDeck · botones", () => {
       expect(push).toHaveBeenCalledWith(`/library/${CONTENT_ID}/edit`);
     });
     expect(acceptCalls()).toHaveLength(1);
+    // Sprint 9 (T): la API lo guarda como `edit_before_accept`.
+    expect(acceptCalls()[0]?.[1]?.body).toEqual({ suggestionId: "s1", via: "edit" });
     // Sin pasar por el diálogo de aceptar.
     expect(screen.queryByRole("dialog")).toBeNull();
   });

@@ -107,12 +107,28 @@ export interface DsRule {
   readonly text: string;
 }
 
+/**
+ * Sprint 9 (S), `PU-S9-003`: si las piezas clásicas nuevas de la marca salen
+ * con el logo del design system, y dónde. Vive en `tokens` (jsonb) y no en una
+ * tabla: es del design system (su logo es de ahí) y un re-import, que trae
+ * otro logo, arranca apagado. Ausente = apagado.
+ */
+export interface DsLogoLayer {
+  readonly enabled: boolean;
+  readonly corner: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  readonly size: "small" | "medium" | "large";
+  /** 0,1–1. */
+  readonly opacity: number;
+}
+
 export interface DesignSystemTokens {
   readonly colors: readonly DsColor[];
   readonly semantic: DsSemanticColors;
   readonly families: readonly DsFontFamily[];
   readonly roles: readonly DsTypeRole[];
   readonly spacing: readonly DsSpacing[];
+  /** Sprint 9 (S). Opcional: los tokens de antes no lo traen. */
+  readonly logoLayer?: DsLogoLayer;
 }
 
 /**

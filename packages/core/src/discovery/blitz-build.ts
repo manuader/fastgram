@@ -111,10 +111,15 @@ function parseRef(v: unknown): MediaRef | null {
  */
 export function parseSuggestionBuildPlan(
   raw: unknown,
-  contentType: BlitzContentType,
+  // Sprint 9 (U): la cola también trae reels, cuyo `build_plan` es otro
+  // (`reels/planner/suggestion.ts`): para éste no es un plan válido.
+  contentType: BlitzContentType | "reel",
 ): ParsedBuildPlan {
   if (raw === null || raw === undefined) {
     return { ok: false, reason: "missing_build_plan" };
+  }
+  if (contentType === "reel") {
+    return { ok: false, reason: "reel build_plan (see reelSuggestionPlanOf)" };
   }
   if (!isObj(raw)) return { ok: false, reason: "build_plan is not an object" };
   if (raw["version"] !== SUGGESTION_BUILD_PLAN_VERSION) {

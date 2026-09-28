@@ -1,5 +1,6 @@
 import {
   ADS_SYNC_CRON,
+  REEL_PLANNER_CRON,
   AUTOPILOT_SWEEP_CRON,
   AUTOMATION_BUILD_SWEEP_CRON,
   ENGAGEMENT_CRONS,
@@ -570,6 +571,33 @@ export const JOB_CATALOG = {
         "Cada 30 min: el tier de desarrollo de Meta da 600 + 400 × anuncios activos " +
         "llamadas de insights por cuenta y hora (BUC); una vuelta es ~1 por campaña. " +
         "Más seguido no mejora la guardia (el gasto llega con retraso). A los 11 y 41.",
+    },
+  },
+  /**
+   * Sprint 9 (U): el planificador semanal de reels (`apps/worker/src/reels`).
+   * Idempotente por convergencia: el plan es único por (marca, semana), un
+   * reel ya armado no se vuelve a armar y la entrada a la cola es la misma
+   * sentencia del refill («llevá la cola a N»). Un intento fallido se repite
+   * en la vuelta siguiente (cada hora), así que un solo reintento.
+   */
+  reelPlanner: {
+    name: JOB_QUEUES.reelPlanner,
+    what: "Arma el plan semanal de reels de cada marca (ángulo, idea, plantilla, assets, marca) y mete los del día en la cola de Blitz si hay hueco.",
+    prd: "PU-S9-014 · PRD §2.7 D-20/D-22 (fuera de §9.5)",
+    maxAttempts: 2,
+    backoff: "exponential",
+    retryDelaySeconds: 60,
+    // Armar 7 reels con un modelo local (≤ 3 min c/u) más 7 pósters (~10 s c/u).
+    timeoutSeconds: 1_800,
+    // El modelo local y Chrome del póster: de a una marca.
+    concurrency: 1,
+    idempotent: true,
+    scheduled: {
+      cron: REEL_PLANNER_CRON,
+      why:
+        "Cada hora (a los 7): crea el plan el lunes (o la primera vuelta de la semana) " +
+        "y suelta los reels del día cuando la cola tiene hueco. La API además encola una " +
+        "corrida al aceptar o descartar en el deck.",
     },
   },
 } as const satisfies Record<string, JobPolicy>;

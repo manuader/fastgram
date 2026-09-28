@@ -94,13 +94,17 @@ import {
   DomainError,
   DEFAULT_BLITZ_PREFERENCES,
   TARGET_QUEUED_ITEMS,
+  biasMixByPreferences,
   buildMediaBank,
   composeAiExplanation,
   finalizeBuildPlan,
   generatedTextOf,
+  loadPreferences,
   parseDiscoveryRefillJob,
   pickBuildPlanAudio,
   planBlitzSuggestion,
+  prefMediaSourceOf,
+  prefMusicSourceOf,
   rankByRelevance,
   reconcileAngleWeights,
   toCopyRemixReference,
@@ -110,9 +114,11 @@ import {
   type BlitzPreferences,
   type CopyAngle,
   type CopyBrandProfile,
+  type CopyDesignStyle,
   type CopyRemixReference,
   type DiscoveryRefillJob,
   type EligibleInfluencer,
+  type LearnedPreferences,
   type PlannedBlitzSuggestion,
   type TextStylePreset,
 } from "@fastgram/core";
@@ -127,6 +133,8 @@ import {
   discoveryQueueStore,
   influencerRepository,
   listOwnerReferences,
+  preferenceLookups,
+  preferenceSnapshotStore,
   withCompany,
   type Database,
   type QueuedSuggestionDraft,
@@ -143,7 +151,9 @@ import {
 } from "@fastgram/ports";
 
 import type { BuildLogger } from "../content/build-handler.js";
-import type { AssetJudge } from "../judgment/asset-decider.js";
+import { readActiveDesignSystem, withDesignSystemStyle } from "../design-system/blitz.js";
+import { withLearnedPreferences, type AssetJudge } from "../judgment/asset-decider.js";
+import { createLibrarySource, type LibrarySource } from "../judgment/library-source.js";
 import type { SuggestionCopywriter } from "./copywriter.js";
 import {
   applyJv6,
@@ -267,6 +277,19 @@ export interface RefillSubject {
    * modelo que mejor encaja. Sólo los influencers que vienen de un modelo.
    */
   readonly influencerProfiles?: ReadonlyMap<string, string>;
+  /**
+   * Sprint 9 (T, `PU-S9-015`): lo que el dueño aceptó y descartó (`D-22`,
+   * `loadPreferences` de Q). `null` = sin preferencias (no se pudieron leer):
+   * se planifica como antes.
+   */
+  readonly learned?: LearnedPreferences | null;
+  /**
+   * Sprint 9 (T, parche de M): la voz del design system activo para la copy
+   * (`copyStyleFrom`). `null` = sin design system.
+   */
+  readonly designStyle?: CopyDesignStyle | null;
+  /** Sprint 9 (T): id de media → su fuente para las preferencias. */
+  readonly mediaSources?: ReadonlyMap<string, string>;
 }
 
 /** Cuántas referencias se leen para elegir qué remixar. */
@@ -380,10 +403,23 @@ export function createDiscoveryRefillHandler(
     }
 
     let planned: PlannedBlitzSuggestion[];
+    /** Sprint 9 (T): las preferencias (sesgadas o no) con que salió cada plan. */
+    const mixOf = new Map<PlannedBlitzSuggestion, BlitzPreferences>();
+    let explored = 0;
     try {
-      planned = Array.from({ length: missing }, () =>
-        planBlitzSuggestion(deps.rng, subject.preferences, subject.planning),
-      );
+      planned = Array.from({ length: missing }, () => {
+        // Sprint 9 (T): el mix de siempre × lo que el dueño aprendió a
+        // preferir, con su exploración. Sin nada aprendido no tira el dado.
+        const bias = biasMixByPreferences(
+          deps.rng,
+          subject.preferences,
+          subject.learned ?? null,
+        );
+        if (bias.explored) explored += 1;
+        const p = planBlitzSuggestion(deps.rng, bias.preferences, subject.planning);
+        mixOf.set(p, bias.preferences);
+        return p;
+      });
     } catch (error: unknown) {
       // `DomainError` = estado del workspace (pesos de ángulo que no cubren a
       // ningún activo, o un Media Bank sin media para ningún formato del mix).
@@ -412,12 +448,28 @@ export function createDiscoveryRefillHandler(
             .judgment({ companyId: job.companyId, subjectType: "blitz_refill" })
             .catch(() => null);
     // Sprint 9 (O): el decisor por candidato, si `judgment.assets` es SystemOne.
-    const assets =
+    // Sprint 9 (T): con el gusto aprendido del dueño.
+    const judge =
       deps.judgment?.assets === undefined
         ? null
         : await deps.judgment
             .assets({ companyId: job.companyId, subjectType: "blitz_refill" })
             .catch(() => null);
+    const assets =
+      judge === null
+        ? null
+        : withLearnedPreferences(judge, subject.learned ?? null, deps.rng);
+    // Sprint 9 (T): la biblioteca global compite con el Media Bank.
+    const library: LibrarySource | null =
+      deps.storage === undefined
+        ? null
+        : createLibrarySource({
+            db: deps.db,
+            storage: deps.storage,
+            companyId: job.companyId,
+            appRole: deps.appRole,
+            logger: deps.logger,
+          });
     const recentIds = new Set<string>();
     /** El tema de cada borrador, para elegir su música con el decisor. */
     const topics = new Map<QueuedSuggestionDraft, string | null>();
@@ -431,7 +483,7 @@ export function createDiscoveryRefillHandler(
       const restrict = (x: PlannedBlitzSuggestion): PlannedBlitzSuggestion =>
         restrictToInfluencerAngles(
           deps.rng,
-          subject.preferences,
+          mixOf.get(planned0) ?? subject.preferences,
           subject.planning,
           subject.influencerAngles,
           x,
@@ -447,6 +499,8 @@ export function createDiscoveryRefillHandler(
         influencerProfiles: subject.influencerProfiles,
         assets,
         recentIds,
+        library,
+        mediaSources: subject.mediaSources,
       });
       const judged =
         judged0.influencerId === bound.influencerId ? judged0 : restrict(judged0);
@@ -490,21 +544,32 @@ export function createDiscoveryRefillHandler(
       return;
     }
 
-    const { queuedBefore, inserted } = await write(
-      job,
-      await withBrandAudio(
-        deps.rng,
-        drafts,
-        (fn) => inCompany(job.companyId, fn),
-        { companyId: job.companyId },
-        (error) =>
-          deps.logger.warn(
-            { ...base, error: error instanceof Error ? error.message : String(error) },
-            "no se pudo leer la biblioteca de audio: las sugerencias salen sin música",
-          ),
-        assets === null ? undefined : musicDecider(assets, subject, topics, recentIds),
-      ),
+    const withAudio = await withBrandAudio(
+      deps.rng,
+      drafts,
+      (fn) => inCompany(job.companyId, fn),
+      { companyId: job.companyId },
+      (error) =>
+        deps.logger.warn(
+          { ...base, error: error instanceof Error ? error.message : String(error) },
+          "no se pudo leer la biblioteca de audio: las sugerencias salen sin música",
+        ),
+      assets === null ? undefined : musicDecider(assets, subject, topics, recentIds),
     );
+    // Sprint 9 (T, parche de M): el estilo de caption del design system activo.
+    // **Después** de la música: `topics` está indexado por el borrador, y el
+    // estilo devuelve borradores nuevos.
+    const styled = await withDesignSystemStyle(
+      withAudio,
+      (fn) => inCompany(job.companyId, fn),
+      { companyId: job.companyId },
+      (error) =>
+        deps.logger.warn(
+          { ...base, error: error instanceof Error ? error.message : String(error) },
+          "no se pudo leer el design system: las sugerencias salen con el preset",
+        ),
+    );
+    const { queuedBefore, inserted } = await write(job, styled);
 
     deps.logger.info(
       {
@@ -514,6 +579,12 @@ export function createDiscoveryRefillHandler(
         planned: planned.length,
         written: drafts.length,
         target,
+        preferences:
+          subject.learned === null || subject.learned === undefined
+            ? "unavailable"
+            : subject.learned.features.size === 0
+              ? "none_learned"
+              : `explored ${String(explored)}/${String(planned.length)}`,
       },
       inserted === 0
         ? "refill sin efecto: otra entrega llenó la cola primero"
@@ -607,7 +678,45 @@ export async function readRefillSubject(
       rows.map((row) => row.id),
     ),
     influencerProfiles: await readLibraryProfiles(tx, company?.ownerUserId, rows),
+    // Sprint 9 (T): cada lectura nueva en su savepoint. Un fallo ahí (una
+    // tabla sin permisos para el rol, una fila rara) no puede abortar la
+    // transacción del refill: se sigue sin eso, como antes del sprint 9.
+    learned: await bestEffort(tx, (sp) =>
+      loadPreferences(preferenceSnapshotStore(sp), companyId, { nowMs: Date.now() }),
+    ),
+    designStyle:
+      (await bestEffort(tx, (sp) => readActiveDesignSystem(sp, scope)))?.copyStyle ??
+      null,
+    mediaSources:
+      (await bestEffort(tx, async (sp) => {
+        const facts = await preferenceLookups.mediaByIds(
+          sp,
+          scope,
+          bankRows.media.map((m) => m.id),
+        );
+        const out = new Map<string, string>();
+        for (const f of facts) {
+          const source = prefMediaSourceOf({ origin: f.origin, location: f.url });
+          if (source !== null) out.set(f.mediaId, source);
+        }
+        return out;
+      })) ?? new Map<string, string>(),
   };
+}
+
+/**
+ * Sprint 9 (T): una lectura opcional en un `SAVEPOINT`. `null` si falla: sin
+ * el savepoint, un error de SQL dejaría abortada la transacción del refill.
+ */
+async function bestEffort<T>(
+  tx: Transaction,
+  fn: (sp: Transaction) => Promise<T>,
+): Promise<T | null> {
+  try {
+    return await tx.transaction(fn);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -727,6 +836,8 @@ export async function withCopy(
     maxTexts,
     // Sprint 7: el idioma de la estrategia guardada (sin ella, el del perfil).
     language: subject.language,
+    // Sprint 9 (T, parche de M): la voz del design system activo, como dato.
+    designStyle: subject.designStyle ?? null,
     ...(topic === undefined ? {} : { topic }),
     ...(remix === undefined ? {} : { remix }),
   });
@@ -861,6 +972,7 @@ export async function withBrandAudio(
       id: row.id,
       title: row.title,
       durationSec: row.durationSec,
+      source: prefMusicSourceOf({ origin: row.origin, location: row.url }),
     }));
   } catch (error: unknown) {
     onReadError?.(error);
@@ -901,6 +1013,8 @@ export interface MusicTrack {
   readonly id: string;
   readonly title: string;
   readonly durationSec: number | null;
+  /** Sprint 9 (T): su fuente para las preferencias (`prefMusicSourceOf`). */
+  readonly source?: string | null;
 }
 
 export type MusicDecider = (
@@ -936,6 +1050,7 @@ export function musicDecider(
         source: "brand",
         description: `music track: ${t.title}`,
         durationSec: t.durationSec,
+        mediaSource: t.source ?? null,
       })),
       recentIds,
     });

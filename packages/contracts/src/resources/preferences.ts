@@ -45,6 +45,11 @@ export const PREFERENCE_FAMILY_VALUES = [
   "text.anim",
   "text.len",
   "duration",
+  // Vocabulario v2 (sprint 9, U, `PU-S9-014`): rasgos de reel.
+  "reel.template",
+  "reel.anim",
+  "reel.captions",
+  "reel.clip",
 ] as const;
 export const preferenceFamilySchema = z.enum(PREFERENCE_FAMILY_VALUES);
 export type PreferenceFamily = z.infer<typeof preferenceFamilySchema>;

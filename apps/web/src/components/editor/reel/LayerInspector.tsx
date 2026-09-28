@@ -37,6 +37,45 @@ export interface LayerInspectorProps {
 
 const anim = (a: string): CopyKey => `editor.reel.anim.${a}` as CopyKey;
 
+/**
+ * Sprint 9 (U): las familias de la marca que trae el spec (`brandFonts`, las
+ * puso el planificador con la licencia ya decidida) además de las 12. Una de
+ * marca ofrece sólo los pesos de los que hay archivo.
+ */
+function brandWeights(spec: ReelSpec, family: string): number[] | null {
+  if (!family.startsWith("brand:")) return null;
+  const id = family.slice("brand:".length);
+  return [...new Set((spec.brandFonts ?? []).filter((f) => f.id === id).map((f) => f.weight))].sort(
+    (a, b) => a - b,
+  );
+}
+
+function weightsOf(spec: ReelSpec, family: string): readonly number[] {
+  return brandWeights(spec, family) ?? fontSpec(family as FontFamily).weights;
+}
+
+function closestOf(spec: ReelSpec, family: string, weight: number): number {
+  const brand = brandWeights(spec, family);
+  if (brand === null) return closestWeight(family as FontFamily, weight);
+  return brand.reduce(
+    (best, w) => (Math.abs(w - weight) < Math.abs(best - weight) ? w : best),
+    brand[0] ?? weight,
+  );
+}
+
+function fontOptions(spec: ReelSpec): { value: string; label: string }[] {
+  const ids = [...new Set((spec.brandFonts ?? []).map((f) => f.id))];
+  return [
+    ...ids.map((id) => ({
+      value: `brand:${id}`,
+      label: tw("editor.reel.brandFont", {
+        name: id.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      }),
+    })),
+    ...EDITOR_FONTS.map((f) => ({ value: f.key, label: f.label })),
+  ];
+}
+
 function NumberField({
   label,
   value,
@@ -139,35 +178,35 @@ export function LayerInspector({
             value={layer.font.family}
             disabled={off}
             onChange={(e) => {
-              const family = e.target.value as FontFamily;
+              const family = e.target.value as typeof layer.font.family;
               onChange(
                 set<typeof layer>((l) => ({
                   ...l,
                   font: {
                     ...l.font,
                     family,
-                    weight: closestWeight(family, l.font.weight),
+                    weight: closestOf(spec, family, l.font.weight),
                   },
                 })),
               );
             }}
-            options={EDITOR_FONTS.map((f) => ({ value: f.key, label: f.label }))}
+            options={fontOptions(spec)}
           />
-          {fontSpec(layer.font.family).weights.length > 1 && (
+          {weightsOf(spec, layer.font.family).length > 1 && (
             <Slider
               id={`${id}-weight`}
               label={tw("editor.reel.weight", { weight: layer.font.weight })}
               min={0}
-              max={fontSpec(layer.font.family).weights.length - 1}
+              max={weightsOf(spec, layer.font.family).length - 1}
               step={1}
               value={Math.max(
                 0,
-                fontSpec(layer.font.family).weights.indexOf(layer.font.weight),
+                weightsOf(spec, layer.font.family).indexOf(layer.font.weight),
               )}
               disabled={off}
               onChange={(i) => {
                 const weight =
-                  fontSpec(layer.font.family).weights[i] ?? layer.font.weight;
+                  weightsOf(spec, layer.font.family)[i] ?? layer.font.weight;
                 onChange(
                   set<typeof layer>((l) => ({ ...l, font: { ...l.font, weight } })),
                 );

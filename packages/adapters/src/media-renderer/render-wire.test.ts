@@ -5,7 +5,7 @@ import type {
   VideoHookJob,
   WallOfTextJob,
 } from "@fastgram/ports";
-import { DEFAULT_MAPPING, toWirePayload } from "./render-wire.js";
+import { DEFAULT_MAPPING, toWireBrand, toWirePayload } from "./render-wire.js";
 import {
   GREEN_SCREEN,
   SLIDESHOW,
@@ -407,5 +407,57 @@ describe("toWirePayload — enteros donde el schema pide enteros", () => {
     if (payload.type !== "green-screen") throw new Error("otro tipo");
 
     expect(payload.canvas).toEqual({ width: 9000, height: 9000 });
+  });
+});
+
+describe("toWireBrand — sprint 9 (S)", () => {
+  it("sin marca no agrega ninguna clave (el request es el de antes)", () => {
+    expect(toWireBrand(GREEN_SCREEN)).toEqual({});
+    expect(toWireBrand({ ...GREEN_SCREEN, brand: { fonts: [] } })).toEqual({});
+    expect(
+      toWireBrand({
+        ...GREEN_SCREEN,
+        brand: { logo: { images: [], corner: "top-left", size: "small", opacity: 1 } },
+      }),
+    ).toEqual({});
+  });
+
+  it("copia las caras y el logo campo por campo", () => {
+    const job: GreenScreenJob = {
+      ...GREEN_SCREEN,
+      brand: {
+        fonts: [{ id: "rotis", weight: 300, style: "italic", url: "https://s3/f.otf" }],
+        logo: {
+          images: [{ url: "https://s3/a.png" }, { url: "https://s3/b.png" }],
+          corner: "bottom-left",
+          size: "large",
+          opacity: 0.5,
+        },
+      },
+    };
+    expect(toWireBrand(job)).toEqual({
+      brandFonts: [
+        { id: "rotis", weight: 300, style: "italic", url: "https://s3/f.otf" },
+      ],
+      logo: {
+        images: [{ url: "https://s3/a.png" }, { url: "https://s3/b.png" }],
+        corner: "bottom-left",
+        size: "large",
+        opacity: 0.5,
+      },
+    });
+  });
+
+  it("la familia brand:<id> del texto pasa tal cual al wire", () => {
+    const job: GreenScreenJob = {
+      ...GREEN_SCREEN,
+      text: { ...GREEN_SCREEN.text, fontFamily: "brand:rotis", fontWeight: 800 },
+    };
+    const wire = toWirePayload(job, DEFAULT_MAPPING, SOURCE);
+    expect(wire.type === "green-screen" && wire.texts[0]?.font).toEqual({
+      family: "brand:rotis",
+      weight: 800,
+      size: Math.round(GREEN_SCREEN.text.fontSize),
+    });
   });
 });

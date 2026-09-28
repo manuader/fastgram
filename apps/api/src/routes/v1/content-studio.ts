@@ -27,6 +27,10 @@
  *   marca es `400` con `details.mediaIds` (no `404`: el recurso de la ruta es
  *   la pieza nueva, y un id ajeno no se distingue de uno inexistente).
  * - Sin audio: la música se elige en el editor (agente B).
+ * - Sprint 9 (S): sin `textStylePresetId`, el estilo de caption sale del
+ *   design system activo (el mismo que Blitz estampa en sus sugerencias); la
+ *   familia y el logo los estampa el primer build (`core/content/brand-look`),
+ *   igual que en toda pieza nueva. Con preset, manda el preset.
  */
 import {
   contentBuildPayloadSchema,
@@ -38,10 +42,18 @@ import {
 import {
   SUGGESTION_BUILD_PLAN_VERSION,
   composeBlitzBuildPayload,
+  designSystemCaptionStyle,
+  readDesignSystemTokens,
+  type CaptionStyle,
   type MediaRef,
   type MediaSelection,
 } from "@fastgram/core";
-import { contentRepository, mediaRepository, type Transaction } from "@fastgram/db";
+import {
+  contentRepository,
+  designSystemRepository,
+  mediaRepository,
+  type Transaction,
+} from "@fastgram/db";
 
 import { ApiRejection } from "../../http/errors.js";
 import { rateLimit } from "../../plugins/rate-limit.js";
@@ -140,6 +152,16 @@ function selectionOf(
   }
 }
 
+/** El estilo de caption del design system activo, o `null` sin él. */
+async function designSystemStyleOf(
+  tx: Transaction,
+  companyId: string,
+): Promise<CaptionStyle | null> {
+  const row = await designSystemRepository.findActive(tx, { companyId });
+  const tokens = row === null ? null : readDesignSystemTokens(row.tokens);
+  return tokens === null ? null : designSystemCaptionStyle(tokens);
+}
+
 export function registerContentStudioRoutes(app: ZodApp): void {
   const { limiter, clock, idempotency, queue } = app.deps;
 
@@ -198,12 +220,17 @@ export function registerContentStudioRoutes(app: ZodApp): void {
             const texts = body.texts.map((t) =>
               t.trim() === "" && body.ai !== undefined ? body.ai.prompt : t,
             );
+            const brandStyle =
+              body.textStylePresetId === undefined
+                ? await designSystemStyleOf(tx, companyId)
+                : null;
             const payload = contentBuildPayloadSchema.parse(
               composeBlitzBuildPayload(
                 {
                   version: SUGGESTION_BUILD_PLAN_VERSION,
                   media: selectionOf(body, resolved.refs),
                   texts,
+                  ...(brandStyle === null ? {} : { textStyle: brandStyle }),
                 },
                 {
                   aspectRatio: body.aspectRatio,

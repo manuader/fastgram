@@ -25,6 +25,8 @@ import {
 } from "@/lib/audio/api";
 import { BRAND_AUDIO_MAX_MB } from "@fastgram/contracts";
 import { useAudioPreview } from "@/lib/audio/preview";
+import { GlobalLibraryPicker } from "@/components/library/global/GlobalLibraryPicker";
+import { useGlobalLibraryPick } from "./useGlobalLibraryPick";
 
 export interface AudioPickerDialogProps {
   readonly open: boolean;
@@ -44,6 +46,10 @@ export interface AudioPickerDialogProps {
  * catálogo global del PRD (`GET /audio?for=`) no se lista: está vacío y el
  * render sólo autoriza la biblioteca de la marca. Subir desde acá sube a esa
  * misma biblioteca y elige la pista nueva.
+ *
+ * Sprint 9 (T): «Global library» abre la biblioteca global de N (sólo audio);
+ * la pista elegida se copia a la biblioteca de la marca (`use-in-brand`) y se
+ * elige esa copia. Ver `useGlobalLibraryPick`.
  */
 export function AudioPickerDialog({
   open,
@@ -59,6 +65,7 @@ export function AudioPickerDialog({
   const upload = useUploadBrandAudio();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const global = useGlobalLibraryPick((url) => pick(url));
 
   const close = () => {
     preview.stop();
@@ -91,122 +98,149 @@ export function AudioPickerDialog({
   const searching = q.trim() !== "";
 
   return (
-    <Dialog open={open} onClose={close} size="md">
-      <DialogHeader>
-        <DialogTitle>{tw("editor.audio.title")}</DialogTitle>
-      </DialogHeader>
-      <DialogBody>
-        <div className="mb-3 flex items-center gap-2">
-          <Input
-            type="search"
-            aria-label={tw("audio.picker.search")}
-            placeholder={tw("audio.picker.search")}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            wrapperClassName="flex-1"
-          />
-          <input
-            ref={fileRef}
-            type="file"
-            accept={AUDIO_ACCEPT}
-            className="hidden"
-            data-testid="audio-picker-file"
-            onChange={(e) => {
-              onFile(e.target.files?.[0]);
-              e.target.value = "";
-            }}
-          />
-          <Button
-            variant="secondary"
-            loading={upload.isPending}
-            onClick={() => fileRef.current?.click()}
-          >
-            {upload.isPending ? tw("audio.uploading") : tw("audio.upload")}
-          </Button>
-        </div>
-        {uploadError !== null && (
-          <p role="alert" className="mb-2 text-xs text-danger">
-            {uploadError}
-          </p>
-        )}
-        <ul className="grid max-h-[50vh] grid-cols-2 gap-2 overflow-y-auto">
-          <li>
-            <AudioOption
-              label={tw("editor.assets.noAudio")}
-              icon="∅"
-              selected={currentUrl === null}
-              onSelect={() => pick(null)}
+    <>
+      <GlobalLibraryPicker
+        open={open && global.browsing}
+        onOpenChange={(next) => {
+          if (!next) global.close();
+        }}
+        kinds={["audio"]}
+        onPick={global.pick}
+      />
+      <Dialog open={open && !global.browsing} onClose={close} size="md">
+        <DialogHeader>
+          <DialogTitle>{tw("editor.audio.title")}</DialogTitle>
+        </DialogHeader>
+        <DialogBody>
+          <div className="mb-3 flex items-center gap-2">
+            <Input
+              type="search"
+              aria-label={tw("audio.picker.search")}
+              placeholder={tw("audio.picker.search")}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              wrapperClassName="flex-1"
             />
-          </li>
-          {query.isPending
-            ? Array.from({ length: 5 }, (_, i) => (
-                <li key={i}>
-                  <Skeleton className="h-12 w-full" />
-                </li>
-              ))
-            : tracks.map((t) => (
-                <li key={t.id}>
-                  <TrackOption
-                    track={t}
-                    selected={currentUrl === t.url}
-                    playing={preview.playingId === t.id}
-                    failed={preview.failedId === t.id}
-                    onSelect={() => pick(t.url)}
-                    onTogglePreview={() => preview.toggle(t.id, t.url)}
-                  />
-                </li>
-              ))}
-        </ul>
-        {query.hasNextPage && (
-          <div className="mt-2 flex justify-center">
+            <input
+              ref={fileRef}
+              type="file"
+              accept={AUDIO_ACCEPT}
+              className="hidden"
+              data-testid="audio-picker-file"
+              onChange={(e) => {
+                onFile(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
+            <Button
+              variant="secondary"
+              loading={upload.isPending}
+              onClick={() => fileRef.current?.click()}
+            >
+              {upload.isPending ? tw("audio.uploading") : tw("audio.upload")}
+            </Button>
             <Button
               variant="ghost"
-              size="sm"
-              loading={query.isFetchingNextPage}
-              onClick={() => void query.fetchNextPage()}
+              loading={global.copying}
+              onClick={() => {
+                preview.stop();
+                global.open();
+              }}
             >
-              {tw("audio.panel.loadMore")}
+              {global.copying
+                ? tw("globalLibrary.picker.copying")
+                : tw("globalLibrary.picker.title")}
             </Button>
           </div>
-        )}
-        {query.isError && (
-          <div className="mt-3">
-            <EmptyState
-              bordered
-              title={tw("audio.picker.error")}
-              action={
-                <Button variant="secondary" onClick={() => void query.refetch()}>
-                  {tw("editor.picker.retry")}
-                </Button>
-              }
-            />
-          </div>
-        )}
-        {/* Región viva (P5-A11Y-001): al buscar, "no hay resultados" se anuncia
+          {global.failed && (
+            <p role="alert" className="mb-2 text-xs text-danger">
+              {tw("globalLibrary.picker.copyFailed")}
+            </p>
+          )}
+          {uploadError !== null && (
+            <p role="alert" className="mb-2 text-xs text-danger">
+              {uploadError}
+            </p>
+          )}
+          <ul className="grid max-h-[50vh] grid-cols-2 gap-2 overflow-y-auto">
+            <li>
+              <AudioOption
+                label={tw("editor.assets.noAudio")}
+                icon="∅"
+                selected={currentUrl === null}
+                onSelect={() => pick(null)}
+              />
+            </li>
+            {query.isPending
+              ? Array.from({ length: 5 }, (_, i) => (
+                  <li key={i}>
+                    <Skeleton className="h-12 w-full" />
+                  </li>
+                ))
+              : tracks.map((t) => (
+                  <li key={t.id}>
+                    <TrackOption
+                      track={t}
+                      selected={currentUrl === t.url}
+                      playing={preview.playingId === t.id}
+                      failed={preview.failedId === t.id}
+                      onSelect={() => pick(t.url)}
+                      onTogglePreview={() => preview.toggle(t.id, t.url)}
+                    />
+                  </li>
+                ))}
+          </ul>
+          {query.hasNextPage && (
+            <div className="mt-2 flex justify-center">
+              <Button
+                variant="ghost"
+                size="sm"
+                loading={query.isFetchingNextPage}
+                onClick={() => void query.fetchNextPage()}
+              >
+                {tw("audio.panel.loadMore")}
+              </Button>
+            </div>
+          )}
+          {query.isError && (
+            <div className="mt-3">
+              <EmptyState
+                bordered
+                title={tw("audio.picker.error")}
+                action={
+                  <Button variant="secondary" onClick={() => void query.refetch()}>
+                    {tw("editor.picker.retry")}
+                  </Button>
+                }
+              />
+            </div>
+          )}
+          {/* Región viva (P5-A11Y-001): al buscar, "no hay resultados" se anuncia
             sin mover el foco del campo. ERR-E07 (`No audio`, literal) ya es la
             primera opción de la lista: repetirlo como título del vacío pondría
             dos "No audio" que significan cosas distintas. */}
-        <div role="status" className="mt-3">
-          {query.isSuccess && tracks.length === 0 && (
-            <p className="m-0 text-xs text-text-muted">
-              {searching
-                ? tw("audio.picker.noMatches", { q: q.trim() })
-                : tw("audio.picker.empty")}
-            </p>
-          )}
-        </div>
-        <p className="mt-3 text-xs text-text-muted">
-          {format === "green-screen"
-            ? tw("audio.picker.hintGreenScreen")
-            : tw("audio.picker.hint")}
-        </p>
-      </DialogBody>
-      <DialogFooter>
-        <Button variant="ghost" onClick={close}>
-          {tw("editor.picker.cancel")}
-        </Button>
-      </DialogFooter>
-    </Dialog>
+          <div role="status" className="mt-3">
+            {query.isSuccess && tracks.length === 0 && (
+              <p className="m-0 text-xs text-text-muted">
+                {searching
+                  ? tw("audio.picker.noMatches", { q: q.trim() })
+                  : tw("audio.picker.empty")}
+              </p>
+            )}
+          </div>
+          <p className="mt-3 text-xs text-text-muted">
+            {format === "green-screen"
+              ? tw("audio.picker.hintGreenScreen")
+              : tw("audio.picker.hint")}
+          </p>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="ghost" onClick={close}>
+            {tw("editor.picker.cancel")}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+    </>
   );
 }
 

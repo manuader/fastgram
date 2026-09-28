@@ -117,7 +117,12 @@ export function fontKey(family: string, weight: number): string {
   return `${family}-${String(weight)}`;
 }
 
-const cssFamily = (family: string): string => `fg-${family}`;
+/**
+ * El nombre CSS de una familia. Las de marca (`brand:<id>`) pierden el `:`:
+ * el id ya es `[a-z0-9-]`, así que `fg-brand-<id>` no choca con ninguna de las
+ * 12 y no hay nada que escapar dentro de `style="…"`.
+ */
+const cssFamily = (family: string): string => `fg-${family.replace(":", "-")}`;
 
 function px(units: number): number {
   return Math.round((units * 1080) / EDITOR_REFERENCE_WIDTH);
@@ -590,6 +595,16 @@ function fontFaces(
       if (src === undefined) {
         warnings.push(`font ${key}: file not available, the browser falls back`);
         return "";
+      }
+      if (family.startsWith("brand:")) {
+        // Sin `format()`: un OTF con curvas CFF no es «truetype» y Chrome
+        // decide por el contenido. El estilo, el de la cara que vino.
+        const id = family.slice("brand:".length);
+        const face =
+          (spec.brandFonts ?? []).find(
+            (f) => f.id === id && String(f.weight) === weight && f.style === "normal",
+          ) ?? (spec.brandFonts ?? []).find((f) => f.id === id && String(f.weight) === weight);
+        return `@font-face{font-family:"${cssFamily(family)}";src:url("${cssString(src)}");font-weight:${weight};font-style:${face?.style ?? "normal"};font-display:block}`;
       }
       return `@font-face{font-family:"${cssFamily(family)}";src:url("${cssString(src)}") format("truetype");font-weight:${weight};font-style:normal;font-display:block}`;
     })

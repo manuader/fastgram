@@ -164,7 +164,11 @@ export function BlitzDeck() {
       setIntent(next);
       const suggestionId = card.suggestion.id;
       accept.mutate(
-        { suggestionId, idempotencyKey: attemptKey },
+        // Sprint 9 (T): «Edit» avisa que se acepta para cambiarla (la señal
+        // de preferencias es `edit_before_accept`, más débil que un «sí»).
+        next === "edit"
+          ? { suggestionId, idempotencyKey: attemptKey, via: "edit" }
+          : { suggestionId, idempotencyKey: attemptKey },
         {
           onSuccess: (content) => {
             setExitDir(1);

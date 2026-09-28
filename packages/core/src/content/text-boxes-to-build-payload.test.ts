@@ -128,6 +128,7 @@ describe("textBoxToBuildText — estilo", () => {
       fontWeight: 400,
       strokeWidth: 0,
       strokeColor: "#112233",
+      fontFamily: "anton",
     });
   });
 

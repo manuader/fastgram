@@ -45,6 +45,8 @@ import { canonicalObjectUrl } from "@fastgram/adapters";
 import { brandAudioKeyPrefix } from "@fastgram/contracts";
 import type { MediaAuthorization, RenderJob, Storage } from "@fastgram/ports";
 
+import { usesGlobalLibrary, withGlobalLibrary } from "../library/authorization.js";
+
 /**
  * El reparto de claves por workspace.
  *
@@ -60,6 +62,12 @@ function workspaceKeyPrefixes(companyId: string, objectPrefix: string): string[]
     `influencers/${companyId}/`,
     // `apps/api/src/routes/v1/content.ts` — video propio del Studio.
     `content/custom-video/${companyId}/`,
+    // Sprint 9 (S): los archivos de fuente del design system
+    // (`designSystemFontKey` de `core`, que sube el import de M). El render
+    // los autoriza como una imagen (`brandFonts`); la URL exacta además va en
+    // `urls` (ver {@link mediaUrlsOf}), así que esto no abre las fuentes de la
+    // marca para cualquier build.
+    `fonts/${companyId}/`,
     // Los artefactos que este mismo handler sube. Hacen falta porque el
     // thumbnail se pide **sobre la pieza ya subida**: sin este prefijo, el
     // `POST /thumbnail` se rechazaría por no estar autorizada su propia
@@ -99,12 +107,19 @@ export async function workspaceMediaAuthorization(
     `${brandAudioKeyPrefix(input.companyId)}/`,
   );
 
-  return {
+  const auth: MediaAuthorization = {
     companyId: input.companyId,
     mediaPrefixes,
     sharedPrefixes: [audioLibrary],
     ...(input.urls.length === 0 ? {} : { urls: input.urls }),
   };
+  // Sprint 9 (S, con N): una pieza que usa un asset de la biblioteca global
+  // (`library/…`, sin copiar a la marca) necesita ese prefijo en
+  // `sharedPrefixes`. Sólo si alguna URL del job cae ahí: un build sin
+  // biblioteca firma exactamente el grant de antes.
+  return (await usesGlobalLibrary(storage, input.urls))
+    ? withGlobalLibrary(storage, auth)
+    : auth;
 }
 
 /**
@@ -118,6 +133,23 @@ export async function workspaceMediaAuthorization(
  * dice en ningún lado que falta un caso acá.
  */
 export function mediaUrlsOf(job: RenderJob): readonly string[] {
+  return [...formatMediaUrlsOf(job), ...brandUrlsOf(job)];
+}
+
+/**
+ * Sprint 9 (S): las fuentes de marca y las variantes del logo también se leen
+ * en el render, y el grant las tiene que listar como cualquier imagen.
+ */
+function brandUrlsOf(job: RenderJob): readonly string[] {
+  const brand = job.brand;
+  if (brand === undefined) return [];
+  return [
+    ...(brand.fonts ?? []).map((f) => f.url),
+    ...(brand.logo?.images ?? []).map((i) => i.url),
+  ];
+}
+
+function formatMediaUrlsOf(job: RenderJob): readonly string[] {
   switch (job.format) {
     case "slideshow":
       return job.images.map((slide) => slide.image.url);

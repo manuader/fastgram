@@ -50,8 +50,20 @@ export interface ScoredCandidate {
   /** p(daño) y p(NSFW), si llegaron. */
   readonly harm: number | null;
   readonly nsfw: number | null;
-  /** Ponderado en [0, 1]; `null` si no compite. */
+  /**
+   * Lo que compite: `fit × preference`. Sin preferencias es el ponderado en
+   * [0, 1] de siempre; con ellas puede pasar de 1 (hasta ×1,5). `null` si no
+   * compite.
+   */
   readonly total: number | null;
+  /**
+   * Sprint 9 (T): el ponderado del juicio **antes** del gusto del dueño, en
+   * [0, 1]. Es lo que se recalcula con otros pesos; `null` sin dimensión
+   * juzgada.
+   */
+  readonly fit: number | null;
+  /** Sprint 9 (T): el multiplicador del gusto del dueño (1 = neutro). */
+  readonly preference: number;
   readonly status: "scored" | "unsafe" | "unanswered";
 }
 
@@ -67,6 +79,15 @@ export interface AssetDecision {
   readonly excluded: readonly Exclusion[];
   readonly weights: DimensionWeights;
   readonly weightsVersion: string;
+}
+
+/** El multiplicador de un candidato: ×1 si no hay o no es un número sano. */
+function preferenceOf(
+  preference: ReadonlyMap<string, number> | undefined,
+  id: string,
+): number {
+  const m = preference?.get(id);
+  return m !== undefined && Number.isFinite(m) && m > 0 ? m : 1;
 }
 
 /** `[1, n]` → `[0, 1]`. */
@@ -130,6 +151,12 @@ export function decideAsset(input: {
   readonly weightsVersion?: string;
   readonly harmMax?: number;
   readonly nsfwMax?: number;
+  /**
+   * Sprint 9 (T): id → multiplicador del gusto del dueño, ya acotado
+   * (`assetPreferenceMultipliers`). Ausente o sin el id = ×1. Sólo mueve a
+   * los que compiten por puntaje: el fallback sigue siendo el ranking textual.
+   */
+  readonly preference?: ReadonlyMap<string, number> | undefined;
 }): AssetDecision {
   const weights = input.weights ?? ASSET_WEIGHTS[input.role];
   const weightsVersion = input.weightsVersion ?? ASSET_WEIGHTS_VERSION;
@@ -167,7 +194,9 @@ export function decideAsset(input: {
     const checked = harm !== null || nsfw !== null;
     const unsafe =
       (harm !== null && harm >= harmMax) || (nsfw !== null && nsfw >= nsfwMax);
-    const total = weighted(dimensions, texts.get(entry.candidate.id) ?? 0, weights);
+    const fit = weighted(dimensions, texts.get(entry.candidate.id) ?? 0, weights);
+    const preference = preferenceOf(input.preference, entry.candidate.id);
+    const total = fit === null ? null : fit * preference;
     const common = {
       id: entry.candidate.id,
       textRank: entry.textRank,
@@ -175,6 +204,8 @@ export function decideAsset(input: {
       dimensions,
       harm,
       nsfw,
+      fit,
+      preference,
     };
     // Sin la respuesta de seguridad **no compite**: el umbral es duro, y un
     // candidato sin medir no pasó el umbral.
@@ -228,6 +259,15 @@ export function decideAsset(input: {
     return a;
   });
   const idea = best.dimensions.ideaFit;
+  // Sólo se dice si el gusto **cambió** el elegido: sin él, ¿ganaba otro?
+  const byFit = competing.reduce((a, b) => {
+    const fa = a.fit ?? 0;
+    const fb = b.fit ?? 0;
+    if (fb > fa + TIE_EPSILON) return b;
+    if (Math.abs(fb - fa) <= TIE_EPSILON && b.textRank < a.textRank) return b;
+    return a;
+  });
+  const liked = byFit.id === best.id ? "" : "; your past choices tipped it";
   return {
     ...base,
     chosenId: best.id,
@@ -236,6 +276,7 @@ export function decideAsset(input: {
       `Picked by AI among ${String(competing.length)} candidates` +
       (idea === undefined ? "" : ` (idea fit ${idea.value.toFixed(1)}/4`) +
       (idea === undefined ? "" : `, score ${best.total.toFixed(2)})`) +
+      liked +
       ".",
     scored,
   };
@@ -266,6 +307,8 @@ export function rankByFit(input: {
     Readonly<Partial<Record<AssetDimension, ScoreAnswer>>>
   >;
   readonly weights?: DimensionWeights;
+  /** Sprint 9 (T): el mismo de {@link decideAsset}, para preguntar en el mismo orden. */
+  readonly preference?: ReadonlyMap<string, number> | undefined;
 }): readonly string[] {
   const weights = input.weights ?? ASSET_WEIGHTS[input.role];
   const texts = textNorms(input.shortlist);
@@ -281,9 +324,13 @@ export function rankByFit(input: {
       if (answer !== undefined)
         dims[dim] = { value: answer.value, norm: normalizeScore(answer) };
     }
-    const total = weighted(dims, texts.get(entry.candidate.id) ?? 0, weights);
-    if (total !== null)
-      rows.push({ id: entry.candidate.id, total, textRank: entry.textRank });
+    const fitTotal = weighted(dims, texts.get(entry.candidate.id) ?? 0, weights);
+    if (fitTotal !== null)
+      rows.push({
+        id: entry.candidate.id,
+        total: fitTotal * preferenceOf(input.preference, entry.candidate.id),
+        textRank: entry.textRank,
+      });
   }
   rows.sort((a, b) =>
     Math.abs(a.total - b.total) <= TIE_EPSILON

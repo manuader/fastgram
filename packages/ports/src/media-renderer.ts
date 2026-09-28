@@ -155,6 +155,41 @@ export interface RenderAudio {
 }
 
 /* ------------------------------------------------------------------------ *
+ * La marca (sprint 9, agente S, `PU-S9-003`) — aditivo
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Una cara de una familia de marca: los textos con `fontFamily: "brand:<id>"`
+ * se dibujan con estas. La URL es del storage de la marca (`fonts/{companyId}/`)
+ * y se autoriza en el grant como una imagen. Sólo viajan familias con licencia
+ * confirmada (o libres): la regla la aplica `core` (`planBrandFonts`).
+ */
+export interface RenderBrandFont {
+  readonly id: string;
+  readonly weight: number;
+  readonly style: "normal" | "italic";
+  readonly url: string;
+}
+
+/**
+ * La capa de logo. `images` son las variantes del logo del design system
+ * (claro, oscuro): el motor elige la que más contrasta con el fondo bajo la
+ * esquina, **midiendo** los píxeles. Se autorizan como imágenes.
+ */
+export interface RenderLogo {
+  readonly images: readonly { readonly url: string }[];
+  readonly corner: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  readonly size: "small" | "medium" | "large";
+  /** 0,1–1. */
+  readonly opacity: number;
+}
+
+export interface RenderBrand {
+  readonly fonts?: readonly RenderBrandFont[] | undefined;
+  readonly logo?: RenderLogo | undefined;
+}
+
+/* ------------------------------------------------------------------------ *
  * Los cuatro formatos
  * ------------------------------------------------------------------------ */
 
@@ -169,6 +204,8 @@ export interface SlideshowJob {
   /** Debe coincidir con `images.length` (`FR-070`), máx. {@link MAX_SLIDES}. */
   readonly num_images: number;
   readonly images: readonly SlideshowSlide[];
+  /** Sprint 9 (S): fuentes de marca y logo. Ausente = como siempre. */
+  readonly brand?: RenderBrand | undefined;
 }
 
 export interface WallOfTextJob {
@@ -184,6 +221,8 @@ export interface WallOfTextJob {
    */
   readonly audio?: RenderAudio | undefined;
   readonly text: RenderText;
+  /** Sprint 9 (S): fuentes de marca y logo. Ausente = como siempre. */
+  readonly brand?: RenderBrand | undefined;
 }
 
 export interface GreenScreenJob {
@@ -199,6 +238,8 @@ export interface GreenScreenJob {
    */
   readonly audio?: RenderAudio | undefined;
   readonly text: RenderText;
+  /** Sprint 9 (S): fuentes de marca y logo. Ausente = como siempre. */
+  readonly brand?: RenderBrand | undefined;
 }
 
 export interface VideoHookJob {
@@ -211,6 +252,8 @@ export interface VideoHookJob {
   /** Opcional por la misma razón que en {@link WallOfTextJob}. */
   readonly audio?: RenderAudio | undefined;
   readonly text: RenderText;
+  /** Sprint 9 (S): fuentes de marca y logo. Ausente = como siempre. */
+  readonly brand?: RenderBrand | undefined;
 }
 
 export type RenderJob = SlideshowJob | WallOfTextJob | GreenScreenJob | VideoHookJob;

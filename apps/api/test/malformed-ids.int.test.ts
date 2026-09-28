@@ -179,6 +179,13 @@ const BODIES: Readonly<Record<string, () => unknown>> = {
   // Sprint 9 (M): design system por marca.
   "PATCH /design-system/{designSystemId}": () => ({ name: "FOCUS" }),
   "POST /design-system/{designSystemId}/generate": () => ({ localImages: 1 }),
+  // Sprint 9 (S): la preferencia de logo de la marca.
+  "PUT /design-system/{designSystemId}/logo-layer": () => ({
+    enabled: true,
+    corner: "top-right",
+    size: "small",
+    opacity: 0.9,
+  }),
   // Sprint 9 (N): biblioteca global. `{source}` también recibe el id: una fuente
   // basura es 404, igual que una inexistente.
   "PATCH /library/assets/{id}": () => ({ title: "otro título" }),

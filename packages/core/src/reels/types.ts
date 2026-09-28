@@ -35,8 +35,15 @@ export type ReelFontFamily =
   | "bangers"
   | "pacifico";
 
+/**
+ * Sprint 9 (U, `PU-S9-014`): una familia del design system de la marca, por su
+ * id estable (`brand:rotis-semi-sans`). Sus archivos viajan en
+ * {@link ReelSpec.brandFonts}; la licencia la decidió quien armó el spec.
+ */
+export type ReelBrandFamily = `brand:${string}`;
+
 export interface ReelFont {
-  readonly family: ReelFontFamily;
+  readonly family: ReelFontFamily | ReelBrandFamily;
   readonly weight: number;
   readonly size: number;
 }
@@ -153,6 +160,15 @@ export interface ReelTheme {
   readonly text: string;
 }
 
+/** Una cara de una familia de marca: el archivo (OTF/TTF) en nuestro storage. */
+export interface ReelBrandFont {
+  /** El id de la familia (`rotis-semi-sans`), sin el prefijo `brand:`. */
+  readonly id: string;
+  readonly weight: number;
+  readonly style: "normal" | "italic";
+  readonly url: string;
+}
+
 export interface ReelSpec {
   readonly version: 1;
   readonly durationSec: number;
@@ -160,6 +176,8 @@ export interface ReelSpec {
   readonly fps: 30;
   readonly language?: string;
   readonly theme: ReelTheme;
+  /** Las caras de marca que usan las capas `brand:<id>`. Ausente = ninguna. */
+  readonly brandFonts?: readonly ReelBrandFont[];
   readonly mix: { readonly duckMusic: boolean; readonly duckLevel: number };
   readonly layers: readonly ReelLayer[];
 }

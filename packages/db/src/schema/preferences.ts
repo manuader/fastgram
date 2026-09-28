@@ -117,7 +117,9 @@ export const preferenceSignals = pgTable(
     ),
     check(
       "preference_signals_edit_has_aspect_check",
-      sql`(${t.kind} in ('accept', 'discard')) = (${t.aspect} = '')`,
+      // Sprint 9 (T, migración 0042): la aceptación por «Edit» del deck es un
+      // `edit_before_accept` sin aspecto (la pieza entera).
+      sql`((${t.kind} in ('accept', 'discard')) = (${t.aspect} = '')) or (${t.kind} = 'edit_before_accept' and ${t.aspect} = '')`,
     ),
     check("preference_signals_weight_check", sql`${t.weight} > 0 and ${t.weight} <= 1`),
   ],

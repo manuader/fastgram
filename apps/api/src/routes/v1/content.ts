@@ -85,6 +85,7 @@ import {
   contentBuildStore,
   contentRepository,
   contentTextBoxRepository,
+  designSystemRepository,
   mediaRepository,
   postRepository,
   uploadReservationRepository,
@@ -94,12 +95,18 @@ import {
 import {
   CONTENT_BUILD_QUEUE,
   JOB_QUEUES,
+  BRAND_FONT_UNAVAILABLE,
   applyAssetSwaps,
   assetsOf,
   deriveTextBoxesFromBuildPayload,
+  effectiveLogo,
   readAssetSwaps,
+  readDesignSystemTokens,
+  readStoredAssets,
   resolveAssetPatch,
+  unavailableBrandFamilies,
   withAssetSwaps,
+  withLogoOverride,
   type AssetSwaps,
   type IncomingAsset,
 } from "@fastgram/core";
@@ -150,6 +157,63 @@ export class ContentRejection extends Error {
   ) {
     super(message);
   }
+}
+
+/* ------------------------------------------------------------------------ *
+ * La marca en la pieza — sprint 9 (S), `PU-S9-003`
+ * ------------------------------------------------------------------------ */
+
+/** Los tokens del design system activo de la marca, o `null` sin él. */
+async function activeDesignTokens(tx: Transaction, companyId: string) {
+  const row = await designSystemRepository.findActive(tx, { companyId });
+  return row === null ? null : { row, tokens: readDesignSystemTokens(row.tokens) };
+}
+
+/**
+ * `400` con `reason: "brand_font_unavailable"` si alguna familia `brand:<id>`
+ * no existe en el design system activo o no tiene la licencia tildada. Antes
+ * de escribir nada: la validación de `FR-051` es una pasada previa.
+ */
+async function assertBrandFontsUsable(
+  tx: Transaction,
+  companyId: string,
+  families: readonly string[],
+): Promise<void> {
+  if (!families.some((f) => f.startsWith("brand:"))) return;
+  const active = await activeDesignTokens(tx, companyId);
+  const bad = unavailableBrandFamilies(
+    families.map((family) => ({ font: { family } })),
+    active?.tokens ?? null,
+  );
+  if (bad.length > 0) {
+    throw new ContentRejection(
+      400,
+      "bad_request",
+      "That brand font isn't available: it's not in the active design system or its license isn't confirmed.",
+      { reason: BRAND_FONT_UNAVAILABLE, families: bad },
+    );
+  }
+}
+
+/** Las familias que piden los textos de un payload de `FR-070`. */
+function payloadFamilies(payload: ContentBuildPayload): string[] {
+  if ("reel" in payload) return [];
+  const texts =
+    "num_images" in payload ? payload.images.flatMap((s) => s.texts) : [payload.text];
+  const out: string[] = [];
+  for (const t of texts) if (t.fontFamily !== undefined) out.push(t.fontFamily);
+  return out;
+}
+
+/** ¿El design system activo tiene algún logo vivo? (para el toggle del editor). */
+async function logoAvailable(tx: Transaction, companyId: string): Promise<boolean> {
+  const row = await designSystemRepository.findActive(tx, { companyId });
+  if (row === null) return false;
+  const ids = readStoredAssets(row.assets)
+    .filter((a) => a.kind === "logo")
+    .map((a) => a.mediaId);
+  if (ids.length === 0) return false;
+  return (await designSystemRepository.liveMediaByIds(tx, { companyId }, ids)).length > 0;
 }
 
 /** Serializa un `ContentRejection`; el resto de los errores siguen su camino. */
@@ -902,6 +966,8 @@ export function registerContentRoutes(app: ZodApp): void {
               // `P2-RENDER-009`: media ajena, `400` antes de cobrar y de encolar.
               // Lanzar acá libera la idempotency key (un rechazo determinista no
               // la quema) y no deja nada escrito.
+              // Sprint 9 (S): una familia `brand:<id>` tiene que ser usable ya.
+              await assertBrandFontsUsable(tx, companyId, payloadFamilies(body));
               const foreign = await foreignPayloadAssets(tx, storage, companyId, body);
               if (foreign.length > 0) {
                 throw new ContentRejection(
@@ -992,7 +1058,8 @@ export function registerContentRoutes(app: ZodApp): void {
         // `P1-DATA-014` es lo que desbloqueó esta ruta. El scope sigue yendo por
         // separado, así que el `contentId` no puede usarse para salir del workspace.
         const boxes = await listAllTextBoxes(tx, companyId, row.id);
-        return { row, boxes };
+        // Sprint 9 (S): si la marca tiene un logo que ponerle a la pieza.
+        return { row, boxes, logoAvailable: await logoAvailable(tx, companyId) };
       });
 
       if (found === null) throw crossTenant("content", id, companyId);
@@ -1021,6 +1088,12 @@ export function registerContentRoutes(app: ZodApp): void {
         canvas,
         textBoxes,
         ...(assets === null ? {} : { assets }),
+        // Sprint 9 (S): la capa de logo vigente (la del editor si la tocó).
+        logo: effectiveLogo(
+          (found.row.buildPayload as { logo?: unknown } | null)?.logo,
+          found.row.studioState,
+        ),
+        logoAvailable: found.logoAvailable,
       };
       return reply.send(data(editable));
     },
@@ -1105,6 +1178,14 @@ export function registerContentRoutes(app: ZodApp): void {
                 );
               }
 
+              // Sprint 9 (S): `brand:<id>` tiene que existir en el design system
+              // activo y tener licencia. Antes de la primera escritura.
+              await assertBrandFontsUsable(
+                tx,
+                companyId,
+                body.textBoxes.map((b) => b.font.family),
+              );
+
               // Primera edición de una pieza sin cajas: se guardan **todas** las
               // derivadas, con las que mandó el cliente encima. Guardar sólo las
               // mandadas haría que un `PATCH` parcial borrara texto: el rebuild
@@ -1151,10 +1232,19 @@ export function registerContentRoutes(app: ZodApp): void {
               // Swap de media (`PU-EDIT-003`). Después de las cajas y antes de
               // subir la revisión: un rechazo acá lanza y la transacción vuelve
               // atrás entera, cajas incluidas (*"sin aplicar ningún cambio"*).
-              if (body.assets !== undefined) {
-                const swaps = await resolveSwaps(tx, companyId, row, body.assets);
+              // Sprint 9 (S): el logo de la pieza va al lado de los swaps, en
+              // `studioState.logo` (`null` = sin logo); el payload no se toca.
+              if (body.assets !== undefined || body.logo !== undefined) {
+                let studioState: unknown = row.studioState;
+                if (body.assets !== undefined) {
+                  const swaps = await resolveSwaps(tx, companyId, row, body.assets);
+                  studioState = withAssetSwaps(studioState, swaps);
+                }
+                if (body.logo !== undefined) {
+                  studioState = withLogoOverride(studioState, body.logo);
+                }
                 await contentRepository.update(tx, { companyId }, row.id, {
-                  studioState: withAssetSwaps(row.studioState, swaps),
+                  studioState,
                 });
               }
 

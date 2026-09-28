@@ -15,6 +15,7 @@
  *   ahí se loguea y la decisión sigue.
  */
 import {
+  clampPreferenceExploration,
   ASSET_DECISION_POINT,
   ASSET_QUESTIONS_VERSION,
   HARM_MAX,
@@ -28,6 +29,7 @@ import {
   type AssetDecisionInput,
   type AssetDimension,
   type CandidateAnswers,
+  type LearnedPreferences,
   type SafetyDimension,
   type ShortlistEntry,
 } from "@fastgram/core";
@@ -36,6 +38,7 @@ import {
   isPortError,
   type Judgment,
   type NoulAnswer,
+  type Rng,
   type ScoreAnswer,
 } from "@fastgram/ports";
 
@@ -208,6 +211,7 @@ export async function runAssetDecision(
         shortlist: plan.shortlist,
         excluded: plan.excluded,
         answers: null,
+        preference: plan.preference,
       }),
       shortlist: plan.shortlist,
       answers: new Map(),
@@ -254,7 +258,14 @@ export async function runAssetDecision(
   fitOpen = false;
 
   // Fase 2: seguridad, del mejor encaje para abajo, hasta el primer seguro.
-  const order = rankByFit({ role: input.role, shortlist: plan.shortlist, fits });
+  // Con el gusto del dueño (T): el mismo orden que va a usar la decisión, así
+  // el corte «hasta el primer seguro» sigue siendo exacto.
+  const order = rankByFit({
+    role: input.role,
+    shortlist: plan.shortlist,
+    fits,
+    preference: plan.preference,
+  });
   const byId = new Map(plan.requests.map((r) => [r.id, r]));
   let safetyOpen = true;
   for (let i = 0; i < order.length && !stats.gaveUp; i += concurrency) {
@@ -308,6 +319,7 @@ export async function runAssetDecision(
     shortlist: plan.shortlist,
     excluded: plan.excluded,
     answers,
+    preference: plan.preference,
   });
   const latencyMs = now() - started;
   if (errors.size > 0 || decision.mode !== "judged") {
@@ -384,6 +396,8 @@ export function createAssetJudge(deps: {
       const top = topScored(run.decision, 3).map((s) => ({
         id: s.id,
         total: s.total,
+        fit: s.fit,
+        preference: s.preference,
         textRank: s.textRank,
       }));
       deps.logger.info(
@@ -397,6 +411,13 @@ export function createAssetJudge(deps: {
           answered: run.answered,
           attempted: run.attempted,
           latencyMs: run.latencyMs,
+          library: run.shortlist.filter((e) => e.candidate.source === "library").length,
+          preferences:
+            input.preferences === null || input.preferences === undefined
+              ? "none"
+              : input.preferences.explored
+                ? "explored"
+                : "applied",
           top,
         },
         "decisor de assets",
@@ -420,6 +441,36 @@ export function createAssetJudge(deps: {
         }
       }
       return run.decision;
+    },
+  };
+}
+
+/**
+ * Sprint 9 (T, `PU-S9-015`): el mismo juez, con el gusto aprendido del dueño.
+ *
+ * Cada decisión tira **una** vez la exploración (`settings.exploration`, la de
+ * la marca o la del dueño) con el `Rng` del job: con probabilidad `p` decide
+ * sin preferencias, igual que el refill con el mix. Sin nada aprendido (o
+ * apagadas) devuelve el juez tal cual y no toca el `Rng`: la secuencia del
+ * plan queda idéntica a la de antes.
+ */
+export function withLearnedPreferences(
+  judge: AssetJudge,
+  prefs: LearnedPreferences | null,
+  rng: Rng,
+): AssetJudge {
+  if (prefs === null || !prefs.settings.enabled || prefs.features.size === 0)
+    return judge;
+  const exploration = clampPreferenceExploration(prefs.settings.exploration);
+  return {
+    decide(input) {
+      if (input.preferences !== undefined && input.preferences !== null) {
+        return judge.decide(input);
+      }
+      return judge.decide({
+        ...input,
+        preferences: { prefs, explored: rng.next() < exploration },
+      });
     },
   };
 }

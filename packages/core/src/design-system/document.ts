@@ -13,6 +13,7 @@ import type {
   DsColor,
   DsFontFace,
   DsFontFamily,
+  DsLogoLayer,
   DsSpacing,
   DsTypeRole,
 } from "./types.js";
@@ -117,7 +118,37 @@ export function readDesignSystemTokens(raw: unknown): DesignSystemTokens | null 
     spacing: Array.isArray(raw["spacing"])
       ? raw["spacing"].map(readSpacing).filter(nonNull)
       : [],
+    // Sprint 9 (S): se conserva al releer, así una edición de la paleta (que
+    // relee y reescribe `tokens`) no apaga el logo.
+    ...optionalLogoLayer(raw["logoLayer"]),
   };
+}
+
+const LOGO_CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"] as const;
+const LOGO_SIZES = ["small", "medium", "large"] as const;
+
+/** `tokens.logoLayer`. `null` si no está o no tiene forma. */
+export function readLogoLayer(raw: unknown): DsLogoLayer | null {
+  if (!isObj(raw)) return null;
+  const opacity = raw["opacity"];
+  if (
+    typeof raw["enabled"] !== "boolean" ||
+    typeof opacity !== "number" ||
+    !Number.isFinite(opacity)
+  ) {
+    return null;
+  }
+  return {
+    enabled: raw["enabled"],
+    corner: oneOf(raw["corner"], LOGO_CORNERS, "top-right"),
+    size: oneOf(raw["size"], LOGO_SIZES, "small"),
+    opacity: Math.min(1, Math.max(0.1, opacity)),
+  };
+}
+
+function optionalLogoLayer(raw: unknown): { logoLayer?: DsLogoLayer } {
+  const layer = readLogoLayer(raw);
+  return layer === null ? {} : { logoLayer: layer };
 }
 
 /** `style` de la base. `null` si no hay o no es un objeto. */

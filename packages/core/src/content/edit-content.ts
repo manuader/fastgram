@@ -401,3 +401,7 @@ export * from "./asset-swaps.js";
 // `Regenerate Text` (`AI-004`): el pedido al modelo y las cajas que resultan.
 // Lo usa `content-rebuild` en modo `regenerate`. Mismo motivo que arriba.
 export * from "./regenerate-copy.js";
+
+// Sprint 9 (S): la marca en las piezas clásicas (familia de marca, logo).
+// Lo usan el primer build, el rebuild, `PATCH /content/:id` y el Studio.
+export * from "./brand-look.js";

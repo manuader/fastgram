@@ -79,6 +79,14 @@ export interface AssetCandidate {
   readonly license?: string | null | undefined;
   /** Para el ranking textual. Sin él, se arma de `description` y `tags`. */
   readonly relevance?: RelevanceText | undefined;
+  /**
+   * Sprint 9 (T): de dónde es la media, en el vocabulario de preferencias
+   * (`PREF_MEDIA_SOURCES` / `PREF_MUSIC_SOURCES`: `upload`, `generated`,
+   * `brand`, `library`…). Sólo para los rasgos de `preferences.ts`; ausente =
+   * no se sabe (y ese rasgo no aparece). Un candidato `library` es `library`
+   * aunque no lo diga.
+   */
+  readonly mediaSource?: string | null | undefined;
 }
 
 /** La marca, filtrada a lo que el juicio necesita (§9.15.3.5). */

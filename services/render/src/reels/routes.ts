@@ -12,6 +12,7 @@ import type { FastifyInstance } from "fastify";
 import { RenderError } from "../errors.js";
 import { artifactHref } from "../http/artifacts.js";
 import { previewReel, renderReel, type ReelEngineDeps } from "./engine.js";
+import { imageStats, posterReel } from "./poster.js";
 
 export class SerialQueue {
   #tail: Promise<void> = Promise.resolve();
@@ -97,5 +98,32 @@ export function registerReelRoutes(app: FastifyInstance, deps: ReelEngineDeps): 
   app.post("/reels/preview-html", async (request, reply) => {
     const result = await previewReel(request.body, deps);
     return reply.status(200).send(result);
+  });
+
+  /**
+   * Sprint 9 (U): un cuadro del reel para la tarjeta de Blitz (`poster.ts`).
+   * Lanza Chrome, así que va por la misma cola que el render.
+   */
+  app.post("/reels/poster", async (request, reply) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), deps.reel.timeoutMs);
+    try {
+      const result = await queue.run(() => posterReel(request.body, deps), controller.signal);
+      return await reply.status(200).send({
+        type: "image",
+        href: artifactHref(result.cacheKey, "jpg"),
+        bytes: result.bytes,
+        cache: result.cache,
+        atSec: result.atSec,
+        warnings: result.warnings,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
+  /** Sprint 9 (U): luminancia de imágenes (elegir el logo claro u oscuro). */
+  app.post("/reels/image-stats", async (request, reply) => {
+    return reply.status(200).send(await imageStats(request.body, deps));
   });
 }

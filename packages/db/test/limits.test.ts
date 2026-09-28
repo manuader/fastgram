@@ -147,6 +147,8 @@ describe("enums literales del PRD", () => {
       "wall-of-text",
       "green-screen",
       "video-hook",
+      // Sprint 9 (U, `PU-S9-014`): los reels del planificador semanal.
+      "reel",
     ]);
     expect(SUGGESTION_CONTENT_TYPE).not.toContain("custom");
   });

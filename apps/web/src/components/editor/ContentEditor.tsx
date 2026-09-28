@@ -1,11 +1,19 @@
 "use client";
 
-import type { EditableContent, MediaElement } from "@fastgram/contracts";
-import { fontFamilySchema } from "@fastgram/contracts";
+import type { BuildLogo, EditableContent, MediaElement } from "@fastgram/contracts";
+import {
+  DEFAULT_BUILD_LOGO,
+  LOGO_CORNERS,
+  LOGO_SIZES,
+  brandLogoLayerResourceSchema,
+  fontFamilySchema,
+} from "@fastgram/contracts";
 import {
   Badge,
   Button,
+  Checkbox,
   EmptyState,
+  Select,
   Skeleton,
   SkeletonText,
   Spinner,
@@ -22,6 +30,7 @@ import {
   type ReactNode,
 } from "react";
 import { ApiErrorState } from "@/components/library/ApiErrorState";
+import { apiRequest } from "@/lib/api/client";
 import { tw, type CopyKey } from "@/lib/i18n/t";
 import { ROUTES } from "@/lib/nav/routes";
 import { isApiRequestError, type ApiRequestError } from "@/lib/api/errors";
@@ -58,6 +67,12 @@ import { ScheduleDialog } from "@/components/schedule/ScheduleDialog";
 import { MediaPickerDialog } from "./MediaPickerDialog";
 import { Slider, TextInspector } from "./TextInspector";
 import { ReelEditor } from "./reel/ReelEditor";
+import {
+  BrandFontFaces,
+  BrandLookContext,
+  useEditorBrandLook,
+  type EditorBrandLook,
+} from "./brandLook";
 
 export interface ContentEditorProps {
   readonly contentId: string;
@@ -251,7 +266,12 @@ function LoadedEditor({
 
   const save = useSaveContentEdit(content._id);
   const regenerate = useRegenerateText(content._id);
-  const dirty = isDirty(state);
+  // Sprint 9 (S): la marca (familias y logo del design system activo) y el
+  // logo de esta pieza, que vive fuera del reducer: no es una caja ni un swap.
+  const look = useEditorBrandLook();
+  const [logo, setLogo] = useState<BuildLogo | null>(editable.logo ?? null);
+  const logoDirty = !sameLogo(logo, editable.logo ?? null);
+  const dirty = isDirty(state) || logoDirty;
   const building = content.status === "BUILDING";
   const busy = save.isPending || regenerate.isPending;
 
@@ -265,6 +285,7 @@ function LoadedEditor({
     lastEditable.current = editable;
     if (!dirty) {
       dispatch({ type: "load", editable });
+      setLogo(editable.logo ?? null);
       baseVideoRect.current = editable.assets?.video ?? null;
     }
   }, [editable, dirty]);
@@ -301,23 +322,37 @@ function LoadedEditor({
       error.code === "bad_request" &&
       error.details !== undefined &&
       "invalidAssets" in error.details;
+    // Sprint 9 (S): una familia de marca que dejó de estar disponible.
+    const brandFont =
+      error.code === "bad_request" &&
+      error.details?.["reason"] === "brand_font_unavailable";
     setBanner({
       tone: "danger",
-      key: invalid ? "editor.invalidMedia" : presentError(error).titleKey,
+      key: brandFont
+        ? "editor.text.brandUnavailable"
+        : invalid
+          ? "editor.invalidMedia"
+          : presentError(error).titleKey,
     });
   };
 
   const doSave = (then?: "close") => {
     setBanner(null);
-    save.mutate(buildPatchBody(content.revision, state), {
-      onSuccess: (updated) => {
-        dispatch({ type: "commit" });
-        setPending({ revision: updated.revision, kind: "edit" });
-        setBanner({ tone: "info", key: "editor.rebuilding" });
-        if (then === "close") close();
+    save.mutate(
+      {
+        ...buildPatchBody(content.revision, state),
+        ...(logoDirty ? { logo } : {}),
       },
-      onError,
-    });
+      {
+        onSuccess: (updated) => {
+          dispatch({ type: "commit" });
+          setPending({ revision: updated.revision, kind: "edit" });
+          setBanner({ tone: "info", key: "editor.rebuilding" });
+          if (then === "close") close();
+        },
+        onError,
+      },
+    );
   };
 
   const doRegenerate = () => {
@@ -341,6 +376,7 @@ function LoadedEditor({
   const reload = () => {
     setBanner(null);
     dispatch({ type: "load", editable });
+    setLogo(editable.logo ?? null);
     // Con el borrador descartado, el efecto de arriba adopta lo que vuelva.
     refetchContent();
     refetchEditable();
@@ -362,192 +398,331 @@ function LoadedEditor({
   };
 
   return (
-    <div className={cn("grid gap-4", className)}>
-      <header className="flex flex-wrap items-center gap-3">
-        {back}
-        <h1 className="text-lg font-semibold">{tw("editor.title")}</h1>
-        {dirty && <Badge tone="warning">{tw("editor.unsaved")}</Badge>}
-        {building && (
-          <Badge tone="info">
-            <Spinner size="sm" aria-hidden /> {tw("library.status.building")}
-          </Badge>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          <Button
-            variant="ghost"
-            disabled={!dirty || busy}
-            onClick={() => dispatch({ type: "discard" })}
-          >
-            {tw("editor.discard")}
-          </Button>
-          <Button
-            variant="secondary"
-            loading={save.isPending}
-            disabled={!dirty || locked}
-            onClick={() => doSave()}
-          >
-            {save.isPending ? tw("editor.saving") : tw("editor.save")}
-          </Button>
-          <Button
-            variant="secondary"
-            disabled={dirty || busy}
-            onClick={() => {
-              setScheduling(true);
-            }}
-          >
-            {tw("library.detail.schedule")}
-          </Button>
-          <Button
-            disabled={busy || (dirty && building)}
-            onClick={() => {
-              if (dirty) doSave("close");
-              else close();
-            }}
-          >
-            ✓ {tw("editor.done")}
-          </Button>
-        </div>
-      </header>
-      <ScheduleDialog
-        open={scheduling}
-        contentId={content._id}
-        onClose={() => {
-          setScheduling(false);
-        }}
-      />
-
-      <div aria-live="polite">
-        {banner !== null && <BannerView banner={banner} onReload={reload} />}
-        {banner === null && building && pending === null && (
-          <BannerView
-            banner={{ tone: "info", key: "editor.buildingBlocked" }}
-            onReload={reload}
-          />
-        )}
-      </div>
-
-      <div className="grid items-start gap-6 lg:grid-cols-[260px_minmax(0,1fr)_300px]">
-        <aside>
-          <AssetsPanel
-            contentType={content.type}
-            assets={state.draft.assets}
-            baseAssets={state.base.assets}
-            slide={state.slide}
-            disabled={locked}
-            onSwap={(target) => {
-              if (target.kind === "audio") setPicker({ kind: "audio" });
-              else
-                setPicker({
-                  kind: "media",
-                  target,
-                  type:
-                    target.kind === "slide" || target.slot === "image"
-                      ? "image"
-                      : "video",
-                });
-            }}
-            prompt={prompt}
-            onPromptChange={setPrompt}
-            mentionBusiness={mention}
-            onMentionChange={setMention}
-            onRegenerate={doRegenerate}
-            regenerating={regenerate.isPending}
-            regenerateBlockedBy={dirty ? "editor.regenerate.dirty" : null}
-          />
-          <section className="mt-5 rounded-lg border border-border p-3">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-subtle">
-              {tw("editor.caption.title")}
-            </h2>
-            <p className="mt-1 text-xs text-text-muted">
-              {tw("editor.caption.unavailable")}
-            </p>
-          </section>
-        </aside>
-
-        <main className="grid justify-items-center gap-3">
-          <ViewToggle view={view} onChange={setView} />
-          {view === "preview" ? (
-            <PreviewPane
-              canvas={editable.canvas}
-              content={content}
-              state={state}
-              dispatch={dispatch}
-              readOnly={locked}
-              onDeleteAttempt={() =>
-                setBanner({ tone: "info", key: "editor.deleteNotAllowed" })
-              }
-            />
-          ) : (
-            <RenderedPane content={content} slide={state.slide} stale={building} />
+    <BrandLookContext.Provider value={look}>
+      <BrandFontFaces look={look} />
+      <div className={cn("grid gap-4", className)}>
+        <header className="flex flex-wrap items-center gap-3">
+          {back}
+          <h1 className="text-lg font-semibold">{tw("editor.title")}</h1>
+          {dirty && <Badge tone="warning">{tw("editor.unsaved")}</Badge>}
+          {building && (
+            <Badge tone="info">
+              <Spinner size="sm" aria-hidden /> {tw("library.status.building")}
+            </Badge>
           )}
-          {total > 1 && (
-            <SlideStrip
-              total={total}
-              current={state.slide}
-              onChange={(index) => dispatch({ type: "slide", index })}
-            />
-          )}
-          <p className="text-xs text-text-subtle">{tw("editor.keyboardHint")}</p>
-        </main>
-
-        <aside className="grid gap-6">
-          {content.type === "green-screen" && state.draft.assets.video !== undefined && (
-            <VideoControls
-              base={baseVideoRect.current ?? state.draft.assets.video}
-              current={state.draft.assets.video}
-              dispatch={dispatch}
-              disabled={locked}
-            />
-          )}
-          <section>
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-subtle">
-              {tw("editor.text.title")}
-            </h2>
-            <TextInspector
-              box={box}
-              canApplyToAll={isSlideshow}
-              disabled={locked}
-              onChange={(patch, all) => {
-                if (box === null) return;
-                dispatch({ type: "update", id: box.id, patch, all });
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              variant="ghost"
+              disabled={!dirty || busy}
+              onClick={() => {
+                dispatch({ type: "discard" });
+                setLogo(editable.logo ?? null);
               }}
-            />
-          </section>
-        </aside>
-      </div>
+            >
+              {tw("editor.discard")}
+            </Button>
+            <Button
+              variant="secondary"
+              loading={save.isPending}
+              disabled={!dirty || locked}
+              onClick={() => doSave()}
+            >
+              {save.isPending ? tw("editor.saving") : tw("editor.save")}
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={dirty || busy}
+              onClick={() => {
+                setScheduling(true);
+              }}
+            >
+              {tw("library.detail.schedule")}
+            </Button>
+            <Button
+              disabled={busy || (dirty && building)}
+              onClick={() => {
+                if (dirty) doSave("close");
+                else close();
+              }}
+            >
+              ✓ {tw("editor.done")}
+            </Button>
+          </div>
+        </header>
+        <ScheduleDialog
+          open={scheduling}
+          contentId={content._id}
+          onClose={() => {
+            setScheduling(false);
+          }}
+        />
 
-      {picker?.kind === "media" && (
-        <MediaPickerDialog
-          open
-          type={picker.type}
-          title={
-            picker.target.kind === "slide"
-              ? tw("editor.picker.swapImage", { n: picker.target.index + 1 })
-              : picker.type === "video"
-                ? tw("editor.picker.selectVideo")
-                : tw("editor.picker.selectImage")
-          }
-          currentUrl={
-            picker.target.kind === "slide"
-              ? state.draft.assets.slides?.[picker.target.index]?.url
-              : picker.target.kind === "slot"
-                ? state.draft.assets[picker.target.slot]?.url
-                : undefined
-          }
-          onCancel={() => setPicker(null)}
-          onPick={pick}
-        />
+        <div aria-live="polite">
+          {banner !== null && <BannerView banner={banner} onReload={reload} />}
+          {banner === null && building && pending === null && (
+            <BannerView
+              banner={{ tone: "info", key: "editor.buildingBlocked" }}
+              onReload={reload}
+            />
+          )}
+        </div>
+
+        <div className="grid items-start gap-6 lg:grid-cols-[260px_minmax(0,1fr)_300px]">
+          <aside>
+            <AssetsPanel
+              contentType={content.type}
+              assets={state.draft.assets}
+              baseAssets={state.base.assets}
+              slide={state.slide}
+              disabled={locked}
+              onSwap={(target) => {
+                if (target.kind === "audio") setPicker({ kind: "audio" });
+                else
+                  setPicker({
+                    kind: "media",
+                    target,
+                    type:
+                      target.kind === "slide" || target.slot === "image"
+                        ? "image"
+                        : "video",
+                  });
+              }}
+              prompt={prompt}
+              onPromptChange={setPrompt}
+              mentionBusiness={mention}
+              onMentionChange={setMention}
+              onRegenerate={doRegenerate}
+              regenerating={regenerate.isPending}
+              regenerateBlockedBy={dirty ? "editor.regenerate.dirty" : null}
+            />
+            <section className="mt-5 rounded-lg border border-border p-3">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-text-subtle">
+                {tw("editor.caption.title")}
+              </h2>
+              <p className="mt-1 text-xs text-text-muted">
+                {tw("editor.caption.unavailable")}
+              </p>
+            </section>
+          </aside>
+
+          <main className="grid justify-items-center gap-3">
+            <ViewToggle view={view} onChange={setView} />
+            {view === "preview" ? (
+              <PreviewPane
+                canvas={editable.canvas}
+                content={content}
+                state={state}
+                dispatch={dispatch}
+                readOnly={locked}
+                logo={logo}
+                onDeleteAttempt={() =>
+                  setBanner({ tone: "info", key: "editor.deleteNotAllowed" })
+                }
+              />
+            ) : (
+              <RenderedPane content={content} slide={state.slide} stale={building} />
+            )}
+            {total > 1 && (
+              <SlideStrip
+                total={total}
+                current={state.slide}
+                onChange={(index) => dispatch({ type: "slide", index })}
+              />
+            )}
+            <p className="text-xs text-text-subtle">{tw("editor.keyboardHint")}</p>
+          </main>
+
+          <aside className="grid gap-6">
+            {content.type === "green-screen" &&
+              state.draft.assets.video !== undefined && (
+                <VideoControls
+                  base={baseVideoRect.current ?? state.draft.assets.video}
+                  current={state.draft.assets.video}
+                  dispatch={dispatch}
+                  disabled={locked}
+                />
+              )}
+            <section>
+              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-subtle">
+                {tw("editor.text.title")}
+              </h2>
+              <TextInspector
+                box={box}
+                canApplyToAll={isSlideshow}
+                disabled={locked}
+                onChange={(patch, all) => {
+                  if (box === null) return;
+                  dispatch({ type: "update", id: box.id, patch, all });
+                }}
+              />
+            </section>
+            <LogoPanel
+              logo={logo}
+              available={editable.logoAvailable ?? look.logos.length > 0}
+              look={look}
+              disabled={locked}
+              onChange={setLogo}
+            />
+          </aside>
+        </div>
+
+        {picker?.kind === "media" && (
+          <MediaPickerDialog
+            open
+            type={picker.type}
+            title={
+              picker.target.kind === "slide"
+                ? tw("editor.picker.swapImage", { n: picker.target.index + 1 })
+                : picker.type === "video"
+                  ? tw("editor.picker.selectVideo")
+                  : tw("editor.picker.selectImage")
+            }
+            currentUrl={
+              picker.target.kind === "slide"
+                ? state.draft.assets.slides?.[picker.target.index]?.url
+                : picker.target.kind === "slot"
+                  ? state.draft.assets[picker.target.slot]?.url
+                  : undefined
+            }
+            onCancel={() => setPicker(null)}
+            onPick={pick}
+          />
+        )}
+        {picker?.kind === "audio" && (
+          <AudioPickerDialog
+            open
+            format={content.type}
+            currentUrl={state.draft.assets.audio?.url ?? null}
+            onCancel={() => setPicker(null)}
+            onPick={pick}
+          />
+        )}
+      </div>
+    </BrandLookContext.Provider>
+  );
+}
+
+const sameLogo = (a: BuildLogo | null, b: BuildLogo | null): boolean =>
+  a === b ||
+  (a !== null &&
+    b !== null &&
+    a.corner === b.corner &&
+    a.size === b.size &&
+    Math.abs(a.opacity - b.opacity) < 1e-9);
+
+/**
+ * La capa de logo de la pieza (sprint 9, S): prender/apagar, esquina, tamaño
+ * y opacidad. Viaja en el `PATCH` como `logo` (`null` = sin logo). «Use for new
+ * pieces» guarda lo mismo como preferencia de la marca, en el design system.
+ */
+function LogoPanel({
+  logo,
+  available,
+  look,
+  disabled,
+  onChange,
+}: {
+  readonly logo: BuildLogo | null;
+  readonly available: boolean;
+  readonly look: EditorBrandLook;
+  readonly disabled: boolean;
+  readonly onChange: (logo: BuildLogo | null) => void;
+}) {
+  const [saved, setSaved] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const current = logo ?? DEFAULT_BUILD_LOGO;
+  const saveDefault = () => {
+    if (look.designSystemId === null) return;
+    setSaved("saving");
+    apiRequest(`/design-system/${look.designSystemId}/logo-layer`, {
+      method: "PUT",
+      body: { enabled: logo !== null, ...current },
+      schema: brandLogoLayerResourceSchema,
+    })
+      .then(() => setSaved("saved"))
+      .catch(() => setSaved("error"));
+  };
+  return (
+    <section aria-labelledby="editor-logo-title" className="grid gap-3">
+      <h2
+        id="editor-logo-title"
+        className="text-xs font-semibold uppercase tracking-wide text-text-subtle"
+      >
+        {tw("editor.logo.title")}
+      </h2>
+      {!available ? (
+        <p className="text-xs text-text-muted">{tw("editor.logo.unavailable")}</p>
+      ) : (
+        <fieldset className="grid gap-3" disabled={disabled}>
+          <legend className="sr-only">{tw("editor.logo.title")}</legend>
+          <Checkbox
+            checked={logo !== null}
+            onChange={(e) => onChange(e.target.checked ? current : null)}
+            label={tw("editor.logo.toggle")}
+          />
+          {logo !== null && (
+            <>
+              <label className="grid gap-1.5 text-xs font-medium text-text-muted">
+                {tw("editor.logo.corner")}
+                <Select
+                  value={logo.corner}
+                  onChange={(e) =>
+                    onChange({ ...logo, corner: e.target.value as BuildLogo["corner"] })
+                  }
+                  options={LOGO_CORNERS.map((c) => ({
+                    value: c,
+                    label: tw(`editor.logo.corner.${c}` as CopyKey),
+                  }))}
+                />
+              </label>
+              <label className="grid gap-1.5 text-xs font-medium text-text-muted">
+                {tw("editor.logo.size")}
+                <Select
+                  value={logo.size}
+                  onChange={(e) =>
+                    onChange({ ...logo, size: e.target.value as BuildLogo["size"] })
+                  }
+                  options={LOGO_SIZES.map((size) => ({
+                    value: size,
+                    label: tw(`editor.logo.size.${size}` as CopyKey),
+                  }))}
+                />
+              </label>
+              <Slider
+                id="editor-logo-opacity"
+                label={tw("editor.logo.opacity", {
+                  opacity: Math.round(logo.opacity * 100),
+                })}
+                min={10}
+                max={100}
+                step={5}
+                value={Math.round(logo.opacity * 100)}
+                onChange={(pct) => onChange({ ...logo, opacity: pct / 100 })}
+              />
+              <p className="text-xs text-text-muted">{tw("editor.logo.variantNote")}</p>
+            </>
+          )}
+          {look.designSystemId !== null && (
+            <div className="grid gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                loading={saved === "saving"}
+                onClick={saveDefault}
+              >
+                {tw("editor.logo.brandDefault")}
+              </Button>
+              <p className="text-xs text-text-muted" aria-live="polite">
+                {saved === "saved"
+                  ? tw("editor.logo.brandDefaultSaved")
+                  : saved === "error"
+                    ? tw("editor.logo.brandDefaultError")
+                    : ""}
+              </p>
+            </div>
+          )}
+        </fieldset>
       )}
-      {picker?.kind === "audio" && (
-        <AudioPickerDialog
-          open
-          format={content.type}
-          currentUrl={state.draft.assets.audio?.url ?? null}
-          onCancel={() => setPicker(null)}
-          onPick={pick}
-        />
-      )}
-    </div>
+    </section>
   );
 }
 
@@ -660,6 +835,7 @@ function PreviewPane({
   state,
   dispatch,
   readOnly,
+  logo,
   onDeleteAttempt,
 }: {
   readonly canvas: EditableContent["canvas"];
@@ -667,6 +843,7 @@ function PreviewPane({
   readonly state: EditorState;
   readonly dispatch: Dispatch<EditorAction>;
   readonly readOnly: boolean;
+  readonly logo: BuildLogo | null;
   readonly onDeleteAttempt: () => void;
 }) {
   const wrapper = useRef<HTMLDivElement>(null);
@@ -682,6 +859,7 @@ function PreviewPane({
         dispatch={dispatch}
         previewWidth={width}
         readOnly={readOnly}
+        logo={logo}
         onDeleteAttempt={onDeleteAttempt}
       />
     </div>

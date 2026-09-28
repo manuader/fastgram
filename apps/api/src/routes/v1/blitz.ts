@@ -148,6 +148,7 @@ import {
   PROMPT_FAILURE_REASONS,
   TRIAL_CONTENT_ALLOWANCE,
   acceptBlitzSuggestionUseCase,
+  acceptReelSuggestionUseCase,
   assertValidBlitzRequest,
   assertValidPreferencesPatch,
   composeBlitzBuildPayload,
@@ -204,6 +205,12 @@ import {
   type PreferenceLog,
 } from "../../services/preferences.js";
 import { brandContext } from "./calendar.js";
+import {
+  markReelItemAccepted,
+  prepareReelSuggestion,
+  reelSuggestionPreview,
+  requestReelPlanner,
+} from "./reels.js";
 import { data, idempotencyKeyOf, notFound, withIdempotency } from "./shared.js";
 import type { ZodApp } from "../../server/types.js";
 
@@ -833,6 +840,8 @@ function previewMediaIds(row: SuggestionRow): readonly string[] {
 export function toBlitzSuggestion(
   view: QueuedSuggestionView,
   live: ReadonlyMap<string, string>,
+  /** Sprint 9 (U): el póster de un reel del planificador (`reelSuggestionPreview`). */
+  reel?: { readonly posterUrl: string; readonly durationSec?: number } | undefined,
 ): BlitzSuggestion {
   const row = view.suggestion;
   const remixUrl =
@@ -874,7 +883,7 @@ export function toBlitzSuggestion(
                 }),
           },
     ),
-    ...opt("preview", preview),
+    ...opt("preview", reel === undefined ? preview : { reel: { ...reel } }),
     ...opt("promptRequestId", row.promptRequestId ?? undefined),
     // Sprint 7: el meme lo encontró la búsqueda automática (chip «Auto-found meme»).
     ...opt("autoFoundMeme", autoFoundMemeView(row.buildPlan)),
@@ -936,6 +945,8 @@ async function acceptNextSuggestion(
     readonly policy: QuotaPolicy;
     /** Sprint 9 (Q): para loguear si la señal de preferencias falla. */
     readonly log?: PreferenceLog;
+    /** Sprint 9 (T): `edit` = «Edit» del deck (señal `edit_before_accept`). */
+    readonly via?: "edit" | undefined;
   },
 ): Promise<ContentRow> {
   const { companyId } = args;
@@ -972,6 +983,9 @@ async function acceptNextSuggestion(
         )
       : await claimSuggestionById(tx, companyId, args.suggestionId, args.contentType);
   if (claimed === null) throw new EmptyQueueRejection();
+
+  // Sprint 9 (U, `PU-S9-014`): un reel del planificador trae su spec entero.
+  if (claimed.contentType === "reel") return acceptReelFromQueue(tx, args, claimed);
 
   const buildPayload = await prepareBuildPayload(
     tx,
@@ -1015,6 +1029,67 @@ async function acceptNextSuggestion(
       suggestion: claimed,
       contentId: created().id,
       nowMs: args.clock.nowMs(),
+      via: args.via,
+    },
+    args.log,
+  );
+  return created();
+}
+
+/**
+ * Sprint 9 (U, `PU-S9-014`): aceptar una sugerencia `reel`. Mismas reglas que
+ * los formatos base —la media viva antes de cobrar (si no, `422` sin cobro vía
+ * {@link UnbuildableSuggestion}), cuota, pieza en `BUILDING`, `popped` y build
+ * encolado en la transacción— con el caso de uso de reels de `core` sobre el
+ * **mismo** repositorio. El ítem del plan queda `accepted` con su pieza.
+ */
+async function acceptReelFromQueue(
+  tx: Transaction,
+  args: Parameters<typeof acceptNextSuggestion>[1],
+  claimed: SuggestionRow,
+): Promise<ContentRow> {
+  const { companyId } = args;
+  if (args.aspectRatio !== undefined) {
+    throw new DomainError("out_of_range", "Aspect ratio only applies to slideshows.", {
+      contentType: "reel",
+      aspectRatio: args.aspectRatio,
+    });
+  }
+  const prepared = await prepareReelSuggestion(tx, companyId, claimed);
+  if (!prepared.ok) {
+    throw new UnbuildableSuggestion(claimed.id, prepared.reason, prepared.detail);
+  }
+  const { repository, created } = acceptanceRepository({
+    tx,
+    companyId,
+    clock: args.clock,
+    policy: args.policy,
+    claimed,
+    buildPayload: prepared.payload,
+  });
+  await acceptReelSuggestionUseCase(
+    { clock: args.clock, queue: args.queue, ids: { newId: () => randomUUID() }, repository },
+    {
+      companyId,
+      suggestion: {
+        id: claimed.id,
+        companyId: claimed.companyId,
+        status: claimed.status,
+        generatedText: claimed.generatedText,
+        angleId: claimed.angleId,
+      },
+      transaction: tx,
+    },
+  );
+  await markReelItemAccepted(tx, companyId, prepared.planItemId, created().id);
+  await capturePreferenceAccept(
+    tx,
+    {
+      companyId,
+      suggestion: claimed,
+      contentId: created().id,
+      nowMs: args.clock.nowMs(),
+      via: args.via,
     },
     args.log,
   );
@@ -1078,6 +1153,8 @@ export function registerBlitzRoutes(app: ZodApp): void {
         "no se pudo pedir el relleno de la discovery queue",
       );
     }
+    // Sprint 9 (U): los reels del día entran cuando la cola tiene hueco.
+    await requestReelPlanner(queue, companyId, "tick", clock.nowMs(), request.log);
   }
 
   // ── GET /blitz/preferences ──
@@ -1259,7 +1336,13 @@ export function registerBlitzRoutes(app: ZodApp): void {
     if (views.length < DISCOVERY_QUEUE_TARGET_ITEMS) {
       await pedirRelleno(request, companyId);
     }
-    return data(views.map((v) => toBlitzSuggestion(v, live)));
+    // Sprint 9 (U): el póster de cada reel (URL canónica, como los `files`).
+    const reels = new Map<string, { posterUrl: string; durationSec?: number }>();
+    for (const v of views) {
+      const r = await reelSuggestionPreview(app.deps.storage, v.suggestion);
+      if (r !== undefined) reels.set(v.suggestion.id, r);
+    }
+    return data(views.map((v) => toBlitzSuggestion(v, live, reels.get(v.suggestion.id))));
   });
 
   // ── POST /blitz/queue/:id/discard ── (`PU-BLITZ-002`)
@@ -1430,6 +1513,7 @@ export function registerBlitzRoutes(app: ZodApp): void {
               clock,
               policy: quotaPolicyFor(app.deps.mode),
               log: request.log,
+              via: body.via,
             }),
           ),
         );

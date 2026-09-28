@@ -347,7 +347,38 @@ describe("ida y vuelta: apply(p, derive(p)) renderiza igual que p", () => {
       deriveTextBoxesFromBuildPayload(original),
     );
     if (!back.ok) throw new Error(back.reason);
-    expect(back.payload).toEqual(original);
+    // Sprint 9 (S): el texto ahora dice su familia; `inter` es la que el
+    // render usaba por omisión, así que el render es el mismo.
+    expect(back.payload).toEqual({
+      ...original,
+      text: { ...blitzText, fontFamily: "inter" },
+    });
     expect(back.fontFamilies).toEqual([["inter"]]);
+  });
+
+  it("sprint 9: una familia de marca en el payload vuelve tal cual", () => {
+    const original = {
+      canvas: P1920,
+      video: media,
+      text: { ...blitzText, fontFamily: "brand:rotis-semi-sans", fontWeight: 800 },
+    } as EditableBuildPayload;
+    const boxes = deriveTextBoxesFromBuildPayload(original);
+    expect(boxes[0]?.font).toMatchObject({
+      family: "brand:rotis-semi-sans",
+      weight: 800,
+    });
+    const back = applyTextBoxesToBuildPayload(original, boxes);
+    if (!back.ok) throw new Error(back.reason);
+    expect(back.payload).toEqual(original);
+    expect(back.fontFamilies).toEqual([["brand:rotis-semi-sans"]]);
+  });
+
+  it("sprint 9: una familia desconocida en el payload cae a inter", () => {
+    const original = {
+      canvas: P1920,
+      video: media,
+      text: { ...blitzText, fontFamily: "comic-sans" },
+    } as EditableBuildPayload;
+    expect(deriveTextBoxesFromBuildPayload(original)[0]?.font.family).toBe("inter");
   });
 });

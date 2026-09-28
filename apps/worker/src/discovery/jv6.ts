@@ -35,6 +35,7 @@ import {
   jv6State,
   mediaRefOf,
   mediaRelevanceText,
+  rankByRelevance,
   rebindInfluencer,
   relevantCandidates,
   resolveJudgedChoice,
@@ -54,6 +55,7 @@ import type { ChoiceAnswer, Judgment, Rng } from "@fastgram/ports";
 
 import type { BuildLogger } from "../content/build-handler.js";
 import { createAssetJudge, type AssetJudge } from "../judgment/asset-decider.js";
+import type { LibrarySource } from "../judgment/library-source.js";
 import { judgmentSourceFor } from "../judgment/judgment-source.js";
 import type { LlmSource } from "../llm/registry-llm.js";
 
@@ -242,6 +244,16 @@ export async function applyJv6(
      * las cinco piezas de un relleno). Se **agrega** lo que se elige acá.
      */
     readonly recentIds?: Set<string> | undefined;
+    /**
+     * Sprint 9 (T): la biblioteca global como candidatos del meme y el fondo
+     * del green-screen. Ausente = sólo el Media Bank, como antes.
+     */
+    readonly library?: LibrarySource | null | undefined;
+    /**
+     * Sprint 9 (T): id de media de la marca → su fuente en el vocabulario de
+     * preferencias (`prefMediaSourceOf`), para el gusto del dueño.
+     */
+    readonly mediaSources?: ReadonlyMap<string, string> | undefined;
   },
 ): Promise<PlannedBlitzSuggestion> {
   if (args.assets !== null && args.assets !== undefined) {
@@ -279,40 +291,90 @@ export async function applyJv6(
 
   if (out.media.format === "green-screen") {
     for (const role of ["video", "image"] as const) {
-      const pool = relevantCandidates(
-        args.context.bank,
-        "green-screen",
-        out.influencerId,
-        role,
-        out.topic,
-        JV6_MAX_CANDIDATES,
-      );
+      const library =
+        args.library === null || args.library === undefined
+          ? []
+          : await args.library.candidates({
+              format: "green-screen",
+              role: role === "video" ? "meme" : "background",
+              idea: out.topic,
+            });
+      const pool =
+        library.length === 0
+          ? relevantCandidates(
+              args.context.bank,
+              "green-screen",
+              out.influencerId,
+              role,
+              out.topic,
+              JV6_MAX_CANDIDATES,
+            ).map((m) => ({ id: m.id, text: mediaRelevanceText(m), media: m }))
+          : jv6PoolWithLibrary(args, out, role, library);
       if (pool.length < 2) continue;
       const chosen = await judgeBest(
         args.judgment,
         role === "video" ? "meme" : "background",
         {
           ...common,
-          candidates: pool.map((m) => ({
-            id: m.id,
-            description: describeRelevanceText(mediaRelevanceText(m)),
+          candidates: pool.map((c) => ({
+            id: c.id,
+            description: describeRelevanceText(c.text),
           })),
         },
         args.logger,
       );
-      const media = pool.find((m) => m.id === chosen);
+      const picked = pool.find((c) => c.id === chosen);
+      if (picked === undefined) continue;
+      const media =
+        picked.media ?? (await args.library?.materialize(picked.id)) ?? undefined;
       if (media === undefined) continue;
+      const fromLibrary = picked.media === undefined ? " (from the global library)" : "";
       out = withJudgedMedia(
         out,
         role,
         mediaRefOf(media),
         role === "video"
-          ? `Meme: picked by AI as the best fit for the topic among ${String(pool.length)} matching clips.`
-          : `Background: picked by AI as the best fit for the topic among ${String(pool.length)} matching images.`,
+          ? `Meme: picked by AI as the best fit for the topic among ${String(pool.length)} matching clips${fromLibrary}.`
+          : `Background: picked by AI as the best fit for the topic among ${String(pool.length)} matching images${fromLibrary}.`,
       );
     }
   }
   return out;
+}
+
+/** Un candidato de `JV-6`: de la marca (`media`) o de la biblioteca (sin `media`). */
+interface Jv6PoolEntry {
+  readonly id: string;
+  readonly text: ReturnType<typeof mediaRelevanceText>;
+  readonly media?: PlanningMedia;
+}
+
+/**
+ * Sprint 9 (T): el pool de `JV-6` con la biblioteca global. El mismo criterio
+ * que `relevantCandidates` —sólo lo que comparte algo con el tema, del más al
+ * menos relevante, hasta `JV6_MAX_CANDIDATES`— sobre marca y biblioteca
+ * juntas. Sin candidatos de la biblioteca no se llama: el pool es el de antes.
+ */
+function jv6PoolWithLibrary(
+  args: { readonly context: BlitzPlanningContext },
+  planned: PlannedBlitzSuggestion,
+  role: "video" | "image",
+  library: readonly AssetCandidate[],
+): Jv6PoolEntry[] {
+  const brand: Jv6PoolEntry[] = rolePool(
+    args.context.bank,
+    "green-screen",
+    planned.influencerId,
+    role,
+  ).map((m) => ({ id: m.id, text: mediaRelevanceText(m), media: m }));
+  const lib: Jv6PoolEntry[] = library.map((c) => ({
+    id: c.id,
+    text: c.relevance ?? { title: c.description, tags: c.tags ?? [] },
+  }));
+  return rankByRelevance(planned.topic, [...brand, ...lib], (e) => e.text)
+    .filter((r) => r.score > 0)
+    .slice(0, JV6_MAX_CANDIDATES)
+    .map((r) => r.item);
 }
 
 /** La marca, filtrada a lo que el decisor necesita (§9.15.3.5). */
@@ -332,6 +394,8 @@ export function decisionBrand(
 export function mediaCandidate(
   m: PlanningMedia,
   kind: AssetCandidate["kind"],
+  /** Sprint 9 (T): su fuente para las preferencias (`prefMediaSourceOf`). */
+  mediaSource?: string | null,
 ): AssetCandidate {
   const relevance = mediaRelevanceText(m);
   return {
@@ -341,6 +405,7 @@ export function mediaCandidate(
     description: describeRelevanceText(relevance),
     tags: m.tags?.tags ?? [],
     relevance,
+    ...(mediaSource === undefined || mediaSource === null ? {} : { mediaSource }),
   };
 }
 
@@ -360,6 +425,8 @@ async function applyAssetDecisions(
     readonly influencerProfiles?: ReadonlyMap<string, string> | undefined;
     readonly assets: AssetJudge;
     readonly recentIds?: Set<string> | undefined;
+    readonly library?: LibrarySource | null | undefined;
+    readonly mediaSources?: ReadonlyMap<string, string> | undefined;
   },
 ): Promise<PlannedBlitzSuggestion> {
   const idea = planned.topic;
@@ -396,33 +463,54 @@ async function applyAssetDecisions(
   if (out.media.format === "green-screen") {
     for (const role of ["video", "image"] as const) {
       const pool = rolePool(args.context.bank, "green-screen", out.influencerId, role);
-      if (pool.length < 2) continue;
+      const decisionRole = role === "video" ? "meme" : "background";
+      // Sprint 9 (T): la biblioteca global compite con la marca en el mismo pool.
+      const library =
+        args.library === null || args.library === undefined
+          ? []
+          : await args.library.candidates({
+              format: "green-screen",
+              role: decisionRole,
+              idea,
+            });
+      if (pool.length + library.length < 2) continue;
       const decision = await args.assets.decide({
         idea,
         brand,
         format: "green-screen",
-        role: role === "video" ? "meme" : "background",
-        candidates: pool.map((m) =>
-          mediaCandidate(
-            m,
-            role === "video"
-              ? "meme_clip"
-              : m.mediaType === "video"
-                ? "background_video"
-                : "background_image",
+        role: decisionRole,
+        candidates: [
+          ...pool.map((m) =>
+            mediaCandidate(
+              m,
+              role === "video"
+                ? "meme_clip"
+                : m.mediaType === "video"
+                  ? "background_video"
+                  : "background_image",
+              args.mediaSources?.get(m.id),
+            ),
           ),
-        ),
+          ...library,
+        ],
         recentIds: args.recentIds,
       });
-      const media = pool.find((m) => m.id === decision.chosenId);
-      if (media === undefined) continue;
+      const chosen = decision.chosenId;
+      if (chosen === null) continue;
+      const fromLibrary = library.some((c) => c.id === chosen);
+      const media = fromLibrary
+        ? await args.library?.materialize(chosen)
+        : pool.find((m) => m.id === chosen);
+      if (media === undefined || media === null) continue;
+      args.recentIds?.add(chosen);
       args.recentIds?.add(media.id);
       const what = role === "video" ? "Meme" : "Background";
       out = withJudgedMedia(
         out,
         role,
         mediaRefOf(media),
-        `${what}: ${decision.reason.replace(/^Picked/u, "picked")}`,
+        `${what}: ${decision.reason.replace(/^Picked/u, "picked")}` +
+          (fromLibrary ? " From the global library." : ""),
       );
     }
   }

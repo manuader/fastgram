@@ -123,6 +123,9 @@ export {
   type RenderFetch,
   type WarningContext,
 } from "./media-renderer/http-media-renderer.js";
+// Sprint 9 (U): el planificador de reels pide el póster y la luminancia de los
+// logos directo al render (rutas que el puerto no tiene) con el mismo grant.
+export { signMediaGrant } from "./media-renderer/media-grant.js";
 export {
   DEFAULT_MAPPING as DEFAULT_RENDER_MAPPING,
   type RenderMappingConfig,

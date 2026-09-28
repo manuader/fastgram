@@ -32,6 +32,12 @@ export const runBlitzRequestSchema = z
     contentType: blitzContentTypeSchema.optional(),
     aspectRatio: aspectRatioSchema.optional(),
     suggestionId: z.string().min(1).optional(),
+    /**
+     * Sprint 9 (T, `PU-S9-015`): `edit` = el dueño tocó «Edit» en el deck, que
+     * acepta y abre el editor. La señal de preferencias se guarda como
+     * `edit_before_accept` (más débil que un «sí» a secas, `D-22`).
+     */
+    via: z.enum(["edit"]).optional(),
   })
   .strict();
 export type RunBlitzRequest = z.infer<typeof runBlitzRequestSchema>;
@@ -77,15 +83,57 @@ export const blitzSuggestionPreviewSchema = z
      * muestre recortado sobre el fondo (el croma lo hace el cliente).
      */
     overlayVideoUrl: z.string().url().optional(),
+    /**
+     * Sprint 9 (T): el croma del clip de `overlayVideoUrl`, si se conoce (un
+     * asset de la biblioteca global lo trae medido). Sin él, el cliente
+     * recorta verde, como antes.
+     */
+    overlayChroma: z
+      .object({
+        type: z.enum(["green", "blue", "alpha", "none"]),
+        keyColor: z
+          .string()
+          .regex(/^#[0-9A-Fa-f]{6}$/)
+          .optional(),
+      })
+      .strict()
+      .optional(),
     audioUrl: z.string().url().optional(),
     aspectRatio: aspectRatioSchema.optional(),
+    /**
+     * Sprint 9 (U): un reel del planificador. `posterUrl` es un cuadro
+     * compuesto por el mismo motor (no un render entero); `videoUrl` sólo si
+     * ya hay un render. Con esto la tarjeta muestra el reel y no una preview
+     * armada en el cliente.
+     */
+    reel: z
+      .object({
+        posterUrl: z.string().url(),
+        videoUrl: z.string().url().optional(),
+        durationSec: z.number().positive().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
+
+/**
+ * Sprint 9 (U, `PU-S9-014`): los tipos que puede traer la **cola**. Los cuatro
+ * de `FR-050` más `reel` (del planificador semanal). No se agrega `reel` a
+ * `blitzContentTypeSchema`: ése es el que se puede **forzar** en `POST /blitz`
+ * y el que pondera el content mix, y un reel no se fuerza ni se pondera ahí
+ * (sale del plan de la semana).
+ */
+export const blitzQueueContentTypeSchema = z.union([
+  blitzContentTypeSchema,
+  z.literal("reel"),
+]);
+export type BlitzQueueContentType = z.infer<typeof blitzQueueContentTypeSchema>;
 
 export const blitzSuggestionSchema = z
   .object({
     id: z.string().min(1),
-    contentType: blitzContentTypeSchema,
+    contentType: blitzQueueContentTypeSchema,
     generatedText: z.string().optional(),
     /** FR-050 criterio 3: el racional **almacenado**, nunca uno generado al vuelo. */
     aiExplanation: z.string().optional(),

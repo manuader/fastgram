@@ -95,6 +95,11 @@ export interface AcceptVariables {
   readonly suggestionId: string;
   /** Una por intento: el reintento manual del mismo intento la reusa. */
   readonly idempotencyKey: string;
+  /**
+   * Sprint 9 (T): `edit` = «Edit» del deck (acepta y abre el editor). La API
+   * guarda la señal de preferencias como `edit_before_accept`.
+   */
+  readonly via?: "edit" | undefined;
 }
 
 /**
@@ -115,10 +120,10 @@ export function useAcceptSuggestion(): UseMutationResult<
 > {
   const queryClient = useQueryClient();
   return useMutation<Content, ApiRequestError, AcceptVariables>({
-    mutationFn: ({ suggestionId, idempotencyKey }) =>
+    mutationFn: ({ suggestionId, idempotencyKey, via }) =>
       apiRequest<Content>(BLITZ_ACCEPT_PATH, {
         method: "POST",
-        body: { suggestionId },
+        body: via === undefined ? { suggestionId } : { suggestionId, via },
         idempotencyKey,
         schema: contentSchema,
       }),

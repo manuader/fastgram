@@ -15,7 +15,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ContentTextBox } from "@fastgram/core";
 
-import { formatOf, toEditedRenderJob, toRenderJob } from "./render-job.js";
+import { formatOf, toEditedRenderJob, toRenderJob, withBrandLook } from "./render-job.js";
 
 const TEXTO = {
   content: "hola",
@@ -273,5 +273,98 @@ describe("toEditedRenderJob — los swaps de media llegan al job (PU-EDIT-003)",
     expect(
       toEditedRenderJob(WALL_OF_TEXT, "wall-of-text", [], { assets: { image: MEDIA } }),
     ).toMatchObject({ ok: false, code: "edit_not_renderable" });
+  });
+});
+
+describe("withBrandLook · sprint 9 (S)", () => {
+  const look = (licensed: boolean, logoUrls: string[] = []) => ({
+    tokens: {
+      colors: [],
+      semantic: {
+        surfaceDark: null,
+        surfaceLight: null,
+        textOnDark: null,
+        textOnLight: null,
+        accents: [],
+      },
+      families: [
+        {
+          name: "Rotis",
+          id: "rotis",
+          origin: "file" as const,
+          category: "sans" as const,
+          license: "needs_confirmation" as const,
+          licenseConfirmed: licensed,
+          faces: [{ weight: 700, style: "normal" as const, file: "r.otf" }],
+          weights: [700],
+          fallback: "montserrat",
+        },
+      ],
+      roles: [],
+      spacing: [],
+    },
+    fontFiles: [
+      {
+        familyId: "rotis",
+        weight: 700,
+        style: "normal" as const,
+        url: "https://b/fonts/c/r.otf",
+      },
+    ],
+    logoUrls,
+  });
+  const job = {
+    format: "wall-of-text" as const,
+    canvas: { width: 1080, height: 1920 },
+    video: {
+      url: "https://b/media/c/v.mp4",
+      drawX: 0,
+      drawY: 0,
+      drawW: 1080,
+      drawH: 1920,
+    },
+    text: {
+      content: "hola",
+      x: 540,
+      y: 960,
+      width: 900,
+      fontSize: 32,
+      color: "#FFFFFF",
+      textAlign: "center" as const,
+      fontFamily: "brand:rotis",
+      fontWeight: 700,
+    },
+  };
+  const logo = { corner: "top-right" as const, size: "small" as const, opacity: 0.9 };
+
+  it("sin marca ni logo devuelve el mismo job (el fingerprint no se mueve)", () => {
+    const plain = { ...job, text: { ...job.text, fontFamily: "inter", fontWeight: 400 } };
+    expect(withBrandLook(plain, look(true), null)).toBe(plain);
+    expect(withBrandLook(plain, null, logo)).toBe(plain);
+  });
+
+  it("con licencia manda las caras; con logo y variantes, la capa", () => {
+    const out = withBrandLook(job, look(true, ["https://b/media/c/l.png"]), logo);
+    expect(out.format === "wall-of-text" && out.text.fontFamily).toBe("brand:rotis");
+    expect(out.brand).toEqual({
+      fonts: [
+        { id: "rotis", weight: 700, style: "normal", url: "https://b/fonts/c/r.otf" },
+      ],
+      logo: { images: [{ url: "https://b/media/c/l.png" }], ...logo },
+    });
+  });
+
+  it("licencia destildada: reemplazo registrado, sin caras", () => {
+    const out = withBrandLook(job, look(false), null);
+    expect(out.format === "wall-of-text" && out.text).toMatchObject({
+      fontFamily: "montserrat",
+      fontWeight: 700,
+    });
+    expect(out.brand).toBeUndefined();
+  });
+
+  it("logo pedido pero la marca no tiene variantes: no hay capa", () => {
+    const plain = { ...job, text: { ...job.text, fontFamily: "inter", fontWeight: 400 } };
+    expect(withBrandLook(plain, look(true, []), logo)).toBe(plain);
   });
 });

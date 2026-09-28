@@ -62,16 +62,64 @@ export const BUILD_FONT_WEIGHT_MAX = 900;
 /** ERR-P02 (PRD:3184) — un contenido `BUILDING` se puede borrar pasados 15 min. */
 export const CONTENT_BUILD_DELETE_GRACE_MINUTES = 15;
 
+// --- Familia de marca · sprint 9 (S), `PU-S9-003` ---------------------------
+
+/**
+ * Una caja puede pedir una familia **de la marca** con `brand:<id>` (el id
+ * estable de la familia en el design system activo, `rotis-semi-sans`), además
+ * de las 12 registradas de `FR-051`. Misma forma que acepta el render
+ * (`services/render/src/domain/fonts.ts`, `isBrandFamilyRef`): el id es
+ * `[a-z0-9][a-z0-9-]{0,63}`.
+ *
+ * El schema sólo valida la **forma**. Que el id exista en el design system
+ * activo y que su licencia esté tildada lo valida la API al guardar (`400`
+ * con `reason: "brand_font_unavailable"`): el contrato no conoce la marca.
+ */
+export const BRAND_FONT_FAMILY_PREFIX = "brand:";
+export const brandFontFamilySchema = z
+  .string()
+  .regex(/^brand:[a-z0-9][a-z0-9-]{0,63}$/u, "must be brand:<id>")
+  .transform((v) => v as `brand:${string}`);
+export type BrandFontFamily = `brand:${string}`;
+
+export function isBrandFontFamily(value: string): value is BrandFontFamily {
+  return /^brand:[a-z0-9][a-z0-9-]{0,63}$/u.test(value);
+}
+
+/** El id de la familia de marca (`brand:rotis` → `rotis`). */
+export function brandFontIdOf(family: BrandFontFamily): string {
+  return family.slice(BRAND_FONT_FAMILY_PREFIX.length);
+}
+
+/** Una de las 12 de `FR-051` o una de la marca. */
+export const textFontFamilySchema = z.union([fontFamilySchema, brandFontFamilySchema]);
+export type TextFontFamily = z.infer<typeof textFontFamilySchema>;
+
+/**
+ * Pesos válidos de una familia: la tabla de `FR-051` para las 12; para una de
+ * marca, cualquier centena 100–900 (qué cara existe lo decide el design system,
+ * y el render toma la más cercana — misma regla que `isWeightAllowedForField`).
+ */
+export function isFontWeightAllowed(family: string, weight: number): boolean {
+  if (isBrandFontFamily(family)) {
+    return (
+      Number.isInteger(weight) && weight >= 100 && weight <= 900 && weight % 100 === 0
+    );
+  }
+  const table = (FONT_WEIGHTS as Readonly<Record<string, readonly number[]>>)[family];
+  return table !== undefined && table.includes(weight);
+}
+
 // --- Caja de texto editable · DATA-009 (PRD:2090) ----------------------------
 
 export const textFontSchema = z
   .object({
-    family: fontFamilySchema,
+    family: textFontFamilySchema,
     weight: z.number().int(),
     size: z.number().min(FONT_SIZE_MIN).max(FONT_SIZE_MAX),
   })
   .strict()
-  .refine((f) => FONT_WEIGHTS[f.family].includes(f.weight), {
+  .refine((f) => isFontWeightAllowed(f.family, f.weight), {
     path: ["weight"],
     message: "weight is not available for this font family",
   });
@@ -180,9 +228,61 @@ export const buildTextSchema = z
     strokeWidth: z.number().min(STROKE_WIDTH_MIN).max(STROKE_WIDTH_MAX).optional(),
     strokeColor: hexColorSchema.optional(),
     backgroundColor: hexColorSchema.optional(),
+    /**
+     * Sprint 9 (S), aditivo: la familia del texto — una de las 12 o
+     * `brand:<id>`. `FR-070` no la tenía y el render caía siempre en `inter`
+     * (`DEFAULT_MAPPING`). Ausente = ese mismo default: los payloads viejos
+     * renderizan igual. El primer build de una marca con design system la
+     * estampa (`core/content/brand-look.ts`).
+     */
+    fontFamily: textFontFamilySchema.optional(),
   })
   .strict();
 export type BuildText = z.infer<typeof buildTextSchema>;
+
+// --- Capa de logo · sprint 9 (S), `PU-S9-003` -------------------------------
+
+/** Esquina del logo. Enum cerrado: una posición libre no se lee igual en 9:16 y 1:1. */
+export const LOGO_CORNERS = [
+  "top-left",
+  "top-right",
+  "bottom-left",
+  "bottom-right",
+] as const;
+export const logoCornerSchema = z.enum(LOGO_CORNERS);
+export type LogoCorner = z.infer<typeof logoCornerSchema>;
+
+/** Tamaño del logo: 12 / 18 / 24 % del ancho del lienzo (lo mide el render). */
+export const LOGO_SIZES = ["small", "medium", "large"] as const;
+export const logoSizeSchema = z.enum(LOGO_SIZES);
+export type LogoSize = z.infer<typeof logoSizeSchema>;
+
+/** Opacidad mínima: un logo al 10 % ya no se ve; más abajo es «sin logo». */
+export const LOGO_OPACITY_MIN = 0.1;
+export const LOGO_OPACITY_MAX = 1;
+
+/**
+ * La capa de logo de una pieza clásica. **No lleva la imagen**: el logo sale
+ * del design system activo de la marca al construir (claro u oscuro según la
+ * luminancia del fondo bajo la esquina, medida por el render). Así una URL no
+ * viaja en el payload —no hay que validar que sea de la marca— y un logo
+ * nuevo del design system llega al próximo rebuild.
+ */
+export const buildLogoSchema = z
+  .object({
+    corner: logoCornerSchema,
+    size: logoSizeSchema,
+    opacity: z.number().min(LOGO_OPACITY_MIN).max(LOGO_OPACITY_MAX),
+  })
+  .strict();
+export type BuildLogo = z.infer<typeof buildLogoSchema>;
+
+/** Lo que usa una marca que prende el logo sin elegir nada más. */
+export const DEFAULT_BUILD_LOGO: BuildLogo = {
+  corner: "top-right",
+  size: "small",
+  opacity: 0.9,
+};
 
 /** `wall-of-text`: `{canvas, video{url,draw…}, audio{url}, text}` (PRD:1455). */
 export const wallOfTextBuildPayloadSchema = z
@@ -191,6 +291,8 @@ export const wallOfTextBuildPayloadSchema = z
     video: mediaElementSchema,
     audio: audioElementSchema.optional(), // FR-053.1 (PRD:1234): `No audio` omite el bloque
     text: buildTextSchema,
+    /** Sprint 9 (S): capa de logo opcional. Ausente = sin logo. */
+    logo: buildLogoSchema.optional(),
   })
   .strict();
 export type WallOfTextBuildPayload = z.infer<typeof wallOfTextBuildPayloadSchema>;
@@ -208,6 +310,8 @@ export const greenScreenBuildPayloadSchema = z
     // audio del clip. Ausente = sólo el audio del clip, como siempre.
     audio: audioElementSchema.optional(),
     text: buildTextSchema,
+    /** Sprint 9 (S): capa de logo opcional. Ausente = sin logo. */
+    logo: buildLogoSchema.optional(),
   })
   .strict();
 export type GreenScreenBuildPayload = z.infer<typeof greenScreenBuildPayloadSchema>;
@@ -220,6 +324,8 @@ export const videoHookBuildPayloadSchema = z
     demo_video: mediaElementSchema,
     audio: audioElementSchema.optional(), // FR-053.1 (PRD:1234)
     text: buildTextSchema,
+    /** Sprint 9 (S): capa de logo opcional. Ausente = sin logo. */
+    logo: buildLogoSchema.optional(),
   })
   .strict();
 export type VideoHookBuildPayload = z.infer<typeof videoHookBuildPayloadSchema>;
@@ -241,6 +347,8 @@ export const slideshowBuildPayloadSchema = z
   .object({
     num_images: z.number().int().positive().max(SLIDESHOW_MAX_SLIDES),
     images: z.array(slideshowSlideSchema).min(1).max(SLIDESHOW_MAX_SLIDES),
+    /** Sprint 9 (S): capa de logo opcional, la misma en todos los slides. */
+    logo: buildLogoSchema.optional(),
   })
   .strict()
   .refine((p) => p.num_images === p.images.length, {
@@ -426,6 +534,12 @@ export const updateContentRequestSchema = z
       }),
     /** Swap de media del editor (`PU-EDIT-003`). Ver {@link contentAssetsPatchSchema}. */
     assets: contentAssetsPatchSchema.optional(),
+    /**
+     * Sprint 9 (S): el logo de la pieza. Un objeto lo prende (o lo mueve),
+     * `null` lo saca, ausente = sin cambio. Se guarda aparte del payload
+     * (`studioState.logo`), como los swaps de media.
+     */
+    logo: buildLogoSchema.nullable().optional(),
   })
   .strict();
 export type UpdateContentRequest = z.infer<typeof updateContentRequestSchema>;
@@ -449,6 +563,12 @@ export const editableContentSchema = z
      * Opcional: se omite cuando el payload no se puede leer (ERR-F04).
      */
     assets: contentAssetsSchema.optional(),
+    /**
+     * Sprint 9 (S): la capa de logo vigente (`null` = sin logo) y si la marca
+     * tiene un logo para ponerle. Opcionales: una respuesta vieja no los trae.
+     */
+    logo: buildLogoSchema.nullable().optional(),
+    logoAvailable: z.boolean().optional(),
   })
   .strict();
 export type EditableContent = z.infer<typeof editableContentSchema>;
@@ -538,3 +658,29 @@ export const studioContentRequestSchema = z
   })
   .strict();
 export type StudioContentRequest = z.infer<typeof studioContentRequestSchema>;
+
+// --- Logo por marca · sprint 9 (S), `PU-S9-003` ------------------------------
+
+/**
+ * `GET|PUT /design-system/{designSystemId}/logo-layer` — si las piezas nuevas
+ * de la marca salen con logo, y dónde. Vive en el design system (su logo es
+ * de ahí): un design system nuevo (re-import) arranca apagado. Apagado por
+ * defecto: un logo que el dueño no pidió en cada pieza es peor que ninguno.
+ *
+ * `available` (sólo lectura) dice si el design system trae algún logo: sin
+ * logo, prender la capa no hace nada y la pantalla lo avisa.
+ */
+export const brandLogoLayerSchema = z
+  .object({
+    enabled: z.boolean(),
+    corner: logoCornerSchema,
+    size: logoSizeSchema,
+    opacity: z.number().min(LOGO_OPACITY_MIN).max(LOGO_OPACITY_MAX),
+  })
+  .strict();
+export type BrandLogoLayer = z.infer<typeof brandLogoLayerSchema>;
+
+export const brandLogoLayerResourceSchema = brandLogoLayerSchema
+  .extend({ available: z.boolean() })
+  .strict();
+export type BrandLogoLayerResource = z.infer<typeof brandLogoLayerResourceSchema>;

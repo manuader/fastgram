@@ -33,6 +33,7 @@ import { contentBuildPayloadSchema } from "@fastgram/contracts";
 import {
   BLITZ_DAILY_SWIPE_LIMIT,
   acceptBlitzSuggestionUseCase,
+  acceptReelSuggestionUseCase,
   billingPeriodKey,
   composeBlitzBuildPayload,
   currentSwipesLedger,
@@ -59,6 +60,8 @@ import {
   type Transaction,
 } from "@fastgram/db";
 import type { Clock, Queue } from "@fastgram/ports";
+
+import { markReelPlanItemAccepted, prepareReelBuildPayload } from "../reels/accept.js";
 
 /** `enforced` = lo del PRD; `unlimited` = modo personal. Igual que en la API. */
 export type AutopilotQuotaPolicy = "enforced" | "unlimited";
@@ -90,12 +93,21 @@ export async function acceptForAutopilot(
   if (claimed === null || claimed.status !== "queued") return { kind: "gone" };
 
   let buildPayload: unknown;
-  try {
-    buildPayload = await prepareBuildPayload(tx, companyId, claimed);
-  } catch (error: unknown) {
-    if (error instanceof Unbuildable)
-      return { kind: "unbuildable", detail: error.message };
-    throw error;
+  // Sprint 9 (U): un reel del planificador trae su spec entero en el plan.
+  let reelItemId: string | null = null;
+  if (claimed.contentType === "reel") {
+    const prepared = await prepareReelBuildPayload(tx, companyId, claimed);
+    if (!prepared.ok) return { kind: "unbuildable", detail: prepared.detail };
+    buildPayload = prepared.payload;
+    reelItemId = prepared.planItemId;
+  } else {
+    try {
+      buildPayload = await prepareBuildPayload(tx, companyId, claimed);
+    } catch (error: unknown) {
+      if (error instanceof Unbuildable)
+        return { kind: "unbuildable", detail: error.message };
+      throw error;
+    }
   }
 
   let createdId: string | undefined;
@@ -184,6 +196,28 @@ export async function acceptForAutopilot(
       throw new Error("El piloto acepta sin idempotency key.");
     },
   };
+
+  if (reelItemId !== null) {
+    // Mismo cobro, misma pieza en BUILDING y mismo build encolado en la
+    // transacción, con el caso de uso de reels (`core/reels/accept.ts`).
+    await acceptReelSuggestionUseCase(
+      { clock: args.clock, queue: args.queue, ids: { newId: () => randomUUID() }, repository },
+      {
+        companyId,
+        suggestion: {
+          id: claimed.id,
+          companyId: claimed.companyId,
+          status: claimed.status,
+          generatedText: claimed.generatedText,
+          angleId: claimed.angleId,
+        },
+        transaction: tx,
+      },
+    );
+    if (createdId === undefined) throw new Error("El caso de uso no insertó la pieza.");
+    await markReelPlanItemAccepted(tx, companyId, reelItemId, createdId);
+    return { kind: "accepted", contentId: createdId };
+  }
 
   await acceptBlitzSuggestionUseCase(
     {

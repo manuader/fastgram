@@ -35,7 +35,8 @@
  *
  *  - `font.family` — se devuelve **aparte** ({@link EditedBuild.fontFamilies})
  *    para que el worker lo ponga en `RenderText.fontFamily`, que el puerto sí
- *    tiene. Si se metiera en el payload, el contrato lo rechazaría.
+ *    tiene. (Desde el sprint 9 el texto de `FR-070` tiene `fontFamily`
+ *    opcional y también va ahí; `fontFamilies` queda por compatibilidad.)
  *  - `background.opacity` y `background.style` — el puerto sólo lleva
  *    `backgroundColor` y el adaptador lo manda como `pill` opaco. Se respetan
  *    el color y el «sin fondo»; la opacidad y `full-width` **no llegan**.
@@ -88,6 +89,8 @@ export interface EditableBuildText {
   readonly strokeWidth?: number | undefined;
   readonly strokeColor?: string | undefined;
   readonly backgroundColor?: string | undefined;
+  /** Sprint 9 (S): la familia (una de las 12 o `brand:<id>`). Aditivo en `FR-070`. */
+  readonly fontFamily?: string | undefined;
 }
 
 interface CanvasLike {
@@ -159,6 +162,10 @@ export function textBoxToBuildText(
     strokeWidth: box.stroke.width,
     strokeColor: box.stroke.color,
     ...(background === null ? {} : { backgroundColor: background.color }),
+    // Sprint 9 (S): el payload ya tiene lugar para la familia. Va además de
+    // `fontFamilies` (que el worker sigue poniendo en `RenderText`): con la
+    // familia en el texto, el payload editado se describe solo.
+    fontFamily: box.font.family,
   };
 }
 

@@ -209,6 +209,11 @@ export interface WorkerHandlerDeps {
    * (`ads/mount.ts`). Ausente = no se monta (tests que no lo miran).
    */
   readonly adsSync?: JobHandler<unknown>;
+  /**
+   * Sprint 9 (U): `reel-planner`, el plan semanal de reels y sus sugerencias
+   * (`reels/mount.ts`). Ausente = no se monta (tests que no lo miran).
+   */
+  readonly reelPlanner?: JobHandler<unknown>;
 }
 
 export type BrandAnalysisMount =
@@ -637,6 +642,9 @@ export function createHandlers(deps: WorkerHandlerDeps): WorkerHandlers {
 
   // Sprint 9 (R): insights de anuncios y guardia de topes (D-21).
   if (deps.adsSync !== undefined) handlers[JOB_QUEUES.adsSync] = deps.adsSync;
+
+  // Sprint 9 (U): planificador semanal de reels (`PU-S9-014`).
+  if (deps.reelPlanner !== undefined) handlers[JOB_QUEUES.reelPlanner] = deps.reelPlanner;
 
   // Sprint 9 (M): design system por marca. Se monta siempre que venga: lo
   // opcional (render, modelos) degrada con aviso adentro (`design-system/mount.ts`).

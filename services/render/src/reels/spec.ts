@@ -10,7 +10,13 @@
  * manda algo que acá se rechaza con `bad_request`, que es la falla correcta.
  */
 import { z } from "zod";
-import { FONT_FAMILIES, isWeightAllowed } from "../domain/fonts.js";
+import {
+  FONT_FAMILIES,
+  MAX_BRAND_FONTS,
+  isBrandFamilyRef,
+  isWeightAllowed,
+  type BrandFamilyRef,
+} from "../domain/fonts.js";
 import {
   backgroundStyleSchema as textBackgroundStyleSchema,
   hexColorSchema,
@@ -244,17 +250,48 @@ export const reelImageLayerSchema = z
   .strict();
 export type ReelImageLayer = z.infer<typeof reelImageLayerSchema>;
 
+/**
+ * Sprint 9 (U): la familia puede ser una de marca (`brand:<id>`), igual que en
+ * las cajas de los formatos base (M, `domain/fonts.ts`). Sus archivos llegan
+ * en `spec.brandFonts`; acá, a diferencia de la imagen fija, las dibuja
+ * Chrome con `@font-face` (sin la trampa de CoreText del proceso principal).
+ */
+const reelFontFamilySchema = z.union([
+  fontFamilySchema,
+  z
+    .string()
+    .refine(isBrandFamilyRef, "expected a registered family or brand:<id>")
+    .transform((v) => v as BrandFamilyRef),
+]);
+
 export const reelFontSchema = z
   .object({
-    family: fontFamilySchema,
+    family: reelFontFamilySchema,
     weight: z.number().int(),
     size: z.number().min(FONT_SIZE_MIN).max(FONT_SIZE_MAX),
   })
   .strict()
-  .refine((f) => isWeightAllowed(f.family, f.weight), {
-    path: ["weight"],
-    message: "weight is not available for this font family",
-  });
+  .refine(
+    (f) =>
+      isBrandFamilyRef(f.family)
+        ? f.weight >= 100 && f.weight <= 900 && f.weight % 100 === 0
+        : isWeightAllowed(f.family as (typeof FONT_FAMILIES)[number], f.weight),
+    {
+      path: ["weight"],
+      message: "weight is not available for this font family",
+    },
+  );
+
+/** Una cara de marca: OTF/TTF en nuestro storage (`fonts/{companyId}/`). */
+export const reelBrandFontSchema = z
+  .object({
+    id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
+    weight: z.number().int().min(100).max(900),
+    style: z.enum(["normal", "italic"]),
+    url: z.string().url(),
+  })
+  .strict();
+export type ReelBrandFont = z.infer<typeof reelBrandFontSchema>;
 export type ReelFont = z.infer<typeof reelFontSchema>;
 
 export const reelStrokeSchema = z
@@ -405,6 +442,7 @@ const reelSpecBaseSchema = z
       .regex(/^[a-z]{2}$/)
       .optional(),
     theme: reelThemeSchema,
+    brandFonts: z.array(reelBrandFontSchema).max(MAX_BRAND_FONTS).optional(),
     mix: reelMixSchema,
     layers: z.array(reelLayerSchema).min(1).max(REEL_MAX_LAYERS),
   })
@@ -500,6 +538,17 @@ export function reelSpecIssues(
   }
   if (music > 1) issues.push({ path: ["layers"], message: "at most one music layer" });
   if (voice > 1) issues.push({ path: ["layers"], message: "at most one voice layer" });
+  const brandIds = new Set((spec.brandFonts ?? []).map((f) => f.id));
+  spec.layers.forEach((layer, i) => {
+    if (layer.kind !== "text" && layer.kind !== "captions") return;
+    const family = layer.font.family;
+    if (isBrandFamilyRef(family) && !brandIds.has(family.slice("brand:".length))) {
+      issues.push({
+        path: ["layers", i, "font", "family"],
+        message: "brand font family without a file in brandFonts",
+      });
+    }
+  });
   spec.layers.forEach((layer, i) => {
     if (layer.kind !== "captions") return;
     const source = ids.get(layer.sourceLayerId);
@@ -544,6 +593,28 @@ export type ReelRenderRequestInput = z.input<typeof reelRenderRequestSchema>;
 
 export const reelPreviewRequestSchema = z
   .object({ spec: reelSpecSchema, grant: mediaGrantSchema.optional() })
+  .strict();
+
+/**
+ * Sprint 9 (U): `POST /reels/poster` — un cuadro del reel compuesto por el
+ * mismo compilador (sin render entero), para la tarjeta del deck. `atSec`
+ * default: cuando el gancho ya entró.
+ */
+export const reelPosterRequestSchema = z
+  .object({
+    spec: reelSpecSchema,
+    grant: mediaGrantSchema.optional(),
+    atSec: z.number().min(0).max(REEL_DURATION_MAX_SEC).optional(),
+  })
+  .strict();
+
+/** Sprint 9 (U): `POST /reels/image-stats` — luminancia de imágenes (logo, fondo). */
+export const REEL_IMAGE_STATS_MAX = 8;
+export const reelImageStatsRequestSchema = z
+  .object({
+    urls: z.array(z.string().url()).min(1).max(REEL_IMAGE_STATS_MAX),
+    grant: mediaGrantSchema.optional(),
+  })
   .strict();
 
 /** Todas las URLs de media del spec, en orden de capa. */

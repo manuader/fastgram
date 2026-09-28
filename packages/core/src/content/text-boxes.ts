@@ -46,6 +46,38 @@ export const FONT_FAMILIES = Object.keys(FONT_WEIGHTS) as readonly FontFamily[];
 
 export type FontFamily = keyof typeof FONT_WEIGHTS;
 
+/**
+ * Sprint 9 (S), `PU-S9-003`: una caja también puede pedir una familia **de la
+ * marca** con `brand:<id>` (el id de la familia en el design system activo).
+ * Misma forma que acepta el render (`isBrandFamilyRef`) y el contrato
+ * (`brandFontFamilySchema`). Qué caras existen lo decide el design system:
+ * acá se acepta cualquier centena 100–900 y el render toma la más cercana.
+ *
+ * Que el id exista y tenga licencia no se puede ver acá (la caja no conoce la
+ * marca): lo valida la API al guardar ({@link assertBrandFamiliesAvailable}).
+ */
+export const BRAND_FAMILY_PREFIX = "brand:";
+const BRAND_FAMILY_RE = /^brand:[a-z0-9][a-z0-9-]{0,63}$/u;
+
+export function isBrandFamily(family: string): family is `brand:${string}` {
+  return BRAND_FAMILY_RE.test(family);
+}
+
+/** `brand:rotis` → `rotis`. `null` si no es una familia de marca. */
+export function brandFamilyIdOf(family: string): string | null {
+  return isBrandFamily(family) ? family.slice(BRAND_FAMILY_PREFIX.length) : null;
+}
+
+/** Los pesos que acepta una familia de marca: las centenas. */
+export const BRAND_FONT_WEIGHTS: readonly number[] = [
+  100, 200, 300, 400, 500, 600, 700, 800, 900,
+];
+
+/** Los pesos permitidos de una familia (registrada o de marca); `undefined` si no existe. */
+export function allowedWeightsOf(family: string): readonly number[] | undefined {
+  return isBrandFamily(family) ? BRAND_FONT_WEIGHTS : FONT_WEIGHTS[family];
+}
+
 export const BACKGROUND_STYLES = ["pill", "full-width"] as const;
 export type BackgroundStyle = (typeof BACKGROUND_STYLES)[number];
 
@@ -224,7 +256,7 @@ export function assertValidTextBox(box: ContentTextBox): void {
   );
 
   assertNoUnknownFields(box.font, ["family", "weight", "size"], "font");
-  const weights = FONT_WEIGHTS[box.font.family as string];
+  const weights = allowedWeightsOf(box.font.family as string);
   if (weights === undefined) {
     fail(`"${String(box.font.family)}" is not an allowed font family.`, {
       boxId: box.id,

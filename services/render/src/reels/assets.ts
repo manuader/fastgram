@@ -12,6 +12,9 @@ import { probeMedia, type MediaInfo } from "../ffmpeg/probe.js";
 import type { MediaReference } from "../domain/payload.js";
 import type { MediaResolver } from "../render/engine.js";
 import { transcribe, type AsrConfig } from "./asr.js";
+import { RenderError } from "../errors.js";
+import { BRAND_FONT_MAX_BYTES } from "../domain/fonts.js";
+import { isSfnt } from "../render/brandText.js";
 import { keyClip } from "./chroma.js";
 import {
   fontKey,
@@ -30,9 +33,44 @@ export interface AssetDeps {
   readonly asr: AsrConfig;
 }
 
+/**
+ * La cara de marca de una clave `brand:<id>-<peso>`: la normal si hay, si no
+ * la itálica. `null` si el spec no la trae (el contrato ya lo impide).
+ */
+async function brandFontFile(
+  spec: ReelSpec,
+  key: string,
+  deps: AssetDeps,
+): Promise<string | null> {
+  const cut = key.lastIndexOf("-");
+  const id = key.slice("brand:".length, cut);
+  const weight = Number(key.slice(cut + 1));
+  const faces = (spec.brandFonts ?? []).filter((f) => f.id === id && f.weight === weight);
+  const face = faces.find((f) => f.style === "normal") ?? faces[0];
+  if (face === undefined) return null;
+  const local = await deps.resolveMedia(face.url, "image");
+  const bytes = await readFile(local);
+  if (bytes.byteLength > BRAND_FONT_MAX_BYTES) {
+    throw new RenderError("bad_request", "una fuente de marca pesa más de lo permitido", {
+      details: { id, weight, bytes: bytes.byteLength, max: BRAND_FONT_MAX_BYTES },
+    });
+  }
+  if (!isSfnt(bytes)) {
+    throw new RenderError("bad_request", "una fuente de marca no es OTF ni TTF", {
+      details: { id, weight },
+    });
+  }
+  return local;
+}
+
 /** Las URLs del spec con su rol (el rol decide la política, `FR-070`). */
 export function reelMediaReferences(spec: ReelSpec): MediaReference[] {
   const refs: MediaReference[] = [];
+  // Sprint 9 (U): las caras de marca se autorizan como una imagen (igual que
+  // `brandFonts` de la imagen fija): prefijo `fonts/{companyId}/` + URL listada.
+  (spec.brandFonts ?? []).forEach((f, i) => {
+    refs.push({ url: f.url, role: "image", path: ["spec", "brandFonts", i, "url"] });
+  });
   spec.layers.forEach((layer, i) => {
     if (
       layer.kind === "background" &&
@@ -99,7 +137,8 @@ export function projectMode(projectDir: string): SourceMode {
   return {
     original: (id, local, ext) => place(`assets/${id}.${ext}`, local),
     derived: (id, local) => place(`assets/${id}.keyed.webm`, local),
-    font: (key, local) => place(`fonts/${key}.ttf`, local),
+    // `brand:<id>` → `brand-<id>`: un `:` en la ruta relativa se leería como esquema.
+    font: (key, local) => place(`fonts/${key.replace(":", "-")}.ttf`, local),
   };
 }
 
@@ -142,6 +181,8 @@ export async function resolveReelAssets(
   mode: SourceMode,
   workDir: string,
   warnings: string[],
+  /** Sprint 9 (U): el póster no transcribe (un cuadro no lleva subtítulos). */
+  options: { readonly transcribe?: boolean } = {},
 ): Promise<{ assets: CompileAssets; captions: Record<string, ReelCaptionWord[]> }> {
   const visual = new Map<string, ResolvedMedia>();
   const sound = new Map<string, ResolvedMedia>();
@@ -209,12 +250,20 @@ export async function resolveReelAssets(
   }
 
   for (const key of requiredFonts(spec)) {
-    if (deps.fontDir === null) break;
+    if (key.startsWith("brand:")) {
+      // Sprint 9 (U): la cara de marca se baja de su URL (autorizada con el
+      // grant, `fonts/{companyId}/`) y se comprueba igual que en la imagen
+      // fija: OTF/TTF de verdad y con tope de tamaño.
+      const file = await brandFontFile(spec, key, deps);
+      if (file !== null) fonts.set(key, await mode.font(key, file));
+      continue;
+    }
+    if (deps.fontDir === null) continue;
     const file = path.join(deps.fontDir, `${key}.ttf`);
     if (!existsSync(file)) continue;
     fonts.set(key, await mode.font(key, file));
   }
-  if (requiredFonts(spec).length > 0 && fonts.size === 0) {
+  if (requiredFonts(spec).some((k) => !k.startsWith("brand:")) && deps.fontDir === null) {
     warnings.push(
       "no font directory (RENDER_FONT_DIR): text falls back to a system font",
     );
@@ -229,6 +278,10 @@ export async function resolveReelAssets(
     }
     const source = spec.layers.find((l) => l.id === layer.sourceLayerId);
     const d = source === undefined ? undefined : localByLayer.get(source.id);
+    if (options.transcribe === false) {
+      captions.set(layer.id, []);
+      continue;
+    }
     if (source === undefined || d === undefined || !d.info.hasAudio) {
       // Sin audio no hay habla: sin subtítulos, que es lo que pide el brief.
       captions.set(layer.id, []);

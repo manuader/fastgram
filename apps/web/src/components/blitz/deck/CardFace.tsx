@@ -11,7 +11,7 @@ import {
   type PreviewSlide,
 } from "@/lib/blitz/deck/suggestion";
 import type { BlitzContentType } from "@fastgram/contracts";
-import { ChromaKeyVideo } from "./ChromaKeyVideo";
+import { ChromaKeyVideo, type ChromaInfo } from "./ChromaKeyVideo";
 import { ChevronLeftIcon, ChevronRightIcon, MuteIcon, VolumeIcon } from "./icons";
 
 /**
@@ -41,7 +41,7 @@ const TEXT_SIZE_UNITS = 22;
 export function CardFace({ card, interactive }: CardFaceProps) {
   const { suggestion } = card;
   const reel = suggestion.preview?.reel ?? null;
-  if (reel !== null) {
+  if (reel !== null && reel.videoUrl != null) {
     return (
       <ReelFace
         videoUrl={reel.videoUrl}
@@ -50,12 +50,19 @@ export function CardFace({ card, interactive }: CardFaceProps) {
       />
     );
   }
+  // Sprint 9 (U): un reel del planificador todavía no se renderizó; su cara es
+  // el póster (un cuadro compuesto por el mismo motor: fuentes, colores, logo).
+  if (reel !== null && reel.posterUrl != null) {
+    return <ReelPosterFace posterUrl={reel.posterUrl} durationSec={reel.durationSec ?? null} />;
+  }
   return (
     <SuggestionFace
-      contentType={suggestion.contentType}
+      // Un reel sin póster se dibuja como texto sobre el fondo neutro.
+      contentType={suggestion.contentType === "reel" ? "wall-of-text" : suggestion.contentType}
       slides={slidesOf(suggestion)}
       audioUrl={hasAudio(suggestion) ? (suggestion.preview?.audioUrl ?? null) : null}
       overlayVideoUrl={suggestion.preview?.overlayVideoUrl ?? null}
+      overlayChroma={suggestion.preview?.overlayChroma ?? null}
       interactive={interactive}
     />
   );
@@ -67,6 +74,8 @@ interface SuggestionFaceProps {
   readonly audioUrl: string | null;
   /** Green screen: el meme, recortado en el cliente. Sólo en la de arriba. */
   readonly overlayVideoUrl: string | null;
+  /** Sprint 9 (T): el croma del meme (azul, alfa), si se conoce. */
+  readonly overlayChroma?: ChromaInfo | null;
   readonly interactive: boolean;
 }
 
@@ -75,6 +84,7 @@ function SuggestionFace({
   slides,
   audioUrl,
   overlayVideoUrl,
+  overlayChroma,
   interactive,
 }: SuggestionFaceProps) {
   const [index, setIndex] = useState(0);
@@ -100,7 +110,7 @@ function SuggestionFace({
       )}
 
       {interactive && contentType === "green-screen" && overlayVideoUrl !== null && (
-        <ChromaKeyVideo url={overlayVideoUrl} />
+        <ChromaKeyVideo url={overlayVideoUrl} chroma={overlayChroma} />
       )}
 
       {current?.text != null && (
@@ -296,6 +306,34 @@ function SlideNav({
         ))}
       </div>
     </>
+  );
+}
+
+/**
+ * Sprint 9 (U, `PU-S9-014`): la cara de un reel planificado, antes del render:
+ * su póster y cuánto dura. El video se renderiza al aceptar (HyperFrames, 1–2
+ * min en esta Mac): renderizar cada sugerencia sólo para mostrarla costaría eso
+ * por tarjeta, aceptada o no.
+ */
+export function ReelPosterFace({
+  posterUrl,
+  durationSec,
+}: {
+  readonly posterUrl: string;
+  readonly durationSec: number | null;
+}) {
+  return (
+    <div
+      className="relative h-full w-full overflow-hidden bg-black"
+      data-testid="reel-poster-face"
+    >
+      <img src={posterUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+      <span className="absolute bottom-3 left-3 rounded-full bg-black/60 px-2.5 py-1 text-xs font-medium text-white">
+        {durationSec === null
+          ? td("deck.reel.poster")
+          : td("deck.reel.posterDuration", { seconds: Math.round(durationSec) })}
+      </span>
+    </div>
   );
 }
 

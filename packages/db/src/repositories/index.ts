@@ -440,3 +440,5 @@ export * from "./ads.js";
 export * from "./asset-decisions.js";
 // `0035` (sprint 9, M): design system por marca.
 export * from "./design-system.js";
+// Sprint 9 (U, `0041`): el planificador semanal de reels (`PU-S9-014`).
+export * from "./reel-plans.js";

@@ -2621,6 +2621,34 @@ export const buildOpenApiDocument = (): OpenApiDocument => {
           },
         },
       },
+      // Sprint 9 (S): el logo de las piezas clásicas nuevas, por marca.
+      "/design-system/{designSystemId}/logo-layer": {
+        get: {
+          operationId: "getDesignSystemLogoLayer",
+          summary: "Si las piezas clásicas nuevas salen con el logo del design system",
+          parameters: [pathParam("designSystemId")],
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(content.brandLogoLayerResourceSchema))),
+            "404": errorResponse("not_found"),
+          },
+        },
+        put: {
+          operationId: "updateDesignSystemLogoLayer",
+          summary:
+            "Prende/apaga el logo en las piezas nuevas (esquina, tamaño, opacidad)",
+          parameters: [pathParam("designSystemId")],
+          requestBody: {
+            required: true,
+            content: json(toJsonSchema(content.brandLogoLayerSchema)),
+          },
+          responses: {
+            "200": ok("OK", dataOf(toJsonSchema(content.brandLogoLayerResourceSchema))),
+            "400": errorResponse("bad_request"),
+            "404": errorResponse("not_found"),
+            "409": errorResponse("conflict — el design system no está listo"),
+          },
+        },
+      },
       "/design-system/{designSystemId}/font-files/{fileRef}": {
         get: {
           operationId: "getDesignSystemFontFile",

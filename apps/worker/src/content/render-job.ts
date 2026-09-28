@@ -47,11 +47,23 @@ import {
 import {
   applyAssetSwaps,
   applyTextBoxesToBuildPayload,
+  isBrandFamily,
+  planBrandFonts,
   readAssetSwaps,
+  substituteWeight,
+  type BrandFontFileRef,
+  type BuildLogoLayer,
   type ContentTextBox,
+  type DesignSystemTokens,
   type TextFontFamilies,
 } from "@fastgram/core";
-import type { RenderImage, RenderJob, RenderText, RenderVideo } from "@fastgram/ports";
+import type {
+  RenderBrand,
+  RenderImage,
+  RenderJob,
+  RenderText,
+  RenderVideo,
+} from "@fastgram/ports";
 
 /** Los cuatro formatos que el motor sabe construir. `custom` no está: ver el handler. */
 export type RenderableFormat = RenderJob["format"];
@@ -96,8 +108,8 @@ export function formatOf(payload: ContentBuildPayload): RenderableFormat | "reel
  * en vez de copiar el objeto entero: un `...t` arrastraría las claves presentes
  * con valor `undefined` y no compilaría.
  *
- * `fontFamily` no aparece: el payload de build de `FR-070` no lo lleva, aunque
- * el puerto lo acepte y `P2-RENDER-008` tenga 12 familias. Queda reportado.
+ * `fontFamily` viaja desde el sprint 9 (S): el texto de `FR-070` la tiene
+ * opcional (una de las 12 o `brand:<id>`).
  */
 function toRenderText(t: BuildText): RenderText {
   return {
@@ -112,6 +124,9 @@ function toRenderText(t: BuildText): RenderText {
     ...(t.strokeWidth === undefined ? {} : { strokeWidth: t.strokeWidth }),
     ...(t.strokeColor === undefined ? {} : { strokeColor: t.strokeColor }),
     ...(t.backgroundColor === undefined ? {} : { backgroundColor: t.backgroundColor }),
+    // Sprint 9 (S): el payload ya puede decir su familia (una de las 12 o
+    // `brand:<id>`). Ausente = el default del adaptador, como siempre.
+    ...(t.fontFamily === undefined ? {} : { fontFamily: t.fontFamily }),
   };
 }
 
@@ -319,4 +334,82 @@ function withFontFamilies(job: RenderJob, families: TextFontFamilies): RenderJob
     };
   }
   return { ...job, text: withFamily(job.text, families[0]?.[0]) };
+}
+
+/* ------------------------------------------------------------------------ *
+ * La marca en el job — sprint 9 (S), `PU-S9-003`
+ * ------------------------------------------------------------------------ */
+
+/** Lo que el build lee del design system activo de la marca. */
+export interface ActiveBrandLook {
+  readonly tokens: DesignSystemTokens | null;
+  readonly fontFiles: readonly BrandFontFileRef[];
+  /** URLs canónicas de las variantes del logo (media viva de la marca). */
+  readonly logoUrls: readonly string[];
+}
+
+function textsOf(job: RenderJob): readonly RenderText[] {
+  return job.format === "slideshow" ? job.images.flatMap((s) => s.texts) : [job.text];
+}
+
+function mapTexts(job: RenderJob, fn: (t: RenderText) => RenderText): RenderJob {
+  if (job.format === "slideshow") {
+    return {
+      ...job,
+      images: job.images.map((slide) => ({ ...slide, texts: slide.texts.map(fn) })),
+    };
+  }
+  return { ...job, text: fn(job.text) };
+}
+
+/**
+ * El job con la marca: las caras de las familias `brand:<id>` que usa (sólo
+ * las que tienen licencia; el resto se **reemplaza** por su plan B, ver
+ * `planBrandFonts`) y la capa de logo con las variantes del design system.
+ *
+ * Sin familias de marca y sin logo devuelve el job **tal cual** (mismo
+ * objeto): el fingerprint y la cache no se mueven para las piezas de siempre.
+ */
+export function withBrandLook(
+  job: RenderJob,
+  look: ActiveBrandLook | null,
+  logo: BuildLogoLayer | null,
+): RenderJob {
+  const families = textsOf(job)
+    .map((t) => t.fontFamily)
+    .filter((f): f is string => f !== undefined && isBrandFamily(f));
+  const wantsLogo = logo !== null && look !== null && look.logoUrls.length > 0;
+  if (families.length === 0 && !wantsLogo) return job;
+
+  const plan = planBrandFonts(families, look?.tokens ?? null, look?.fontFiles ?? []);
+  const substituted =
+    Object.keys(plan.substitutes).length === 0
+      ? job
+      : mapTexts(job, (t) => {
+          const replacement =
+            t.fontFamily === undefined ? undefined : plan.substitutes[t.fontFamily];
+          if (replacement === undefined) return t;
+          return {
+            ...t,
+            fontFamily: replacement,
+            fontWeight: substituteWeight(replacement, t.fontWeight ?? 400),
+          };
+        });
+
+  const brand: RenderBrand = {
+    ...(plan.faces.length === 0 ? {} : { fonts: plan.faces }),
+    ...(wantsLogo
+      ? {
+          logo: {
+            images: look.logoUrls.map((url) => ({ url })),
+            corner: logo.corner,
+            size: logo.size,
+            opacity: logo.opacity,
+          },
+        }
+      : {}),
+  };
+  return brand.fonts === undefined && brand.logo === undefined
+    ? substituted
+    : { ...substituted, brand };
 }

@@ -253,17 +253,48 @@ export const reelImageLayerSchema = z
   .strict();
 export type ReelImageLayer = z.infer<typeof reelImageLayerSchema>;
 
+/**
+ * Sprint 9 (U, `PU-S9-014`): una familia del design system de la marca por su
+ * id estable (`brand:rotis-semi-sans`). Mismo patrón que el render
+ * (`services/render/src/domain/fonts.ts`, M). Sus archivos van en
+ * `spec.brandFonts`; que la licencia esté tildada lo decide quien arma el spec.
+ */
+export const REEL_BRAND_FAMILY_PREFIX = "brand:";
+const REEL_BRAND_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+export type ReelBrandFamily = `brand:${string}`;
+
+export function isReelBrandFamily(value: string): value is ReelBrandFamily {
+  return (
+    value.startsWith(REEL_BRAND_FAMILY_PREFIX) &&
+    REEL_BRAND_ID_RE.test(value.slice(REEL_BRAND_FAMILY_PREFIX.length))
+  );
+}
+
+export const reelFontFamilySchema = z.union([
+  fontFamilySchema,
+  z
+    .string()
+    .refine(isReelBrandFamily, "expected a registered family or brand:<id>")
+    .transform((v) => v as ReelBrandFamily),
+]);
+
 export const reelFontSchema = z
   .object({
-    family: fontFamilySchema,
+    family: reelFontFamilySchema,
     weight: z.number().int(),
     size: z.number().min(FONT_SIZE_MIN).max(FONT_SIZE_MAX),
   })
   .strict()
-  .refine((f) => FONT_WEIGHTS[f.family].includes(f.weight), {
-    path: ["weight"],
-    message: "weight is not available for this font family",
-  });
+  .refine(
+    (f) =>
+      isReelBrandFamily(f.family)
+        ? f.weight >= 100 && f.weight <= 900 && f.weight % 100 === 0
+        : FONT_WEIGHTS[f.family as keyof typeof FONT_WEIGHTS].includes(f.weight),
+    {
+      path: ["weight"],
+      message: "weight is not available for this font family",
+    },
+  );
 export type ReelFont = z.infer<typeof reelFontSchema>;
 
 export const reelStrokeSchema = z
@@ -378,6 +409,20 @@ export const reelThemeSchema = z
   .strict();
 export type ReelTheme = z.infer<typeof reelThemeSchema>;
 
+/** Tope de caras de marca por spec: el del render (`MAX_BRAND_FONTS`). */
+export const REEL_MAX_BRAND_FONTS = 16;
+
+/** Una cara de una familia de marca (OTF/TTF en nuestro storage, `fonts/{companyId}/`). */
+export const reelBrandFontSchema = z
+  .object({
+    id: z.string().regex(REEL_BRAND_ID_RE),
+    weight: z.number().int().min(100).max(900),
+    style: z.enum(["normal", "italic"]),
+    url: mediaUrl,
+  })
+  .strict();
+export type ReelBrandFont = z.infer<typeof reelBrandFontSchema>;
+
 export const REEL_DEFAULT_THEME: ReelTheme = {
   background: "#111111",
   primary: "#FFFFFF",
@@ -414,6 +459,8 @@ const reelSpecBaseSchema = z
       .regex(/^[a-z]{2}$/)
       .optional(),
     theme: reelThemeSchema,
+    /** Sprint 9 (U): las caras que usan las capas `brand:<id>`. Ausente = ninguna. */
+    brandFonts: z.array(reelBrandFontSchema).max(REEL_MAX_BRAND_FONTS).optional(),
     mix: reelMixSchema,
     layers: z.array(reelLayerSchema).min(1).max(REEL_MAX_LAYERS),
   })
@@ -509,6 +556,18 @@ export function reelSpecIssues(
   }
   if (music > 1) issues.push({ path: ["layers"], message: "at most one music layer" });
   if (voice > 1) issues.push({ path: ["layers"], message: "at most one voice layer" });
+  // Sprint 9 (U): una capa `brand:<id>` necesita al menos una cara de ese id.
+  const brandIds = new Set((spec.brandFonts ?? []).map((f) => f.id));
+  spec.layers.forEach((layer, i) => {
+    if (layer.kind !== "text" && layer.kind !== "captions") return;
+    const family = layer.font.family;
+    if (isReelBrandFamily(family) && !brandIds.has(family.slice(REEL_BRAND_FAMILY_PREFIX.length))) {
+      issues.push({
+        path: ["layers", i, "font", "family"],
+        message: "brand font family without a file in brandFonts",
+      });
+    }
+  });
   spec.layers.forEach((layer, i) => {
     if (layer.kind !== "captions") return;
     const source = ids.get(layer.sourceLayerId);
@@ -543,6 +602,15 @@ export type ReelSpec = z.infer<typeof reelSpecSchema>;
  */
 export const reelBuildPayloadSchema = z.object({ reel: reelSpecSchema }).strict();
 export type ReelBuildPayload = z.infer<typeof reelBuildPayloadSchema>;
+
+/**
+ * Las URLs de las fuentes de marca del spec (sprint 9, U). Van al grant del
+ * render aparte de {@link reelMediaUrls}: no son media del Media Bank (viven
+ * en `fonts/{companyId}/`) y el chequeo de «media ajena» no las mira.
+ */
+export function reelFontUrls(spec: Pick<ReelSpec, "brandFonts">): string[] {
+  return [...new Set((spec.brandFonts ?? []).map((f) => f.url))];
+}
 
 /** Todas las URLs de media del spec, en orden de capa. */
 export function reelMediaUrls(spec: Pick<ReelSpec, "layers">): string[] {
@@ -606,3 +674,96 @@ export const reelFromPromptRequestSchema = z
   })
   .strict();
 export type ReelFromPromptRequest = z.infer<typeof reelFromPromptRequestSchema>;
+
+// --- Planificador semanal (sprint 9, U, `PU-S9-014`) ---------------------------------
+
+/**
+ * Estado de un reel del plan: `planned` (armado, esperando su día) →
+ * `suggested` (entró a la cola de Blitz) → `accepted` / `discarded` →
+ * `built` (la pieza quedó `CREATED`). `failed` = no se pudo armar (sin copy,
+ * sin assets, spec inválido); el motivo va en `failureReason`.
+ */
+export const REEL_PLAN_ITEM_STATUSES = [
+  "planned",
+  "suggested",
+  "accepted",
+  "discarded",
+  "built",
+  "failed",
+] as const;
+export const reelPlanItemStatusSchema = z.enum(REEL_PLAN_ITEM_STATUSES);
+export type ReelPlanItemStatus = z.infer<typeof reelPlanItemStatusSchema>;
+
+/** Avisos del plan: códigos estables, la web los traduce. */
+export const REEL_PLAN_NOTE_CODES = [
+  /** Sin modelo `text`: la idea y el gancho salen del ángulo. */
+  "llm_unavailable",
+  /** Sin motor de subtítulos (whisper sin modelo): los reels salen sin subtítulos. */
+  "captions_unavailable",
+  /** El decisor no tenía juicio (Laya/Jev): eligió el ranking textual. */
+  "decisor_fallback",
+  /** La marca no tiene design system activo: colores y fuentes por defecto. */
+  "no_design_system",
+  /** Una familia de marca se reemplazó (licencia sin tildar, sin archivo). */
+  "font_replaced",
+  /** Sin fondos ni clips en la marca ni en la biblioteca: degradé del tema. */
+  "no_media",
+  /** El mix de la estrategia no pide reels. */
+  "quota_zero",
+] as const;
+export const reelPlanNoteSchema = z
+  .object({ code: z.enum(REEL_PLAN_NOTE_CODES), detail: z.string().max(300).optional() })
+  .strict();
+export type ReelPlanNote = z.infer<typeof reelPlanNoteSchema>;
+
+export const reelPlanItemSchema = z
+  .object({
+    id: z.string().uuid(),
+    /** Día local de la marca (`YYYY-MM-DD`) en que entra a la cola. */
+    day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    status: reelPlanItemStatusSchema,
+    template: reelTemplateSchema,
+    idea: z.string().nullable(),
+    hook: z.string().nullable(),
+    angle: z.object({ id: z.string(), title: z.string() }).strict().nullable(),
+    durationSec: z.number().nullable(),
+    /** Qué eligió el decisor, en una línea por rol («Background: picked …»). */
+    picks: z.array(z.string()),
+    posterUrl: z.string().url().nullable(),
+    suggestionId: z.string().uuid().nullable(),
+    contentId: z.string().uuid().nullable(),
+    failureReason: z.string().nullable(),
+    /** Alguna elección de este reel ignoró las preferencias (exploración). */
+    explored: z.boolean(),
+  })
+  .strict();
+export type ReelPlanItem = z.infer<typeof reelPlanItemSchema>;
+
+export const reelWeekPlanSchema = z
+  .object({
+    id: z.string().uuid(),
+    weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    timezone: z.string(),
+    quota: z.number().int().nonnegative(),
+    notes: z.array(reelPlanNoteSchema),
+    items: z.array(reelPlanItemSchema),
+    updatedAt: z.string().datetime(),
+  })
+  .strict();
+export type ReelWeekPlan = z.infer<typeof reelWeekPlanSchema>;
+
+/** `GET /reels/plan` — el plan de esta semana (o `null`) y el cupo que da la estrategia. */
+export const reelPlanViewSchema = z
+  .object({
+    plan: reelWeekPlanSchema.nullable(),
+    /** Reels por semana que pide la estrategia hoy (`formatMix.reel`). */
+    weeklyQuota: z.number().int().nonnegative(),
+    /** El peso de `reel` en el mix (0 = apagado). */
+    reelWeight: z.number().int().min(0).max(100),
+  })
+  .strict();
+export type ReelPlanView = z.infer<typeof reelPlanViewSchema>;
+
+/** `POST /reels/plan` → `202 { data: { requested: true } }`: rehace lo `planned` de la semana. */
+export const reelPlanRequestSchema = z.object({}).strict();
+export const reelPlanRequestedSchema = z.object({ requested: z.literal(true) }).strict();

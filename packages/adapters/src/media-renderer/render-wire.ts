@@ -392,6 +392,67 @@ function wireStroke(
 }
 
 /* ------------------------------------------------------------------------ *
+ * La marca: al lado del payload, no adentro (sprint 9, S)
+ * ------------------------------------------------------------------------ */
+
+/** `brandFonts` del request de `POST /render` (espejo de `brandFontRefSchema`). */
+export interface WireBrandFont {
+  readonly id: string;
+  readonly weight: number;
+  readonly style: "normal" | "italic";
+  readonly url: string;
+}
+
+/** `logo` del request de `POST /render` (espejo de `logoRequestSchema` de `engine.ts`). */
+export interface WireLogo {
+  readonly images: readonly { readonly url: string }[];
+  readonly corner: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  readonly size: "small" | "medium" | "large";
+  readonly opacity: number;
+}
+
+export interface WireBrandFields {
+  readonly brandFonts?: readonly WireBrandFont[];
+  readonly logo?: WireLogo;
+}
+
+/**
+ * Las claves de marca del request. Van **al lado** de `payload` y no adentro
+ * porque así las definió el servicio (M, `renderRequestSchema`): el payload de
+ * `services/render` es de `FR-070` y las fuentes no son de la pieza sino de la
+ * marca. Sin marca no se manda ninguna clave: el request es byte a byte el de
+ * antes y la cache del servicio sigue acertando.
+ */
+export function toWireBrand(job: RenderJob): WireBrandFields {
+  const brand = job.brand;
+  if (brand === undefined) return {};
+  const fonts = brand.fonts ?? [];
+  const logo = brand.logo;
+  return {
+    ...(fonts.length === 0
+      ? {}
+      : {
+          brandFonts: fonts.map((f) => ({
+            id: f.id,
+            weight: f.weight,
+            style: f.style,
+            url: f.url,
+          })),
+        }),
+    ...(logo === undefined || logo.images.length === 0
+      ? {}
+      : {
+          logo: {
+            images: logo.images.map((i) => ({ url: i.url })),
+            corner: logo.corner,
+            size: logo.size,
+            opacity: logo.opacity,
+          },
+        }),
+  };
+}
+
+/* ------------------------------------------------------------------------ *
  * Conversión de unidades
  * ------------------------------------------------------------------------ */
 

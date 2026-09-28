@@ -7,3 +7,4 @@
  */
 export * from "./features.js";
 export * from "./model.js";
+export * from "./sources.js";

@@ -73,6 +73,7 @@ import { JOB_CATALOG, type JobPolicy } from "./jobs/catalog.js";
 import { mountMediaImport } from "./media-import/mount.js";
 import { mountLibraryImport } from "./library/mount.js";
 import { mountAdsSync } from "./ads/mount.js";
+import { mountReelPlanner } from "./reels/mount.js";
 import { mountAudioExtract } from "./audio-extract/ffmpeg.js";
 import { mountInspiration } from "./inspiration/mount.js";
 import { mountPublishing } from "./publishing/mount.js";
@@ -409,6 +410,19 @@ const { handlers: HANDLERS, unmounted } = createHandlers({
   // `METRICS_X_ENABLED=true` porque leer cuesta) y auto-tune del mix.
   metrics: createMetricsAdapters(process.env),
   // Sprint 9 (R): el notifier se crea más abajo; el cierre lo lee al correr.
+  // Sprint 9 (U): plan semanal de reels por marca y sus sugerencias del día.
+  reelPlanner: mountReelPlanner({
+    db: handle.db,
+    appRole,
+    logger,
+    clock,
+    rng: systemRng,
+    queue,
+    storage,
+    textLlm: async () => (await llmSource.current("text"))?.llm ?? null,
+    assetJudge: createJv6Judgment({ llmSource, db: handle.db, appRole, logger }).assets,
+    env: process.env,
+  }),
   adsSync: mountAdsSync({
     db: handle.db,
     appRole,

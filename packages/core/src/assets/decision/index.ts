@@ -5,3 +5,5 @@ export * from "./filter.js";
 export * from "./weights.js";
 export * from "./decide.js";
 export * from "./plan.js";
+export * from "./preferences.js";
+export * from "./library.js";

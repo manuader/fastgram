@@ -30,8 +30,15 @@
  * sabe lo omite y ese rasgo no aparece. Omitir nunca inventa un valor.
  */
 
-/** Sube cuando cambia una lista cerrada o la forma de una clave. */
-export const PREFERENCE_VOCABULARY_VERSION = 1;
+/**
+ * Sube cuando cambia una lista cerrada o la forma de una clave.
+ *
+ * v2 (sprint 9, U, `PU-S9-014`): el formato `reel` y las familias `reel.*`
+ * (plantilla, animación de texto con los nombres del spec, estilo de
+ * subtítulos, tipo de clip). **Aditivo**: toda clave v1 sigue parseando igual,
+ * así que las señales viejas siguen sumando.
+ */
+export const PREFERENCE_VOCABULARY_VERSION = 2;
 
 /**
  * Qué puede cambiar el dueño en el editor. Una edición es una señal sobre
@@ -52,7 +59,41 @@ export const PREFERENCE_FORMATS = [
   "green-screen",
   "video-hook",
   "custom",
+  // v2: los reels del planificador (U).
+  "reel",
 ] as const;
+
+/** v2 — plantillas de estructura del reel (`REEL_TEMPLATES` de `reels/plan.ts`). */
+export const PREF_REEL_TEMPLATES = [
+  "hook-reaction-punchline",
+  "list-beats",
+  "before-after",
+] as const;
+
+/**
+ * v2 — animaciones de texto del reel con **los nombres del spec**
+ * (`REEL_TEXT_ANIMATIONS`). No reusa `text.anim` (v1), que agrupa por familia
+ * (`bounce`, `slide`): el planificador elige entre éstas y necesita pesarlas
+ * una por una.
+ */
+export const PREF_REEL_ANIMATIONS = [
+  "none",
+  "fade-up",
+  "pop",
+  "typewriter",
+  "word-by-word",
+  "slide-left",
+  "highlight-sweep",
+  "kinetic-bounce",
+  "zoom-blur",
+  "wipe-reveal",
+] as const;
+
+/** v2 — estilo de subtítulos (`REEL_CAPTION_STYLES`) o `none` (sin subtítulos). */
+export const PREF_REEL_CAPTION_STYLES = ["bold-pop", "clean", "karaoke", "none"] as const;
+
+/** v2 — qué clip lleva el reel: recorte de croma, con alfa, opaco, o ninguno. */
+export const PREF_REEL_CLIPS = ["chroma", "alpha", "opaque", "none"] as const;
 
 /** De dónde salió la sugerencia: el refill, «crear desde prompt» o un remix. */
 export const PREF_SUGGESTION_ORIGINS = ["refill", "prompt", "remix"] as const;
@@ -226,6 +267,20 @@ export const PREFERENCE_FEATURE_FAMILIES = {
   "text.anim": { aspect: "style", rule: closed(PREF_TEXT_ANIMATIONS), ownerLevel: true },
   "text.len": { aspect: "text", rule: closed(PREF_BUCKETS), ownerLevel: true },
   duration: { aspect: null, rule: closed(PREF_BUCKETS), ownerLevel: true },
+  // v2 (U): rasgos de reel. La plantilla no se edita (es la estructura); la
+  // animación y los subtítulos sí (editor por capas), el clip también.
+  "reel.template": {
+    aspect: null,
+    rule: closed(PREF_REEL_TEMPLATES),
+    ownerLevel: true,
+  },
+  "reel.anim": { aspect: "style", rule: closed(PREF_REEL_ANIMATIONS), ownerLevel: true },
+  "reel.captions": {
+    aspect: "style",
+    rule: closed(PREF_REEL_CAPTION_STYLES),
+    ownerLevel: true,
+  },
+  "reel.clip": { aspect: "clip", rule: closed(PREF_REEL_CLIPS), ownerLevel: true },
 } as const satisfies Record<string, FamilyDef>;
 
 export type PreferenceFeatureFamily = keyof typeof PREFERENCE_FEATURE_FAMILIES;
@@ -333,6 +388,17 @@ export interface PreferenceSubject {
   readonly texts?: readonly string[] | undefined;
   readonly textStyle?: PreferenceTextStyleInput | null | undefined;
   readonly durationSec?: number | null | undefined;
+  /** v2 (U): lo propio de un reel. */
+  readonly reel?: PreferenceReelInput | null | undefined;
+}
+
+/** v2 — los rasgos de un reel (plantilla, animaciones, subtítulos, clip). */
+export interface PreferenceReelInput {
+  readonly template?: string | null | undefined;
+  /** Las animaciones de sus capas de texto (se cuentan una vez cada una). */
+  readonly animations?: readonly string[] | undefined;
+  readonly captionStyle?: string | null | undefined;
+  readonly clip?: (typeof PREF_REEL_CLIPS)[number] | null | undefined;
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -456,6 +522,14 @@ export function extractPreferenceFeatures(
 
   if (typeof subject.durationSec === "number" && Number.isFinite(subject.durationSec)) {
     push(out, "duration", prefBucketOf(subject.durationSec, PREF_DURATION_CUTS_SEC));
+  }
+
+  const reel = subject.reel;
+  if (reel !== null && reel !== undefined) {
+    push(out, "reel.template", reel.template);
+    for (const a of reel.animations ?? []) push(out, "reel.anim", a);
+    push(out, "reel.captions", reel.captionStyle);
+    push(out, "reel.clip", reel.clip);
   }
 
   return [...out].sort();
