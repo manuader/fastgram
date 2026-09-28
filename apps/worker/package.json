@@ -18,6 +18,7 @@
     "@fastgram/core": "workspace:*",
     "@fastgram/db": "workspace:*",
     "@fastgram/ports": "workspace:*",
+    "fflate": "^0.8.3",
     "pino": "^9.5.0",
     "zod": "catalog:"
   },

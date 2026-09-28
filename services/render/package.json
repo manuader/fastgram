@@ -13,7 +13,9 @@
   },
   "dependencies": {
     "@fastgram/config": "workspace:*",
+    "@hyperframes/producer": "^0.8.85",
     "fastify": "^5.2.0",
+    "hyperframes": "^0.8.85",
     "sharp": "^0.33.5",
     "zod": "catalog:"
   },
